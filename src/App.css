@@ -1,0 +1,19 @@
+.app-container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  /* 头部样式 */
+}
+
+.app-main {
+  flex: 1;
+  padding: 20px;
+}
+
+.app-footer {
+  /* 页脚样式 */
+} 
+
