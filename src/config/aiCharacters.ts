@@ -70,7 +70,7 @@ export interface AICharacter {
    * endpoint). 'cli' delegates the turn to a local CLI binary (codex / claude /
    * opencode / aider / gemini / generic) via Tauri IPC.
    */
-  runtime?: 'llm' | 'cli';
+  runtime?: 'llm' | 'cli' | 'bridge';
   /** Configuration for runtime === 'cli'. Ignored otherwise. */
   cli?: {
     /** Selects how the CLI is invoked. */
@@ -90,6 +90,13 @@ export interface AICharacter {
      * If true, stderr is forwarded as italic "thinking" prefixed with
      * `> ` in the chat bubble. Default true. (Codex prints progress on stderr.)
      */
+    showStderr?: boolean;
+  };
+  /** Configuration for runtime === 'bridge'. Ignored otherwise. */
+  bridge?: {
+    /** Agent name as registered by the plugin (must match plugin's register message). */
+    agentName: string;
+    /** Show stderr output from the plugin. Default true. */
     showStderr?: boolean;
   };
 }

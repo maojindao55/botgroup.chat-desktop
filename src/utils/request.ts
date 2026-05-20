@@ -427,6 +427,89 @@ export async function request(url: string, options: RequestInit = {}) {
       return mockResponse({ success: true, data: result });
     }
 
+    // 10b. Bridge Agent prompt — route to a plugin connected via WebSocket
+    // bridge. Same SSE-shaped stream as /api/cli/run, so ChatUI works unchanged.
+    if (cleanUrl === '/api/bridge/prompt') {
+      const body = JSON.parse(options.body as string);
+      const { agentName, prompt, cwd } = body || {};
+      if (!agentName || !prompt) {
+        return mockResponse({ success: false, message: 'agentName and prompt required' }, 400);
+      }
+
+      const taskId =
+        (typeof crypto !== 'undefined' && (crypto as any).randomUUID
+          ? (crypto as any).randomUUID()
+          : `bridge-${Date.now()}-${Math.random().toString(36).slice(2)}`) as string;
+
+      const eventName = `bridge://${taskId}`;
+      let unlistenFn: UnlistenFn | null = null;
+      let closed = false;
+
+      const readable = new ReadableStream({
+        async start(controller) {
+          const enc = new TextEncoder();
+          const enqueueChunk = (content: string) => {
+            try { controller.enqueue(enc.encode(`data: ${JSON.stringify({ content })}\n\n`)); } catch {}
+          };
+          const closeOnce = () => {
+            if (closed) return;
+            closed = true;
+            try { controller.close(); } catch {}
+            if (unlistenFn) { unlistenFn(); unlistenFn = null; }
+          };
+
+          unlistenFn = await listen<any>(eventName, (evt) => {
+            const payload = evt.payload || {};
+            const msgType = payload.type || (typeof payload === 'object' ? (payload as any).type : '');
+            switch (msgType) {
+              case 'chunk':
+                if (payload.content) enqueueChunk(payload.content);
+                break;
+              case 'stderr':
+                if (payload.content) enqueueChunk('> _' + payload.content.replace(/_/g, '\\_') + '_\n');
+                break;
+              case 'error':
+                if (payload.message) enqueueChunk(`\n**[Plugin error]** ${payload.message}\n`);
+                break;
+              case 'done': {
+                const code = typeof payload.exit_code === 'number' ? payload.exit_code : -1;
+                if (code !== 0) enqueueChunk(`\n_(exit ${code})_\n`);
+                closeOnce();
+                break;
+              }
+            }
+          });
+
+          try {
+            await invoke('bridge_send_prompt', { agentName, prompt, cwd: cwd || null, taskId });
+          } catch (e: any) {
+            const msg = e instanceof Error ? e.message : String(e);
+            enqueueChunk(`**[Bridge error]** ${msg}`);
+            closeOnce();
+          }
+        },
+        async cancel() {
+          if (unlistenFn) { try { unlistenFn(); } catch {} unlistenFn = null; }
+          try { await invoke('bridge_cancel_task', { taskId }); } catch {}
+        },
+      });
+
+      return new Response(readable, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+          'X-Bridge-Task-Id': taskId,
+        },
+      });
+    }
+
+    // 10c. List connected bridge agents
+    if (cleanUrl === '/api/bridge/agents') {
+      const agents = await invoke('bridge_list_agents');
+      return mockResponse({ success: true, data: agents });
+    }
+
     // 11. Chat API (Direct LLM streaming from client side)
     if (cleanUrl === '/api/chat') {
       const body = JSON.parse(options.body as string);

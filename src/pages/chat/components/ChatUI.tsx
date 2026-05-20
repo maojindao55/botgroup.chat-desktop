@@ -332,6 +332,7 @@ const ChatUI = () => {
       let uri = "/api/chat";
       let requestBody: any;
       const isCliAgent = selectedGroupAiCharacters[i].runtime === 'cli';
+      const isBridgeAgent = selectedGroupAiCharacters[i].runtime === 'bridge';
       if (isCliAgent) {
         uri = "/api/cli/run";
         const cliCfg = selectedGroupAiCharacters[i].cli || { adapter: 'generic' };
@@ -352,6 +353,21 @@ const ChatUI = () => {
           extraArgs: cliCfg.extraArgs || null,
           env: cliCfg.env || null,
           showStderr: cliCfg.showStderr !== false,
+        };
+      } else if (isBridgeAgent) {
+        uri = "/api/bridge/prompt";
+        const bridgeCfg = selectedGroupAiCharacters[i].bridge || { agentName: selectedGroupAiCharacters[i].name.toLowerCase() };
+        const conversationContext = messageHistory
+          .slice(-8)
+          .map((m: any) => m.content)
+          .join('\n');
+        const bridgePrompt = conversationContext
+          ? `${conversationContext}\nuser: ${inputMessage}`
+          : inputMessage;
+        requestBody = {
+          agentName: bridgeCfg.agentName,
+          prompt: bridgePrompt,
+          cwd: workspacePath || group.workspacePath || null,
         };
       } else {
         if (selectedGroupAiCharacters[i].rag == true) {
@@ -395,7 +411,7 @@ const ChatUI = () => {
         // 添加超时控制 — CLI agents (codex/claude/...) take much longer to
         // produce first output because they boot a Node/Python process and
         // contact a remote LLM themselves; give them a generous window.
-        const timeout = isCliAgent ? 300000 : 10000; // 5min for CLI, 10s for LLM
+        const timeout = (isCliAgent || isBridgeAgent) ? 300000 : 10000; // 5min for CLI/Bridge, 10s for LLM
         while (true) {
           //console.log("读取中")
           const startTime = Date.now();
