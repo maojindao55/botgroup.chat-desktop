@@ -156,7 +156,7 @@ export function generateAICharacters(groupName: string, allTags: string): AIChar
       runtime: 'cli',
       cli: {
         adapter: 'codex',
-        extraArgs: ['--sandbox', 'workspace-write'],
+        extraArgs: ['--json', '--sandbox', 'workspace-write'],
         approvalMode: 'auto',
         showStderr: true,
       },
