@@ -17,6 +17,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
+import rehypeRaw from 'rehype-raw'
 import { SharePoster } from '@/pages/chat/components/SharePoster';
 import { MembersManagement } from '@/pages/chat/components/MembersManagement';
 import Sidebar from './Sidebar';
@@ -83,6 +84,10 @@ const ChatUI = () => {
   const [mutedUsers, setMutedUsers] = useState<string[]>([]);
   const [showPoster, setShowPoster] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false); // 默认关闭，稍后根据设备类型设置
+  // Per-group workspacePath override (CLI agents only). The initial value
+  // comes from group config; user edits in the members sheet persist to
+  // localStorage via the key `workspace:${groupId}`.
+  const [workspacePath, setWorkspacePath] = useState<string>("");
 
   // 根据设备类型设置侧边栏默认状态
   useEffect(() => {
@@ -143,6 +148,9 @@ const ChatUI = () => {
         const characters = data.characters;
         setGroups(data.groups);
         setGroup(group);
+        // Resolve workspace path: localStorage override > group config default.
+        const wsOverride = group.id ? localStorage.getItem(`workspace:${group.id}`) : null;
+        setWorkspacePath(wsOverride || group.workspacePath || "");
         setIsInitializing(false);
         setIsGroupDiscussionMode(group.isGroupDiscussionMode);
         const groupAiCharacters = characters
@@ -323,8 +331,46 @@ const ChatUI = () => {
       // 添加当前 AI 的消息
       setMessages(prev => [...prev, aiMessage]);
       let uri = "/api/chat";
-      if (selectedGroupAiCharacters[i].rag == true) {
-        uri = "/rag/query";
+      let requestBody: any;
+      const isCliAgent = selectedGroupAiCharacters[i].runtime === 'cli';
+      if (isCliAgent) {
+        uri = "/api/cli/run";
+        const cliCfg = selectedGroupAiCharacters[i].cli || { adapter: 'generic' };
+        // Build a prompt — only include clean history (skip error messages
+        // from previous CLI failures so they don't pollute the prompt).
+        const cleanHistory = messageHistory
+          .filter((m: any) => !m.content.includes('登录已过期') && !m.content.includes('exit 1') && !m.content.includes('[CLI error]'))
+          .slice(-6)
+          .map((m: any) => m.content)
+          .join('\n');
+        const cliPrompt = cleanHistory
+          ? `${cleanHistory}\nuser: ${inputMessage}`
+          : inputMessage;
+        requestBody = {
+          adapter: cliCfg.adapter,
+          prompt: cliPrompt,
+          cwd: workspacePath || group.workspacePath || null,
+          binary: cliCfg.binary || null,
+          extraArgs: cliCfg.extraArgs || null,
+          env: cliCfg.env || null,
+          showStderr: cliCfg.showStderr !== false,
+        };
+      } else {
+        if (selectedGroupAiCharacters[i].rag == true) {
+          uri = "/rag/query";
+        }
+        requestBody = {
+          model: selectedGroupAiCharacters[i].model,
+          message: inputMessage,
+          query: inputMessage,
+          personality: selectedGroupAiCharacters[i].personality,
+          history: messageHistory,
+          index: i,
+          aiName: selectedGroupAiCharacters[i].name,
+          rag: selectedGroupAiCharacters[i].rag,
+          knowledge: selectedGroupAiCharacters[i].knowledge,
+          custom_prompt: selectedGroupAiCharacters[i].custom_prompt.replace('#groupName#', group.name) + "\n" + group.description
+        };
       }
       try {
         const response = await request(uri, {
@@ -332,18 +378,7 @@ const ChatUI = () => {
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            model: selectedGroupAiCharacters[i].model,
-            message: inputMessage,
-            query: inputMessage,
-            personality: selectedGroupAiCharacters[i].personality,
-            history: messageHistory,
-            index: i,
-            aiName: selectedGroupAiCharacters[i].name,
-            rag: selectedGroupAiCharacters[i].rag,
-            knowledge: selectedGroupAiCharacters[i].knowledge,
-            custom_prompt: selectedGroupAiCharacters[i].custom_prompt.replace('#groupName#', group.name) + "\n" + group.description
-          }),
+          body: JSON.stringify(requestBody),
         });
 
         if (!response.ok) {
@@ -359,8 +394,10 @@ const ChatUI = () => {
 
         let buffer = '';
         let completeResponse = ''; // 用于跟踪完整的响应
-        // 添加超时控制
-        const timeout = 10000; // 10秒超时
+        // 添加超时控制 — CLI agents (codex/claude/...) take much longer to
+        // produce first output because they boot a Node/Python process and
+        // contact a remote LLM themselves; give them a generous window.
+        const timeout = isCliAgent ? 300000 : 10000; // 5min for CLI, 10s for LLM
         while (true) {
           //console.log("读取中")
           const startTime = Date.now();
@@ -590,7 +627,7 @@ const ChatUI = () => {
                         }`}>
                           <ReactMarkdown 
                             remarkPlugins={[remarkGfm, remarkMath]}
-                            rehypePlugins={[rehypeKatex]}
+                            rehypePlugins={[rehypeKatex, rehypeRaw]}
                             className={`prose dark:prose-invert max-w-none text-sm leading-relaxed ${
                               message.sender.name === userStore.userInfo.nickname ? "text-white [&_*]:text-white" : ""
                             }
@@ -621,7 +658,16 @@ const ChatUI = () => {
                             [&_blockquote]:border-border
                             [&_blockquote]:pl-4
                             [&_blockquote]:my-2
-                            [&_blockquote]:italic`}
+                            [&_blockquote]:italic
+                            [&_details]:my-2
+                            [&_details]:rounded-lg
+                            [&_details]:bg-muted/50
+                            [&_details]:p-2
+                            [&_details]:text-xs
+                            [&_summary]:cursor-pointer
+                            [&_summary]:font-medium
+                            [&_summary]:text-muted-foreground
+                            [&_summary]:select-none`}
                           >
                             {message.content}
                           </ReactMarkdown>
@@ -710,6 +756,9 @@ const ChatUI = () => {
           isGroupDiscussionMode={isGroupDiscussionMode}
           onToggleGroupDiscussion={() => setIsGroupDiscussionMode(!isGroupDiscussionMode)}
           getAvatarData={getAvatarData}
+          groupId={group.id}
+          initialWorkspacePath={workspacePath}
+          onWorkspacePathChange={setWorkspacePath}
         />
       </div>
 
