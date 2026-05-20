@@ -289,7 +289,8 @@ export function generateAICharacters(groupName: string, allTags: string): AIChar
       runtime: 'cli',
       cli: {
         adapter: 'codex',
-        approvalMode: 'ask',
+        extraArgs: ['--full-auto'],
+        approvalMode: 'auto',
         showStderr: true,
       },
     },
