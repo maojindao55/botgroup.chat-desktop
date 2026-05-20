@@ -348,23 +348,59 @@ export async function request(url: string, options: RequestInit = {}) {
 
           // Subscribe BEFORE invoking, so we don't miss the first lines.
           let authErrorDetected = false;
-          // Collect command executions for collapsible details block
-          let pendingCommands: { cmd: string; duration?: string; exit_code?: number }[] = [];
-          let detailsEmitted = false;
 
-          const flushCommandDetails = () => {
-            if (pendingCommands.length === 0 || detailsEmitted) return;
-            detailsEmitted = true;
-            // Use a visually distinct format that works with standard markdown.
-            // The details/summary HTML tags work in most markdown renderers including react-markdown with rehype-raw.
-            // If rehype-raw is not available, we fallback to a blockquote style.
-            const header = `\n<details><summary>🔧 执行过程 (${pendingCommands.length} 步)</summary>\n\n`;
-            const items = pendingCommands.map((c, i) => {
-              const status = c.exit_code === 0 ? '✓' : c.exit_code != null ? `✗ exit ${c.exit_code}` : '...';
-              const cmdShort = c.cmd.length > 80 ? c.cmd.slice(0, 77) + '...' : c.cmd;
-              return `${i + 1}. \`${cmdShort}\` ${status}`;
-            }).join('\n');
-            enqueueChunk(header + items + '\n\n</details>\n\n');
+          // ── Codex JSON mode: buffer intermediate steps, only show final reply ──
+          // Accumulated data during execution:
+          let pendingCommands: { cmd: string; exit_code?: number; output?: string }[] = [];
+          let thinkingSnippets: string[] = [];
+          let finalMessages: string[] = [];
+          // For non-JSON adapters we still stream directly
+          let isJsonMode = adapter === 'codex';
+
+          /**
+           * Build and emit the final formatted output:
+           * 1. Final agent reply (prominent)
+           * 2. Collapsible block with thinking + commands (hidden by default)
+           */
+          const flushFinalOutput = () => {
+            // Emit the final reply text prominently
+            if (finalMessages.length > 0) {
+              enqueueChunk(finalMessages.join('\n') + '\n');
+            }
+
+            // Build collapsible details block for intermediate steps
+            const hasThinking = thinkingSnippets.length > 0;
+            const hasCommands = pendingCommands.length > 0;
+
+            if (hasThinking || hasCommands) {
+              const stepCount = pendingCommands.length;
+              const summaryLabel = stepCount > 0
+                ? `🔧 执行过程 (${stepCount} 步)`
+                : `💭 思考过程`;
+
+              let detailsBody = '';
+
+              if (hasThinking) {
+                detailsBody += `**💭 思考：**\n\n`;
+                detailsBody += thinkingSnippets.map(t => `> ${t}`).join('\n') + '\n\n';
+              }
+
+              if (hasCommands) {
+                detailsBody += `**🔧 命令执行：**\n\n`;
+                detailsBody += pendingCommands.map((c, i) => {
+                  const status = c.exit_code === 0 ? '✓' : c.exit_code != null ? `✗ exit ${c.exit_code}` : '…';
+                  const cmdShort = c.cmd.length > 80 ? c.cmd.slice(0, 77) + '...' : c.cmd;
+                  let line = `${i + 1}. \`${cmdShort}\` ${status}`;
+                  if (c.output) {
+                    const outShort = c.output.length > 200 ? c.output.slice(0, 197) + '...' : c.output;
+                    line += `\n   \`\`\`\n   ${outShort}\n   \`\`\``;
+                  }
+                  return line;
+                }).join('\n');
+              }
+
+              enqueueChunk(`\n<details><summary>${summaryLabel}</summary>\n\n${detailsBody}\n\n</details>\n`);
+            }
           };
 
           unlistenFn = await listen<any>(eventName, (evt) => {
@@ -375,23 +411,31 @@ export async function request(url: string, options: RequestInit = {}) {
               case 'stdout':
                 if (typeof payload.content === 'string' && !authErrorDetected) {
                   const stdoutLine = payload.content;
-                  // Codex --json mode: parse structured events
-                  if (stdoutLine.startsWith('{') && stdoutLine.includes('"type"')) {
+
+                  // Codex --json mode: parse structured events, buffer everything
+                  if (isJsonMode && stdoutLine.startsWith('{') && stdoutLine.includes('"type"')) {
                     try {
                       const jsonEvt = JSON.parse(stdoutLine);
+
+                      // Final agent reply — buffer for display after done
                       if (jsonEvt.type === 'item.completed' && jsonEvt.item?.type === 'agent_message' && jsonEvt.item?.text) {
-                        enqueueChunk(jsonEvt.item.text + '\n');
-                      } else if (jsonEvt.type === 'item.started' && jsonEvt.item?.type === 'command_execution') {
-                        // Track command start and show live progress
+                        finalMessages.push(jsonEvt.item.text);
+                      }
+                      // Thinking / reasoning content
+                      else if (jsonEvt.type === 'item.completed' && jsonEvt.item?.type === 'reasoning' && jsonEvt.item?.text) {
+                        thinkingSnippets.push(jsonEvt.item.text);
+                      }
+                      // Command started — track and show brief live indicator
+                      else if (jsonEvt.type === 'item.started' && jsonEvt.item?.type === 'command_execution') {
                         const cmd = jsonEvt.item.command || '(unknown)';
                         pendingCommands.push({ cmd });
-                        const cmdShort = cmd.length > 60 ? cmd.slice(0, 57) + '...' : cmd;
-                        enqueueChunk(`⏳ \`${cmdShort}\`\n`);
-                      } else if (jsonEvt.type === 'item.completed' && jsonEvt.item?.type === 'command_execution') {
-                        // Update the last command with exit code
+                      }
+                      // Command completed — record exit code & output
+                      else if (jsonEvt.type === 'item.completed' && jsonEvt.item?.type === 'command_execution') {
                         const last = pendingCommands[pendingCommands.length - 1];
                         if (last) {
                           last.exit_code = jsonEvt.item.exit_code ?? 0;
+                          if (jsonEvt.item.output) last.output = jsonEvt.item.output;
                         }
                       }
                       // Skip turn.started, turn.completed, thread.started silently
@@ -420,7 +464,12 @@ export async function request(url: string, options: RequestInit = {}) {
                 }
                 // Normal stderr — skip verbose codex boot info (workdir/model/session lines)
                 if (/^(OpenAI Codex|-------|workdir:|model:|provider:|approval:|sandbox:|reasoning|session id:)/i.test(line.trim())) break;
-                enqueueChunk('> _' + line.replace(/_/g, '\\_') + '_\n');
+                // Collect stderr thinking hints for the collapsible block instead of showing inline
+                if (isJsonMode) {
+                  thinkingSnippets.push(line.trim());
+                } else {
+                  enqueueChunk('> _' + line.replace(/_/g, '\\_') + '_\n');
+                }
                 break;
               case 'error':
                 if (typeof payload.message === 'string') {
@@ -429,6 +478,10 @@ export async function request(url: string, options: RequestInit = {}) {
                 break;
               case 'done': {
                 const code = typeof payload.exit_code === 'number' ? payload.exit_code : -1;
+                // For JSON mode: flush buffered final output + collapsible details
+                if (isJsonMode) {
+                  flushFinalOutput();
+                }
                 if (code !== 0) {
                   enqueueChunk(`\n_(exit ${code})_\n`);
                 }
