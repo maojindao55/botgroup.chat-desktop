@@ -347,33 +347,33 @@ export async function request(url: string, options: RequestInit = {}) {
           };
 
           // Subscribe BEFORE invoking, so we don't miss the first lines.
+          let authErrorDetected = false;
           unlistenFn = await listen<any>(eventName, (evt) => {
             const payload = evt.payload || {};
             switch (payload.type) {
               case 'started':
-                // Optional: surface PID — kept silent for now.
                 break;
               case 'stdout':
-                if (typeof payload.content === 'string') {
+                if (typeof payload.content === 'string' && !authErrorDetected) {
                   enqueueChunk(payload.content + '\n');
                 }
                 break;
               case 'stderr':
-                if (showStderr && typeof payload.content === 'string') {
-                  const line = payload.content;
-                  // Detect auth/token errors and show a friendly message instead of raw stderr
-                  const isAuthError = /401|token.?invalid|unauthorized|session.?ended|auth.?error|please.*(log\s*in|sign\s*in)/i.test(line);
-                  if (isAuthError) {
-                    // Only show the friendly hint once per session
-                    if (!((controller as any).__authErrorShown)) {
-                      (controller as any).__authErrorShown = true;
-                      enqueueChunk(`\n**[登录已过期]** 请在终端执行相应的登录命令后重试：\n- Codex: \`codex login\`\n- Claude: \`claude login\`\n- OpenCode: 检查 API Key 配置\n`);
-                    }
-                    // Skip rendering the raw stderr line
-                  } else {
-                    enqueueChunk('> _' + line.replace(/_/g, '\\_') + '_\n');
-                  }
+                if (!showStderr || typeof payload.content !== 'string') break;
+                // Once auth error is detected, suppress ALL further output
+                if (authErrorDetected) break;
+                const line = payload.content;
+                // Filter out noise lines that add no value
+                if (/^(Reading additional input|WARNING:|^\s*$)/.test(line)) break;
+                // Detect auth/token errors — show ONE friendly message then mute
+                if (/401|token.?invalid|unauthorized|session.?ended|auth.?error|app_session_terminated|please.*(log\s*in|sign\s*in)/i.test(line)) {
+                  authErrorDetected = true;
+                  enqueueChunk(`\n**登录已过期，请在终端重新登录：**\n\`\`\`\ncodex login    # Codex\nclaude login   # Claude Code\n\`\`\`\n`);
+                  break;
                 }
+                // Normal stderr — skip verbose codex boot info (workdir/model/session lines)
+                if (/^(OpenAI Codex|-------|workdir:|model:|provider:|approval:|sandbox:|reasoning|session id:)/i.test(line.trim())) break;
+                enqueueChunk('> _' + line.replace(/_/g, '\\_') + '_\n');
                 break;
               case 'error':
                 if (typeof payload.message === 'string') {
