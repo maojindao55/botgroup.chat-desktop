@@ -5,12 +5,7 @@ description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [lib]
-# The `_lib` suffix may seem redundant but it is necessary
-# to make the lib name unique and wouldn't conflict with the bin name.
-# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "usershongbin9wwwbotgroupchat_desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
@@ -25,4 +20,5 @@ serde_json = "1"
 rusqlite = { version = "0.31.0", features = ["bundled"] }
 uuid = { version = "1.8.0", features = ["v4"] }
 chrono = { version = "0.4.38", features = ["serde"] }
-
+tokio = { version = "1", features = ["process", "io-util", "rt", "rt-multi-thread", "sync", "macros", "time"] }
+which = "6"

@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { groups as staticGroups } from '@/config/groups';
 import { generateAICharacters, modelConfigs } from '@/config/aiCharacters';
 
@@ -291,7 +292,202 @@ export async function request(url: string, options: RequestInit = {}) {
       return mockResponse({ selectedAIs });
     }
 
-    // 9. Chat API (Direct LLM streaming from client side)
+    // 9. CLI Agent run — spawn a local coding CLI (codex / claude / opencode / ...)
+    // Streams stdout (and optionally stderr) back as a Server-Sent-Events style
+    // stream identical in shape to /api/chat so ChatUI can consume it unchanged.
+    if (cleanUrl === '/api/cli/run') {
+      const body = JSON.parse(options.body as string);
+      const {
+        adapter,
+        prompt,
+        cwd,
+        binary,
+        extraArgs,
+        env,
+        showStderr = true,
+      } = body || {};
+
+      if (!adapter || !prompt) {
+        return mockResponse(
+          { success: false, message: '/api/cli/run requires { adapter, prompt }' },
+          400
+        );
+      }
+
+      const sessionId =
+        (typeof crypto !== 'undefined' && (crypto as any).randomUUID
+          ? (crypto as any).randomUUID()
+          : `cli-${Date.now()}-${Math.random().toString(36).slice(2)}`) as string;
+
+      const eventName = `cli://${sessionId}`;
+
+      // We build a ReadableStream that closes when we receive the `done`
+      // event (or `error`). Listener is detached on close/cancel.
+      let unlistenFn: UnlistenFn | null = null;
+      let closed = false;
+
+      const readable = new ReadableStream({
+        async start(controller) {
+          const enc = new TextEncoder();
+          const enqueueChunk = (content: string) => {
+            try {
+              controller.enqueue(
+                enc.encode(`data: ${JSON.stringify({ content })}\n\n`)
+              );
+            } catch {
+              /* controller already closed */
+            }
+          };
+
+          const closeOnce = () => {
+            if (closed) return;
+            closed = true;
+            try { controller.close(); } catch { /* */ }
+            if (unlistenFn) { unlistenFn(); unlistenFn = null; }
+          };
+
+          // Subscribe BEFORE invoking, so we don't miss the first lines.
+          let authErrorDetected = false;
+          // Collect command executions for collapsible details block
+          let pendingCommands: { cmd: string; duration?: string; exit_code?: number }[] = [];
+          let detailsEmitted = false;
+
+          const flushCommandDetails = () => {
+            if (pendingCommands.length === 0 || detailsEmitted) return;
+            detailsEmitted = true;
+            // Use a visually distinct format that works with standard markdown.
+            // The details/summary HTML tags work in most markdown renderers including react-markdown with rehype-raw.
+            // If rehype-raw is not available, we fallback to a blockquote style.
+            const header = `\n<details><summary>🔧 执行过程 (${pendingCommands.length} 步)</summary>\n\n`;
+            const items = pendingCommands.map((c, i) => {
+              const status = c.exit_code === 0 ? '✓' : c.exit_code != null ? `✗ exit ${c.exit_code}` : '...';
+              const cmdShort = c.cmd.length > 80 ? c.cmd.slice(0, 77) + '...' : c.cmd;
+              return `${i + 1}. \`${cmdShort}\` ${status}`;
+            }).join('\n');
+            enqueueChunk(header + items + '\n\n</details>\n\n');
+          };
+
+          unlistenFn = await listen<any>(eventName, (evt) => {
+            const payload = evt.payload || {};
+            switch (payload.type) {
+              case 'started':
+                break;
+              case 'stdout':
+                if (typeof payload.content === 'string' && !authErrorDetected) {
+                  const stdoutLine = payload.content;
+                  // Codex --json mode: parse structured events
+                  if (stdoutLine.startsWith('{') && stdoutLine.includes('"type"')) {
+                    try {
+                      const jsonEvt = JSON.parse(stdoutLine);
+                      if (jsonEvt.type === 'item.completed' && jsonEvt.item?.type === 'agent_message' && jsonEvt.item?.text) {
+                        enqueueChunk(jsonEvt.item.text + '\n');
+                      } else if (jsonEvt.type === 'item.started' && jsonEvt.item?.type === 'command_execution') {
+                        // Track command start and show live progress
+                        const cmd = jsonEvt.item.command || '(unknown)';
+                        pendingCommands.push({ cmd });
+                        const cmdShort = cmd.length > 60 ? cmd.slice(0, 57) + '...' : cmd;
+                        enqueueChunk(`⏳ \`${cmdShort}\`\n`);
+                      } else if (jsonEvt.type === 'item.completed' && jsonEvt.item?.type === 'command_execution') {
+                        // Update the last command with exit code
+                        const last = pendingCommands[pendingCommands.length - 1];
+                        if (last) {
+                          last.exit_code = jsonEvt.item.exit_code ?? 0;
+                        }
+                      }
+                      // Skip turn.started, turn.completed, thread.started silently
+                    } catch {
+                      // Not valid JSON, show as-is
+                      enqueueChunk(stdoutLine + '\n');
+                    }
+                  } else {
+                    // Non-JSON stdout (opencode, claude, etc.) — show as-is
+                    enqueueChunk(stdoutLine + '\n');
+                  }
+                }
+                break;
+              case 'stderr':
+                if (!showStderr || typeof payload.content !== 'string') break;
+                // Once auth error is detected, suppress ALL further output
+                if (authErrorDetected) break;
+                const line = payload.content;
+                // Filter out noise lines that add no value
+                if (/^(Reading additional input|WARNING:|^\s*$)/.test(line)) break;
+                // Detect auth/token errors — show ONE friendly message then mute
+                if (/401|token.?invalid|unauthorized|session.?ended|auth.?error|app_session_terminated|please.*(log\s*in|sign\s*in)/i.test(line)) {
+                  authErrorDetected = true;
+                  enqueueChunk(`\n**登录已过期，请在终端重新登录：**\n\`\`\`\ncodex login    # Codex\nclaude login   # Claude Code\n\`\`\`\n`);
+                  break;
+                }
+                // Normal stderr — skip verbose codex boot info (workdir/model/session lines)
+                if (/^(OpenAI Codex|-------|workdir:|model:|provider:|approval:|sandbox:|reasoning|session id:)/i.test(line.trim())) break;
+                enqueueChunk('> _' + line.replace(/_/g, '\\_') + '_\n');
+                break;
+              case 'error':
+                if (typeof payload.message === 'string') {
+                  enqueueChunk(`\n**[CLI error]** ${payload.message}\n`);
+                }
+                break;
+              case 'done': {
+                const code = typeof payload.exit_code === 'number' ? payload.exit_code : -1;
+                if (code !== 0) {
+                  enqueueChunk(`\n_(exit ${code})_\n`);
+                }
+                closeOnce();
+                break;
+              }
+            }
+          });
+
+          try {
+            await invoke('cli_run', {
+              args: {
+                sessionId,
+                adapter,
+                prompt,
+                cwd: cwd || null,
+                binary: binary || null,
+                extraArgs: extraArgs || null,
+                env: env || null,
+              },
+            });
+          } catch (e: any) {
+            const msg = e instanceof Error ? e.message : String(e);
+            enqueueChunk(`**[CLI spawn failed]** ${msg}`);
+            closeOnce();
+          }
+        },
+        async cancel() {
+          // Stream consumer aborted — kill the process.
+          if (unlistenFn) { try { unlistenFn(); } catch {} unlistenFn = null; }
+          try { await invoke('cli_kill', { sessionId }); } catch { /* ignore */ }
+        },
+      });
+
+      return new Response(readable, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+          'X-CLI-Session-Id': sessionId,
+        },
+      });
+    }
+
+    // 10. CLI Agent availability check — used by member list to grey out
+    //     CLIs that aren't installed.
+    if (cleanUrl === '/api/cli/check') {
+      const body = JSON.parse(options.body as string);
+      const adapter = body?.adapter;
+      if (!adapter) {
+        return mockResponse({ success: false, message: 'adapter required' }, 400);
+      }
+      const result = await invoke('cli_check', { adapter });
+      return mockResponse({ success: true, data: result });
+    }
+
+
+
+    // 11. Chat API (Direct LLM streaming from client side)
     if (cleanUrl === '/api/chat') {
       const body = JSON.parse(options.body as string);
       const { message, custom_prompt, history, aiName, index, model = "qwen-plus" } = body;
