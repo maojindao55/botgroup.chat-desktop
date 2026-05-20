@@ -380,12 +380,13 @@ export async function request(url: string, options: RequestInit = {}) {
                     try {
                       const jsonEvt = JSON.parse(stdoutLine);
                       if (jsonEvt.type === 'item.completed' && jsonEvt.item?.type === 'agent_message' && jsonEvt.item?.text) {
-                        // Before showing agent reply, flush any accumulated command details
-                        flushCommandDetails();
                         enqueueChunk(jsonEvt.item.text + '\n');
                       } else if (jsonEvt.type === 'item.started' && jsonEvt.item?.type === 'command_execution') {
-                        // Track command start
-                        pendingCommands.push({ cmd: jsonEvt.item.command || '(unknown)' });
+                        // Track command start and show live progress
+                        const cmd = jsonEvt.item.command || '(unknown)';
+                        pendingCommands.push({ cmd });
+                        const cmdShort = cmd.length > 60 ? cmd.slice(0, 57) + '...' : cmd;
+                        enqueueChunk(`⏳ \`${cmdShort}\`\n`);
                       } else if (jsonEvt.type === 'item.completed' && jsonEvt.item?.type === 'command_execution') {
                         // Update the last command with exit code
                         const last = pendingCommands[pendingCommands.length - 1];
@@ -427,8 +428,6 @@ export async function request(url: string, options: RequestInit = {}) {
                 }
                 break;
               case 'done': {
-                // Flush any remaining command details before closing
-                flushCommandDetails();
                 const code = typeof payload.exit_code === 'number' ? payload.exit_code : -1;
                 if (code !== 0) {
                   enqueueChunk(`\n_(exit ${code})_\n`);
