@@ -421,6 +421,12 @@ const ChatUI = () => {
             //如果completeResponse为空，
             if (completeResponse.trim() === "") {
             completeResponse = "对不起，我还不够智能，服务又断开了。";
+            }
+            // Post-process: collapse <details open> → <details> so the
+            // execution block folds up once streaming finishes.
+            if (completeResponse.includes('<details open>')) {
+              completeResponse = completeResponse.replace(/<details open>/g, '<details>');
+            }
             setMessages(prev => {
               const newMessages = [...prev];
               const aiMessageIndex = newMessages.findIndex(msg => msg.id === aiMessage.id);
@@ -431,7 +437,7 @@ const ChatUI = () => {
                 };
               }
               return newMessages;
-            });}
+            });
             break;
           }
           
