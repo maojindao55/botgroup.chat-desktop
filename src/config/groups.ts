@@ -7,6 +7,13 @@ export interface Group {
   isGroupDiscussionMode: boolean;
   type?: 'ai' | 'openclaw';
   clawGroupId?: string;
+  /**
+   * Working directory for CLI agents in this group. All CLI agents (codex,
+   * claude, opencode, ...) spawned from this group will run with cwd =
+   * workspacePath. Only used when at least one member has runtime==='cli'.
+   * Absolute path is required.
+   */
+  workspacePath?: string;
 }
 
 export const groups: Group[] = [
@@ -16,6 +23,13 @@ export const groups: Group[] = [
     description: '群消息关注度权重：“user”的最新消息>其他成员最新消息>“user”的历史消息>其他成员历史消息>',
     members: [ 'ai8',  'ai6', 'ai7', 'ai9', 'ai10', 'ai5'],
     isGroupDiscussionMode: false
+  },
+  {
+    id: 'group-coding',
+    name: '🛠️ AI Coding 工作组',
+    description: '一个真实可写代码的多 Agent 群：你给需求，DeepSeek 充当 PM/架构师讨论方案，Codex/ClaudeCode/OpenCode 直接在你本地 workspace 里执行修改。请先在群成员设置里指定 workspacePath（绝对路径）。',
+    isGroupDiscussionMode: false,
+    members: ['ai7', 'ai8', 'cli-codex', 'cli-claude-code', 'cli-opencode'],
   },
   /*
   {

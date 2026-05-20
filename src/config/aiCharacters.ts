@@ -65,6 +65,33 @@ export interface AICharacter {
     name: string;
     prompt: string;
   }[]; // 可选的阶段
+  /**
+   * Agent runtime. Defaults to 'llm' (current behavior — call a chat-completion
+   * endpoint). 'cli' delegates the turn to a local CLI binary (codex / claude /
+   * opencode / aider / gemini / generic) via Tauri IPC.
+   */
+  runtime?: 'llm' | 'cli';
+  /** Configuration for runtime === 'cli'. Ignored otherwise. */
+  cli?: {
+    /** Selects how the CLI is invoked. */
+    adapter: 'codex' | 'opencode' | 'claude' | 'aider' | 'gemini' | 'generic';
+    /** Override the binary name (otherwise resolved from adapter). */
+    binary?: string;
+    /** Extra flags passed before the prompt. */
+    extraArgs?: string[];
+    /** Additional env vars merged onto the spawned process env. */
+    env?: Record<string, string>;
+    /**
+     * Soft policy. The Rust side does not enforce this today — it is read
+     * by the UI to decide whether to ask before running.
+     */
+    approvalMode?: 'auto' | 'ask';
+    /**
+     * If true, stderr is forwarded as italic "thinking" prefixed with
+     * `> ` in the chat bubble. Default true. (Codex prints progress on stderr.)
+     */
+    showStderr?: boolean;
+  };
 }
 
 // 添加一个函数来生成带有群名的角色配置
@@ -245,6 +272,56 @@ export function generateAICharacters(groupName: string, allTags: string): AIChar
       avatar: "/img/doumei.jpeg",
       custom_prompt: `你名字叫豆妹你是豆包的妹妹，你当前在一个叫"${groupName}" 的聊天群里`,
       tags: ["聊天", "文字游戏", "学生", "娱乐"]
+    },
+    // ───────── CLI Agents ─────────
+    // These delegate the turn to a local terminal coding CLI. They share the
+    // same scheduler/UI plumbing as LLM agents — the only difference is that
+    // their "reply" comes from spawning a process in the user's workspace.
+    {
+      id: 'cli-codex',
+      name: 'Codex',
+      personality: 'codex-cli',
+      // model is unused at runtime when runtime==='cli'; kept for type compat.
+      model: modelConfigs[0].model,
+      avatar: '',
+      custom_prompt: '',
+      tags: ['编码', '重构', '调试', '编程', '深度推理'],
+      runtime: 'cli',
+      cli: {
+        adapter: 'codex',
+        approvalMode: 'ask',
+        showStderr: true,
+      },
+    },
+    {
+      id: 'cli-claude-code',
+      name: 'ClaudeCode',
+      personality: 'claude-cli',
+      model: modelConfigs[0].model,
+      avatar: '',
+      custom_prompt: '',
+      tags: ['编码', '重构', '调试', '编程', '分析数据', '深度推理'],
+      runtime: 'cli',
+      cli: {
+        adapter: 'claude',
+        approvalMode: 'ask',
+        showStderr: false,
+      },
+    },
+    {
+      id: 'cli-opencode',
+      name: 'OpenCode',
+      personality: 'opencode-cli',
+      model: modelConfigs[0].model,
+      avatar: '',
+      custom_prompt: '',
+      tags: ['编码', '重构', '调试', '编程'],
+      runtime: 'cli',
+      cli: {
+        adapter: 'opencode',
+        approvalMode: 'ask',
+        showStderr: true,
+      },
     }
   ];
 }

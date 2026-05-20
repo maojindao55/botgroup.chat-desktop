@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { groups as staticGroups } from '@/config/groups';
 import { generateAICharacters, modelConfigs } from '@/config/aiCharacters';
 
@@ -291,7 +292,142 @@ export async function request(url: string, options: RequestInit = {}) {
       return mockResponse({ selectedAIs });
     }
 
-    // 9. Chat API (Direct LLM streaming from client side)
+    // 9. CLI Agent run — spawn a local coding CLI (codex / claude / opencode / ...)
+    // Streams stdout (and optionally stderr) back as a Server-Sent-Events style
+    // stream identical in shape to /api/chat so ChatUI can consume it unchanged.
+    if (cleanUrl === '/api/cli/run') {
+      const body = JSON.parse(options.body as string);
+      const {
+        adapter,
+        prompt,
+        cwd,
+        binary,
+        extraArgs,
+        env,
+        showStderr = true,
+      } = body || {};
+
+      if (!adapter || !prompt) {
+        return mockResponse(
+          { success: false, message: '/api/cli/run requires { adapter, prompt }' },
+          400
+        );
+      }
+
+      const sessionId =
+        (typeof crypto !== 'undefined' && (crypto as any).randomUUID
+          ? (crypto as any).randomUUID()
+          : `cli-${Date.now()}-${Math.random().toString(36).slice(2)}`) as string;
+
+      const eventName = `cli://${sessionId}`;
+
+      // We build a ReadableStream that closes when we receive the `done`
+      // event (or `error`). Listener is detached on close/cancel.
+      let unlistenFn: UnlistenFn | null = null;
+      let closed = false;
+
+      const readable = new ReadableStream({
+        async start(controller) {
+          const enc = new TextEncoder();
+          const enqueueChunk = (content: string) => {
+            try {
+              controller.enqueue(
+                enc.encode(`data: ${JSON.stringify({ content })}\n\n`)
+              );
+            } catch {
+              /* controller already closed */
+            }
+          };
+
+          const closeOnce = () => {
+            if (closed) return;
+            closed = true;
+            try { controller.close(); } catch { /* */ }
+            if (unlistenFn) { unlistenFn(); unlistenFn = null; }
+          };
+
+          // Subscribe BEFORE invoking, so we don't miss the first lines.
+          unlistenFn = await listen<any>(eventName, (evt) => {
+            const payload = evt.payload || {};
+            switch (payload.type) {
+              case 'started':
+                // Optional: surface PID — kept silent for now.
+                break;
+              case 'stdout':
+                if (typeof payload.content === 'string') {
+                  enqueueChunk(payload.content + '\n');
+                }
+                break;
+              case 'stderr':
+                if (showStderr && typeof payload.content === 'string') {
+                  // Render stderr as a blockquote-prefixed line (markdown italic).
+                  enqueueChunk('> _' + payload.content.replace(/_/g, '\\_') + '_\n');
+                }
+                break;
+              case 'error':
+                if (typeof payload.message === 'string') {
+                  enqueueChunk(`\n**[CLI error]** ${payload.message}\n`);
+                }
+                break;
+              case 'done': {
+                const code = typeof payload.exit_code === 'number' ? payload.exit_code : -1;
+                if (code !== 0) {
+                  enqueueChunk(`\n_(exit ${code})_\n`);
+                }
+                closeOnce();
+                break;
+              }
+            }
+          });
+
+          try {
+            await invoke('cli_run', {
+              args: {
+                sessionId,
+                adapter,
+                prompt,
+                cwd: cwd || null,
+                binary: binary || null,
+                extraArgs: extraArgs || null,
+                env: env || null,
+              },
+            });
+          } catch (e: any) {
+            const msg = e instanceof Error ? e.message : String(e);
+            enqueueChunk(`**[CLI spawn failed]** ${msg}`);
+            closeOnce();
+          }
+        },
+        async cancel() {
+          // Stream consumer aborted — kill the process.
+          if (unlistenFn) { try { unlistenFn(); } catch {} unlistenFn = null; }
+          try { await invoke('cli_kill', { sessionId }); } catch { /* ignore */ }
+        },
+      });
+
+      return new Response(readable, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+          'X-CLI-Session-Id': sessionId,
+        },
+      });
+    }
+
+    // 10. CLI Agent availability check — used by member list to grey out
+    //     CLIs that aren't installed.
+    if (cleanUrl === '/api/cli/check') {
+      const body = JSON.parse(options.body as string);
+      const adapter = body?.adapter;
+      if (!adapter) {
+        return mockResponse({ success: false, message: 'adapter required' }, 400);
+      }
+      const result = await invoke('cli_check', { adapter });
+      return mockResponse({ success: true, data: result });
+    }
+
+    // 11. Chat API (Direct LLM streaming from client side)
     if (cleanUrl === '/api/chat') {
       const body = JSON.parse(options.body as string);
       const { message, custom_prompt, history, aiName, index, model = "qwen-plus" } = body;

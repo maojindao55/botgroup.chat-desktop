@@ -1,10 +1,12 @@
 mod db;
 mod api;
+mod cli;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .manage(cli::CliState::default())
         .setup(|app| {
             // Initialize SQLite Database and Tables on startup
             db::init_db(app.handle()).map_err(|e| {
@@ -21,7 +23,10 @@ pub fn run() {
             api::create_claw_group,
             api::join_claw_group,
             api::get_claw_messages,
-            api::send_claw_message
+            api::send_claw_message,
+            cli::cli_run,
+            cli::cli_kill,
+            cli::cli_check
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
