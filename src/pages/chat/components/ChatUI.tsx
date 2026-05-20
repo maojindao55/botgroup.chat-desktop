@@ -627,10 +627,10 @@ const ChatUI = () => {
                       <div className={message.sender.name === userStore.userInfo.nickname ? "text-right max-w-[75%]" : "max-w-[75%]"}>
                         <div className="text-xs text-muted-foreground/75 px-1 flex items-center gap-1.5">
                           {message.sender.name}
-                          {message.isAI && isLoading && message.content.includes('<details open>') && (
+                          {message.isAI && isLoading && message.content !== undefined && !message.content.includes('<details>') && (
                             <span className="inline-flex items-center gap-1 text-[10px] text-orange-500 font-medium">
                               <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" />
-                              执行中
+                              {message.content === '' ? '等待中' : '执行中'}
                             </span>
                           )}
                         </div>
