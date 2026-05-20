@@ -345,6 +345,38 @@ fn build_command(args: &CliRunArgs) -> Result<Command, String> {
         }
     }
 
+    // Codex fix: if the user's ~/.codex/config.toml is not readable (a
+    // common issue when the file was created by a different process with
+    // root ownership), we override CODEX_HOME to a writable temp
+    // directory. If the user's config IS readable, we leave CODEX_HOME
+    // alone so their existing auth and settings are picked up.
+    if args.adapter == "codex" && args.env.as_ref().map_or(true, |e| !e.contains_key("CODEX_HOME")) {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+        let user_cfg = std::path::PathBuf::from(&home).join(".codex").join("config.toml");
+        let needs_override = if user_cfg.exists() {
+            std::fs::File::open(&user_cfg).is_err()
+        } else {
+            // If ~/.codex doesn't exist at all, codex will create it, which
+            // is fine as long as $HOME is writable. Don't override.
+            false
+        };
+        if needs_override {
+            let codex_home = std::env::temp_dir().join("botgroup-codex-home");
+            let _ = std::fs::create_dir_all(&codex_home);
+            let cfg_path = codex_home.join("config.toml");
+            if !cfg_path.exists() {
+                let _ = std::fs::write(&cfg_path, "");
+            }
+            // Copy the auth.json if it exists and is readable
+            let user_auth = std::path::PathBuf::from(&home).join(".codex").join("auth.json");
+            let dest_auth = codex_home.join("auth.json");
+            if user_auth.exists() && !dest_auth.exists() {
+                let _ = std::fs::copy(&user_auth, &dest_auth);
+            }
+            cmd.env("CODEX_HOME", &codex_home);
+        }
+    }
+
     cmd.stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
