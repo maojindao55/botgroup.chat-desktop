@@ -349,49 +349,29 @@ export async function request(url: string, options: RequestInit = {}) {
           // Subscribe BEFORE invoking, so we don't miss the first lines.
           let authErrorDetected = false;
 
-          // ── Codex JSON mode: stream agent_message immediately,
-          //    buffer thinking + commands for a collapsible block at the end ──
-          let pendingCommands: { cmd: string; exit_code?: number; output?: string }[] = [];
-          let thinkingSnippets: string[] = [];
-          // For non-JSON adapters we still stream directly
+          // ── Codex JSON mode: ALL output streams in real-time ──
+          // Thinking & commands use a subdued visual style so the final reply stands out.
+          // For non-JSON adapters we still stream raw stdout directly.
           let isJsonMode = adapter === 'codex';
+          // Track whether we're inside an "intermediate" phase so we can
+          // open/close a <details> wrapper around thinking+commands.
+          let detailsOpen = false;
+          let stepCount = 0;
 
-          /**
-           * Emit the collapsible details block (thinking + commands).
-           * Called once on `done` — appended AFTER the already-streamed reply.
-           */
-          const flushDetailsBlock = () => {
-            const hasThinking = thinkingSnippets.length > 0;
-            const hasCommands = pendingCommands.length > 0;
-            if (!hasThinking && !hasCommands) return;
-
-            const stepCount = pendingCommands.length;
-            const summaryLabel = stepCount > 0
-              ? `🔧 执行过程 (${stepCount} 步)`
-              : `💭 思考过程`;
-
-            let detailsBody = '';
-
-            if (hasThinking) {
-              detailsBody += `**💭 思考：**\n\n`;
-              detailsBody += thinkingSnippets.map(t => `> ${t}`).join('\n') + '\n\n';
+          /** Open the collapsible block if not already open */
+          const ensureDetailsOpen = () => {
+            if (!detailsOpen) {
+              detailsOpen = true;
+              enqueueChunk(`\n<details open><summary>🔧 执行过程</summary>\n\n`);
             }
+          };
 
-            if (hasCommands) {
-              detailsBody += `**🔧 命令执行：**\n\n`;
-              detailsBody += pendingCommands.map((c, i) => {
-                const status = c.exit_code === 0 ? '✓' : c.exit_code != null ? `✗ exit ${c.exit_code}` : '…';
-                const cmdShort = c.cmd.length > 80 ? c.cmd.slice(0, 77) + '...' : c.cmd;
-                let line = `${i + 1}. \`${cmdShort}\` ${status}`;
-                if (c.output) {
-                  const outShort = c.output.length > 200 ? c.output.slice(0, 197) + '...' : c.output;
-                  line += `\n   \`\`\`\n   ${outShort}\n   \`\`\``;
-                }
-                return line;
-              }).join('\n');
+          /** Close the collapsible block before the final reply or done */
+          const closeDetails = () => {
+            if (detailsOpen) {
+              detailsOpen = false;
+              enqueueChunk(`\n</details>\n\n`);
             }
-
-            enqueueChunk(`\n<details><summary>${summaryLabel}</summary>\n\n${detailsBody}\n\n</details>\n`);
           };
 
           unlistenFn = await listen<any>(eventName, (evt) => {
@@ -403,30 +383,43 @@ export async function request(url: string, options: RequestInit = {}) {
                 if (typeof payload.content === 'string' && !authErrorDetected) {
                   const stdoutLine = payload.content;
 
-                  // Codex --json mode: parse structured events
+                  // Codex --json mode: parse structured events, stream everything
                   if (isJsonMode && stdoutLine.startsWith('{') && stdoutLine.includes('"type"')) {
                     try {
                       const jsonEvt = JSON.parse(stdoutLine);
 
-                      // Agent reply — stream IMMEDIATELY so user sees it in real-time
+                      // Agent reply — close details block first, then stream reply text
                       if (jsonEvt.type === 'item.completed' && jsonEvt.item?.type === 'agent_message' && jsonEvt.item?.text) {
+                        closeDetails();
                         enqueueChunk(jsonEvt.item.text + '\n');
                       }
-                      // Thinking / reasoning content — buffer for collapsible block
+                      // Thinking / reasoning — stream inside details block
                       else if (jsonEvt.type === 'item.completed' && jsonEvt.item?.type === 'reasoning' && jsonEvt.item?.text) {
-                        thinkingSnippets.push(jsonEvt.item.text);
+                        ensureDetailsOpen();
+                        enqueueChunk(`> 💭 ${jsonEvt.item.text}\n\n`);
                       }
-                      // Command started — buffer silently (no live ⏳ noise)
+                      // Command started — stream immediately with ⏳
                       else if (jsonEvt.type === 'item.started' && jsonEvt.item?.type === 'command_execution') {
+                        ensureDetailsOpen();
+                        stepCount++;
                         const cmd = jsonEvt.item.command || '(unknown)';
-                        pendingCommands.push({ cmd });
+                        const cmdShort = cmd.length > 80 ? cmd.slice(0, 77) + '...' : cmd;
+                        enqueueChunk(`${stepCount}. ⏳ \`${cmdShort}\`\n`);
                       }
-                      // Command completed — record exit code & output
+                      // Command completed — stream result
                       else if (jsonEvt.type === 'item.completed' && jsonEvt.item?.type === 'command_execution') {
-                        const last = pendingCommands[pendingCommands.length - 1];
-                        if (last) {
-                          last.exit_code = jsonEvt.item.exit_code ?? 0;
-                          if (jsonEvt.item.output) last.output = jsonEvt.item.output;
+                        ensureDetailsOpen();
+                        const exitCode = jsonEvt.item.exit_code ?? 0;
+                        const status = exitCode === 0 ? '✓' : `✗ exit ${exitCode}`;
+                        const cmd = jsonEvt.item.command || '(unknown)';
+                        const cmdShort = cmd.length > 80 ? cmd.slice(0, 77) + '...' : cmd;
+                        // Replace the pending line with completed status
+                        enqueueChunk(`   → \`${cmdShort}\` ${status}\n`);
+                        if (jsonEvt.item.output) {
+                          const outShort = jsonEvt.item.output.length > 300
+                            ? jsonEvt.item.output.slice(0, 297) + '...'
+                            : jsonEvt.item.output;
+                          enqueueChunk(`   \`\`\`\n   ${outShort}\n   \`\`\`\n`);
                         }
                       }
                       // Skip turn.started, turn.completed, thread.started silently
@@ -455,9 +448,10 @@ export async function request(url: string, options: RequestInit = {}) {
                 }
                 // Normal stderr — skip verbose codex boot info (workdir/model/session lines)
                 if (/^(OpenAI Codex|-------|workdir:|model:|provider:|approval:|sandbox:|reasoning|session id:)/i.test(line.trim())) break;
-                // In JSON mode, collect stderr as thinking material for the collapsible block
+                // In JSON mode, stream stderr as thinking inside the details block
                 if (isJsonMode) {
-                  thinkingSnippets.push(line.trim());
+                  ensureDetailsOpen();
+                  enqueueChunk(`> _${line.trim().replace(/_/g, '\\_')}_\n`);
                 } else {
                   enqueueChunk('> _' + line.replace(/_/g, '\\_') + '_\n');
                 }
@@ -469,10 +463,7 @@ export async function request(url: string, options: RequestInit = {}) {
                 break;
               case 'done': {
                 const code = typeof payload.exit_code === 'number' ? payload.exit_code : -1;
-                // Append collapsible details block with thinking + commands
-                if (isJsonMode) {
-                  flushDetailsBlock();
-                }
+                closeDetails();
                 if (code !== 0) {
                   enqueueChunk(`\n_(exit ${code})_\n`);
                 }
