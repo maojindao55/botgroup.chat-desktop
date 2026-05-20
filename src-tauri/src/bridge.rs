@@ -84,7 +84,7 @@ pub fn start_bridge(app: AppHandle, bridge_state: Arc<BridgeState>) {
 
             let app2 = app.clone();
             let agents2 = agents.clone();
-            let tasks2 = tasks.clone();
+            let _tasks2 = tasks.clone();
 
             tokio::spawn(async move {
                 // Upgrade TCP to WebSocket
