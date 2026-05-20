@@ -542,7 +542,7 @@ const ChatUI = () => {
                             ? "bg-gradient-to-tr from-orange-500 to-amber-500 text-white text-left rounded-2xl rounded-tr-sm"
                             : "bg-card/90 dark:bg-zinc-800/80 border border-border/40 rounded-2xl rounded-tl-sm text-left"
                         }`}>
-                          <ReactMarkdown
+                          <ReactMarkdown 
                             remarkPlugins={[remarkGfm, remarkMath]}
                             rehypePlugins={[rehypeKatex, rehypeRaw]}
                             className={`prose dark:prose-invert max-w-none text-sm leading-relaxed ${
@@ -552,10 +552,10 @@ const ChatUI = () => {
                             [&_h2]:m-0
                             [&_h3]:py-1.5
                             [&_h3]:m-0
-                            [&_p]:m-0
-                            [&_pre]:bg-gray-900
+                            [&_p]:m-0 
+                            [&_pre]:bg-gray-900 
                             [&_pre]:p-2
-                            [&_pre]:m-0
+                            [&_pre]:m-0 
                             [&_pre]:rounded-lg
                             [&_pre]:text-gray-100
                             [&_pre]:whitespace-pre-wrap
@@ -586,17 +586,10 @@ const ChatUI = () => {
                             [&_summary]:text-muted-foreground
                             [&_summary]:select-none`}
                           >
-                            {message.content || ''}
+                            {message.content}
                           </ReactMarkdown>
-                          {message.isAI && !message.content && isLoading && (
-                            <div className="flex items-center gap-1.5">
-                              <div className="w-2 h-2 bg-muted-foreground/40 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                              <div className="w-2 h-2 bg-muted-foreground/40 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                              <div className="w-2 h-2 bg-muted-foreground/40 rounded-full animate-bounce"></div>
-                            </div>
-                          )}
-                          {message.isAI && message.content && isLoading && messages[messages.length - 1]?.id === message.id && (
-                            <span className="inline-block w-1.5 h-4 bg-foreground/60 ml-0.5 animate-pulse">&#8203;</span>
+                          {message.isAI && isLoading && messages[messages.length - 1]?.id === message.id && (
+                            <span className="typing-indicator ml-1">▋</span>
                           )}
                         </div>
                       </div>

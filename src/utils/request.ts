@@ -374,6 +374,8 @@ export async function request(url: string, options: RequestInit = {}) {
                 }
                 break;
               case 'done': {
+                // Flush accumulated command execution details as a collapsible block
+                flushCommandDetails();
                 const code = typeof payload.exit_code === 'number' ? payload.exit_code : -1;
                 closeDetails();
                 if (code !== 0) {
