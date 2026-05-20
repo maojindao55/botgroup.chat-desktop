@@ -12,6 +12,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
+import rehypeRaw from 'rehype-raw';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useUserStore } from '@/store/userStore';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -267,13 +268,60 @@ const AgentChatUI = ({
                           }`}>
                             <ReactMarkdown
                               remarkPlugins={[remarkGfm, remarkMath]}
-                              rehypePlugins={[rehypeKatex]}
+                              rehypePlugins={[rehypeKatex, rehypeRaw]}
                               className={`prose dark:prose-invert max-w-none text-sm leading-relaxed ${
                                 isUser ? "text-white [&_*]:text-white" : ""
-                              } [&_p]:m-0 [&_pre]:bg-gray-900 [&_pre]:p-2 [&_pre]:m-0 [&_pre]:rounded-lg [&_pre]:text-gray-100 [&_pre]:whitespace-pre-wrap [&_code]:text-xs [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-1`}
+                              }
+                              [&_h2]:py-1
+                              [&_h2]:m-0
+                              [&_h3]:py-1.5
+                              [&_h3]:m-0
+                              [&_p]:m-0
+                              [&_pre]:bg-gray-900
+                              [&_pre]:p-2
+                              [&_pre]:m-0
+                              [&_pre]:rounded-lg
+                              [&_pre]:text-gray-100
+                              [&_pre]:whitespace-pre-wrap
+                              [&_pre]:break-words
+                              [&_pre_code]:whitespace-pre-wrap
+                              [&_pre_code]:break-words
+                              [&_code]:text-xs
+                              [&_code]:text-gray-400
+                              [&_code:not(:where([class~="language-"]))]:text-pink-500
+                              [&_code:not(:where([class~="language-"]))]:bg-transparent
+                              [&_a]:text-blue-500
+                              [&_a]:no-underline
+                              [&_ul]:my-2
+                              [&_ol]:my-2
+                              [&_li]:my-1
+                              [&_blockquote]:border-l-4
+                              [&_blockquote]:border-border
+                              [&_blockquote]:pl-4
+                              [&_blockquote]:my-2
+                              [&_blockquote]:italic
+                              [&_details]:my-2
+                              [&_details]:rounded-lg
+                              [&_details]:bg-muted/50
+                              [&_details]:p-2
+                              [&_details]:text-xs
+                              [&_summary]:cursor-pointer
+                              [&_summary]:font-medium
+                              [&_summary]:text-muted-foreground
+                              [&_summary]:select-none`}
                             >
-                              {message.content || '⏳'}
+                              {message.content || ''}
                             </ReactMarkdown>
+                            {message.isAI && !message.content && isLoading && (
+                              <div className="flex items-center gap-1.5">
+                                <div className="w-2 h-2 bg-muted-foreground/40 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                                <div className="w-2 h-2 bg-muted-foreground/40 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                                <div className="w-2 h-2 bg-muted-foreground/40 rounded-full animate-bounce"></div>
+                              </div>
+                            )}
+                            {message.isAI && message.content && isLoading && messages[messages.length - 1]?.id === message.id && (
+                              <span className="inline-block w-1.5 h-4 bg-foreground/60 ml-0.5 animate-pulse">&#8203;</span>
+                            )}
                           </div>
                         </div>
                         {isUser && (
