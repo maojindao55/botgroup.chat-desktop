@@ -358,7 +358,7 @@ export async function request(url: string, options: RequestInit = {}) {
             // Use a visually distinct format that works with standard markdown.
             // The details/summary HTML tags work in most markdown renderers including react-markdown with rehype-raw.
             // If rehype-raw is not available, we fallback to a blockquote style.
-            const header = `\n---\n<details><summary>🔧 执行过程 (${pendingCommands.length} 步)</summary>\n\n`;
+            const header = `\n<details><summary>🔧 执行过程 (${pendingCommands.length} 步)</summary>\n\n`;
             const items = pendingCommands.map((c, i) => {
               const status = c.exit_code === 0 ? '✓' : c.exit_code != null ? `✗ exit ${c.exit_code}` : '...';
               const cmdShort = c.cmd.length > 80 ? c.cmd.slice(0, 77) + '...' : c.cmd;
