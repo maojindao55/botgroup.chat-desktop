@@ -348,6 +348,25 @@ export async function request(url: string, options: RequestInit = {}) {
 
           // Subscribe BEFORE invoking, so we don't miss the first lines.
           let authErrorDetected = false;
+          // Collect command executions for collapsible details block
+          let pendingCommands: { cmd: string; duration?: string; exit_code?: number }[] = [];
+          let detailsEmitted = false;
+
+          const flushCommandDetails = () => {
+            if (pendingCommands.length === 0 || detailsEmitted) return;
+            detailsEmitted = true;
+            // Use a visually distinct format that works with standard markdown.
+            // The details/summary HTML tags work in most markdown renderers including react-markdown with rehype-raw.
+            // If rehype-raw is not available, we fallback to a blockquote style.
+            const header = `\n---\n<details><summary>🔧 执行过程 (${pendingCommands.length} 步)</summary>\n\n`;
+            const items = pendingCommands.map((c, i) => {
+              const status = c.exit_code === 0 ? '✓' : c.exit_code != null ? `✗ exit ${c.exit_code}` : '...';
+              const cmdShort = c.cmd.length > 80 ? c.cmd.slice(0, 77) + '...' : c.cmd;
+              return `${i + 1}. \`${cmdShort}\` ${status}`;
+            }).join('\n');
+            enqueueChunk(header + items + '\n\n</details>\n\n');
+          };
+
           unlistenFn = await listen<any>(eventName, (evt) => {
             const payload = evt.payload || {};
             switch (payload.type) {
@@ -356,14 +375,25 @@ export async function request(url: string, options: RequestInit = {}) {
               case 'stdout':
                 if (typeof payload.content === 'string' && !authErrorDetected) {
                   const stdoutLine = payload.content;
-                  // Codex --json mode: parse structured events, only show agent_message text
+                  // Codex --json mode: parse structured events
                   if (stdoutLine.startsWith('{') && stdoutLine.includes('"type"')) {
                     try {
-                      const evt = JSON.parse(stdoutLine);
-                      if (evt.type === 'item.completed' && evt.item?.type === 'agent_message' && evt.item?.text) {
-                        enqueueChunk(evt.item.text + '\n');
+                      const jsonEvt = JSON.parse(stdoutLine);
+                      if (jsonEvt.type === 'item.completed' && jsonEvt.item?.type === 'agent_message' && jsonEvt.item?.text) {
+                        // Before showing agent reply, flush any accumulated command details
+                        flushCommandDetails();
+                        enqueueChunk(jsonEvt.item.text + '\n');
+                      } else if (jsonEvt.type === 'item.started' && jsonEvt.item?.type === 'command_execution') {
+                        // Track command start
+                        pendingCommands.push({ cmd: jsonEvt.item.command || '(unknown)' });
+                      } else if (jsonEvt.type === 'item.completed' && jsonEvt.item?.type === 'command_execution') {
+                        // Update the last command with exit code
+                        const last = pendingCommands[pendingCommands.length - 1];
+                        if (last) {
+                          last.exit_code = jsonEvt.item.exit_code ?? 0;
+                        }
                       }
-                      // Skip command_execution, turn.started, turn.completed, thread.started etc.
+                      // Skip turn.started, turn.completed, thread.started silently
                     } catch {
                       // Not valid JSON, show as-is
                       enqueueChunk(stdoutLine + '\n');
@@ -397,6 +427,8 @@ export async function request(url: string, options: RequestInit = {}) {
                 }
                 break;
               case 'done': {
+                // Flush any remaining command details before closing
+                flushCommandDetails();
                 const code = typeof payload.exit_code === 'number' ? payload.exit_code : -1;
                 if (code !== 0) {
                   enqueueChunk(`\n_(exit ${code})_\n`);

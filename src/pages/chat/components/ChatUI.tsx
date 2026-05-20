@@ -17,6 +17,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
+import rehypeRaw from 'rehype-raw'
 import { SharePoster } from '@/pages/chat/components/SharePoster';
 import { MembersManagement } from '@/pages/chat/components/MembersManagement';
 import Sidebar from './Sidebar';
@@ -626,7 +627,7 @@ const ChatUI = () => {
                         }`}>
                           <ReactMarkdown 
                             remarkPlugins={[remarkGfm, remarkMath]}
-                            rehypePlugins={[rehypeKatex]}
+                            rehypePlugins={[rehypeKatex, rehypeRaw]}
                             className={`prose dark:prose-invert max-w-none text-sm leading-relaxed ${
                               message.sender.name === userStore.userInfo.nickname ? "text-white [&_*]:text-white" : ""
                             }
@@ -657,7 +658,16 @@ const ChatUI = () => {
                             [&_blockquote]:border-border
                             [&_blockquote]:pl-4
                             [&_blockquote]:my-2
-                            [&_blockquote]:italic`}
+                            [&_blockquote]:italic
+                            [&_details]:my-2
+                            [&_details]:rounded-lg
+                            [&_details]:bg-muted/50
+                            [&_details]:p-2
+                            [&_details]:text-xs
+                            [&_summary]:cursor-pointer
+                            [&_summary]:font-medium
+                            [&_summary]:text-muted-foreground
+                            [&_summary]:select-none`}
                           >
                             {message.content}
                           </ReactMarkdown>
