@@ -355,7 +355,23 @@ export async function request(url: string, options: RequestInit = {}) {
                 break;
               case 'stdout':
                 if (typeof payload.content === 'string' && !authErrorDetected) {
-                  enqueueChunk(payload.content + '\n');
+                  const stdoutLine = payload.content;
+                  // Codex --json mode: parse structured events, only show agent_message text
+                  if (stdoutLine.startsWith('{') && stdoutLine.includes('"type"')) {
+                    try {
+                      const evt = JSON.parse(stdoutLine);
+                      if (evt.type === 'item.completed' && evt.item?.type === 'agent_message' && evt.item?.text) {
+                        enqueueChunk(evt.item.text + '\n');
+                      }
+                      // Skip command_execution, turn.started, turn.completed, thread.started etc.
+                    } catch {
+                      // Not valid JSON, show as-is
+                      enqueueChunk(stdoutLine + '\n');
+                    }
+                  } else {
+                    // Non-JSON stdout (opencode, claude, etc.) — show as-is
+                    enqueueChunk(stdoutLine + '\n');
+                  }
                 }
                 break;
               case 'stderr':
