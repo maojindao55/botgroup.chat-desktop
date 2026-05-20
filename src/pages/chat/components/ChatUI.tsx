@@ -335,14 +335,15 @@ const ChatUI = () => {
       if (isCliAgent) {
         uri = "/api/cli/run";
         const cliCfg = selectedGroupAiCharacters[i].cli || { adapter: 'generic' };
-        // Build a prompt that gives the CLI enough context. We pass the
-        // accumulated history as plain text so the CLI sees the conversation.
-        const conversationContext = messageHistory
-          .slice(-8)
+        // Build a prompt — only include clean history (skip error messages
+        // from previous CLI failures so they don't pollute the prompt).
+        const cleanHistory = messageHistory
+          .filter((m: any) => !m.content.includes('登录已过期') && !m.content.includes('exit 1') && !m.content.includes('[CLI error]'))
+          .slice(-6)
           .map((m: any) => m.content)
           .join('\n');
-        const cliPrompt = conversationContext
-          ? `${conversationContext}\nuser: ${inputMessage}`
+        const cliPrompt = cleanHistory
+          ? `${cleanHistory}\nuser: ${inputMessage}`
           : inputMessage;
         requestBody = {
           adapter: cliCfg.adapter,
