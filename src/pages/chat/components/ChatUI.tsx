@@ -625,7 +625,15 @@ const ChatUI = () => {
                         </Avatar>
                       )}
                       <div className={message.sender.name === userStore.userInfo.nickname ? "text-right max-w-[75%]" : "max-w-[75%]"}>
-                        <div className="text-xs text-muted-foreground/75 px-1">{message.sender.name}</div>
+                        <div className="text-xs text-muted-foreground/75 px-1 flex items-center gap-1.5">
+                          {message.sender.name}
+                          {message.isAI && isLoading && message.content.includes('<details open>') && (
+                            <span className="inline-flex items-center gap-1 text-[10px] text-orange-500 font-medium">
+                              <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" />
+                              执行中
+                            </span>
+                          )}
+                        </div>
                         <div className={`mt-1 p-3 px-4 shadow-sm chat-message ${
                           message.sender.name === userStore.userInfo.nickname 
                             ? "bg-gradient-to-tr from-orange-500 to-amber-500 text-white text-left rounded-2xl rounded-tr-sm" 
