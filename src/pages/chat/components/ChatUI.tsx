@@ -421,6 +421,12 @@ const ChatUI = () => {
             //如果completeResponse为空，
             if (completeResponse.trim() === "") {
             completeResponse = "对不起，我还不够智能，服务又断开了。";
+            }
+            // Post-process: collapse <details open> → <details> so the
+            // execution block folds up once streaming finishes.
+            if (completeResponse.includes('<details open>')) {
+              completeResponse = completeResponse.replace(/<details open>/g, '<details>');
+            }
             setMessages(prev => {
               const newMessages = [...prev];
               const aiMessageIndex = newMessages.findIndex(msg => msg.id === aiMessage.id);
@@ -431,7 +437,7 @@ const ChatUI = () => {
                 };
               }
               return newMessages;
-            });}
+            });
             break;
           }
           
@@ -619,7 +625,15 @@ const ChatUI = () => {
                         </Avatar>
                       )}
                       <div className={message.sender.name === userStore.userInfo.nickname ? "text-right max-w-[75%]" : "max-w-[75%]"}>
-                        <div className="text-xs text-muted-foreground/75 px-1">{message.sender.name}</div>
+                        <div className="text-xs text-muted-foreground/75 px-1 flex items-center gap-1.5">
+                          {message.sender.name}
+                          {message.isAI && isLoading && !message.content.includes('<details>') && (
+                            <span className="inline-flex items-center gap-1 text-[10px] text-orange-500 font-medium">
+                              <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" />
+                              {message.content === '' ? '思考中' : (message.sender?.id?.startsWith('cli-') ? '执行中' : '输出中')}
+                            </span>
+                          )}
+                        </div>
                         <div className={`mt-1 p-3 px-4 shadow-sm chat-message ${
                           message.sender.name === userStore.userInfo.nickname 
                             ? "bg-gradient-to-tr from-orange-500 to-amber-500 text-white text-left rounded-2xl rounded-tr-sm" 
