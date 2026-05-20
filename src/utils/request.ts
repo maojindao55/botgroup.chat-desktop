@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { groups as staticGroups } from '@/config/groups';
-import { generateAICharacters, modelConfigs } from '@/config/aiCharacters';
+import { defaultGroups as staticGroups } from '@/config/groups';
+import { generateAICharacters, cliAgents, modelConfigs } from '@/config/aiCharacters';
 
 const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
 if (isTauri) {
@@ -158,31 +158,13 @@ export async function request(url: string, options: RequestInit = {}) {
         }
       }
 
-      let dynamicGroups: any[] = [];
-      if (user) {
-        try {
-          const list: any = await invoke('get_claw_groups', { userId: user.id });
-          dynamicGroups = list.map((g: any) => ({
-            id: g.id,
-            name: `🦞${g.name}`,
-            description: g.description || '',
-            members: [],
-            isGroupDiscussionMode: true,
-            type: 'openclaw',
-            clawGroupId: g.id
-          }));
-        } catch (e) {
-          console.error('Failed to fetch local claw groups:', e);
-        }
-      }
-
-      const allGroups = [...staticGroups, ...dynamicGroups];
+      const allGroups = [...staticGroups];
 
       return mockResponse({
         code: 200,
         data: {
           groups: allGroups,
-          characters: generateAICharacters('#groupName#', '#allTags#'),
+          characters: [...generateAICharacters('#groupName#', '#allTags#'), ...cliAgents],
           user: user || null
         }
       });
@@ -215,77 +197,7 @@ export async function request(url: string, options: RequestInit = {}) {
       });
     }
 
-    // 4. Create claw group
-    if (cleanUrl === '/api/claw/create') {
-      const body = JSON.parse(options.body as string);
-      const user: any = await invoke('get_current_user');
-      if (!user) {
-        return mockResponse({ success: false, message: '请先登录' }, 401);
-      }
-      const group = await invoke('create_claw_group', {
-        userId: user.id,
-        name: body.name,
-        description: body.description || ''
-      });
-      return mockResponse({
-        success: true,
-        data: { group }
-      });
-    }
-
-    // 5. Join claw group
-    if (cleanUrl === '/api/claw/join') {
-      const body = JSON.parse(options.body as string);
-      const user: any = await invoke('get_current_user');
-      if (!user) {
-        return mockResponse({ success: false, message: '请先登录' }, 401);
-      }
-      await invoke('join_claw_group', {
-        userId: user.id,
-        groupId: body.groupId
-      });
-      return mockResponse({ success: true });
-    }
-
-    // 6. Get claw group messages
-    if (cleanUrl === '/api/claw/messages') {
-      const params = new URLSearchParams(url.split('?')[1] || '');
-      const group = params.get('group') || '';
-      const limit = params.get('limit') ? parseInt(params.get('limit')!) : 30;
-      const since = params.get('since') ? parseInt(params.get('since')!) : null;
-      const before = params.get('before') ? parseInt(params.get('before')!) : null;
-
-      const messages = await invoke('get_claw_messages', {
-        groupId: group,
-        limit,
-        since,
-        before
-      });
-
-      return mockResponse({
-        success: true,
-        data: messages
-      });
-    }
-
-    // 7. Send claw group message
-    if (cleanUrl === '/api/claw/send') {
-      const body = JSON.parse(options.body as string);
-      const message = await invoke('send_claw_message', {
-        groupId: body.groupId,
-        senderId: body.senderId || '1',
-        senderName: body.senderName || '用户',
-        senderType: body.senderType || 'user',
-        content: body.content
-      });
-
-      return mockResponse({
-        success: true,
-        data: message
-      });
-    }
-
-    // 8. Scheduler API for AI response selection
+    // 4. Scheduler API for AI response selection
     if (cleanUrl === '/api/scheduler') {
       const body = JSON.parse(options.body as string);
       const selectedAIs = await clientScheduleAI(body.message, body.history, body.availableAIs);
