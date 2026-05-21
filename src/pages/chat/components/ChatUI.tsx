@@ -301,6 +301,39 @@ const useStyles = createStyles(({ token, css }) => ({
       color: #fff;
     }
   `,
+  cliWorktreeInfo: css`
+    margin-top: 6px;
+    padding: 6px 10px;
+    background: ${token.colorFillTertiary};
+    border-radius: 4px;
+    font-size: 11px;
+    color: ${token.colorTextSecondary};
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    word-break: break-all;
+  `,
+  cliWorktreePath: css`
+    font-family: var(--ant-font-family-code);
+    font-size: 11px;
+    color: ${token.colorTextSecondary};
+    word-break: break-all;
+  `,
+  cliWorktreeCopyBtn: css`
+    margin-left: 6px;
+    padding: 0 6px;
+    height: 18px;
+    line-height: 18px;
+    font-size: 10px;
+    background: transparent;
+    color: ${token.colorPrimary};
+    border: 1px solid ${token.colorBorderSecondary};
+    border-radius: 3px;
+    cursor: pointer;
+    &:hover {
+      background: ${token.colorFillSecondary};
+    }
+  `,
   spinnerIcon: css`
     width: 12px;
     height: 12px;
@@ -551,16 +584,20 @@ const ChatUI = () => {
         msg.prompt,
         workspacePath,
         {
-          onAgentStart: (taskId, agentId, agentName) => {
+          onAgentStart: (taskId, agentId, agentName, meta) => {
             const agentInfo = cliAgents.find(a => a.id === agentId);
+            const baseName = agentInfo?.name || agentName;
             const aiMessage = {
               id: taskId,
-              sender: { id: agentId, name: agentName, avatar: agentInfo?.avatar },
+              sender: { id: agentId, name: meta?.stageLabel ? `${baseName} · ${meta.stageLabel}` : baseName, avatar: agentInfo?.avatar },
               content: "",
               isAI: true,
               taskId: taskId,
               status: 'running',
               prompt: msg.prompt,
+              stageLabel: meta?.stageLabel,
+              cliCwd: meta?.cwd,
+              cliBranch: meta?.branch,
             };
             setMessages(prev => [...prev, aiMessage]);
           },
@@ -664,16 +701,20 @@ const ChatUI = () => {
         finalPrompt,
         workspacePath,
         {
-          onAgentStart: (taskId, agentId, agentName) => {
+          onAgentStart: (taskId, agentId, agentName, meta) => {
             const agentInfo = cliAgents.find(a => a.id === agentId);
+            const baseName = agentInfo?.name || agentName;
             const aiMessage = {
               id: taskId,
-              sender: { id: agentId, name: agentName, avatar: agentInfo?.avatar },
+              sender: { id: agentId, name: meta?.stageLabel ? `${baseName} · ${meta.stageLabel}` : baseName, avatar: agentInfo?.avatar },
               content: "",
               isAI: true,
               taskId: taskId,
               status: 'running',
               prompt: finalPrompt,
+              stageLabel: meta?.stageLabel,
+              cliCwd: meta?.cwd,
+              cliBranch: meta?.branch,
             };
             setMessages(prev => [...prev, aiMessage]);
           },
@@ -722,6 +763,15 @@ const ChatUI = () => {
       );
     } catch (err: any) {
       console.error('executeCLIStrategy error:', err);
+      const errMsg = err?.message || String(err);
+      const systemMsg = {
+        id: `sys-${Date.now()}`,
+        sender: { id: 'sys', name: '系统提示' },
+        content: `❌ 任务执行未启动：${errMsg}`,
+        isAI: true,
+        isError: true,
+      };
+      setMessages(prev => [...prev, systemMsg]);
     } finally {
       setIsLoading(false);
     }
@@ -1109,6 +1159,30 @@ const ChatUI = () => {
                                   </button>
                                 )}
                               </div>
+                            </div>
+                          )}
+                          {message.taskId && (message.cliCwd || message.cliBranch) && message.cliCwd !== workspacePath && (
+                            <div className={styles.cliWorktreeInfo}>
+                              <div>
+                                <span style={{ fontWeight: 500 }}>工作目录</span>
+                                <button
+                                  className={styles.cliWorktreeCopyBtn}
+                                  onClick={() => {
+                                    if (message.cliCwd && navigator.clipboard) {
+                                      navigator.clipboard.writeText(message.cliCwd).catch(() => { /* ignore */ });
+                                    }
+                                  }}
+                                >
+                                  复制路径
+                                </button>
+                              </div>
+                              <div className={styles.cliWorktreePath}>{message.cliCwd}</div>
+                              {message.cliBranch && (
+                                <div>
+                                  <span style={{ fontWeight: 500 }}>分支：</span>
+                                  <span className={styles.cliWorktreePath}>{message.cliBranch}</span>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
