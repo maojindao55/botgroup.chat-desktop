@@ -274,7 +274,7 @@ export async function request(url: string, options: RequestInit = {}) {
           const ensureDetailsOpen = () => {
             if (!detailsOpen) {
               detailsOpen = true;
-              enqueueChunk(`\n<details><summary>⚙️ Ran ${stepCount || 1} command${stepCount > 1 ? 's' : ''}</summary>\n\n`);
+              enqueueChunk(`\n<details open><summary>⚙️ 执行过程</summary>\n\n`);
             }
           };
 
@@ -282,6 +282,10 @@ export async function request(url: string, options: RequestInit = {}) {
           const closeDetails = () => {
             if (detailsOpen) {
               detailsOpen = false;
+              const summary = stepCount > 0
+                ? `⚙️ 已执行 ${stepCount} 个命令`
+                : `⚙️ 执行过程`;
+              // Replace the opening summary with final count by closing and re-emitting
               enqueueChunk(`\n</details>\n\n`);
             }
           };
@@ -308,25 +312,25 @@ export async function request(url: string, options: RequestInit = {}) {
                       // Thinking / reasoning — stream inside details block
                       else if (jsonEvt.type === 'item.completed' && jsonEvt.item?.type === 'reasoning' && jsonEvt.item?.text) {
                         ensureDetailsOpen();
-                        enqueueChunk(`> 💭 ${jsonEvt.item.text}\n\n`);
+                        enqueueChunk(`💭 **思考中**\n\n> ${jsonEvt.item.text.replace(/\n/g, '\n> ')}\n\n`);
                       }
                       // Command started — stream immediately
                       else if (jsonEvt.type === 'item.started' && jsonEvt.item?.type === 'command_execution') {
                         stepCount++;
                         ensureDetailsOpen();
                         const cmd = jsonEvt.item.command || '(unknown)';
-                        const cmdShort = cmd.length > 80 ? cmd.slice(0, 77) + '...' : cmd;
-                        enqueueChunk(`\n**▶ Ran command** \`${cmdShort}\`\n\n`);
+                        const cmdShort = cmd.length > 120 ? cmd.slice(0, 117) + '...' : cmd;
+                        enqueueChunk(`\n---\n\n▶ **Step ${stepCount}** — \`${cmdShort}\`\n\n`);
                       }
                       // Command completed — stream result
                       else if (jsonEvt.type === 'item.completed' && jsonEvt.item?.type === 'command_execution') {
                         ensureDetailsOpen();
                         const exitCode = jsonEvt.item.exit_code ?? 0;
-                        const status = exitCode === 0 ? '✓ 成功' : `✗ exit ${exitCode}`;
-                        enqueueChunk(`> ${status}\n`);
+                        const status = exitCode === 0 ? '✅ 成功' : `❌ 失败 (exit ${exitCode})`;
+                        enqueueChunk(`${status}\n`);
                         if (jsonEvt.item.output) {
-                          const outShort = jsonEvt.item.output.length > 300
-                            ? jsonEvt.item.output.slice(0, 297) + '...'
+                          const outShort = jsonEvt.item.output.length > 500
+                            ? jsonEvt.item.output.slice(0, 497) + '...'
                             : jsonEvt.item.output;
                           enqueueChunk(`\n\`\`\`\n${outShort}\n\`\`\`\n\n`);
                         }
@@ -360,7 +364,7 @@ export async function request(url: string, options: RequestInit = {}) {
                 // In JSON mode, stream stderr as thinking inside the details block
                 if (isJsonMode) {
                   ensureDetailsOpen();
-                  enqueueChunk(`> _${line.trim().replace(/_/g, '\\_')}_\n`);
+                  enqueueChunk(`> 📝 _${line.trim().replace(/_/g, '\\_')}_\n\n`);
                 } else {
                   enqueueChunk('> _' + line.replace(/_/g, '\\_') + '_\n');
                 }
