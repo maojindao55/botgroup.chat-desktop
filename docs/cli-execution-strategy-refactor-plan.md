@@ -490,6 +490,100 @@ export interface CLIGroup {
 | 引擎重构影响现有策略 | CLI 群不可用 | Phase 1/2 保持旧策略验收，先不改 UI 大结构 |
 | pipeline 失败继续导致后续输入质量差 | 后续 Agent 基于失败输出工作 | 在提示词中明确上一阶段失败状态，让后续 Agent 做诊断或恢复 |
 
+## 后续演进路线
+
+当前版本的目标是完成执行计划模型、`discussion` 模式、`race` worktree 隔离和核心 UI 文案收口。以下内容不阻塞本次交付，作为后续版本迭代。
+
+### V2：完善 Race Worktree 体验
+
+目标：把 `race` 从“隔离执行可用”推进到“结果可检查、可对比、可采纳”。
+
+交付建议：
+
+- 在聊天气泡和任务历史中提供“打开 worktree 路径”入口，而不仅是复制路径。
+- 增加 worktree 清理 UI，允许用户按单次任务或单个 Agent 删除遗留 worktree。
+- 增加 race 结果对比视图，展示每个 Agent 的状态、耗时、worktree 路径、分支名和输出摘要。
+- 增加“标记采用结果”动作，只记录用户选择，不自动合并代码。
+- 在任务详情中保留 `baseSha`，方便用户对比每个 worktree 相对基线的 diff。
+
+非目标：
+
+- 不自动 merge。
+- 不自动 resolve conflict。
+- 不自动删除未查看的 worktree。
+
+验收：
+
+- 用户能从 race 结果直接打开每个 Agent 的 worktree。
+- 用户能清理指定 worktree，且不会误删原始 workspace。
+- 用户能清楚看到每个 Agent 的输出、执行状态和隔离路径。
+- dirty workspace 下仍然阻止 race，不引入自动 stash/commit。
+
+### V2.5：Discussion 真只读隔离
+
+目标：把 `discussion` 从 prompt 软约束升级为更可信的只读执行环境，避免讨论模式误改原始 workspace。
+
+交付建议：
+
+- `discussion` 默认使用 `readOnly` 执行上下文，但底层不再只依赖提示词。
+- 第一选择：为每个 Agent 准备临时只读 copy，执行结束后自动清理。
+- 如果平台支持更强权限控制，后续可替换为文件系统只读沙箱。
+- UI 在 discussion 模式下弱化审批配置，并明确展示“只读讨论，不写原 workspace”。
+- 如果只读环境准备失败，应阻止启动 discussion，并给出明确错误。
+
+非目标：
+
+- 不要求 CLI 工具自身完全可信。
+- 不保证第三方 CLI 不通过外部路径写文件。
+- 不引入后台 daemon 或系统级权限管理。
+
+验收：
+
+- discussion 模式不会直接在原始 workspace 中执行写操作。
+- Round 1 和 Round 2 仍保持当前 staged 并行语义。
+- 任意 Agent 失败不阻断同轮其他 Agent。
+- 用户取消后不再启动后续轮次。
+
+### V3：高级 Execution Plan 配置
+
+目标：把 `CLIExecutionPlan` 从内部结构升级为可配置能力，让高级用户在 preset 基础上微调执行行为。
+
+交付建议：
+
+- UI 保留五个简单模式作为默认入口。
+- 增加“高级配置”折叠区，仅在用户主动展开时显示。
+- 可配置字段第一批只暴露：
+  - `failurePolicy`：继续 / 失败停止 / 取消停止
+  - `maxRounds`：discussion 轮数
+  - `resultPolicy`：全部展示 / 首个成功 / 最快结果 / 手动选择
+- `isolation` 第一版不建议直接开放任意切换，避免用户误把 race 切回共享 workspace。
+- 持久化仍走 `group.executionPlan?: Partial<CLIExecutionPlan>`，老数据继续只读 `group.strategy`。
+
+可新增 preset：
+
+- `review`：生成 -> 审查 -> 修正。
+- `debate`：多 Agent 独立提出方案 -> 互评 -> 最终建议。
+- `mapreduce`：拆分任务 -> 并行执行 -> 汇总结果。
+
+非目标：
+
+- 不做任意 DAG 编排器。
+- 不做可视化流程编辑器。
+- 不做 LLM 自动裁判。
+
+验收：
+
+- 老群配置不迁移也能继续运行。
+- 用户不展开高级配置时，体验仍是简单五模式。
+- 修改高级配置后，执行入口使用 `resolveExecutionPlan` 合并 preset 和 override。
+- TypeScript 对新增字段和 preset 无穷尽性遗漏。
+
+### 推荐迭代顺序
+
+1. 先做 V2，因为 worktree prepare 已经打通，补齐打开、清理、对比能直接提升 `race` 可用性。
+2. 再做 V2.5，因为 discussion 当前只靠 prompt 约束，长期会影响用户对“只读讨论”的信任。
+3. 最后做 V3，因为高级配置会增加产品复杂度，应等五种基础模式稳定后再暴露。
+
 ## 推荐最终形态
 
 用户看到的是五个简单模式：
