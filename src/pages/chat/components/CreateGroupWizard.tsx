@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { getAvailableAICharacters, getAvailableCLIAgents } from '@/config/aiCharacters';
 import type {
-  Group, AIGroup, CLIGroup, AgentGroup, AgentMember, AgentStrategy, AgentTool,
+  Group, AIGroup, CLIGroup, CLIStrategy, AgentGroup, AgentMember, AgentStrategy, AgentTool,
 } from '@/config/groups';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
 import { invoke } from '@tauri-apps/api/core';
@@ -142,6 +142,7 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
   const [workspacePath, setWorkspacePath] = useState('');
   const [approvalMode, setApprovalMode] = useState<'auto' | 'ask'>('auto');
   const [timeout, setTimeout_] = useState(300000);
+  const [cliStrategy, setCliStrategy] = useState<CLIStrategy>('sequential');
 
   // Agent group
   const [agents, setAgents] = useState<AgentMember[]>([createEmptyAgent()]);
@@ -161,6 +162,7 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
     setWorkspacePath('');
     setApprovalMode('auto');
     setTimeout_(300000);
+    setCliStrategy('sequential');
     setAgents([createEmptyAgent()]);
     setStrategy('sequential');
     setCoordinatorPrompt('');
@@ -187,6 +189,7 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
         approvalMode,
         timeout,
         showStderr: true,
+        strategy: cliStrategy,
       } as CLIGroup;
     } else {
       group = {
@@ -445,6 +448,26 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
             }}>选择</Button>
         </div>
         <p style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginTop: 6 }}>CLI Agent 将在此目录执行，支持选择或输入绝对路径</p>
+      </div>
+      <div>
+        <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 8 }}>执行策略</label>
+        {[
+          { value: 'sequential' as const, label: '顺序执行', desc: '按顺序让多个 CLI Agent 独立处理同一任务' },
+          { value: 'router'     as const, label: '智能路由', desc: '智能选择最合适的 CLI Agent 执行' },
+          { value: 'pipeline'   as const, label: '流水线',   desc: '按阶段接力执行，后者基于前者输出继续' },
+          { value: 'race'       as const, label: '竞争模式', desc: '并行隔离 worktree 竞争方案（需要干净 git 仓库）' },
+          { value: 'discussion' as const, label: '讨论模式', desc: '多 Agent 分轮讨论方案和风险，默认不修改文件' },
+        ].map(item => (
+          <button key={item.value}
+            onClick={() => setCliStrategy(item.value)}
+            className={cx(styles.strategyBtn, cliStrategy === item.value && styles.strategyBtnActive)}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 14, fontWeight: 500 }}>{item.label}</div>
+              <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>{item.desc}</div>
+            </div>
+            {cliStrategy === item.value && <Check size={16} style={{ color: '#ff6600' }} />}
+          </button>
+        ))}
       </div>
       <div style={{ padding: 12, background: 'rgba(0,0,0,0.04)', borderRadius: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

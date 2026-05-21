@@ -1005,3 +1005,219 @@ mod tests {
         assert_eq!(prompt_summary(prompt, 60), prompt);
     }
 }
+
+
+// =====================================================================
+// Worktree IPC: support for `race` strategy isolation per agent.
+//
+// We use `git worktree` so multiple CLI agents can compete on the same
+// task without trampling each other's writes. Worktrees are created
+// under `{app_data_dir}/cli-worktrees/{group_id}/{run_id}/{agent_id}`.
+//
+// First version:
+//   - require a clean git repo (no uncommitted changes); we do NOT auto
+//     stash/commit
+//   - do NOT auto-cleanup on completion; the user can inspect results
+//   - cleanup IPC is exposed for future UI
+// =====================================================================
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CliWorktreePrepareArgs {
+    pub group_id: String,
+    pub cwd: String,
+    pub agent_ids: Vec<String>,
+}
+
+#[derive(Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CliWorktreeInfo {
+    pub agent_id: String,
+    pub path: String,
+    pub branch_name: Option<String>,
+    pub base_sha: Option<String>,
+}
+
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CliWorktreePrepareResult {
+    pub run_id: String,
+    pub worktrees: Vec<CliWorktreeInfo>,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CliWorktreeCleanupArgs {
+    pub paths: Vec<String>,
+}
+
+fn run_git_capture(cwd: &std::path::Path, args: &[&str]) -> Result<String, String> {
+    let output = std::process::Command::new("git")
+        .args(args)
+        .current_dir(cwd)
+        .output()
+        .map_err(|e| format!("git {}: {}", args.join(" "), e))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(format!(
+            "git {} failed (exit {:?}): {}",
+            args.join(" "),
+            output.status.code(),
+            stderr
+        ));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+fn ensure_git_repo_clean(cwd: &std::path::Path) -> Result<String, String> {
+    if !cwd.exists() {
+        return Err(format!("workspace 不存在：{}", cwd.display()));
+    }
+
+    // Verify it's a git repo
+    run_git_capture(cwd, &["rev-parse", "--is-inside-work-tree"])
+        .map_err(|_| "当前 workspace 不是 git 仓库，无法使用竞争模式（需要 git 仓库以创建 worktree）".to_string())?;
+
+    // Check working tree cleanliness; we refuse to create worktrees when
+    // the user has uncommitted/untracked work because `git worktree add`
+    // does not carry those changes over.
+    let porcelain = run_git_capture(cwd, &["status", "--porcelain"])?;
+    if !porcelain.is_empty() {
+        return Err(
+            "当前 workspace 有未提交改动，worktree 不会包含这些改动。请先提交、清理或改用顺序执行模式。".to_string(),
+        );
+    }
+
+    // Resolve current HEAD sha as the base
+    let head_sha = run_git_capture(cwd, &["rev-parse", "HEAD"])?;
+    Ok(head_sha)
+}
+
+#[tauri::command]
+pub async fn cli_worktree_prepare(
+    app: AppHandle,
+    args: CliWorktreePrepareArgs,
+) -> Result<CliWorktreePrepareResult, String> {
+    if args.cwd.is_empty() {
+        return Err("workspacePath 不能为空".to_string());
+    }
+    if args.agent_ids.is_empty() {
+        return Err("agentIds 不能为空".to_string());
+    }
+
+    let workspace = std::path::PathBuf::from(&args.cwd);
+    let base_sha = ensure_git_repo_clean(&workspace)?;
+
+    // Use a millisecond-grained run_id; collisions are extremely unlikely
+    // in practice and the run_id only namespaces worktree paths.
+    let run_id = format!(
+        "{}-{}",
+        chrono::Utc::now().format("%Y%m%d-%H%M%S"),
+        uuid::Uuid::new_v4().to_string().split('-').next().unwrap_or("xxxx")
+    );
+
+    let mut root = app
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from("."));
+    root.push("cli-worktrees");
+    root.push(sanitize_path_segment(&args.group_id));
+    root.push(&run_id);
+    std::fs::create_dir_all(&root)
+        .map_err(|e| format!("创建 worktree 根目录失败：{}", e))?;
+
+    let mut worktrees: Vec<CliWorktreeInfo> = Vec::with_capacity(args.agent_ids.len());
+    let mut created: Vec<std::path::PathBuf> = Vec::new();
+
+    for agent_id in &args.agent_ids {
+        let safe = sanitize_path_segment(agent_id);
+        let mut wt_path = root.clone();
+        wt_path.push(&safe);
+        let branch_name = format!("botgroup/race/{}/{}", run_id, safe);
+
+        // Defensive: worktree add fails if path exists
+        if wt_path.exists() {
+            let _ = std::fs::remove_dir_all(&wt_path);
+        }
+
+        // Create a new branch for this worktree based on current HEAD.
+        // `-b` ensures we don't reuse an existing branch.
+        let wt_path_str = wt_path.to_string_lossy().to_string();
+        match run_git_capture(
+            &workspace,
+            &["worktree", "add", "-b", &branch_name, &wt_path_str, &base_sha],
+        ) {
+            Ok(_) => {
+                created.push(wt_path.clone());
+                worktrees.push(CliWorktreeInfo {
+                    agent_id: agent_id.clone(),
+                    path: wt_path_str,
+                    branch_name: Some(branch_name),
+                    base_sha: Some(base_sha.clone()),
+                });
+            }
+            Err(e) => {
+                // Roll back any previously created worktrees so we don't
+                // leave half-prepared state when one agent fails.
+                for p in &created {
+                    let p_str = p.to_string_lossy().to_string();
+                    let _ = run_git_capture(
+                        &workspace,
+                        &["worktree", "remove", "--force", &p_str],
+                    );
+                }
+                return Err(format!("为 agent {} 创建 worktree 失败：{}", agent_id, e));
+            }
+        }
+    }
+
+    Ok(CliWorktreePrepareResult { run_id, worktrees })
+}
+
+#[tauri::command]
+pub async fn cli_worktree_cleanup(args: CliWorktreeCleanupArgs) -> Result<(), String> {
+    // Cleanup is best-effort; we collect errors but try every path so a
+    // single broken worktree doesn't strand the rest.
+    let mut errors: Vec<String> = Vec::new();
+
+    for path_str in args.paths {
+        let path = std::path::PathBuf::from(&path_str);
+        if !path.exists() {
+            continue;
+        }
+
+        // Find the worktree's parent repo by walking up to a real .git dir
+        // is not reliable; instead we infer the source repo from `git
+        // rev-parse --git-common-dir` inside the worktree.
+        let common_dir = match run_git_capture(&path, &["rev-parse", "--git-common-dir"]) {
+            Ok(s) => s,
+            Err(e) => {
+                errors.push(format!("{}: {}", path_str, e));
+                continue;
+            }
+        };
+        // git-common-dir points at the source repo's `.git` directory; its
+        // parent is the source workspace.
+        let common = std::path::PathBuf::from(&common_dir);
+        let source = common.parent().map(|p| p.to_path_buf()).unwrap_or(common);
+
+        if let Err(e) =
+            run_git_capture(&source, &["worktree", "remove", "--force", &path_str])
+        {
+            errors.push(format!("{}: {}", path_str, e));
+        }
+    }
+
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("; "))
+    }
+}
+
+fn sanitize_path_segment(input: &str) -> String {
+    input
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .collect()
+}

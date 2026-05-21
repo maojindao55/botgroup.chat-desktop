@@ -31,7 +31,9 @@ pub fn run() {
             cli::cli_task_list,
             cli::cli_task_get,
             cli::cli_task_read_log,
-            cli::cli_runtime_list
+            cli::cli_runtime_list,
+            cli::cli_worktree_prepare,
+            cli::cli_worktree_cleanup
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

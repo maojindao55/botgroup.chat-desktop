@@ -20,12 +20,44 @@ export interface AIGroup {
 }
 
 // ============ CLI Agent 群聊 ============
-/** CLI Agent 群的执行策略 */
+/** CLI Agent 群的执行策略（用户可见的预设模式） */
 export type CLIStrategy =
-  | 'sequential'     // 顺序执行：逐个 CLI Agent 执行
+  | 'sequential'     // 顺序执行：多个 CLI Agent 独立处理同一任务，按顺序节流
   | 'router'         // 智能路由：根据任务类型选择最合适的 CLI Agent
-  | 'race'           // 竞争模式：多个 CLI Agent 同时执行，取最快/最优
-  | 'pipeline';      // 流水线：Agent A 生成代码 → Agent B 审查 → Agent C 测试
+  | 'race'           // 竞争模式：多个 CLI Agent 并行竞争同一任务，默认隔离 worktree
+  | 'pipeline'       // 流水线：Agent A 生成代码 → Agent B 审查 → Agent C 测试
+  | 'discussion';    // 讨论模式：多 Agent 分轮讨论方案和风险，默认只读
+
+// ============ 执行计划模型（内部组合） ============
+/** 选择哪些 Agent */
+export type CLISelectionMode = 'all' | 'router' | 'manual';
+/** 协作语义 */
+export type CLICollaborationMode = 'independent' | 'pipeline' | 'discussion';
+/** 调度方式 */
+export type CLIScheduleMode = 'sequential' | 'parallel' | 'staged';
+/** 执行环境隔离 */
+export type CLIIsolationMode = 'sameWorkspace' | 'readOnly' | 'worktreePerAgent' | 'copyPerAgent';
+/** 失败处理策略 */
+export type CLIFailurePolicy = 'continue' | 'stopOnFailure' | 'stopOnCancelled';
+/** 结果选择策略（race 等多结果场景） */
+export type CLIResultPolicy = 'all' | 'firstSuccess' | 'fastest' | 'manualPick';
+
+/**
+ * CLI 执行计划：由若干正交维度组合而成，作为内部统一调度模型。
+ * 每个 `CLIStrategy` 预设模式映射到一个默认 plan；用户可覆盖部分字段。
+ */
+export interface CLIExecutionPlan {
+  preset: CLIStrategy;
+  selection: CLISelectionMode;
+  collaboration: CLICollaborationMode;
+  schedule: CLIScheduleMode;
+  isolation: CLIIsolationMode;
+  failurePolicy: CLIFailurePolicy;
+  /** staged 调度的轮次数；undefined 表示由协作模式决定（discussion 默认 2） */
+  maxRounds?: number;
+  /** 多结果调度时的取舍策略 */
+  resultPolicy?: CLIResultPolicy;
+}
 
 export interface CLIGroup {
   id: string;
@@ -39,6 +71,87 @@ export interface CLIGroup {
   showStderr: boolean;              // 是否展示 stderr 输出
   strategy: CLIStrategy;            // 执行策略，默认 sequential
   coordinatorPrompt?: string;       // 路由/评判提示词（router/race 模式用）
+  /** 高级配置：覆盖预设 plan 的部分字段；老数据可缺省 */
+  executionPlan?: Partial<CLIExecutionPlan>;
+}
+
+/**
+ * 把 `CLIStrategy` 预设模式映射为内部 `CLIExecutionPlan`。
+ * 用户的 `group.executionPlan` 可覆盖部分字段（高级用法）。
+ */
+export function resolveExecutionPlan(
+  group: Pick<CLIGroup, 'strategy' | 'executionPlan'>,
+  overrides?: Partial<CLIExecutionPlan>,
+): CLIExecutionPlan {
+  const preset = group.strategy ?? 'sequential';
+  const base: CLIExecutionPlan = (() => {
+    switch (preset) {
+      case 'router':
+        return {
+          preset,
+          selection: 'router',
+          collaboration: 'independent',
+          schedule: 'sequential',
+          isolation: 'sameWorkspace',
+          failurePolicy: 'stopOnFailure',
+        };
+      case 'sequential':
+        return {
+          preset,
+          selection: 'all',
+          collaboration: 'independent',
+          schedule: 'sequential',
+          isolation: 'sameWorkspace',
+          failurePolicy: 'continue',
+        };
+      case 'pipeline':
+        return {
+          preset,
+          selection: 'all',
+          collaboration: 'pipeline',
+          schedule: 'sequential',
+          isolation: 'sameWorkspace',
+          failurePolicy: 'continue',
+        };
+      case 'race':
+        return {
+          preset,
+          selection: 'all',
+          collaboration: 'independent',
+          schedule: 'parallel',
+          isolation: 'worktreePerAgent',
+          failurePolicy: 'continue',
+          resultPolicy: 'all',
+        };
+      case 'discussion':
+        return {
+          preset,
+          selection: 'all',
+          collaboration: 'discussion',
+          schedule: 'staged',
+          isolation: 'readOnly',
+          failurePolicy: 'continue',
+          maxRounds: 2,
+        };
+      default:
+        // 穷尽性兜底：未知预设按 sequential 处理
+        return {
+          preset: 'sequential',
+          selection: 'all',
+          collaboration: 'independent',
+          schedule: 'sequential',
+          isolation: 'sameWorkspace',
+          failurePolicy: 'continue',
+        };
+    }
+  })();
+
+  return {
+    ...base,
+    ...(group.executionPlan || {}),
+    ...(overrides || {}),
+    preset, // preset 不允许被覆盖，避免 UI 与内部状态错位
+  };
 }
 
 // ============ Agent 群聊 ============
