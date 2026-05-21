@@ -2,20 +2,15 @@
  * AI 群聊配置面板 - 成员管理 + 调度策略配置
  * 用于 AI 群聊的 MembersManagement 替代组件
  */
-import { useState } from "react";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Button } from "@/components/ui/button";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { Switch } from "@/components/ui/switch";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useState } from 'react';
+import { Drawer, Switch, Button, Tooltip } from 'antd';
+import { Avatar as LobeAvatar, ActionIcon } from '@lobehub/ui';
+import { createStyles } from 'antd-style';
 import { UserPlus, Mic, MicOff, Check, X } from 'lucide-react';
-import { cn } from "@/lib/utils";
 import { getAvailableAICharacters } from '@/config/aiCharacters';
 import type { AICharacter } from '@/config/aiCharacters';
 import type { AIGroup } from '@/config/groups';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
-
 
 interface User {
   id: number | string;
@@ -38,10 +33,85 @@ interface AIGroupSettingsProps {
   onRemoveMember?: (memberId: string) => void;
 }
 
+const useStyles = createStyles(({ token, css }) => ({
+  panel: css`
+    background: ${token.colorFillTertiary};
+    border-radius: 12px;
+    padding: 16px;
+  `,
+  row: css`
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  `,
+  strategyBtn: css`
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid ${token.colorBorderSecondary};
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.15s;
+    &:hover {
+      background: ${token.colorFillTertiary};
+    }
+  `,
+  strategyBtnActive: css`
+    border-color: #ff6600;
+    background: rgba(255, 102, 0, 0.08);
+  `,
+  memberRow: css`
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px;
+    border-radius: 8px;
+    transition: background 0.15s;
+    &:hover {
+      background: ${token.colorFillTertiary};
+    }
+  `,
+  addMemberBox: css`
+    margin-bottom: 12px;
+    padding: 12px;
+    border: 1px solid ${token.colorBorderSecondary};
+    border-radius: 8px;
+    background: ${token.colorFillQuaternary};
+  `,
+  scrollList: css`
+    max-height: calc(100vh - 420px);
+    overflow: auto;
+  `,
+  addScrollList: css`
+    max-height: 120px;
+    overflow: auto;
+  `,
+  addMemberItem: css`
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    border-radius: 6px;
+    background: transparent;
+    border: none;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.15s;
+    &:hover {
+      background: ${token.colorFillSecondary};
+    }
+  `,
+}));
+
 export const AIGroupSettings = ({
   open,
   onOpenChange,
-  group,
+  group: _group,
   users,
   mutedUsers,
   onToggleMute,
@@ -52,165 +122,164 @@ export const AIGroupSettings = ({
   onAddMember,
   onRemoveMember,
 }: AIGroupSettingsProps) => {
+  const { styles, cx } = useStyles();
   const [showAddMember, setShowAddMember] = useState(false);
   const allCharacters = getAvailableAICharacters();
-  const currentMemberIds = users.filter(u => 'personality' in u).map(u => u.id as string);
-  const availableToAdd = allCharacters.filter(c => !currentMemberIds.includes(c.id));
-
+  const currentMemberIds = users.filter((u) => 'personality' in u).map((u) => u.id as string);
+  const availableToAdd = allCharacters.filter((c) => !currentMemberIds.includes(c.id));
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-[320px] sm:w-[400px]">
-        <SheetHeader>
-          <SheetTitle>AI 群聊配置</SheetTitle>
-        </SheetHeader>
-        <div className="mt-4 space-y-5">
-          {/* 全员讨论模式 */}
-          <div className="p-4 bg-muted/50 rounded-lg">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-sm font-medium">全员讨论模式</div>
-                <div className="text-xs text-muted-foreground">开启后全员每轮回复</div>
-              </div>
-              <Switch checked={isGroupDiscussionMode} onCheckedChange={onToggleGroupDiscussion} />
+    <Drawer
+      title="AI 群聊配置"
+      placement="right"
+      open={open}
+      onClose={() => onOpenChange(false)}
+      width={400}
+      destroyOnClose={false}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        {/* 全员讨论模式 */}
+        <div className={styles.panel}>
+          <div className={styles.row}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 500 }}>全员讨论模式</div>
+              <div style={{ fontSize: 12, opacity: 0.6 }}>开启后全员每轮回复</div>
             </div>
+            <Switch checked={isGroupDiscussionMode} onChange={onToggleGroupDiscussion} />
+          </div>
+        </div>
+
+        {/* 调度策略 */}
+        {!isGroupDiscussionMode && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <label style={{ fontSize: 14, fontWeight: 500 }}>调度策略</label>
+            {[
+              { value: 'tag' as const, label: '标签匹配', desc: '根据消息智能匹配相关AI' },
+              { value: 'round_robin' as const, label: '轮询', desc: '按顺序轮流回复' },
+              { value: 'all' as const, label: '全员', desc: '所有成员都回复' },
+            ].map((item) => (
+              <button
+                key={item.value}
+                onClick={() => onStrategyChange(item.value)}
+                className={cx(
+                  styles.strategyBtn,
+                  schedulerStrategy === item.value && styles.strategyBtnActive,
+                )}
+              >
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 12, fontWeight: 500 }}>{item.label}</div>
+                  <div style={{ fontSize: 10, opacity: 0.6 }}>{item.desc}</div>
+                </div>
+                {schedulerStrategy === item.value && (
+                  <Check size={14} style={{ color: '#ff6600' }} />
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* 成员管理 */}
+        <div>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 12,
+            }}
+          >
+            <span style={{ fontSize: 14, fontWeight: 500 }}>群成员（{users.length}）</span>
+            <Button
+              size="small"
+              icon={<UserPlus size={14} />}
+              onClick={() => setShowAddMember(!showAddMember)}
+            >
+              添加成员
+            </Button>
           </div>
 
-          {/* 调度策略 */}
-          {!isGroupDiscussionMode && (
-            <div className="space-y-2">
-              <label className="text-sm font-medium">调度策略</label>
-              {[
-                { value: 'tag' as const, label: '标签匹配', desc: '根据消息智能匹配相关AI' },
-                { value: 'round_robin' as const, label: '轮询', desc: '按顺序轮流回复' },
-                { value: 'all' as const, label: '全员', desc: '所有成员都回复' },
-              ].map(item => (
-                <button key={item.value}
-                  onClick={() => onStrategyChange(item.value)}
-                  className={cn(
-                    "w-full flex items-center gap-3 p-2.5 rounded-lg border text-left transition-all",
-                    schedulerStrategy === item.value
-                      ? "border-[#ff6600] bg-orange-50 dark:bg-orange-950/20"
-                      : "border-border hover:bg-accent/30"
-                  )}>
-                  <div className="flex-1">
-                    <div className="text-xs font-medium">{item.label}</div>
-                    <div className="text-[10px] text-muted-foreground">{item.desc}</div>
-                  </div>
-                  {schedulerStrategy === item.value && <Check className="w-3.5 h-3.5 text-[#ff6600]" />}
-                </button>
-              ))}
-            </div>
-          )}
-
-
-          {/* 成员管理 */}
-          <div>
-            <div className="flex justify-between items-center mb-3">
-              <span className="text-sm font-medium">群成员（{users.length}）</span>
-              <Button variant="outline" size="sm" onClick={() => setShowAddMember(!showAddMember)}>
-                <UserPlus className="w-3.5 h-3.5 mr-1.5" />
-                添加成员
-              </Button>
-            </div>
-
-            {/* 添加成员面板 */}
-            {showAddMember && availableToAdd.length > 0 && (
-              <div className="mb-3 p-3 border rounded-lg bg-muted/30 space-y-2">
-                <div className="text-xs text-muted-foreground mb-2">点击添加到群聊</div>
-                <ScrollArea className="max-h-[120px]">
-                  <div className="space-y-1">
-                    {availableToAdd.map(char => {
-                      const avatarData = getAvatarData(char.name);
-                      return (
-                        <button key={char.id}
-                          onClick={() => { onAddMember?.(char.id); }}
-                          className="w-full flex items-center gap-2 p-2 rounded-md hover:bg-accent/50 text-left transition-all">
-                          <Avatar className="w-6 h-6">
-                            {resolveAvatarByName(char.name, char.avatar) ? (
-                              <AvatarImage src={resolveAvatarByName(char.name, char.avatar)} className="object-cover" />
-                            ) : (
-                              <AvatarFallback style={{ backgroundColor: avatarData.backgroundColor, color: 'white' }} className="text-[10px]">
-                                {avatarData.text}
-                              </AvatarFallback>
-                            )}
-                          </Avatar>
-                          <span className="text-xs flex-1">{char.name}</span>
-                          <UserPlus className="w-3 h-3 text-muted-foreground" />
-                        </button>
-                      );
-                    })}
-                  </div>
-                </ScrollArea>
-              </div>
-            )}
-
-            {/* 成员列表 */}
-            <ScrollArea className="h-[calc(100vh-420px)]">
-              <div className="space-y-1.5 pr-2">
-                {users.map((user) => {
-                  const avatarData = getAvatarData(user.name);
-                  const isAI = 'personality' in user;
+          {/* 添加成员面板 */}
+          {showAddMember && availableToAdd.length > 0 && (
+            <div className={styles.addMemberBox}>
+              <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 8 }}>点击添加到群聊</div>
+              <div className={styles.addScrollList}>
+                {availableToAdd.map((char) => {
+                  const a = getAvatarData(char.name);
+                  const url = resolveAvatarByName(char.name, char.avatar, 24);
                   return (
-                    <div key={user.id} className="flex items-center justify-between p-2 hover:bg-accent/30 rounded-lg transition-all">
-                      <div className="flex items-center gap-2.5">
-                        <Avatar className="w-8 h-8">
-                          {resolveAvatarByName(user.name, user.avatar) ? (
-                            <AvatarImage src={resolveAvatarByName(user.name, user.avatar)} className="object-cover" />
-                          ) : (
-                            <AvatarFallback style={{ backgroundColor: avatarData.backgroundColor, color: 'white' }} className="text-xs">
-                              {avatarData.text}
-                            </AvatarFallback>
-                          )}
-                        </Avatar>
-                        <div className="flex flex-col">
-                          <span className="text-sm">{user.name}</span>
-                          {mutedUsers.includes(user.id as string) && (
-                            <span className="text-[10px] text-red-500">已禁言</span>
-                          )}
-                        </div>
-                      </div>
-                      {user.name !== "我" && (
-                        <div className="flex gap-1">
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-7 w-7"
-                                  onClick={() => onToggleMute(user.id as string)}>
-                                  {mutedUsers.includes(user.id as string)
-                                    ? <MicOff className="w-3.5 h-3.5 text-red-500" />
-                                    : <Mic className="w-3.5 h-3.5 text-green-500" />}
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                {mutedUsers.includes(user.id as string) ? '取消禁言' : '禁言'}
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                          {isAI && (
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button variant="ghost" size="icon" className="h-7 w-7"
-                                    onClick={() => onRemoveMember?.(user.id as string)}>
-                                    <X className="w-3.5 h-3.5 text-muted-foreground hover:text-red-500" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>移除成员</TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          )}
-                        </div>
-                      )}
-                    </div>
+                    <button
+                      key={char.id}
+                      onClick={() => onAddMember?.(char.id)}
+                      className={styles.addMemberItem}
+                    >
+                      <LobeAvatar
+                        shape="circle"
+                        avatar={url || a.text}
+                        background={a.backgroundColor}
+                        size={24}
+                      />
+                      <span style={{ fontSize: 12, flex: 1 }}>{char.name}</span>
+                      <UserPlus size={12} style={{ opacity: 0.6 }} />
+                    </button>
                   );
                 })}
               </div>
-            </ScrollArea>
+            </div>
+          )}
+
+          {/* 成员列表 */}
+          <div className={styles.scrollList}>
+            {users.map((user) => {
+              const a = getAvatarData(user.name);
+              const url = resolveAvatarByName(user.name, user.avatar, 32);
+              const isAI = 'personality' in user;
+              const muted = mutedUsers.includes(user.id as string);
+              return (
+                <div key={user.id} className={styles.memberRow}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <LobeAvatar
+                      shape="circle"
+                      avatar={url || a.text}
+                      background={a.backgroundColor}
+                      size={32}
+                    />
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <span style={{ fontSize: 14 }}>{user.name}</span>
+                      {muted && (
+                        <span style={{ fontSize: 10, color: '#ef4444', marginTop: 4 }}>已禁言</span>
+                      )}
+                    </div>
+                  </div>
+                  {user.name !== '我' && (
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <Tooltip title={muted ? '取消禁言' : '禁言'}>
+                        <ActionIcon
+                          icon={muted ? MicOff : Mic}
+                          size="small"
+                          onClick={() => onToggleMute(user.id as string)}
+                          style={{ color: muted ? '#ef4444' : '#22c55e' }}
+                          title=""
+                        />
+                      </Tooltip>
+                      {isAI && (
+                        <Tooltip title="移除成员">
+                          <ActionIcon
+                            icon={X}
+                            size="small"
+                            onClick={() => onRemoveMember?.(user.id as string)}
+                            title=""
+                          />
+                        </Tooltip>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
-      </SheetContent>
-    </Sheet>
+      </div>
+    </Drawer>
   );
 };
 

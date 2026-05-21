@@ -36,24 +36,24 @@
   }
 
   .dark {
-    --background: 240 10% 3.9%;
+    --background: 240 5% 7.5%;
     --foreground: 240 5% 90%;
-    --card: 240 10% 5.9%;
+    --card: 240 7% 11%;
     --card-foreground: 240 5% 90%;
-    --popover: 240 10% 5.9%;
+    --popover: 240 7% 11%;
     --popover-foreground: 240 5% 90%;
     --primary: 240 5% 90%;
-    --primary-foreground: 240 10% 3.9%;
-    --secondary: 240 5% 12%;
+    --primary-foreground: 240 5% 7.5%;
+    --secondary: 240 6% 14%;
     --secondary-foreground: 240 5% 90%;
-    --muted: 240 5% 12%;
+    --muted: 240 6% 14%;
     --muted-foreground: 240 5% 65%;
-    --accent: 240 5% 12%;
+    --accent: 240 6% 14%;
     --accent-foreground: 240 5% 90%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 240 5% 90%;
-    --border: 240 5% 15%;
-    --input: 240 5% 15%;
+    --border: 240 7% 18%;
+    --input: 240 7% 18%;
     --ring: 240 5% 65%;
     --chart-1: 220 70% 50%;
     --chart-2: 160 60% 45%;
@@ -101,12 +101,38 @@
 /* Execution process details block styling */
 .chat-message details {
   transition: all 0.2s ease;
+  background-color: rgba(243, 244, 246, 0.4) !important;
+  border: 1px solid rgba(229, 231, 235, 0.6) !important;
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin: 8px 0;
+  font-size: 12px !important;
+  color: #8c95a5 !important;
+}
+
+.dark .chat-message details {
+  background-color: rgba(26, 26, 30, 0.3) !important;
+  border-color: rgba(62, 62, 69, 0.4) !important;
+  color: #7c8491 !important;
+}
+
+.chat-message details summary {
+  font-weight: 400;
+  color: #8c95a5 !important;
+  outline: none;
+  cursor: pointer;
+  user-select: none;
+  font-size: 12px !important;
+}
+
+.dark .chat-message details summary {
+  color: #7c8491 !important;
 }
 
 .chat-message details[open] > summary {
   margin-bottom: 8px;
   padding-bottom: 6px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
 }
 
 .chat-message details summary::marker,
@@ -119,10 +145,76 @@
   color: #ea580c;
 }
 
+/* Ensure all child paragraphs/spans/lists/bolds inside details are muted */
+.chat-message details p,
+.chat-message details span,
+.chat-message details div,
+.chat-message details li,
+.chat-message details strong,
+.chat-message details b,
+.chat-message details blockquote,
+.chat-message details blockquote p,
+.chat-message details a {
+  color: #8c95a5 !important;
+  font-size: 12px !important;
+  font-weight: 400 !important;
+  line-height: 1.5 !important;
+}
+
+.dark .chat-message details p,
+.dark .chat-message details span,
+.dark .chat-message details div,
+.dark .chat-message details li,
+.dark .chat-message details strong,
+.dark .chat-message details b,
+.dark .chat-message details blockquote,
+.dark .chat-message details blockquote p,
+.dark .chat-message details a {
+  color: #7c8491 !important;
+  font-size: 12px !important;
+  font-weight: 400 !important;
+}
+
+.chat-message details blockquote {
+  margin: 4px 0 !important;
+  padding: 2px 8px !important;
+  border-left: 2px solid rgba(229, 231, 235, 0.5) !important;
+  background: transparent !important;
+}
+
+.dark .chat-message details blockquote {
+  border-left-color: rgba(62, 62, 69, 0.4) !important;
+}
+
+/* Command blocks inside details */
+.chat-message details pre {
+  margin: 6px 0 !important;
+  background-color: rgba(244, 244, 245, 0.5) !important;
+  border: 1px solid rgba(228, 228, 231, 0.5) !important;
+  padding: 6px 10px !important;
+  border-radius: 6px !important;
+  font-size: 11px !important;
+  color: #71717a !important;
+}
+
+.dark .chat-message details pre {
+  background-color: rgba(26, 26, 30, 0.5) !important;
+  border-color: rgba(43, 43, 48, 0.5) !important;
+  color: #a1a1aa !important;
+}
+
+.chat-message details code {
+  font-size: 11px !important;
+  color: inherit !important;
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+}
+
 /* Step separators inside details */
 .chat-message details hr {
   border: none;
-  border-top: 1px dashed rgba(148, 163, 184, 0.3);
+  border-top: 1px dashed rgba(148, 163, 184, 0.2);
   margin: 8px 0;
 }
 
@@ -132,8 +224,25 @@
   height: 4px;
 }
 .chat-message details pre::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.3);
+  background: rgba(148, 163, 184, 0.2);
   border-radius: 2px;
+}
+
+/* Theme switcher segmented centering */
+.theme-switcher-segmented .ant-segmented-item-label {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  height: 100% !important;
+  padding: 0 !important;
+  line-height: 1 !important;
+}
+
+.theme-switcher-segmented .ant-segmented-item-icon {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  margin: 0 !important;
 }
 
 /* Premium dynamic mesh background blobs */
@@ -181,4 +290,46 @@
 
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(155, 155, 155, 0.4);
+}
+
+/* Dark Mode & Markdown Code Blocks Overrides */
+.dark {
+  /* Set custom scrollbar color for dark mode */
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15) !important;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3) !important;
+  }
+}
+
+/* Ensure code blocks in markdown in dark mode have high contrast background */
+.dark pre,
+.dark code,
+.dark .ant-highlighter,
+.dark .ant-highlighter-shiki,
+.dark .ant-highlighter-filled,
+.dark [class*="ant-highlighter"] {
+  background-color: #202024 !important;
+  border: 1px solid #2e2e33 !important;
+}
+
+/* Inline code styling overrides */
+.dark :not(pre) > code {
+  background-color: #2a2a30 !important;
+  color: #ff7820 !important;
+  border: 1px solid #3e3e45 !important;
+  padding: 2px 6px !important;
+  border-radius: 6px !important;
+  font-size: 0.9em !important;
+}
+
+/* Light mode inline code styling overrides */
+:not(pre) > code {
+  background-color: #f4f4f5 !important;
+  color: #ea580c !important;
+  border: 1px solid #e4e4e7 !important;
+  padding: 2px 6px !important;
+  border-radius: 6px !important;
+  font-size: 0.9em !important;
 }

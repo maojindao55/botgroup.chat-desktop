@@ -1,156 +1,111 @@
-import React, { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import domtoimage from 'dom-to-image';
-import { Dialog, DialogContent, DialogClose } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Share2, Download } from 'lucide-react';
+import { Modal, Button } from 'antd';
+import { Avatar as LobeAvatar } from '@lobehub/ui';
 import { toast } from 'sonner';
+import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
+import { useUserStore } from '@/store/userStore';
 
-interface SharePosterProps {
-  isOpen: boolean;
-  onClose: () => void;
-  chatAreaRef: React.RefObject<HTMLDivElement>;
+interface PosterMessage {
+  id: number | string;
+  sender: { id?: string; name: string; avatar?: string };
+  content: string;
+  isAI?: boolean;
+  isError?: boolean;
 }
 
-export function SharePoster({ isOpen, onClose, chatAreaRef }: SharePosterProps) {
-  const posterRef = useRef<HTMLDivElement>(null);
-  const [posterImage, setPosterImage] = React.useState<string>('');
+interface SharePosterProps {
+  messages: PosterMessage[];
+  onClose: () => void;
+}
+
+export function SharePoster({ messages, onClose }: SharePosterProps) {
+  const previewRef = useRef<HTMLDivElement>(null);
+  const [posterImage, setPosterImage] = useState<string>('');
+  const [generating, setGenerating] = useState(true);
+  const userStore = useUserStore();
+  const userName = userStore.userInfo?.nickname || '我';
 
   useEffect(() => {
-    if (isOpen && chatAreaRef.current) {
-      generatePoster();
-    }
-  }, [isOpen]);
+    generatePoster();
+  }, []);
 
   const generatePoster = async () => {
-    if (!chatAreaRef.current) return;
-    await document.fonts.ready;
-
+    const node = previewRef.current;
+    if (!node) return;
     try {
-      const messageContainer = chatAreaRef.current.querySelector('.space-y-4');
-      if (!messageContainer) return;
-      const qrCode = messageContainer.querySelector('#qrcode');
-      if (qrCode) {
-        qrCode.classList.remove('hidden');
-      }
-      // 预处理所有图片
-      const preloadImages = async () => {
-        const images = Array.from(messageContainer.getElementsByTagName('img'));
-        await Promise.all(images.map(async (img) => {
-          try {
-            const response = await fetch(img.src, {
-              mode: 'cors',
-              credentials: 'omit'
-            });
-            const blob = await response.blob();
-            const base64 = await new Promise((resolve) => {
-              const reader = new FileReader();
-              reader.onloadend = () => resolve(reader.result);
-              reader.readAsDataURL(blob);
-            });
-            img.src = base64 as string;
-          } catch (error) {
-            console.error('图片预处理失败:', error);
-          }
-        }));
-      };
+      await document.fonts.ready;
+      // Wait one frame so the offscreen preview lays out.
+      await new Promise<void>((r) => requestAnimationFrame(() => r()));
 
-      await preloadImages();
+      // Preload remote images as base64 to avoid CORS taint during capture.
+      const imgs = Array.from(node.getElementsByTagName('img'));
+      await Promise.all(imgs.map(async (img) => {
+        if (img.src.startsWith('data:')) return;
+        try {
+          const resp = await fetch(img.src, { mode: 'cors', credentials: 'omit' });
+          const blob = await resp.blob();
+          const dataUrl: string = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(blob);
+          });
+          img.src = dataUrl;
+        } catch (e) {
+          console.warn('图片预处理失败:', e);
+        }
+      }));
 
-      const originalScroll = chatAreaRef.current.scrollTop;
-      chatAreaRef.current.scrollTop = 0;
-
-      const viewportWidth = Math.min(window.innerWidth, document.documentElement.clientWidth);
-      const extraSpace = 6;
-      const targetWidth = viewportWidth * 0.95 - (extraSpace * 2);
-
-      const currentWidth = messageContainer.getBoundingClientRect().width;
-      const scale = targetWidth / currentWidth;
-
-      const currentHeight = messageContainer.scrollHeight;
-      const adjustedHeight = currentHeight * scale;
-
-      const dataUrl = await domtoimage.toSvg(messageContainer as HTMLElement, {
+      const dataUrl = await domtoimage.toSvg(node, {
         bgcolor: '#f3f4f6',
-        scale: 1,  // 回到较安全的值
-        width: targetWidth + (extraSpace * 5),
-        height: adjustedHeight + (extraSpace * 5),
-        style: {
-          padding: `${extraSpace}px`,
-          margin: '0 auto',
-          width: '120%',
-          height: '110%',
-          transform: `scale(${scale})`,
-          transformOrigin: 'top left',
-          background: '#f3f4f6',
-          boxSizing: 'border-box'
-          
-        },
-        quality: 1.0
+        quality: 1.0,
       });
-
-      chatAreaRef.current.scrollTop = originalScroll;
       setPosterImage(dataUrl);
     } catch (error) {
       console.error('生成海报失败:', error);
+    } finally {
+      setGenerating(false);
     }
   };
 
-
   const handleDownload = async () => {
     if (!posterImage) return;
-    
     try {
-      // 创建一个新的图片对象
       const img = new Image();
       img.crossOrigin = 'anonymous';
-      
-      // 等待图片加载完成
       await new Promise((resolve, reject) => {
         img.onload = resolve;
         img.onerror = reject;
         img.src = posterImage;
       });
-
-      // 创建高分辨率canvas
       const scale = 2;
       const canvas = document.createElement('canvas');
       canvas.width = img.width * scale;
       canvas.height = img.height * scale;
-      
       const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        throw new Error('无法创建canvas上下文');
-      }
-
+      if (!ctx) throw new Error('无法创建canvas上下文');
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
       ctx.scale(scale, scale);
       ctx.drawImage(img, 0, 0);
-      
-      // 转换为Blob
       const blob = await new Promise<Blob>((resolve) => {
-        canvas.toBlob((blob) => {
-          resolve(blob!);
-        }, 'image/png', 1.0);
+        canvas.toBlob((b) => resolve(b!), 'image/png', 1.0);
       });
 
-      // 检查是否为移动设备
       if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) && navigator.share) {
-        // 使用系统分享
         await navigator.share({
           files: [new File([blob], 'chat-history.png', { type: 'image/png' })],
           title: '聊天记录',
         });
       } else {
-        // PC端使用传统下载方式
-        const pngUrl = URL.createObjectURL(blob);
+        const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = pngUrl;
+        a.href = url;
         a.download = 'chat-history.png';
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        URL.revokeObjectURL(pngUrl);
+        URL.revokeObjectURL(url);
       }
     } catch (error) {
       console.error('转换图片失败:', error);
@@ -159,41 +114,100 @@ export function SharePoster({ isOpen, onClose, chatAreaRef }: SharePosterProps) 
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => {
-      if (!open) {
-        // Hide QR code when dialog closes
-        const qrCode = chatAreaRef.current?.querySelector('#qrcode');
-        if (qrCode) {
-          qrCode.classList.add('hidden');
-        }
-        onClose();
+    <Modal
+      open
+      onCancel={onClose}
+      title="分享聊天记录"
+      width="50vw"
+      style={{ maxWidth: '95vw' }}
+      footer={
+        <Button type="primary" onClick={handleDownload} disabled={!posterImage}
+          style={{ background: '#ff6600', borderColor: '#ff6600' }}>
+          保存聊天海报
+        </Button>
       }
-    }}>
-      <DialogContent className="max-w-[100vw] w-full sm:max-w-[50vw] max-h-[90vh] flex flex-col p-0">
-        {/* 图片容器 */}
-        <div className="flex-1 overflow-auto ">
-          {posterImage && (
-            <div className="flex items-center justify-center min-h-full">
-              <img 
-                src={posterImage} 
-                alt="Share Poster" 
-                className="w-full w-auto h-auto" 
-                style={{
-                  objectFit: 'contain',
-                  imageRendering: 'crisp-edges',
-                  WebkitFontSmoothing: 'antialiased'
-                }}
-              />
+      styles={{ body: { maxHeight: '70vh', overflow: 'auto', background: '#f3f4f6', padding: 16 } }}
+    >
+      {/* Offscreen preview that gets captured. Stays mounted but invisible until image is ready. */}
+      <div
+        ref={previewRef}
+        style={{
+          padding: 16,
+          background: '#f3f4f6',
+          width: 640,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 16,
+          position: posterImage ? 'absolute' : 'relative',
+          left: posterImage ? -99999 : undefined,
+          top: posterImage ? -99999 : undefined,
+        }}
+      >
+        {messages.map((m) => {
+          const isUser = m.sender.name === userName;
+          const a = getAvatarData(m.sender.name);
+          const url = resolveAvatarByName(m.sender.name, m.sender.avatar, 36);
+          return (
+            <div key={m.id} style={{
+              display: 'flex',
+              gap: 12,
+              alignItems: 'flex-start',
+              justifyContent: isUser ? 'flex-end' : 'flex-start',
+            }}>
+              {!isUser && (
+                <LobeAvatar shape="circle" avatar={url || a.text} background={a.backgroundColor} size={36} />
+              )}
+              <div style={{ maxWidth: '75%' }}>
+                <div style={{ fontSize: 12, color: '#6b7280', padding: '0 4px', marginBottom: 4, textAlign: isUser ? 'right' : 'left' }}>
+                  {m.sender.name}
+                </div>
+                <div style={{
+                  padding: '12px 16px',
+                  borderRadius: 16,
+                  borderTopRightRadius: isUser ? 4 : 16,
+                  borderTopLeftRadius: isUser ? 16 : 4,
+                  background: isUser ? 'linear-gradient(to top right, #f97316, #f59e0b)' : '#fff',
+                  color: isUser ? '#fff' : '#111',
+                  border: isUser ? 'none' : '1px solid #e5e7eb',
+                  fontSize: 14,
+                  lineHeight: 1.6,
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                }}>
+                  {m.content}
+                </div>
+              </div>
+              {isUser && (
+                <LobeAvatar shape="circle" avatar={url || a.text} background={a.backgroundColor} size={36} />
+              )}
             </div>
-          )}
+          );
+        })}
+      </div>
+
+      {/* Rendered poster image (visible once ready) */}
+      {generating && !posterImage && (
+        <div style={{ textAlign: 'center', padding: 40, color: '#6b7280' }}>
+          正在生成海报...
         </div>
-        
-        <div className="flex items-center justify-center gap-2 p-2 sm:p-4 border-t">
-          <Button onClick={handleDownload}>
-            保存聊天海报
-          </Button>
+      )}
+      {posterImage && (
+        <div style={{ display: 'flex', justifyContent: 'center' }}>
+          <img
+            src={posterImage}
+            alt="Share Poster"
+            style={{
+              maxWidth: '100%',
+              height: 'auto',
+              objectFit: 'contain',
+              imageRendering: 'crisp-edges',
+            }}
+          />
         </div>
-      </DialogContent>
-    </Dialog>
+      )}
+    </Modal>
   );
-} 
+}
+
+export default SharePoster;
