@@ -12,10 +12,13 @@ use std::process::Stdio;
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, State, Manager};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::Mutex;
+use std::io::Write;
+use rusqlite::{params, Connection};
+use crate::db::get_db_path;
 
 // ---------- Event payload sent over `cli://{session_id}` ------------------
 
@@ -38,12 +41,55 @@ pub struct CliState {
     sessions: Arc<Mutex<HashMap<String, tokio::task::AbortHandle>>>,
 }
 
+// ---------- DB Structs ---------------------------------------------------
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CliTask {
+    pub id: String,
+    pub group_id: String,
+    pub agent_id: String,
+    pub agent_name: String,
+    pub adapter: String,
+    pub status: String,
+    pub cwd: Option<String>,
+    pub prompt: String,
+    pub prompt_summary: Option<String>,
+    pub session_id: Option<String>,
+    pub pid: Option<u32>,
+    pub exit_code: Option<i32>,
+    pub error_message: Option<String>,
+    pub log_path: Option<String>,
+    pub started_at: Option<String>,
+    pub ended_at: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CliTaskLogEntry {
+    pub ts: String,
+    pub r#type: String, // 'stdout' | 'stderr' | 'system'
+    pub content: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CliTaskLogPage {
+    pub lines: Vec<CliTaskLogEntry>,
+    pub total_lines: usize,
+}
+
 // ---------- Public IPC commands -----------------------------------------
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct CliRunArgs {
     pub session_id: String,
+    pub group_id: String,
+    pub agent_id: String,
+    pub agent_name: String,
     /// "codex" | "opencode" | "claude" | "generic"
     pub adapter: String,
     pub prompt: String,
@@ -53,6 +99,8 @@ pub struct CliRunArgs {
     pub binary: Option<String>,
     /// Extra env vars to set on the spawned process
     pub env: Option<HashMap<String, String>>,
+    pub timeout_ms: Option<u64>,
+    pub show_stderr: Option<bool>,
 }
 
 #[derive(Serialize, Debug)]
@@ -64,6 +112,54 @@ pub struct CliCheckResult {
     pub version: Option<String>,
 }
 
+fn insert_task(app: &AppHandle, args: &CliRunArgs, log_path: &str) -> Result<(), String> {
+    let db_path = get_db_path(app);
+    let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
+    let summary = if args.prompt.len() > 60 {
+        format!("{}...", &args.prompt[..57])
+    } else {
+        args.prompt.clone()
+    };
+    conn.execute(
+        "INSERT INTO cli_tasks (id, group_id, agent_id, agent_name, adapter, status, cwd, prompt, prompt_summary, session_id, log_path, started_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
+        params![
+            args.session_id,
+            args.group_id,
+            args.agent_id,
+            args.agent_name,
+            args.adapter,
+            "running",
+            args.cwd,
+            args.prompt,
+            summary,
+            args.session_id,
+            log_path
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn update_task_status(
+    app: &AppHandle,
+    id: &str,
+    status: &str,
+    exit_code: Option<i32>,
+    error_message: Option<&str>,
+) -> Result<(), String> {
+    let db_path = get_db_path(app);
+    let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE cli_tasks 
+         SET status = ?, exit_code = ?, error_message = ?, ended_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP 
+         WHERE id = ?",
+        params![status, exit_code, error_message, id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn cli_run(
     app: AppHandle,
@@ -72,16 +168,68 @@ pub async fn cli_run(
 ) -> Result<(), String> {
     let event_name = format!("cli://{}", args.session_id);
     let session_id = args.session_id.clone();
+    let timeout_ms = args.timeout_ms;
+
+    let log_path = {
+        let mut path = app.path().app_data_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+        path.push("cli-logs");
+        let _ = std::fs::create_dir_all(&path);
+        path.push(format!("{}.jsonl", args.session_id));
+        path
+    };
+    let log_path_str = log_path.to_string_lossy().to_string();
+
+    // Write initial log
+    if let Some(mut f) = std::fs::OpenOptions::new().create(true).write(true).truncate(true).open(&log_path).ok() {
+        let log_entry = serde_json::json!({
+            "ts": chrono::Utc::now().to_rfc3339(),
+            "type": "system",
+            "content": format!("Starting task execution. Adapter: {}, Cwd: {:?}", args.adapter, args.cwd)
+        });
+        if let Ok(serialized) = serde_json::to_string(&log_entry) {
+            let _ = writeln!(f, "{}", serialized);
+        }
+    }
+
+    if let Err(e) = insert_task(&app, &args, &log_path_str) {
+        let _ = app.emit(&event_name, CliEvent::Error { message: format!("DB error: {}", e) });
+        return Err(e);
+    }
 
     let mut cmd = build_command(&args)?;
-    let mut child = cmd.spawn().map_err(|e| {
-        let msg = format!("spawn failed: {}", e);
-        let _ = app.emit(&event_name, CliEvent::Error { message: msg.clone() });
-        let _ = app.emit(&event_name, CliEvent::Done { exit_code: -1 });
-        msg
-    })?;
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => {
+            let msg = format!("spawn failed: {}", e);
+            let _ = app.emit(&event_name, CliEvent::Error { message: msg.clone() });
+            let _ = app.emit(&event_name, CliEvent::Done { exit_code: -1 });
+
+            // Log spawn failure
+            if let Some(mut f) = std::fs::OpenOptions::new().append(true).open(&log_path).ok() {
+                let log_entry = serde_json::json!({
+                    "ts": chrono::Utc::now().to_rfc3339(),
+                    "type": "system",
+                    "content": format!("Spawn failed: {}", e)
+                });
+                if let Ok(serialized) = serde_json::to_string(&log_entry) {
+                    let _ = writeln!(f, "{}", serialized);
+                }
+            }
+
+            let _ = update_task_status(&app, &session_id, "failed", Some(-1), Some(&msg));
+            return Err(msg);
+        }
+    };
 
     let pid = child.id().unwrap_or(0);
+    // Update task with PID
+    {
+        let db_path = get_db_path(&app);
+        if let Ok(conn) = Connection::open(&db_path) {
+            let _ = conn.execute("UPDATE cli_tasks SET pid = ? WHERE id = ?", params![pid, args.session_id]);
+        }
+    }
+
     let _ = app.emit(&event_name, CliEvent::Started { pid });
 
     let stdout = child
@@ -96,12 +244,28 @@ pub async fn cli_run(
     // Stdout reader task
     let app_out = app.clone();
     let evt_out = event_name.clone();
+    let log_path_out = log_path.clone();
     let stdout_task = tokio::spawn(async move {
         let mut lines = BufReader::new(stdout).lines();
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&log_path_out)
+            .ok();
         loop {
             match lines.next_line().await {
                 Ok(Some(line)) => {
-                    let _ = app_out.emit(&evt_out, CliEvent::Stdout { content: line });
+                    let _ = app_out.emit(&evt_out, CliEvent::Stdout { content: line.clone() });
+                    if let Some(ref mut f) = file {
+                        let log_entry = serde_json::json!({
+                            "ts": chrono::Utc::now().to_rfc3339(),
+                            "type": "stdout",
+                            "content": line
+                        });
+                        if let Ok(serialized) = serde_json::to_string(&log_entry) {
+                            let _ = writeln!(f, "{}", serialized);
+                        }
+                    }
                 }
                 Ok(None) => break,
                 Err(e) => {
@@ -120,12 +284,28 @@ pub async fn cli_run(
     // Stderr reader task
     let app_err = app.clone();
     let evt_err = event_name.clone();
+    let log_path_err = log_path.clone();
     let stderr_task = tokio::spawn(async move {
         let mut lines = BufReader::new(stderr).lines();
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&log_path_err)
+            .ok();
         loop {
             match lines.next_line().await {
                 Ok(Some(line)) => {
-                    let _ = app_err.emit(&evt_err, CliEvent::Stderr { content: line });
+                    let _ = app_err.emit(&evt_err, CliEvent::Stderr { content: line.clone() });
+                    if let Some(ref mut f) = file {
+                        let log_entry = serde_json::json!({
+                            "ts": chrono::Utc::now().to_rfc3339(),
+                            "type": "stderr",
+                            "content": line
+                        });
+                        if let Ok(serialized) = serde_json::to_string(&log_entry) {
+                            let _ = writeln!(f, "{}", serialized);
+                        }
+                    }
                 }
                 Ok(None) => break,
                 Err(e) => {
@@ -141,11 +321,6 @@ pub async fn cli_run(
         }
     });
 
-    // Acquire the registry lock BEFORE spawning the supervisor. This
-    // guarantees we insert the abort handle before the supervisor's own
-    // self-cleanup can race with it (in practice impossible since
-    // child.wait() takes much longer than a sync map insert, but we keep
-    // it tight for correctness).
     let mut sessions = state.sessions.lock().await;
 
     // Supervisor task: owns Child and waits for exit. Aborting it drops the
@@ -154,17 +329,24 @@ pub async fn cli_run(
     let evt_wait = event_name.clone();
     let sessions_arc = state.sessions.clone();
     let session_id_for_task = session_id.clone();
+    let log_path_wait = log_path.clone();
+
     let supervisor = tokio::spawn(async move {
-        let exit_code = match child.wait().await {
-            Ok(status) => status.code().unwrap_or(-1),
-            Err(e) => {
-                let _ = app_wait.emit(
-                    &evt_wait,
-                    CliEvent::Error {
-                        message: format!("wait failed: {}", e),
-                    },
-                );
-                -1
+        let timeout_duration = timeout_ms.map(std::time::Duration::from_millis);
+
+        let wait_result = if let Some(dur) = timeout_duration {
+            match tokio::time::timeout(dur, child.wait()).await {
+                Ok(Ok(status)) => Ok(status.code().unwrap_or(-1)),
+                Ok(Err(e)) => Err(format!("wait failed: {}", e)),
+                Err(_) => {
+                    let _ = child.kill().await;
+                    Err("timeout".to_string())
+                }
+            }
+        } else {
+            match child.wait().await {
+                Ok(status) => Ok(status.code().unwrap_or(-1)),
+                Err(e) => Err(format!("wait failed: {}", e)),
             }
         };
 
@@ -172,7 +354,39 @@ pub async fn cli_run(
         let _ = stdout_task.await;
         let _ = stderr_task.await;
 
-        let _ = app_wait.emit(&evt_wait, CliEvent::Done { exit_code });
+        let (status, exit_code, err_msg) = match wait_result {
+            Ok(code) => {
+                let status = if code == 0 { "completed" } else { "failed" };
+                let err_msg = if code == 0 { None } else { Some("CLI non-zero exit code".to_string()) };
+                let _ = app_wait.emit(&evt_wait, CliEvent::Done { exit_code: code });
+                (status, Some(code), err_msg)
+            }
+            Err(ref e) if e == "timeout" => {
+                let _ = app_wait.emit(&evt_wait, CliEvent::Error { message: "timeout".to_string() });
+                let _ = app_wait.emit(&evt_wait, CliEvent::Done { exit_code: -1 });
+                ("timeout", Some(-1), Some("Task execution timed out".to_string()))
+            }
+            Err(e) => {
+                let _ = app_wait.emit(&evt_wait, CliEvent::Error { message: e.clone() });
+                let _ = app_wait.emit(&evt_wait, CliEvent::Done { exit_code: -1 });
+                ("failed", Some(-1), Some(e))
+            }
+        };
+
+        // Log completion details
+        if let Some(mut f) = std::fs::OpenOptions::new().append(true).open(&log_path_wait).ok() {
+            let log_entry = serde_json::json!({
+                "ts": chrono::Utc::now().to_rfc3339(),
+                "type": "system",
+                "content": format!("Process finished. Status: {}, exit_code: {:?}", status, exit_code)
+            });
+            if let Ok(serialized) = serde_json::to_string(&log_entry) {
+                let _ = writeln!(f, "{}", serialized);
+            }
+        }
+
+        // Update DB task entry
+        let _ = update_task_status(&app_wait, &session_id_for_task, status, exit_code, err_msg.as_deref());
 
         // Remove ourselves from the registry on natural exit
         let mut sessions = sessions_arc.lock().await;
@@ -186,15 +400,175 @@ pub async fn cli_run(
 }
 
 #[tauri::command]
-pub async fn cli_kill(state: State<'_, CliState>, session_id: String) -> Result<bool, String> {
+pub async fn cli_kill(
+    app: AppHandle,
+    state: State<'_, CliState>,
+    session_id: String,
+) -> Result<bool, String> {
     let mut sessions = state.sessions.lock().await;
     if let Some(handle) = sessions.remove(&session_id) {
         handle.abort();
+
+        // Write system log about cancellation
+        let mut log_path = app.path().app_data_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+        log_path.push("cli-logs");
+        log_path.push(format!("{}.jsonl", session_id));
+        if let Some(mut f) = std::fs::OpenOptions::new().append(true).open(&log_path).ok() {
+            let log_entry = serde_json::json!({
+                "ts": chrono::Utc::now().to_rfc3339(),
+                "type": "system",
+                "content": "Process cancelled by user"
+            });
+            if let Ok(serialized) = serde_json::to_string(&log_entry) {
+                let _ = writeln!(f, "{}", serialized);
+            }
+        }
+
+        // Update task status in DB to cancelled
+        let _ = update_task_status(&app, &session_id, "cancelled", Some(-1), Some("Task cancelled by user"));
         Ok(true)
     } else {
         Ok(false)
     }
 }
+#[tauri::command]
+pub async fn cli_task_list(
+    app: AppHandle,
+    group_id: String,
+    limit: Option<i64>,
+    before: Option<String>,
+) -> Result<Vec<CliTask>, String> {
+    let db_path = get_db_path(&app);
+    let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
+
+    let limit_val = limit.unwrap_or(50);
+    let mut query = "SELECT id, group_id, agent_id, agent_name, adapter, status, cwd, prompt, prompt_summary, session_id, pid, exit_code, error_message, log_path, started_at, ended_at, created_at, updated_at 
+                     FROM cli_tasks WHERE group_id = ?1".to_string();
+
+    let mut params_vec: Vec<rusqlite::types::Value> = vec![rusqlite::types::Value::Text(group_id)];
+
+    if let Some(before_time) = before {
+        query.push_str(" AND created_at < ?2");
+        params_vec.push(rusqlite::types::Value::Text(before_time));
+    }
+
+    query.push_str(" ORDER BY created_at DESC LIMIT ?3");
+    params_vec.push(rusqlite::types::Value::Integer(limit_val));
+
+    let mut stmt = conn.prepare(&query).map_err(|e| e.to_string())?;
+    let task_iter = stmt
+        .query_map(rusqlite::params_from_iter(params_vec), |row| {
+            Ok(CliTask {
+                id: row.get(0)?,
+                group_id: row.get(1)?,
+                agent_id: row.get(2)?,
+                agent_name: row.get(3)?,
+                adapter: row.get(4)?,
+                status: row.get(5)?,
+                cwd: row.get(6)?,
+                prompt: row.get(7)?,
+                prompt_summary: row.get(8)?,
+                session_id: row.get(9)?,
+                pid: row.get(10)?,
+                exit_code: row.get(11)?,
+                error_message: row.get(12)?,
+                log_path: row.get(13)?,
+                started_at: row.get(14)?,
+                ended_at: row.get(15)?,
+                created_at: row.get(16)?,
+                updated_at: row.get(17)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut tasks = Vec::new();
+    for task in task_iter {
+        tasks.push(task.map_err(|e| e.to_string())?);
+    }
+    Ok(tasks)
+}
+
+#[tauri::command]
+pub async fn cli_task_get(app: AppHandle, task_id: String) -> Result<Option<CliTask>, String> {
+    let db_path = get_db_path(&app);
+    let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
+
+    let mut stmt = conn.prepare(
+        "SELECT id, group_id, agent_id, agent_name, adapter, status, cwd, prompt, prompt_summary, session_id, pid, exit_code, error_message, log_path, started_at, ended_at, created_at, updated_at 
+         FROM cli_tasks WHERE id = ?1"
+    ).map_err(|e| e.to_string())?;
+
+    let mut task_iter = stmt.query_map(params![task_id], |row| {
+        Ok(CliTask {
+            id: row.get(0)?,
+            group_id: row.get(1)?,
+            agent_id: row.get(2)?,
+            agent_name: row.get(3)?,
+            adapter: row.get(4)?,
+            status: row.get(5)?,
+            cwd: row.get(6)?,
+            prompt: row.get(7)?,
+            prompt_summary: row.get(8)?,
+            session_id: row.get(9)?,
+            pid: row.get(10)?,
+            exit_code: row.get(11)?,
+            error_message: row.get(12)?,
+            log_path: row.get(13)?,
+            started_at: row.get(14)?,
+            ended_at: row.get(15)?,
+            created_at: row.get(16)?,
+            updated_at: row.get(17)?,
+        })
+    }).map_err(|e| e.to_string())?;
+
+    if let Some(task_res) = task_iter.next() {
+        let task = task_res.map_err(|e| e.to_string())?;
+        Ok(Some(task))
+    } else {
+        Ok(None)
+    }
+}
+
+#[tauri::command]
+pub async fn cli_task_read_log(
+    app: AppHandle,
+    task_id: String,
+    since_line: Option<usize>,
+) -> Result<CliTaskLogPage, String> {
+    let mut log_path = app.path().app_data_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    log_path.push("cli-logs");
+    log_path.push(format!("{}.jsonl", task_id));
+
+    if !log_path.exists() {
+        return Ok(CliTaskLogPage {
+            lines: vec![],
+            total_lines: 0,
+        });
+    }
+
+    let file = std::fs::File::open(log_path).map_err(|e| e.to_string())?;
+    let reader = std::io::BufReader::new(file);
+    let mut lines = vec![];
+
+    let start_idx = since_line.unwrap_or(0);
+    let mut current_idx = 0;
+
+    for line_res in std::io::BufRead::lines(reader) {
+        let line = line_res.map_err(|e| e.to_string())?;
+        if current_idx >= start_idx {
+            if let Ok(entry) = serde_json::from_str::<CliTaskLogEntry>(&line) {
+                lines.push(entry);
+            }
+        }
+        current_idx += 1;
+    }
+
+    Ok(CliTaskLogPage {
+        lines,
+        total_lines: current_idx,
+    })
+}
+
 
 #[tauri::command]
 pub async fn cli_check(adapter: String) -> Result<CliCheckResult, String> {

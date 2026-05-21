@@ -219,12 +219,17 @@ export async function request(url: string, options: RequestInit = {}) {
     if (cleanUrl === '/api/cli/run') {
       const body = JSON.parse(options.body as string);
       const {
+        sessionId,
+        groupId,
+        agentId,
+        agentName,
         adapter,
         prompt,
         cwd,
         binary,
         extraArgs,
         env,
+        timeoutMs,
         showStderr = true,
       } = body || {};
 
@@ -235,12 +240,12 @@ export async function request(url: string, options: RequestInit = {}) {
         );
       }
 
-      const sessionId =
+      const finalSessionId = sessionId ||
         (typeof crypto !== 'undefined' && (crypto as any).randomUUID
           ? (crypto as any).randomUUID()
           : `cli-${Date.now()}-${Math.random().toString(36).slice(2)}`) as string;
 
-      const eventName = `cli://${sessionId}`;
+      const eventName = `cli://${finalSessionId}`;
 
       // We build a ReadableStream that closes when we receive the `done`
       // event (or `error`). Listener is detached on close/cancel.
@@ -398,13 +403,18 @@ export async function request(url: string, options: RequestInit = {}) {
           try {
             await invoke('cli_run', {
               args: {
-                sessionId,
+                sessionId: finalSessionId,
+                groupId: groupId || 'group-coding',
+                agentId: agentId || 'cli-generic',
+                agentName: agentName || 'CLI Agent',
                 adapter,
                 prompt,
                 cwd: cwd || null,
                 binary: binary || null,
                 extraArgs: extraArgs || null,
                 env: env || null,
+                timeoutMs: timeoutMs || null,
+                showStderr: showStderr ?? true,
               },
             });
           } catch (e: any) {
@@ -416,7 +426,7 @@ export async function request(url: string, options: RequestInit = {}) {
         async cancel() {
           // Stream consumer aborted — kill the process.
           if (unlistenFn) { try { unlistenFn(); } catch {} unlistenFn = null; }
-          try { await invoke('cli_kill', { sessionId }); } catch { /* ignore */ }
+          try { await invoke('cli_kill', { sessionId: finalSessionId }); } catch { /* ignore */ }
         },
       });
 
@@ -425,9 +435,49 @@ export async function request(url: string, options: RequestInit = {}) {
           'Content-Type': 'text/event-stream',
           'Cache-Control': 'no-cache',
           'Connection': 'keep-alive',
-          'X-CLI-Session-Id': sessionId,
+          'X-CLI-Session-Id': finalSessionId,
         },
       });
+    }
+
+    // 9.1 CLI task list
+    if (cleanUrl === '/api/cli/tasks/list') {
+      const urlObj = new URL(url, 'http://localhost');
+      const groupId = urlObj.searchParams.get('groupId') || '';
+      const limitVal = urlObj.searchParams.get('limit');
+      const limit = limitVal ? parseInt(limitVal, 10) : undefined;
+      const before = urlObj.searchParams.get('before') || undefined;
+
+      const result = await invoke('cli_task_list', { groupId, limit, before });
+      return mockResponse({ success: true, data: result });
+    }
+
+    // 9.2 CLI task get
+    if (cleanUrl === '/api/cli/tasks/get') {
+      const urlObj = new URL(url, 'http://localhost');
+      const taskId = urlObj.searchParams.get('taskId') || '';
+      const result = await invoke('cli_task_get', { taskId });
+      return mockResponse({ success: true, data: result });
+    }
+
+    // 9.3 CLI task read log
+    if (cleanUrl === '/api/cli/tasks/log') {
+      const urlObj = new URL(url, 'http://localhost');
+      const taskId = urlObj.searchParams.get('taskId') || '';
+      const sinceLineVal = urlObj.searchParams.get('sinceLine') || urlObj.searchParams.get('since_line');
+      const sinceLine = sinceLineVal ? parseInt(sinceLineVal, 10) : undefined;
+
+      const result = await invoke('cli_task_read_log', { taskId, sinceLine });
+      return mockResponse({ success: true, data: result });
+    }
+
+    // 9.4 CLI task cancel (kill)
+    if (cleanUrl === '/api/cli/tasks/cancel') {
+      const body = JSON.parse(options.body || '{}');
+      const { taskId, sessionId } = body || {};
+      const targetSessionId = taskId || sessionId || '';
+      const result = await invoke('cli_kill', { sessionId: targetSessionId });
+      return mockResponse({ success: true, data: result });
     }
 
     // 10. CLI Agent availability check — used by member list to grey out

@@ -29,7 +29,10 @@ pub fn run() {
             api::select_directory,
             cli::cli_run,
             cli::cli_kill,
-            cli::cli_check
+            cli::cli_check,
+            cli::cli_task_list,
+            cli::cli_task_get,
+            cli::cli_task_read_log
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

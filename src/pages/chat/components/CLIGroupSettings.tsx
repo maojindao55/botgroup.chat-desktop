@@ -3,10 +3,10 @@
  * 管理 CLI Agent 成员、workspacePath、审批模式、超时等
  */
 import { useState, useEffect } from 'react';
-import { Drawer, Switch, Button, Input, InputNumber, Tooltip } from 'antd';
+import { Drawer, Switch, Button, Input, InputNumber, Tooltip, Tabs, Tag, Modal, Spin } from 'antd';
 import { Avatar as LobeAvatar, ActionIcon } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
-import { FolderOpen, Terminal, Mic, MicOff, CheckCircle2, XCircle } from 'lucide-react';
+import { FolderOpen, Terminal, Mic, MicOff, CheckCircle2, XCircle, Play, FileText, RefreshCw, Clock } from 'lucide-react';
 import { request } from '@/utils/request';
 import type { CLIAgent } from '@/config/aiCharacters';
 import type { CLIGroup, CLIStrategy } from '@/config/groups';
@@ -14,6 +14,33 @@ import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
 import { invoke } from '@tauri-apps/api/core';
 
 type CliStatus = { installed: boolean; version?: string; path?: string };
+
+interface CliTask {
+  id: string;
+  groupId: string;
+  agentId: string;
+  agentName: string;
+  adapter: string;
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'timeout';
+  cwd?: string;
+  prompt: string;
+  promptSummary?: string;
+  sessionId?: string;
+  pid?: number;
+  exitCode?: number;
+  errorMessage?: string;
+  logPath?: string;
+  startedAt?: string;
+  endedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface CliTaskLogEntry {
+  ts: string;
+  type: 'stdout' | 'stderr' | 'system';
+  content: string;
+}
 
 interface CLIGroupSettingsProps {
   open: boolean;
@@ -30,6 +57,7 @@ interface CLIGroupSettingsProps {
   onTimeoutChange: (timeout: number) => void;
   strategy: CLIStrategy;
   onStrategyChange: (strategy: CLIStrategy) => void;
+  onRetryTask?: (agentId: string, prompt: string) => void;
 }
 
 const useStyles = createStyles(({ token, css }) => ({
@@ -107,12 +135,130 @@ const useStyles = createStyles(({ token, css }) => ({
     max-height: calc(100vh - 520px);
     overflow: auto;
   `,
+  tabsContainer: css`
+    .ant-tabs-nav {
+      margin-bottom: 16px;
+    }
+  `,
+  taskItem: css`
+    border: 1px solid ${token.colorBorderSecondary};
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 10px;
+    background: ${token.colorBgContainer};
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    transition: all 0.2s;
+    &:hover {
+      border-color: ${token.colorPrimaryHover};
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    }
+  `,
+  taskHeader: css`
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  `,
+  taskAgent: css`
+    font-weight: 600;
+    font-size: 13px;
+    color: ${token.colorText};
+  `,
+  taskMeta: css`
+    font-size: 11px;
+    color: ${token.colorTextTertiary};
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  `,
+  taskPrompt: css`
+    font-size: 11px;
+    color: ${token.colorTextDescription};
+    background: ${token.colorFillAlter};
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-family: var(--ant-font-family-code);
+    max-height: 50px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  `,
+  taskFooter: css`
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 4px;
+  `,
+  taskActions: css`
+    display: flex;
+    gap: 8px;
+  `,
+  actionBtn: css`
+    font-size: 11px;
+    padding: 2px 8px;
+    height: 24px;
+    border-radius: 4px;
+  `,
+  logConsole: css`
+    background: #141414;
+    border-radius: 8px;
+    padding: 14px;
+    font-family: 'Fira Code', 'Courier New', Courier, monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    max-height: 480px;
+    overflow-y: auto;
+    color: #e3e3e3;
+    border: 1px solid #303030;
+  `,
+  logRow: css`
+    display: flex;
+    gap: 10px;
+    margin-bottom: 4px;
+    &:last-child {
+      margin-bottom: 0;
+    }
+  `,
+  logTimestamp: css`
+    color: #858585;
+    user-select: none;
+    flex-shrink: 0;
+  `,
+  logText: css`
+    word-break: break-all;
+    white-space: pre-wrap;
+  `,
+  logTypeStdout: css`
+    color: #4af626;
+  `,
+  logTypeStderr: css`
+    color: #ff5252;
+  `,
+  logTypeSystem: css`
+    color: #00e5ff;
+    font-weight: 500;
+  `,
+  loadMoreBtn: css`
+    width: 100%;
+    text-align: center;
+    margin: 10px 0;
+    font-size: 12px;
+    color: ${token.colorTextTertiary};
+    cursor: pointer;
+    &:hover {
+      color: ${token.colorPrimary};
+    }
+  `,
 }));
 
 export const CLIGroupSettings = ({
   open,
   onOpenChange,
-  group: _group,
+  group,
   members,
   mutedUsers,
   onToggleMute,
@@ -124,10 +270,31 @@ export const CLIGroupSettings = ({
   onTimeoutChange,
   strategy,
   onStrategyChange,
+  onRetryTask,
 }: CLIGroupSettingsProps) => {
   const { styles, cx } = useStyles();
   const [cliStatus, setCliStatus] = useState<Record<string, CliStatus | 'loading'>>({});
 
+  // History tab states
+  const [activeTab, setActiveTab] = useState<string>('config');
+  const [tasks, setTasks] = useState<CliTask[]>([]);
+  const [loadingTasks, setLoadingTasks] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+
+  // Log viewer states
+  const [logModalOpen, setLogModalOpen] = useState(false);
+  const [activeLogTask, setActiveLogTask] = useState<CliTask | null>(null);
+  const [logEntries, setLogEntries] = useState<CliTaskLogEntry[]>([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+
+  // Reset tab when opening
+  useEffect(() => {
+    if (open) {
+      setActiveTab('config');
+    }
+  }, [open]);
+
+  // Load check status
   useEffect(() => {
     if (!open || members.length === 0) return;
     let cancelled = false;
@@ -159,6 +326,134 @@ export const CLIGroupSettings = ({
     };
   }, [open, members]);
 
+  // Fetch tasks helper
+  const fetchTasks = async (loadMore = false) => {
+    if (loadingTasks) return;
+    setLoadingTasks(true);
+    try {
+      let url = `/api/cli/tasks/list?groupId=${group.id}&limit=10`;
+      if (loadMore && tasks.length > 0) {
+        const lastTask = tasks[tasks.length - 1];
+        url += `&before=${encodeURIComponent(lastTask.createdAt)}`;
+      }
+      const res = await request(url);
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        if (loadMore) {
+          setTasks(prev => [...prev, ...json.data]);
+        } else {
+          setTasks(json.data);
+        }
+        setHasMore(json.data.length === 10);
+      }
+    } catch (e) {
+      console.error('Failed to fetch task history:', e);
+    } finally {
+      setLoadingTasks(false);
+    }
+  };
+
+  // Fetch tasks on history tab active
+  useEffect(() => {
+    if (open && activeTab === 'history') {
+      fetchTasks(false);
+    }
+  }, [open, activeTab, group.id]);
+
+  // Fetch logs helper
+  const fetchLogs = async (taskId: string) => {
+    setLoadingLogs(true);
+    try {
+      const res = await request(`/api/cli/tasks/log?taskId=${taskId}`);
+      const json = await res.json();
+      if (json.success && json.data) {
+        setLogEntries(json.data.lines || []);
+      }
+    } catch (e) {
+      console.error('Failed to fetch logs:', e);
+    } finally {
+      setLoadingLogs(false);
+    }
+  };
+
+  // Real-time logs polling for active running tasks
+  useEffect(() => {
+    if (!logModalOpen || !activeLogTask) return;
+
+    fetchLogs(activeLogTask.id);
+
+    if (activeLogTask.status === 'running') {
+      const timer = setInterval(() => {
+        fetchLogs(activeLogTask.id);
+        request(`/api/cli/tasks/get?taskId=${activeLogTask.id}`)
+          .then(res => res.json())
+          .then(json => {
+            if (json.success && json.data) {
+              setActiveLogTask(json.data);
+            }
+          })
+          .catch(console.error);
+      }, 2000);
+      return () => clearInterval(timer);
+    }
+  }, [logModalOpen, activeLogTask?.id, activeLogTask?.status]);
+
+  // SQLite CURRENT_TIMESTAMP formatting helpers
+  const parseSqliteDatetime = (str?: string) => {
+    if (!str) return null;
+    const isoStr = str.replace(' ', 'T') + 'Z';
+    return new Date(isoStr);
+  };
+
+  const formatDuration = (startedAt?: string, endedAt?: string) => {
+    if (!startedAt) return '';
+    const start = parseSqliteDatetime(startedAt);
+    if (!start) return '';
+    const end = endedAt ? parseSqliteDatetime(endedAt) : new Date();
+    if (!end) return '';
+
+    const diffMs = end.getTime() - start.getTime();
+    if (diffMs < 0) return '0s';
+    const diffSec = diffMs / 1000;
+    if (diffSec < 60) {
+      return `${diffSec.toFixed(1)}s`;
+    }
+    const diffMin = Math.floor(diffSec / 60);
+    const remSec = Math.round(diffSec % 60);
+    return `${diffMin}m ${remSec}s`;
+  };
+
+  const formatDateTime = (str?: string) => {
+    const d = parseSqliteDatetime(str);
+    if (!d) return '';
+    return d.toLocaleString(undefined, {
+      month: 'numeric',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+  };
+
+  const getStatusTag = (status: string) => {
+    switch (status) {
+      case 'completed':
+        return <Tag color="success">已完成</Tag>;
+      case 'running':
+        return <Tag color="processing">运行中</Tag>;
+      case 'failed':
+        return <Tag color="error">失败</Tag>;
+      case 'cancelled':
+        return <Tag color="warning">已取消</Tag>;
+      case 'timeout':
+        return <Tag color="error">超时</Tag>;
+      case 'queued':
+        return <Tag color="default">排队中</Tag>;
+      default:
+        return <Tag>{status}</Tag>;
+    }
+  };
+
   const strategyDescriptions: Record<CLIStrategy, string> = {
     sequential: '逐个 CLI Agent 依次执行任务',
     router: '根据任务特征自动选择最合适的 CLI Agent',
@@ -166,192 +461,411 @@ export const CLIGroupSettings = ({
     pipeline: '按顺序形成流水线：生成→审查→优化',
   };
 
-  return (
-    <Drawer
-      title="CLI Agent 配置"
-      placement="right"
-      open={open}
-      onClose={() => onOpenChange(false)}
-      width={400}
-    >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-        {/* workspace */}
-        <div className={styles.panel}>
-          <div className={styles.panelHeader}>
-            <FolderOpen size={16} />
-            <span>本地 Workspace</span>
+  const tabItems = [
+    {
+      key: 'config',
+      label: '基本设置',
+      children: (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {/* workspace */}
+          <div className={styles.panel}>
+            <div className={styles.panelHeader}>
+              <FolderOpen size={16} />
+              <span>本地 Workspace</span>
+            </div>
+            <div className={styles.panelDesc}>
+              CLI Agent 将在此目录下执行命令，支持选择或输入绝对路径
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Input
+                placeholder="/Users/you/projects/your-repo"
+                value={workspacePath}
+                onChange={(e) => onWorkspacePathChange(e.target.value)}
+                style={{ flex: 1, fontFamily: 'var(--ant-font-family-code)' }}
+              />
+              <Button
+                type="default"
+                icon={<FolderOpen size={14} />}
+                onClick={async () => {
+                  try {
+                    const selected = await invoke<string | null>('select_directory');
+                    if (selected) onWorkspacePathChange(selected);
+                  } catch (e) {
+                    console.error('Failed to select directory:', e);
+                  }
+                }}
+              >
+                选择
+              </Button>
+            </div>
           </div>
-          <div className={styles.panelDesc}>
-            CLI Agent 将在此目录下执行命令，支持选择或输入绝对路径
+
+          {/* approval */}
+          <div className={styles.panel}>
+            <div className={styles.rowBetween}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 500 }}>自动审批</div>
+                <div className={styles.panelDesc} style={{ marginTop: 4 }}>开启后 Agent 自动执行，无需确认</div>
+              </div>
+              <Switch
+                checked={approvalMode === 'auto'}
+                onChange={(v) => onApprovalModeChange(v ? 'auto' : 'ask')}
+              />
+            </div>
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <Input
-              placeholder="/Users/you/projects/your-repo"
-              value={workspacePath}
-              onChange={(e) => onWorkspacePathChange(e.target.value)}
-              style={{ flex: 1, fontFamily: 'var(--ant-font-family-code)' }}
-            />
-            <Button
-              type="default"
-              icon={<FolderOpen size={14} />}
-              onClick={async () => {
-                try {
-                  const selected = await invoke<string | null>('select_directory');
-                  if (selected) onWorkspacePathChange(selected);
-                } catch (e) {
-                  console.error('Failed to select directory:', e);
-                }
+
+          {/* timeout */}
+          <div className={styles.panel}>
+            <div style={{ fontSize: 14, fontWeight: 500 }}>执行超时</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <InputNumber
+                value={timeout / 1000}
+                onChange={(v) => onTimeoutChange(Number(v) * 1000)}
+                min={30}
+                max={600}
+                style={{ width: 100 }}
+              />
+              <span className={styles.panelDesc}>秒</span>
+            </div>
+          </div>
+
+          {/* strategy */}
+          <div className={styles.panel}>
+            <div style={{ fontSize: 14, fontWeight: 500 }}>执行策略</div>
+            <div className={styles.strategyGrid}>
+              {[
+                { value: 'sequential' as const, label: '顺序执行' },
+                { value: 'router' as const, label: '智能路由' },
+                { value: 'race' as const, label: '竞争模式' },
+                { value: 'pipeline' as const, label: '流水线' },
+              ].map((item) => (
+                <button
+                  key={item.value}
+                  onClick={() => onStrategyChange(item.value)}
+                  className={cx(
+                    styles.strategyBtn,
+                    strategy === item.value && styles.strategyBtnActive,
+                  )}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+            <p className={styles.panelDesc} style={{ marginTop: 4 }}>
+              {strategyDescriptions[strategy]}
+            </p>
+          </div>
+
+          {/* members */}
+          <div>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: 12,
               }}
             >
-              选择
-            </Button>
-          </div>
-        </div>
-
-        {/* approval */}
-        <div className={styles.panel}>
-          <div className={styles.rowBetween}>
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 500 }}>自动审批</div>
-              <div className={styles.panelDesc} style={{ marginTop: 4 }}>开启后 Agent 自动执行，无需确认</div>
+              <span style={{ fontSize: 14, fontWeight: 500 }}>CLI Agents（{members.length}）</span>
             </div>
-            <Switch
-              checked={approvalMode === 'auto'}
-              onChange={(v) => onApprovalModeChange(v ? 'auto' : 'ask')}
-            />
-          </div>
-        </div>
-
-        {/* timeout */}
-        <div className={styles.panel}>
-          <div style={{ fontSize: 14, fontWeight: 500 }}>执行超时</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <InputNumber
-              value={timeout / 1000}
-              onChange={(v) => onTimeoutChange(Number(v) * 1000)}
-              min={30}
-              max={600}
-              style={{ width: 100 }}
-            />
-            <span className={styles.panelDesc}>秒</span>
-          </div>
-        </div>
-
-        {/* strategy */}
-        <div className={styles.panel}>
-          <div style={{ fontSize: 14, fontWeight: 500 }}>执行策略</div>
-          <div className={styles.strategyGrid}>
-            {[
-              { value: 'sequential' as const, label: '顺序执行' },
-              { value: 'router' as const, label: '智能路由' },
-              { value: 'race' as const, label: '竞争模式' },
-              { value: 'pipeline' as const, label: '流水线' },
-            ].map((item) => (
-              <button
-                key={item.value}
-                onClick={() => onStrategyChange(item.value)}
-                className={cx(
-                  styles.strategyBtn,
-                  strategy === item.value && styles.strategyBtnActive,
-                )}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-          <p className={styles.panelDesc} style={{ marginTop: 4 }}>
-            {strategyDescriptions[strategy]}
-          </p>
-        </div>
-
-        {/* members */}
-        <div>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: 12,
-            }}
-          >
-            <span style={{ fontSize: 14, fontWeight: 500 }}>CLI Agents（{members.length}）</span>
-          </div>
-          <div className={styles.scrollList}>
-            {members.map((agent) => {
-              const status = cliStatus[agent.id];
-              const a = getAvatarData(agent.name);
-              const url = resolveAvatarByName(agent.name, agent.avatar, 36);
-              const muted = mutedUsers.includes(agent.id);
-              return (
-                <div key={agent.id} className={styles.memberRow}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <LobeAvatar
-                      shape="circle"
-                      avatar={url || a.text}
-                      background={a.backgroundColor}
-                      size={36}
-                    />
-                    <div style={{ display: 'flex', flexDirection: 'column' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontSize: 14, fontWeight: 500 }}>{agent.name}</span>
-                        <span className={styles.adapterTag}>
-                          <Terminal size={10} /> {agent.cli.adapter}
-                        </span>
+            <div className={styles.scrollList}>
+              {members.map((agent) => {
+                const status = cliStatus[agent.id];
+                const a = getAvatarData(agent.name);
+                const url = resolveAvatarByName(agent.name, agent.avatar, 36);
+                const muted = mutedUsers.includes(agent.id);
+                return (
+                  <div key={agent.id} className={styles.memberRow}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <LobeAvatar
+                        shape="circle"
+                        avatar={url || a.text}
+                        background={a.backgroundColor}
+                        size={36}
+                      />
+                      <div style={{ display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontSize: 14, fontWeight: 500 }}>{agent.name}</span>
+                          <span className={styles.adapterTag}>
+                            <Terminal size={10} /> {agent.cli.adapter}
+                          </span>
+                        </div>
+                        {status === 'loading' && (
+                          <span style={{ fontSize: 10, opacity: 0.6, marginTop: 4 }}>检测中...</span>
+                        )}
+                        {status && status !== 'loading' && status.installed && (
+                          <span
+                            style={{
+                              fontSize: 10,
+                              color: '#22c55e',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 2,
+                              marginTop: 4,
+                            }}
+                          >
+                            <CheckCircle2 size={10} />
+                            {status.version || '已安装'}
+                          </span>
+                        )}
+                        {status && status !== 'loading' && !status.installed && (
+                          <span
+                            style={{
+                              fontSize: 10,
+                              color: '#ef4444',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 2,
+                              marginTop: 4,
+                            }}
+                          >
+                            <XCircle size={10} />
+                            未安装
+                          </span>
+                        )}
+                        {muted && (
+                          <span style={{ fontSize: 10, color: '#ef4444', marginTop: 4 }}>已禁言</span>
+                        )}
                       </div>
-                      {status === 'loading' && (
-                        <span style={{ fontSize: 10, opacity: 0.6, marginTop: 4 }}>检测中...</span>
-                      )}
-                      {status && status !== 'loading' && status.installed && (
-                        <span
-                          style={{
-                            fontSize: 10,
-                            color: '#22c55e',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 2,
-                            marginTop: 4,
+                    </div>
+                    <Tooltip title={muted ? '取消禁言' : '禁言'}>
+                      <ActionIcon
+                        icon={muted ? MicOff : Mic}
+                        size="small"
+                        onClick={() => onToggleMute(agent.id)}
+                        style={{ color: muted ? '#ef4444' : '#22c55e' }}
+                        title=""
+                      />
+                    </Tooltip>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )
+    },
+    {
+      key: 'history',
+      label: '任务历史',
+      children: (
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <span style={{ fontSize: 13, opacity: 0.8 }}>历史执行记录</span>
+            <Button
+              type="text"
+              size="small"
+              icon={<RefreshCw size={14} />}
+              onClick={() => fetchTasks(false)}
+              loading={loadingTasks}
+            />
+          </div>
+
+          {loadingTasks && tasks.length === 0 ? (
+            <div style={{ padding: '40px 0', textAlign: 'center' }}>
+              <Spin />
+            </div>
+          ) : tasks.length === 0 ? (
+            <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--ant-color-text-tertiary)' }}>
+              暂无执行记录
+            </div>
+          ) : (
+            <div style={{ maxHeight: 'calc(100vh - 220px)', overflowY: 'auto', paddingRight: 4 }}>
+              {tasks.map(task => (
+                <div key={task.id} className={styles.taskItem}>
+                  <div className={styles.taskHeader}>
+                    <span className={styles.taskAgent}>{task.agentName}</span>
+                    {getStatusTag(task.status)}
+                  </div>
+
+                  <div className={styles.taskMeta}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      <Terminal size={12} />
+                      {task.adapter}
+                    </span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      <Clock size={12} />
+                      {formatDuration(task.startedAt, task.endedAt)}
+                    </span>
+                    <span>{formatDateTime(task.createdAt)}</span>
+                  </div>
+
+                  <div className={styles.taskPrompt} title={task.prompt}>
+                    {task.prompt}
+                  </div>
+
+                  <div className={styles.taskFooter}>
+                    <span style={{ fontSize: 10, color: 'var(--ant-color-text-tertiary)', fontFamily: 'monospace' }}>
+                      ID: {task.id.slice(0, 8)}
+                    </span>
+                    <div className={styles.taskActions}>
+                      <Button
+                        type="default"
+                        size="small"
+                        icon={<FileText size={12} />}
+                        className={styles.actionBtn}
+                        onClick={() => {
+                          setActiveLogTask(task);
+                          setLogModalOpen(true);
+                        }}
+                      >
+                        日志
+                      </Button>
+                      {['failed', 'cancelled', 'timeout', 'completed'].includes(task.status) && (
+                        <Button
+                          type="primary"
+                          size="small"
+                          icon={<Play size={12} />}
+                          className={styles.actionBtn}
+                          style={{ background: '#ff6600', borderColor: '#ff6600' }}
+                          onClick={() => {
+                            if (onRetryTask) {
+                              onRetryTask(task.agentId, task.prompt);
+                            }
                           }}
                         >
-                          <CheckCircle2 size={10} />
-                          {status.version || '已安装'}
-                        </span>
-                      )}
-                      {status && status !== 'loading' && !status.installed && (
-                        <span
-                          style={{
-                            fontSize: 10,
-                            color: '#ef4444',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 2,
-                            marginTop: 4,
-                          }}
-                        >
-                          <XCircle size={10} />
-                          未安装
-                        </span>
-                      )}
-                      {muted && (
-                        <span style={{ fontSize: 10, color: '#ef4444', marginTop: 4 }}>已禁言</span>
+                          重试
+                        </Button>
                       )}
                     </div>
                   </div>
-                  <Tooltip title={muted ? '取消禁言' : '禁言'}>
-                    <ActionIcon
-                      icon={muted ? MicOff : Mic}
-                      size="small"
-                      onClick={() => onToggleMute(agent.id)}
-                      style={{ color: muted ? '#ef4444' : '#22c55e' }}
-                      title=""
-                    />
-                  </Tooltip>
+                </div>
+              ))}
+
+              {hasMore && (
+                <div className={styles.loadMoreBtn} onClick={() => fetchTasks(true)}>
+                  {loadingTasks ? <Spin size="small" /> : '加载更多...'}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )
+    }
+  ];
+
+  return (
+    <>
+      <Drawer
+        title="CLI Agent 配置"
+        placement="right"
+        open={open}
+        onClose={() => onOpenChange(false)}
+        width={400}
+      >
+        <div className={styles.tabsContainer}>
+          <Tabs
+            activeKey={activeTab}
+            onChange={setActiveTab}
+            items={tabItems}
+          />
+        </div>
+      </Drawer>
+
+      <Modal
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingRight: 24 }}>
+            <span>任务执行日志</span>
+            {activeLogTask && (
+              <span style={{ fontSize: 12, fontWeight: 'normal', color: 'var(--ant-color-text-secondary)' }}>
+                {activeLogTask.agentName} ({activeLogTask.adapter}) | 状态: {activeLogTask.status}
+              </span>
+            )}
+          </div>
+        }
+        open={logModalOpen}
+        onCancel={() => {
+          setLogModalOpen(false);
+          setActiveLogTask(null);
+          setLogEntries([]);
+        }}
+        footer={[
+          activeLogTask?.status === 'running' && (
+            <Button
+              key="cancel-task"
+              danger
+              onClick={async () => {
+                try {
+                  await request('/api/cli/tasks/cancel', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ taskId: activeLogTask.id }),
+                  });
+                  const res = await request(`/api/cli/tasks/get?taskId=${activeLogTask.id}`);
+                  const json = await res.json();
+                  if (json.success && json.data) {
+                    setActiveLogTask(json.data);
+                  }
+                } catch (e) {
+                  console.error('Failed to cancel task from log modal:', e);
+                }
+              }}
+            >
+              停止运行
+            </Button>
+          ),
+          <Button 
+            key="refresh" 
+            onClick={() => activeLogTask && fetchLogs(activeLogTask.id)}
+            loading={loadingLogs}
+          >
+            刷新
+          </Button>,
+          <Button key="close" type="primary" onClick={() => setLogModalOpen(false)}>
+            关闭
+          </Button>
+        ]}
+        width={700}
+        destroyOnClose
+      >
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 12, color: 'var(--ant-color-text-secondary)', marginBottom: 4 }}>
+            <strong>执行命令/提示词:</strong>
+          </div>
+          <div style={{ 
+            fontSize: 12, 
+            padding: '8px 12px', 
+            background: 'var(--ant-color-fill-alter)', 
+            borderRadius: 6, 
+            fontFamily: 'monospace',
+            maxHeight: 80,
+            overflowY: 'auto',
+            whiteSpace: 'pre-wrap'
+          }}>
+            {activeLogTask?.prompt}
+          </div>
+        </div>
+
+        {loadingLogs && logEntries.length === 0 ? (
+          <div style={{ padding: '60px 0', textAlign: 'center' }}>
+            <Spin tip="加载日志中..." />
+          </div>
+        ) : logEntries.length === 0 ? (
+          <div className={styles.logConsole}>
+            <div className={cx(styles.logRow, styles.logTypeSystem)}>
+              <span>暂无日志输出</span>
+            </div>
+          </div>
+        ) : (
+          <div className={styles.logConsole}>
+            {logEntries.map((entry, idx) => {
+              let typeClass = styles.logTypeStdout;
+              if (entry.type === 'stderr') typeClass = styles.logTypeStderr;
+              else if (entry.type === 'system') typeClass = styles.logTypeSystem;
+              
+              const timeStr = entry.ts ? entry.ts.split('T')[1]?.slice(0, 8) || entry.ts : '';
+
+              return (
+                <div key={idx} className={styles.logRow}>
+                  {timeStr && <span className={styles.logTimestamp}>[{timeStr}]</span>}
+                  <span className={cx(styles.logText, typeClass)}>{entry.content}</span>
                 </div>
               );
             })}
           </div>
-        </div>
-      </div>
-    </Drawer>
+        )}
+      </Modal>
+    </>
   );
 };
 
