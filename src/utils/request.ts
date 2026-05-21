@@ -274,7 +274,7 @@ export async function request(url: string, options: RequestInit = {}) {
           const ensureDetailsOpen = () => {
             if (!detailsOpen) {
               detailsOpen = true;
-              enqueueChunk(`\n<details><summary>⚙️ 执行过程</summary>\n\n`);
+              enqueueChunk(`\n<details><summary>⚙️ Ran ${stepCount || 1} command${stepCount > 1 ? 's' : ''}</summary>\n\n`);
             }
           };
 
