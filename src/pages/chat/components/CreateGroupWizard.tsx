@@ -7,14 +7,15 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
-import { Bot, Terminal, Puzzle, ChevronRight, ChevronLeft, Plus, Trash2, Check } from 'lucide-react';
+import { Bot, Terminal, Puzzle, ChevronRight, ChevronLeft, Plus, Trash2, Check, FolderOpen } from 'lucide-react';
 import { cn } from "@/lib/utils";
 import { getAvailableAICharacters, getAvailableCLIAgents } from '@/config/aiCharacters';
 import type { AICharacter, CLIAgent } from '@/config/aiCharacters';
 import type {
   Group, AIGroup, CLIGroup, AgentGroup, AgentMember, AgentStrategy, AgentTool,
 } from '@/config/groups';
-import { getAvatarData } from '@/utils/avatar';
+import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
+import { invoke } from '@tauri-apps/api/core';
 
 
 // 内置工具定义
@@ -162,26 +163,26 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
       <p className="text-sm text-muted-foreground">选择你要创建的群聊类型</p>
       <div className="grid grid-cols-1 gap-3">
         {[
-          { type: 'ai' as const, icon: Bot, title: '🤖 AI 群聊', desc: '多个 LLM 角色闲聊讨论、头脑风暴' },
-          { type: 'cli' as const, icon: Terminal, title: '🛠️ CLI Agent 群', desc: 'Codex/Claude/OpenCode 本地执行代码' },
-          { type: 'agent' as const, icon: Puzzle, title: '🧩 Agent 群聊', desc: '自定义 LLM Agent 协作，配置API+策略' },
+          { type: 'ai' as const, icon: Bot, title: 'AI 群聊', desc: '多个 LLM 角色闲聊讨论、头脑风暴' },
+          { type: 'cli' as const, icon: Terminal, title: 'CLI Agent 群', desc: 'Codex/Claude/OpenCode 本地执行代码' },
+          { type: 'agent' as const, icon: Puzzle, title: 'Agent 群聊', desc: '自定义 LLM Agent 协作，配置API+策略' },
         ].map(item => (
           <button
             key={item.type}
             onClick={() => setGroupType(item.type)}
             className={cn(
-              "flex items-center gap-3 p-4 rounded-xl border-2 text-left transition-all",
+              "flex items-start gap-3.5 p-4 rounded-xl border-2 text-left transition-all",
               groupType === item.type
                 ? "border-[#ff6600] bg-orange-50 dark:bg-orange-950/20"
                 : "border-border hover:border-muted-foreground/30 hover:bg-accent/30"
             )}
           >
-            <item.icon className={cn("w-6 h-6 flex-shrink-0", groupType === item.type ? "text-[#ff6600]" : "text-muted-foreground")} />
-            <div>
-              <div className="font-medium text-sm">{item.title}</div>
-              <div className="text-xs text-muted-foreground">{item.desc}</div>
+            <item.icon className={cn("w-5 h-5 mt-0.5 flex-shrink-0", groupType === item.type ? "text-[#ff6600]" : "text-muted-foreground")} />
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold text-sm leading-tight mb-1">{item.title}</div>
+              <div className="text-xs text-muted-foreground leading-relaxed">{item.desc}</div>
             </div>
-            {groupType === item.type && <Check className="w-4 h-4 ml-auto text-[#ff6600]" />}
+            {groupType === item.type && <Check className="w-4 h-4 mt-0.5 ml-2 text-[#ff6600]" />}
           </button>
         ))}
       </div>
@@ -232,7 +233,9 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
                   )}
                 >
                   <Avatar className="w-8 h-8">
-                    {char.avatar ? <AvatarImage src={char.avatar} /> : (
+                    {resolveAvatarByName(char.name, char.avatar) ? (
+                      <AvatarImage src={resolveAvatarByName(char.name, char.avatar)} className="object-cover" />
+                    ) : (
                       <AvatarFallback style={{ backgroundColor: avatarData.backgroundColor, color: 'white' }} className="text-xs">
                         {avatarData.text}
                       </AvatarFallback>
@@ -262,6 +265,7 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
         <div className="space-y-2">
           {cliList.map(agent => {
             const selected = selectedCLIMembers.includes(agent.id);
+            const avatarData = getAvatarData(agent.name);
             return (
               <button
                 key={agent.id}
@@ -271,16 +275,24 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
                   );
                 }}
                 className={cn(
-                  "w-full flex items-center gap-3 p-3 rounded-lg border transition-all text-left",
+                  "w-full flex items-center gap-3 p-2.5 rounded-lg border transition-all text-left",
                   selected ? "border-[#ff6600] bg-orange-50 dark:bg-orange-950/20" : "border-border hover:bg-accent/50"
                 )}
               >
-                <Terminal className={cn("w-5 h-5", selected ? "text-[#ff6600]" : "text-muted-foreground")} />
-                <div className="flex-1">
-                  <div className="text-sm font-medium">{agent.name}</div>
-                  <div className="text-xs text-muted-foreground">adapter: {agent.cli.adapter}</div>
+                <Avatar className="w-8 h-8">
+                  {resolveAvatarByName(agent.name, agent.avatar) ? (
+                    <AvatarImage src={resolveAvatarByName(agent.name, agent.avatar)} className="object-cover" />
+                  ) : (
+                    <AvatarFallback style={{ backgroundColor: avatarData.backgroundColor, color: 'white' }} className="text-xs">
+                      <Terminal className="w-4 h-4" />
+                    </AvatarFallback>
+                  )}
+                </Avatar>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium truncate">{agent.name}</div>
+                  <div className="text-xs text-muted-foreground truncate">adapter: {agent.cli.adapter}</div>
                 </div>
-                {selected && <Check className="w-4 h-4 text-[#ff6600]" />}
+                {selected && <Check className="w-4 h-4 text-[#ff6600] flex-shrink-0" />}
               </button>
             );
           })}
@@ -424,9 +436,33 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
     <div className="space-y-4">
       <div>
         <label className="text-sm font-medium mb-1.5 block">Workspace 路径 *</label>
-        <Input placeholder="/Users/you/projects/your-repo" value={workspacePath}
-          onChange={e => setWorkspacePath(e.target.value)} className="font-mono text-sm" />
-        <p className="text-xs text-muted-foreground mt-1">CLI Agent 将在此目录执行，需要绝对路径</p>
+        <div className="flex gap-2">
+          <Input
+            placeholder="/Users/you/projects/your-repo"
+            value={workspacePath}
+            onChange={e => setWorkspacePath(e.target.value)}
+            className="font-mono text-sm flex-1"
+          />
+          <Button
+            variant="outline"
+            type="button"
+            onClick={async () => {
+              try {
+                const selected = await invoke<string | null>('select_directory');
+                if (selected) {
+                  setWorkspacePath(selected);
+                }
+              } catch (e) {
+                console.error("Failed to select directory:", e);
+              }
+            }}
+            className="flex items-center gap-1 flex-shrink-0 text-xs h-9"
+          >
+            <FolderOpen className="w-3.5 h-3.5" />
+            <span>选择</span>
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground mt-1.5">CLI Agent 将在此目录执行，支持选择或输入绝对路径</p>
       </div>
       <div className="p-3 bg-muted/50 rounded-lg">
         <div className="flex items-center justify-between">
@@ -522,23 +558,27 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
           {step === 'config' && renderConfigStep()}
         </div>
 
-        <div className="flex items-center justify-between pt-3 border-t">
-          {step !== 'type' ? (
-            <Button variant="ghost" size="sm" onClick={prevStep}>
-              <ChevronLeft className="w-4 h-4 mr-1" /> 上一步
-            </Button>
-          ) : <div />}
-          {step === 'config' ? (
-            <Button size="sm" onClick={handleCreate} disabled={!canProceed()}
-              className="bg-[#ff6600] hover:bg-[#e65c00] text-white">
-              创建群聊
-            </Button>
-          ) : (
-            <Button size="sm" onClick={nextStep} disabled={!canProceed()}
-              className="bg-[#ff6600] hover:bg-[#e65c00] text-white">
-              下一步 <ChevronRight className="w-4 h-4 ml-1" />
-            </Button>
-          )}
+        <div className="flex items-center justify-between pt-4 mt-2 border-t">
+          <div>
+            {step !== 'type' && (
+              <Button variant="ghost" size="sm" onClick={prevStep} className="-ml-2 text-muted-foreground hover:text-foreground">
+                <ChevronLeft className="w-4 h-4 mr-1" /> 上一步
+              </Button>
+            )}
+          </div>
+          <div>
+            {step === 'config' ? (
+              <Button size="sm" onClick={handleCreate} disabled={!canProceed()}
+                className="bg-[#ff6600] hover:bg-[#e65c00] text-white font-medium px-4">
+                创建群聊
+              </Button>
+            ) : (
+              <Button size="sm" onClick={nextStep} disabled={!canProceed()}
+                className="bg-[#ff6600] hover:bg-[#e65c00] text-white font-medium px-4">
+                下一步 <ChevronRight className="w-4 h-4 ml-1" />
+              </Button>
+            )}
+          </div>
         </div>
       </DialogContent>
     </Dialog>

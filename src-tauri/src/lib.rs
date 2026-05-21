@@ -26,6 +26,7 @@ pub fn run() {
             api::join_claw_group,
             api::get_claw_messages,
             api::send_claw_message,
+            api::select_directory,
             cli::cli_run,
             cli::cli_kill,
             cli::cli_check

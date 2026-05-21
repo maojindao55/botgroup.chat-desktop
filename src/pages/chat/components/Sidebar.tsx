@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
-import { MessageSquareIcon, PlusCircleIcon, MenuIcon, PanelLeftCloseIcon, Sun, Moon, Monitor, Bot, Terminal, Puzzle } from "lucide-react";
+import { MessageSquareIcon, PlusCircleIcon, MenuIcon, PanelLeftCloseIcon, Sun, Moon, Monitor, Bot, Terminal, Puzzle, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import GitHubButton from 'react-github-btn';
 import '@fontsource/audiowide';
 import { UserSection } from './UserSection';
 import { useTheme } from '@/hooks/use-theme';
 import CreateGroupWizard from './CreateGroupWizard';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 import type { Group } from '@/config/groups';
 
@@ -21,11 +22,30 @@ const getGroupIcon = (group: Group) => {
   }
 };
 
-// 群类型分类标题
-const GROUP_TYPE_LABELS: Record<string, string> = {
-  ai: '🤖 AI 群聊',
-  cli: '🛠️ CLI Agent',
-  agent: '🧩 Agent 群',
+// 根据群聊类型获取 Tag 标签
+const getGroupTag = (type: string) => {
+  switch (type) {
+    case 'ai':
+      return (
+        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[#ff6600]/10 text-[#ff6600]">
+          AI
+        </span>
+      );
+    case 'cli':
+      return (
+        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+          CLI
+        </span>
+      );
+    case 'agent':
+      return (
+        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400">
+          Agent
+        </span>
+      );
+    default:
+      return null;
+  }
 };
 
 interface SidebarProps {
@@ -58,20 +78,18 @@ const Sidebar = ({ isOpen, toggleSidebar, selectedGroupIndex = 0, onSelectGroup,
   };
 
 
-  // 按类型分组
-  const groupsByType = groups.reduce<Record<string, { group: Group; originalIndex: number }[]>>((acc, group, idx) => {
-    const type = group.type || 'ai';
-    if (!acc[type]) acc[type] = [];
-    acc[type].push({ group, originalIndex: idx });
-    return acc;
-  }, {});
+  // 搜索状态
+  const [searchQuery, setSearchQuery] = useState('');
 
-  // 排序：ai → cli → agent
-  const typeOrder = ['ai', 'cli', 'agent'];
-  const sortedTypes = typeOrder.filter(t => groupsByType[t]?.length > 0);
+  // 过滤群聊并保留原始索引
+  const filteredGroups = groups
+    .map((group, originalIndex) => ({ group, originalIndex }))
+    .filter(({ group }) =>
+      group.name.toLowerCase().includes(searchQuery.toLowerCase())
+    );
 
   return (
-    <>
+    <TooltipProvider>
       {/* 创建群聊向导 */}
       <CreateGroupWizard
         open={showCreateWizard}
@@ -110,79 +128,150 @@ const Sidebar = ({ isOpen, toggleSidebar, selectedGroupIndex = 0, onSelectGroup,
             </div>
           </div>
 
+          {/* 搜索框 */}
+          {isOpen ? (
+            <div className="px-3 pt-3 pb-1 relative flex-none">
+              <div className="relative flex items-center bg-muted/50 dark:bg-zinc-800/50 border border-border/40 focus-within:border-[#ff6600]/40 rounded-xl transition-all h-9">
+                <Search className="absolute left-2.5 h-3.5 w-3.5 text-muted-foreground/60" />
+                <input
+                  type="text"
+                  placeholder="搜索群聊..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full bg-transparent border-0 outline-none text-xs pl-8 pr-7 text-foreground placeholder:text-muted-foreground/50 h-full"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2.5 text-muted-foreground/60 hover:text-foreground p-0.5 rounded-full hover:bg-muted"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="px-2 pt-2 pb-1 flex justify-center flex-none">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={toggleSidebar}
+                className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent/60"
+              >
+                <Search className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
 
           <div className="flex-1 overflow-auto p-2">
             <nav className="space-y-1">
-              {sortedTypes.map(type => (
-                <div key={type}>
-                  {/* 分类标题 - 仅侧边栏展开时显示 */}
-                  <div className={cn(
-                    "px-3 py-1.5 transition-all duration-200",
-                    isOpen ? "opacity-100" : "opacity-0 h-0 overflow-hidden"
-                  )}>
-                    <span className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider">
-                      {GROUP_TYPE_LABELS[type]}
-                    </span>
-                  </div>
-
-                  {groupsByType[type].map(({ group, originalIndex }) => {
-                    const Icon = getGroupIcon(group);
-                    return (
-                      <a
-                        key={group.id}
-                        href="#"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          onSelectGroup?.(originalIndex);
-                        }}
-                        className={cn(
-                          "flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-all group relative overflow-hidden",
-                          !isOpen && "md:justify-center",
-                          selectedGroupIndex === originalIndex
-                            ? "bg-[#ff6600]/10 text-[#ff6600] font-semibold dark:bg-[#ff6600]/15"
-                            : "text-muted-foreground hover:text-foreground hover:bg-accent/40"
-                        )}
-                      >
-                        {selectedGroupIndex === originalIndex && (
-                          <span className="absolute left-0 top-2.5 bottom-2.5 w-0.5 bg-[#ff6600] rounded-r-full" />
-                        )}
-                        <Icon
-                          className={cn(
-                            "h-4 w-4 flex-shrink-0 transition-transform group-hover:scale-110 duration-200",
-                            selectedGroupIndex === originalIndex ? "text-[#ff6600]" : "text-muted-foreground/80 group-hover:text-foreground"
-                          )}
-                        />
-                        <span className={cn(
-                          "transition-all duration-200 whitespace-nowrap overflow-hidden text-ellipsis",
-                          isOpen ? "opacity-100 max-w-full" : "opacity-0 max-w-0 md:max-w-0"
-                        )}>{group.name}</span>
-                      </a>
-                    );
-                  })}
+              {filteredGroups.length === 0 && searchQuery.trim() !== '' && (
+                <div className="text-center py-6 px-4">
+                  <p className="text-xs text-muted-foreground/60">未找到匹配的群聊</p>
                 </div>
-              ))}
+              )}
+
+              {filteredGroups.map(({ group, originalIndex }) => {
+                const Icon = getGroupIcon(group);
+                const isSelected = selectedGroupIndex === originalIndex;
+                const itemContent = (
+                  <a
+                    key={group.id}
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      onSelectGroup?.(originalIndex);
+                    }}
+                    className={cn(
+                      "flex items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition-all group relative overflow-hidden",
+                      !isOpen && "md:justify-center",
+                      isSelected
+                        ? "bg-[#ff6600]/10 text-[#ff6600] font-semibold dark:bg-[#ff6600]/15"
+                        : "text-muted-foreground hover:text-foreground hover:bg-accent/40"
+                    )}
+                  >
+                    {isSelected && (
+                      <span className="absolute left-0 top-2.5 bottom-2.5 w-0.5 bg-[#ff6600] rounded-r-full" />
+                    )}
+                    
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <Icon
+                        className={cn(
+                          "h-4 w-4 flex-shrink-0 transition-transform group-hover:scale-110 duration-200",
+                          isSelected ? "text-[#ff6600]" : "text-muted-foreground/80 group-hover:text-foreground"
+                        )}
+                      />
+                      <span className={cn(
+                        "transition-all duration-200 whitespace-nowrap overflow-hidden text-ellipsis",
+                        isOpen ? "opacity-100 max-w-full" : "opacity-0 max-w-0 md:max-w-0"
+                      )}>
+                        {group.name}
+                      </span>
+                    </div>
+
+                    {isOpen && (
+                      <div className="flex-shrink-0 ml-2 transition-opacity duration-200 opacity-90 group-hover:opacity-100">
+                        {getGroupTag(group.type || 'ai')}
+                      </div>
+                    )}
+                  </a>
+                );
+
+                // 收起状态下增加提示
+                if (!isOpen) {
+                  return (
+                    <Tooltip key={group.id} delayDuration={150}>
+                      <TooltipTrigger asChild>
+                        {itemContent}
+                      </TooltipTrigger>
+                      <TooltipContent side="right">
+                        {group.name}
+                      </TooltipContent>
+                    </Tooltip>
+                  );
+                }
+
+                return itemContent;
+              })}
 
               {/* 创建新群聊按钮 */}
-              <a
-                href="#"
-                className={cn(
-                  "flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-all hover:bg-accent/40 group mt-3",
-                  !isOpen && "md:justify-center"
-                )}
-                onClick={(e) => {
-                  e.preventDefault();
-                  setShowCreateWizard(true);
-                }}
-              >
-                <PlusCircleIcon className="h-4 w-4 flex-shrink-0 text-amber-500 group-hover:scale-110 transition-transform duration-200" />
-                <span className={cn(
-                  "transition-all duration-200 whitespace-nowrap overflow-hidden text-foreground/80",
-                  isOpen ? "opacity-100 max-w-full" : "opacity-0 max-w-0 md:max-w-0"
-                )}>创建新群聊</span>
-              </a>
+              {(() => {
+                const createBtn = (
+                  <a
+                    href="#"
+                    className={cn(
+                      "flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-all hover:bg-accent/40 group mt-3",
+                      !isOpen && "md:justify-center"
+                    )}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setShowCreateWizard(true);
+                    }}
+                  >
+                    <PlusCircleIcon className="h-4 w-4 flex-shrink-0 text-amber-500 group-hover:scale-110 transition-transform duration-200" />
+                    <span className={cn(
+                      "transition-all duration-200 whitespace-nowrap overflow-hidden text-foreground/80",
+                      isOpen ? "opacity-100 max-w-full" : "opacity-0 max-w-0 md:max-w-0"
+                    )}>创建新群聊</span>
+                  </a>
+                );
+
+                if (!isOpen) {
+                  return (
+                    <Tooltip delayDuration={150}>
+                      <TooltipTrigger asChild>
+                        {createBtn}
+                      </TooltipTrigger>
+                      <TooltipContent side="right">
+                        创建新群聊
+                      </TooltipContent>
+                    </Tooltip>
+                  );
+                }
+                return createBtn;
+              })()}
             </nav>
           </div>
-
 
           {/* 用户信息模块 */}
           <UserSection isOpen={isOpen} />
@@ -231,7 +320,6 @@ const Sidebar = ({ isOpen, toggleSidebar, selectedGroupIndex = 0, onSelectGroup,
             )}
           </div>
 
-
           {/* GitHub Star Button */}
           <div className="px-3 py-3 bg-muted/40">
             <div className="flex items-center justify-left mb-2.5">
@@ -246,7 +334,7 @@ const Sidebar = ({ isOpen, toggleSidebar, selectedGroupIndex = 0, onSelectGroup,
                   botgroup.chat
                 </span>
                 {isOpen && version && (
-                  <span className="text-[9px] text-muted-foreground/60 self-end mb-0.5">{version}</span>
+                  <span className="text-[10px] text-muted-foreground/60 self-end mb-0.5">{version}</span>
                 )}
               </a>
             </div>
@@ -275,7 +363,7 @@ const Sidebar = ({ isOpen, toggleSidebar, selectedGroupIndex = 0, onSelectGroup,
           onClick={toggleSidebar}
         />
       )}
-    </>
+    </TooltipProvider>
   );
 };
 

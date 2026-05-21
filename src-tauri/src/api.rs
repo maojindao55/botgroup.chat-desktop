@@ -340,3 +340,14 @@ pub fn send_claw_message(
 
     Ok(msg)
 }
+
+#[tauri::command]
+pub fn select_directory() -> Result<Option<String>, String> {
+    let result = rfd::FileDialog::new()
+        .pick_folder();
+    match result {
+        Some(path) => Ok(Some(path.to_string_lossy().to_string())),
+        None => Ok(None),
+    }
+}
+

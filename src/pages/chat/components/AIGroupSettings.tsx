@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 import { getAvailableAICharacters } from '@/config/aiCharacters';
 import type { AICharacter } from '@/config/aiCharacters';
 import type { AIGroup } from '@/config/groups';
-import { getAvatarData } from '@/utils/avatar';
+import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
 
 
 interface User {
@@ -127,7 +127,9 @@ export const AIGroupSettings = ({
                           onClick={() => { onAddMember?.(char.id); }}
                           className="w-full flex items-center gap-2 p-2 rounded-md hover:bg-accent/50 text-left transition-all">
                           <Avatar className="w-6 h-6">
-                            {char.avatar ? <AvatarImage src={char.avatar} /> : (
+                            {resolveAvatarByName(char.name, char.avatar) ? (
+                              <AvatarImage src={resolveAvatarByName(char.name, char.avatar)} className="object-cover" />
+                            ) : (
                               <AvatarFallback style={{ backgroundColor: avatarData.backgroundColor, color: 'white' }} className="text-[10px]">
                                 {avatarData.text}
                               </AvatarFallback>
@@ -153,8 +155,8 @@ export const AIGroupSettings = ({
                     <div key={user.id} className="flex items-center justify-between p-2 hover:bg-accent/30 rounded-lg transition-all">
                       <div className="flex items-center gap-2.5">
                         <Avatar className="w-8 h-8">
-                          {'avatar' in user && user.avatar ? (
-                            <AvatarImage src={user.avatar} className="w-8 h-8" />
+                          {resolveAvatarByName(user.name, user.avatar) ? (
+                            <AvatarImage src={resolveAvatarByName(user.name, user.avatar)} className="object-cover" />
                           ) : (
                             <AvatarFallback style={{ backgroundColor: avatarData.backgroundColor, color: 'white' }} className="text-xs">
                               {avatarData.text}
