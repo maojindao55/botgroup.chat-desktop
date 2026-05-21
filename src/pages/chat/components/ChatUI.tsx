@@ -378,6 +378,14 @@ const ChatUI = () => {
           ));
         }
 
+        // 流式结束后，将 <details open> 折叠为 <details>（自动收起执行过程）
+        if (completeResponse.includes('<details open>')) {
+          completeResponse = completeResponse.replace(/<details open>/g, '<details>');
+          setMessages(prev => prev.map(msg =>
+            msg.id === aiMessage.id ? { ...msg, content: completeResponse } : msg
+          ));
+        }
+
         messageHistory.push({ role: 'user', content: char.name + '：' + completeResponse, name: char.name });
         if (i < selectedChars.length - 1) await new Promise(r => setTimeout(r, 1000));
       } catch (error: any) {
@@ -517,9 +525,9 @@ const ChatUI = () => {
                     <div key={message.id}
                       className={`flex items-start gap-3 ${message.sender.name === userName ? "justify-end" : ""}`}>
                       {message.sender.name !== userName && (
-                        <Avatar className="w-8 h-8 rounded-full border-2 border-background shadow-sm flex-shrink-0">
+                        <Avatar className="w-10 h-10 rounded-full border-2 border-background shadow-sm flex-shrink-0">
                           {message.sender.avatar ? (
-                            <AvatarImage src={message.sender.avatar} className="w-8 h-8 object-cover" />
+                            <AvatarImage src={message.sender.avatar} className="w-10 h-10 object-cover" />
                           ) : (
                             <AvatarFallback style={{ backgroundColor: getAvatarData(message.sender.name).backgroundColor, color: 'white' }} className="text-xs">
                               {getAvatarData(message.sender.name).text}
@@ -645,7 +653,7 @@ const ChatUI = () => {
                         </div>
                       </div>
                       {message.sender.name === userName && (
-                        <Avatar className="w-8 h-8 rounded-full border-2 border-background shadow-sm flex-shrink-0">
+                        <Avatar className="w-10 h-10 rounded-full border-2 border-background shadow-sm flex-shrink-0">
                           {message.sender.avatar ? (
                             <AvatarImage src={message.sender.avatar} className="object-cover" />
                           ) : (
