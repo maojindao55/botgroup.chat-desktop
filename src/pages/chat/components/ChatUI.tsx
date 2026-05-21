@@ -445,8 +445,8 @@ const ChatUI = () => {
         <SharePoster messages={messages} onClose={() => setShowPoster(false)} />
       )}
 
-      <div className="fixed inset-0 overflow-hidden bg-background flex items-start justify-center">
-        <div className="h-full flex bg-card dark:bg-zinc-900 w-full relative overflow-hidden">
+      <div className="fixed inset-0 overflow-hidden bg-white dark:bg-zinc-950 flex items-start justify-center">
+        <div className="h-full flex w-full relative overflow-hidden">
           <Sidebar
             isOpen={sidebarOpen}
             toggleSidebar={toggleSidebar}
@@ -458,7 +458,7 @@ const ChatUI = () => {
 
           <div className="flex flex-col flex-1 min-w-0">
             {/* Header */}
-            <header className="bg-card/60 backdrop-blur-md dark:bg-zinc-900/40 border-b border-border/40 flex-none">
+            <header className="bg-white/90 backdrop-blur-lg dark:bg-zinc-900/90 border-b border-border/60 flex-none shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
               <div className="flex items-center justify-between px-3 py-2.5">
                 <div className="flex items-center md:px-1">
                   <div className="md:hidden flex items-center justify-center m-1 cursor-pointer mr-2" onClick={toggleSidebar}>
@@ -507,7 +507,7 @@ const ChatUI = () => {
 
 
             {/* Chat Area */}
-            <div className="flex-1 overflow-hidden bg-muted/30">
+            <div className="flex-1 overflow-hidden bg-stone-50 dark:bg-[#0a0a0f]">
               <ScrollArea className={`h-full ${!showAd ? 'px-4 py-3' : ''} md:px-5 md:py-4`}>
                 <div className="md:hidden">
                   <AdBannerMobile show={showAd} closeAd={() => setShowAd(false)} />
@@ -539,8 +539,8 @@ const ChatUI = () => {
                         </div>
                         <div className={`mt-1 p-3 px-4 shadow-sm chat-message ${
                           message.sender.name === userName
-                            ? "bg-gradient-to-tr from-orange-500 to-amber-500 text-white text-left rounded-2xl rounded-tr-sm"
-                            : "bg-card/90 dark:bg-zinc-800/80 border border-border/40 rounded-2xl rounded-tl-sm text-left"
+                            ? "bg-gradient-to-tr from-orange-500 to-amber-500 text-white text-left rounded-2xl rounded-tr-sm shadow-sm"
+                            : "bg-white dark:bg-zinc-800/90 border border-border/60 dark:border-zinc-700/50 rounded-2xl rounded-tl-sm text-left shadow-sm"
                         }`}>
                           <ReactMarkdown 
                             remarkPlugins={[remarkGfm, remarkMath]}
@@ -613,7 +613,7 @@ const ChatUI = () => {
 
 
             {/* Input Area */}
-            <div className="bg-card/80 dark:bg-zinc-900/60 border-t border-border/30 px-5 py-3">
+            <div className="bg-white dark:bg-zinc-900 border-t border-border/60 dark:border-zinc-800 px-5 py-3 shadow-[0_-1px_3px_rgba(0,0,0,0.04)]">
               <div className="flex items-center gap-3 pb-[env(safe-area-inset-bottom)]">
                 {messages.length > 0 && (
                   <TooltipProvider>

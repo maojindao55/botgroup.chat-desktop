@@ -87,8 +87,8 @@ const Sidebar = ({ isOpen, toggleSidebar, selectedGroupIndex = 0, onSelectGroup,
           isOpen ? "w-48 translate-x-0" : "w-0 md:w-14 -translate-x-full md:translate-x-0"
         )}
       >
-        <div className="h-full border-r border-border/40 bg-card/65 dark:bg-zinc-900/60 backdrop-blur-xl rounded-l-2xl overflow-hidden flex flex-col">
-          <div className="flex items-center justify-between px-3 py-3.5 border-b border-border/40">
+        <div className="h-full border-r border-border/60 bg-slate-50 dark:bg-zinc-900 overflow-hidden flex flex-col">
+          <div className="flex items-center justify-between px-3 py-3.5 border-b border-border/60">
             <div className="flex-1 flex items-center">
               <span className={cn(
                 "font-semibold text-sm tracking-wide text-foreground/90 transition-all duration-200 whitespace-nowrap overflow-hidden",
@@ -189,7 +189,7 @@ const Sidebar = ({ isOpen, toggleSidebar, selectedGroupIndex = 0, onSelectGroup,
 
           {/* 暗黑模式切换 */}
           <div className={cn(
-            "px-3 py-2 border-t border-border/40 bg-muted/20",
+            "px-3 py-2 border-t border-border/60 bg-white/50 dark:bg-zinc-950/50",
             !isOpen && "flex justify-center"
           )}>
             {isOpen ? (
