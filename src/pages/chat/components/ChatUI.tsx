@@ -563,9 +563,10 @@ const ChatUI = () => {
                             [&_pre_code]:whitespace-pre-wrap
                             [&_pre_code]:break-words
                             [&_code]:text-xs
-                            [&_code]:text-gray-300
-                            [&_code:not(:where([class~="language-"]))]:text-orange-700
-                            [&_code:not(:where([class~="language-"]))]:bg-orange-50
+                            [&_code]:text-gray-800
+                            [&_code]:dark:text-gray-300
+                            [&_code:not(:where([class~="language-"]))]:text-orange-800
+                            [&_code:not(:where([class~="language-"]))]:bg-orange-100
                             [&_code:not(:where([class~="language-"]))]:px-1.5
                             [&_code:not(:where([class~="language-"]))]:py-0.5
                             [&_code:not(:where([class~="language-"]))]:rounded
