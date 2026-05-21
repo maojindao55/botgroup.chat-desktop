@@ -563,27 +563,39 @@ const ChatUI = () => {
                             [&_pre_code]:whitespace-pre-wrap
                             [&_pre_code]:break-words
                             [&_code]:text-xs
-                            [&_code]:text-gray-400
-                            [&_code:not(:where([class~="language-"]))]:text-pink-500
-                            [&_code:not(:where([class~="language-"]))]:bg-transparent
-                            [&_a]:text-blue-500
+                            [&_code]:text-gray-300
+                            [&_code:not(:where([class~="language-"]))]:text-orange-700
+                            [&_code:not(:where([class~="language-"]))]:bg-orange-50
+                            [&_code:not(:where([class~="language-"]))]:px-1.5
+                            [&_code:not(:where([class~="language-"]))]:py-0.5
+                            [&_code:not(:where([class~="language-"]))]:rounded
+                            [&_code:not(:where([class~="language-"]))]:dark:text-orange-300
+                            [&_code:not(:where([class~="language-"]))]:dark:bg-orange-950/30
+                            [&_a]:text-[#ff6600]
                             [&_a]:no-underline
+                            [&_a]:hover:underline
+                            [&_a]:underline-offset-2
                             [&_ul]:my-2
                             [&_ol]:my-2
                             [&_li]:my-1
                             [&_blockquote]:border-l-4
-                            [&_blockquote]:border-border
+                            [&_blockquote]:border-orange-300
+                            [&_blockquote]:dark:border-orange-700
+                            [&_blockquote]:bg-orange-50/50
+                            [&_blockquote]:dark:bg-orange-950/20
                             [&_blockquote]:pl-4
                             [&_blockquote]:my-2
                             [&_blockquote]:italic
+                            [&_blockquote]:rounded-r-lg
                             [&_details]:my-2
                             [&_details]:rounded-lg
-                            [&_details]:bg-muted/50
-                            [&_details]:p-2
+                            [&_details]:bg-slate-100
+                            [&_details]:dark:bg-zinc-700/50
+                            [&_details]:p-3
                             [&_details]:text-xs
                             [&_summary]:cursor-pointer
-                            [&_summary]:font-medium
-                            [&_summary]:text-muted-foreground
+                            [&_summary]:font-semibold
+                            [&_summary]:text-foreground/70
                             [&_summary]:select-none`}
                           >
                             {message.content}
