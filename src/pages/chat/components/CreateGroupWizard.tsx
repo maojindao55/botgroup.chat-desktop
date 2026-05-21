@@ -1,16 +1,14 @@
 import { useState } from 'react';
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
-} from "@/components/ui/dialog";
-import { Bot, Terminal, Puzzle, ChevronRight, ChevronLeft, Plus, Trash2, Check, FolderOpen } from 'lucide-react';
-import { cn } from "@/lib/utils";
+  Modal, Steps, Button, Input, InputNumber, Switch, Checkbox,
+} from 'antd';
+import { Avatar as LobeAvatar, ActionIcon } from '@lobehub/ui';
+import { createStyles } from 'antd-style';
+import {
+  Bot, Terminal, Puzzle,
+  Plus, Trash2, Check, FolderOpen,
+} from 'lucide-react';
 import { getAvailableAICharacters, getAvailableCLIAgents } from '@/config/aiCharacters';
-import type { AICharacter, CLIAgent } from '@/config/aiCharacters';
 import type {
   Group, AIGroup, CLIGroup, AgentGroup, AgentMember, AgentStrategy, AgentTool,
 } from '@/config/groups';
@@ -49,8 +47,84 @@ function createEmptyAgent(): AgentMember {
   };
 }
 
+const useStyles = createStyles(({ token, css }) => ({
+  card: css`
+    width: 100%;
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 16px;
+    border-radius: 12px;
+    border: 2px solid ${token.colorBorderSecondary};
+    background: transparent;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: left;
+    &:hover { border-color: ${token.colorBorder}; background: ${token.colorFillTertiary}; }
+  `,
+  cardActive: css`
+    border-color: #ff6600 !important;
+    background: rgba(255,102,0,0.06) !important;
+  `,
+  memberBtn: css`
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    background: transparent;
+    cursor: pointer;
+    text-align: left;
+    margin-bottom: 6px;
+    transition: all 0.15s;
+    &:hover { background: ${token.colorFillTertiary}; }
+  `,
+  memberBtnActive: css`
+    border-color: #ff6600;
+    background: rgba(255,102,0,0.06);
+  `,
+  scrollMembers: css`
+    max-height: 280px;
+    overflow: auto;
+    padding-right: 6px;
+  `,
+  agentBox: css`
+    border: 1px solid ${token.colorBorderSecondary};
+    border-radius: 8px;
+    padding: 12px;
+    background: ${token.colorFillTertiary};
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
+  `,
+  strategyBtn: css`
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid ${token.colorBorderSecondary};
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.15s;
+    margin-bottom: 8px;
+    &:hover { background: ${token.colorFillTertiary}; }
+  `,
+  strategyBtnActive: css`
+    border-color: #ff6600;
+    background: rgba(255,102,0,0.06);
+  `,
+}));
+
 
 export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateGroupWizardProps) => {
+  const { styles, cx } = useStyles();
+
   const [step, setStep] = useState<WizardStep>('type');
   const [groupType, setGroupType] = useState<GroupTypeChoice>('ai');
 
@@ -159,52 +233,40 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
   // ============ Render Steps ============
 
   const renderTypeStep = () => (
-    <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">选择你要创建的群聊类型</p>
-      <div className="grid grid-cols-1 gap-3">
-        {[
-          { type: 'ai' as const, icon: Bot, title: 'AI 群聊', desc: '多个 LLM 角色闲聊讨论、头脑风暴' },
-          { type: 'cli' as const, icon: Terminal, title: 'CLI Agent 群', desc: 'Codex/Claude/OpenCode 本地执行代码' },
-          { type: 'agent' as const, icon: Puzzle, title: 'Agent 群聊', desc: '自定义 LLM Agent 协作，配置API+策略' },
-        ].map(item => (
-          <button
-            key={item.type}
-            onClick={() => setGroupType(item.type)}
-            className={cn(
-              "flex items-start gap-3.5 p-4 rounded-xl border-2 text-left transition-all",
-              groupType === item.type
-                ? "border-[#ff6600] bg-orange-50 dark:bg-orange-950/20"
-                : "border-border hover:border-muted-foreground/30 hover:bg-accent/30"
-            )}
-          >
-            <item.icon className={cn("w-5 h-5 mt-0.5 flex-shrink-0", groupType === item.type ? "text-[#ff6600]" : "text-muted-foreground")} />
-            <div className="flex-1 min-w-0">
-              <div className="font-semibold text-sm leading-tight mb-1">{item.title}</div>
-              <div className="text-xs text-muted-foreground leading-relaxed">{item.desc}</div>
-            </div>
-            {groupType === item.type && <Check className="w-4 h-4 mt-0.5 ml-2 text-[#ff6600]" />}
-          </button>
-        ))}
-      </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <p style={{ fontSize: 14, color: 'rgba(0,0,0,0.45)', marginBottom: 4 }}>选择你要创建的群聊类型</p>
+      {[
+        { type: 'ai' as const,    icon: Bot,      title: 'AI 群聊',     desc: '多个 LLM 角色闲聊讨论、头脑风暴' },
+        { type: 'cli' as const,   icon: Terminal, title: 'CLI Agent 群', desc: 'Codex/Claude/OpenCode 本地执行代码' },
+        { type: 'agent' as const, icon: Puzzle,   title: 'Agent 群聊',   desc: '自定义 LLM Agent 协作，配置API+策略' },
+      ].map(item => (
+        <button key={item.type}
+          onClick={() => setGroupType(item.type)}
+          className={cx(styles.card, groupType === item.type && styles.cardActive)}>
+          <item.icon size={20} style={{ marginTop: 2, color: groupType === item.type ? '#ff6600' : 'rgba(0,0,0,0.55)' }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.2, marginBottom: 4 }}>{item.title}</div>
+            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>{item.desc}</div>
+          </div>
+          {groupType === item.type && <Check size={16} style={{ marginTop: 2, color: '#ff6600' }} />}
+        </button>
+      ))}
     </div>
   );
 
 
   const renderBasicStep = () => (
-    <div className="space-y-4">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div>
-        <label className="text-sm font-medium mb-1.5 block">群名称 *</label>
-        <Input placeholder="给群聊起个名字" value={name} onChange={e => setName(e.target.value)} maxLength={30} />
+        <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 6 }}>群名称 *</label>
+        <Input placeholder="给群聊起个名字" value={name} maxLength={30}
+          onChange={e => setName(e.target.value)} />
       </div>
       <div>
-        <label className="text-sm font-medium mb-1.5 block">群描述</label>
-        <textarea
-          className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
+        <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 6 }}>群描述</label>
+        <Input.TextArea autoSize={{ minRows: 3, maxRows: 6 }} maxLength={200}
           placeholder="简单描述群聊的用途和规则"
-          value={description}
-          onChange={e => setDescription(e.target.value)}
-          maxLength={200}
-        />
+          value={description} onChange={e => setDescription(e.target.value)} />
       </div>
     </div>
   );
@@ -212,46 +274,28 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
   const renderAIMembersStep = () => {
     const characters = getAvailableAICharacters();
     return (
-      <div className="space-y-3">
-        <p className="text-sm text-muted-foreground">选择 AI 成员加入群聊</p>
-        <ScrollArea className="h-[280px]">
-          <div className="space-y-2 pr-2">
-            {characters.map(char => {
-              const selected = selectedAIMembers.includes(char.id);
-              const avatarData = getAvatarData(char.name);
-              return (
-                <button
-                  key={char.id}
-                  onClick={() => {
-                    setSelectedAIMembers(prev =>
-                      selected ? prev.filter(id => id !== char.id) : [...prev, char.id]
-                    );
-                  }}
-                  className={cn(
-                    "w-full flex items-center gap-3 p-2.5 rounded-lg border transition-all text-left",
-                    selected ? "border-[#ff6600] bg-orange-50 dark:bg-orange-950/20" : "border-transparent hover:bg-accent/50"
-                  )}
-                >
-                  <Avatar className="w-8 h-8">
-                    {resolveAvatarByName(char.name, char.avatar) ? (
-                      <AvatarImage src={resolveAvatarByName(char.name, char.avatar)} className="object-cover" />
-                    ) : (
-                      <AvatarFallback style={{ backgroundColor: avatarData.backgroundColor, color: 'white' }} className="text-xs">
-                        {avatarData.text}
-                      </AvatarFallback>
-                    )}
-                  </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium truncate">{char.name}</div>
-                    <div className="text-xs text-muted-foreground truncate">{char.tags?.join(', ')}</div>
-                  </div>
-                  {selected && <Check className="w-4 h-4 text-[#ff6600] flex-shrink-0" />}
-                </button>
-              );
-            })}
-          </div>
-        </ScrollArea>
-        <div className="text-xs text-muted-foreground">已选 {selectedAIMembers.length} 个成员</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <p style={{ fontSize: 14, color: 'rgba(0,0,0,0.45)' }}>选择 AI 成员加入群聊</p>
+        <div className={styles.scrollMembers}>
+          {characters.map(char => {
+            const selected = selectedAIMembers.includes(char.id);
+            const a = getAvatarData(char.name);
+            const url = resolveAvatarByName(char.name, char.avatar, 32);
+            return (
+              <button key={char.id}
+                onClick={() => setSelectedAIMembers(prev => selected ? prev.filter(id => id !== char.id) : [...prev, char.id])}
+                className={cx(styles.memberBtn, selected && styles.memberBtnActive)}>
+                <LobeAvatar shape="circle" avatar={url || a.text} background={a.backgroundColor} size={32} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{char.name}</div>
+                  <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 4 }}>{char.tags?.join(', ')}</div>
+                </div>
+                {selected && <Check size={16} style={{ color: '#ff6600', flexShrink: 0 }} />}
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>已选 {selectedAIMembers.length} 个成员</div>
       </div>
     );
   };
@@ -260,130 +304,82 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
   const renderCLIMembersStep = () => {
     const cliList = getAvailableCLIAgents();
     return (
-      <div className="space-y-3">
-        <p className="text-sm text-muted-foreground">选择 CLI Agent 加入群聊</p>
-        <div className="space-y-2">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <p style={{ fontSize: 14, color: 'rgba(0,0,0,0.45)' }}>选择 CLI Agent 加入群聊</p>
+        <div>
           {cliList.map(agent => {
             const selected = selectedCLIMembers.includes(agent.id);
-            const avatarData = getAvatarData(agent.name);
+            const a = getAvatarData(agent.name);
+            const url = resolveAvatarByName(agent.name, agent.avatar, 32);
             return (
-              <button
-                key={agent.id}
-                onClick={() => {
-                  setSelectedCLIMembers(prev =>
-                    selected ? prev.filter(id => id !== agent.id) : [...prev, agent.id]
-                  );
-                }}
-                className={cn(
-                  "w-full flex items-center gap-3 p-2.5 rounded-lg border transition-all text-left",
-                  selected ? "border-[#ff6600] bg-orange-50 dark:bg-orange-950/20" : "border-border hover:bg-accent/50"
-                )}
-              >
-                <Avatar className="w-8 h-8">
-                  {resolveAvatarByName(agent.name, agent.avatar) ? (
-                    <AvatarImage src={resolveAvatarByName(agent.name, agent.avatar)} className="object-cover" />
-                  ) : (
-                    <AvatarFallback style={{ backgroundColor: avatarData.backgroundColor, color: 'white' }} className="text-xs">
-                      <Terminal className="w-4 h-4" />
-                    </AvatarFallback>
-                  )}
-                </Avatar>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium truncate">{agent.name}</div>
-                  <div className="text-xs text-muted-foreground truncate">adapter: {agent.cli.adapter}</div>
+              <button key={agent.id}
+                onClick={() => setSelectedCLIMembers(prev => selected ? prev.filter(id => id !== agent.id) : [...prev, agent.id])}
+                className={cx(styles.memberBtn, selected && styles.memberBtnActive)}>
+                <LobeAvatar shape="circle" avatar={url || a.text} background={a.backgroundColor} size={32} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 500 }}>{agent.name}</div>
+                  <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginTop: 4 }}>adapter: {agent.cli.adapter}</div>
                 </div>
-                {selected && <Check className="w-4 h-4 text-[#ff6600] flex-shrink-0" />}
+                {selected && <Check size={16} style={{ color: '#ff6600', flexShrink: 0 }} />}
               </button>
             );
           })}
         </div>
-        <div className="text-xs text-muted-foreground">已选 {selectedCLIMembers.length} 个 Agent</div>
+        <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>已选 {selectedCLIMembers.length} 个 Agent</div>
       </div>
     );
   };
 
 
   const renderAgentMembersStep = () => (
-    <div className="space-y-3">
-      <p className="text-sm text-muted-foreground">配置 Agent 成员（每个 Agent 需配置独立 LLM API）</p>
-      <ScrollArea className="h-[320px]">
-        <div className="space-y-4 pr-2">
-          {agents.map((agent, idx) => (
-            <div key={agent.id} className="border rounded-lg p-3 space-y-2.5 bg-muted/30">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-muted-foreground">Agent #{idx + 1}</span>
-                {agents.length > 1 && (
-                  <Button variant="ghost" size="icon" className="h-6 w-6"
-                    onClick={() => setAgents(prev => prev.filter((_, i) => i !== idx))}>
-                    <Trash2 className="w-3.5 h-3.5 text-red-500" />
-                  </Button>
-                )}
-              </div>
-              <Input placeholder="Agent 名称（如：产品经理）" value={agent.name}
-                onChange={e => {
-                  const updated = [...agents];
-                  updated[idx] = { ...updated[idx], name: e.target.value };
-                  setAgents(updated);
-                }} />
-              <Input placeholder="角色定位（如：负责需求分析）" value={agent.role}
-                onChange={e => {
-                  const updated = [...agents];
-                  updated[idx] = { ...updated[idx], role: e.target.value };
-                  setAgents(updated);
-                }} />
-              <div className="grid grid-cols-2 gap-2">
-                <Input placeholder="API 地址" value={agent.llm.baseURL}
-                  onChange={e => {
-                    const updated = [...agents];
-                    updated[idx] = { ...updated[idx], llm: { ...updated[idx].llm, baseURL: e.target.value } };
-                    setAgents(updated);
-                  }} />
-                <Input placeholder="模型名" value={agent.llm.model}
-                  onChange={e => {
-                    const updated = [...agents];
-                    updated[idx] = { ...updated[idx], llm: { ...updated[idx].llm, model: e.target.value } };
-                    setAgents(updated);
-                  }} />
-              </div>
-              <Input placeholder="API Key" type="password" value={agent.llm.apiKey}
-                onChange={e => {
-                  const updated = [...agents];
-                  updated[idx] = { ...updated[idx], llm: { ...updated[idx].llm, apiKey: e.target.value } };
-                  setAgents(updated);
-                }} />
-              <textarea
-                className="w-full min-h-[60px] rounded-md border border-input bg-background px-3 py-2 text-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
-                placeholder="System Prompt（定义角色人设和能力）"
-                value={agent.systemPrompt}
-                onChange={e => {
-                  const updated = [...agents];
-                  updated[idx] = { ...updated[idx], systemPrompt: e.target.value };
-                  setAgents(updated);
-                }}
-              />
-              <div className="flex flex-wrap gap-2">
-                {agent.tools.map((tool, tIdx) => (
-                  <label key={tool.name} className="flex items-center gap-1.5 text-xs cursor-pointer">
-                    <input type="checkbox" checked={tool.enabled}
-                      onChange={e => {
-                        const updated = [...agents];
-                        const newTools = [...updated[idx].tools];
-                        newTools[tIdx] = { ...newTools[tIdx], enabled: e.target.checked };
-                        updated[idx] = { ...updated[idx], tools: newTools };
-                        setAgents(updated);
-                      }}
-                      className="rounded border-gray-300"
-                    />
-                    <span>{tool.name}</span>
-                  </label>
-                ))}
-              </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <p style={{ fontSize: 14, color: 'rgba(0,0,0,0.45)' }}>配置 Agent 成员（每个 Agent 需配置独立 LLM API）</p>
+      <div style={{ maxHeight: 320, overflow: 'auto', paddingRight: 6 }}>
+        {agents.map((agent, idx) => (
+          <div key={agent.id} className={styles.agentBox}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>Agent #{idx + 1}</span>
+              {agents.length > 1 && (
+                <ActionIcon icon={Trash2} size="small" onClick={() => setAgents(prev => prev.filter((_, i) => i !== idx))}
+                  style={{ color: '#ef4444' }} title="" />
+              )}
             </div>
-          ))}
-        </div>
-      </ScrollArea>
-      <Button variant="outline" size="sm" onClick={() => setAgents(prev => [...prev, createEmptyAgent()])}>
-        <Plus className="w-3.5 h-3.5 mr-1.5" />添加 Agent
+            <Input placeholder="Agent 名称（如：产品经理）" value={agent.name}
+              onChange={e => { const u = [...agents]; u[idx] = { ...u[idx], name: e.target.value }; setAgents(u); }} />
+            <Input placeholder="角色定位（如：负责需求分析）" value={agent.role}
+              onChange={e => { const u = [...agents]; u[idx] = { ...u[idx], role: e.target.value }; setAgents(u); }} />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <Input placeholder="API 地址" value={agent.llm.baseURL}
+                onChange={e => { const u = [...agents]; u[idx] = { ...u[idx], llm: { ...u[idx].llm, baseURL: e.target.value } }; setAgents(u); }} />
+              <Input placeholder="模型名" value={agent.llm.model}
+                onChange={e => { const u = [...agents]; u[idx] = { ...u[idx], llm: { ...u[idx].llm, model: e.target.value } }; setAgents(u); }} />
+            </div>
+            <Input.Password placeholder="API Key" value={agent.llm.apiKey}
+              onChange={e => { const u = [...agents]; u[idx] = { ...u[idx], llm: { ...u[idx].llm, apiKey: e.target.value } }; setAgents(u); }} />
+            <Input.TextArea autoSize={{ minRows: 2, maxRows: 5 }}
+              placeholder="System Prompt（定义角色人设和能力）"
+              value={agent.systemPrompt}
+              onChange={e => { const u = [...agents]; u[idx] = { ...u[idx], systemPrompt: e.target.value }; setAgents(u); }} />
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+              {agent.tools.map((tool, tIdx) => (
+                <Checkbox
+                  key={tool.name}
+                  checked={tool.enabled}
+                  onChange={e => {
+                    const u = [...agents];
+                    const newTools = [...u[idx].tools];
+                    newTools[tIdx] = { ...newTools[tIdx], enabled: e.target.checked };
+                    u[idx] = { ...u[idx], tools: newTools };
+                    setAgents(u);
+                  }}
+                >{tool.name}</Checkbox>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      <Button icon={<Plus size={14} />} onClick={() => setAgents(prev => [...prev, createEmptyAgent()])}>
+        添加 Agent
       </Button>
     </div>
   );
@@ -396,19 +392,19 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
   };
 
   const renderAIConfigStep = () => (
-    <div className="space-y-4">
-      <div className="p-3 bg-muted/50 rounded-lg space-y-3">
-        <div className="flex items-center justify-between">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ padding: 12, background: 'rgba(0,0,0,0.04)', borderRadius: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <div className="text-sm font-medium">全员讨论模式</div>
-            <div className="text-xs text-muted-foreground">开启后所有成员每轮都回复</div>
+            <div style={{ fontSize: 14, fontWeight: 500 }}>全员讨论模式</div>
+            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>开启后所有成员每轮都回复</div>
           </div>
-          <Switch checked={isDiscussionMode} onCheckedChange={setIsDiscussionMode} />
+          <Switch checked={isDiscussionMode} onChange={setIsDiscussionMode} />
         </div>
       </div>
       {!isDiscussionMode && (
-        <div className="space-y-2">
-          <label className="text-sm font-medium">调度策略</label>
+        <div>
+          <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 8 }}>调度策略</label>
           {[
             { value: 'tag' as const, label: '标签匹配', desc: '根据消息内容智能匹配相关 AI' },
             { value: 'round_robin' as const, label: '轮询', desc: '按顺序轮流回复' },
@@ -416,15 +412,12 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
           ].map(item => (
             <button key={item.value}
               onClick={() => setSchedulerStrategy(item.value)}
-              className={cn(
-                "w-full flex items-center gap-3 p-3 rounded-lg border text-left transition-all",
-                schedulerStrategy === item.value ? "border-[#ff6600] bg-orange-50 dark:bg-orange-950/20" : "border-border hover:bg-accent/30"
-              )}>
-              <div className="flex-1">
-                <div className="text-sm font-medium">{item.label}</div>
-                <div className="text-xs text-muted-foreground">{item.desc}</div>
+              className={cx(styles.strategyBtn, schedulerStrategy === item.value && styles.strategyBtnActive)}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 500 }}>{item.label}</div>
+                <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>{item.desc}</div>
               </div>
-              {schedulerStrategy === item.value && <Check className="w-4 h-4 text-[#ff6600]" />}
+              {schedulerStrategy === item.value && <Check size={16} style={{ color: '#ff6600' }} />}
             </button>
           ))}
         </div>
@@ -433,93 +426,77 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
   );
 
   const renderCLIConfigStep = () => (
-    <div className="space-y-4">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div>
-        <label className="text-sm font-medium mb-1.5 block">Workspace 路径 *</label>
-        <div className="flex gap-2">
+        <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 6 }}>Workspace 路径 *</label>
+        <div style={{ display: 'flex', gap: 8 }}>
           <Input
             placeholder="/Users/you/projects/your-repo"
             value={workspacePath}
             onChange={e => setWorkspacePath(e.target.value)}
-            className="font-mono text-sm flex-1"
+            style={{ flex: 1, fontFamily: 'var(--ant-font-family-code)' }}
           />
-          <Button
-            variant="outline"
-            type="button"
+          <Button icon={<FolderOpen size={14} />}
             onClick={async () => {
               try {
                 const selected = await invoke<string | null>('select_directory');
-                if (selected) {
-                  setWorkspacePath(selected);
-                }
-              } catch (e) {
-                console.error("Failed to select directory:", e);
-              }
-            }}
-            className="flex items-center gap-1 flex-shrink-0 text-xs h-9"
-          >
-            <FolderOpen className="w-3.5 h-3.5" />
-            <span>选择</span>
-          </Button>
+                if (selected) setWorkspacePath(selected);
+              } catch (e) { console.error('Failed to select directory:', e); }
+            }}>选择</Button>
         </div>
-        <p className="text-xs text-muted-foreground mt-1.5">CLI Agent 将在此目录执行，支持选择或输入绝对路径</p>
+        <p style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginTop: 6 }}>CLI Agent 将在此目录执行，支持选择或输入绝对路径</p>
       </div>
-      <div className="p-3 bg-muted/50 rounded-lg">
-        <div className="flex items-center justify-between">
+      <div style={{ padding: 12, background: 'rgba(0,0,0,0.04)', borderRadius: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <div className="text-sm font-medium">自动审批模式</div>
-            <div className="text-xs text-muted-foreground">开启后 Agent 自动执行，无需确认</div>
+            <div style={{ fontSize: 14, fontWeight: 500 }}>自动审批模式</div>
+            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginTop: 4 }}>开启后 Agent 自动执行，无需确认</div>
           </div>
-          <Switch checked={approvalMode === 'auto'} onCheckedChange={v => setApprovalMode(v ? 'auto' : 'ask')} />
+          <Switch checked={approvalMode === 'auto'} onChange={v => setApprovalMode(v ? 'auto' : 'ask')} />
         </div>
       </div>
       <div>
-        <label className="text-sm font-medium mb-1.5 block">超时时间 (秒)</label>
-        <Input type="number" value={timeout / 1000}
-          onChange={e => setTimeout_(Number(e.target.value) * 1000)} min={30} max={600} />
+        <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 6 }}>超时时间 (秒)</label>
+        <InputNumber value={timeout / 1000} min={30} max={600}
+          onChange={(v) => setTimeout_(Number(v) * 1000)} style={{ width: 120 }} />
       </div>
     </div>
   );
 
 
   const renderAgentConfigStep = () => (
-    <div className="space-y-4">
-      <div className="space-y-2">
-        <label className="text-sm font-medium">执行策略</label>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div>
+        <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 8 }}>执行策略</label>
         {[
           { value: 'sequential' as const, label: '顺序执行', desc: 'Agent 按顺序依次回复，后者看到前者输出' },
-          { value: 'router' as const, label: '意图路由', desc: '协调者分析意图，选择相关 Agent 响应' },
+          { value: 'router'     as const, label: '意图路由', desc: '协调者分析意图，选择相关 Agent 响应' },
           { value: 'discussion' as const, label: '全员讨论', desc: '所有 Agent 并行回复后汇总' },
-          { value: 'react' as const, label: 'ReAct', desc: '协调者分析→分派→执行→判断→循环' },
+          { value: 'react'      as const, label: 'ReAct',    desc: '协调者分析→分派→执行→判断→循环' },
         ].map(item => (
           <button key={item.value}
             onClick={() => setStrategy(item.value)}
-            className={cn(
-              "w-full flex items-center gap-3 p-3 rounded-lg border text-left transition-all",
-              strategy === item.value ? "border-[#ff6600] bg-orange-50 dark:bg-orange-950/20" : "border-border hover:bg-accent/30"
-            )}>
-            <div className="flex-1">
-              <div className="text-sm font-medium">{item.label}</div>
-              <div className="text-xs text-muted-foreground">{item.desc}</div>
+            className={cx(styles.strategyBtn, strategy === item.value && styles.strategyBtnActive)}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 14, fontWeight: 500 }}>{item.label}</div>
+              <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>{item.desc}</div>
             </div>
-            {strategy === item.value && <Check className="w-4 h-4 text-[#ff6600]" />}
+            {strategy === item.value && <Check size={16} style={{ color: '#ff6600' }} />}
           </button>
         ))}
       </div>
       {(strategy === 'router' || strategy === 'react' || strategy === 'discussion') && (
         <div>
-          <label className="text-sm font-medium mb-1.5 block">协调者 Prompt</label>
-          <textarea
-            className="w-full min-h-[60px] rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
+          <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 6 }}>协调者 Prompt</label>
+          <Input.TextArea autoSize={{ minRows: 2, maxRows: 6 }}
             placeholder="定义协调者如何分派任务和汇总结果..."
-            value={coordinatorPrompt}
-            onChange={e => setCoordinatorPrompt(e.target.value)}
-          />
+            value={coordinatorPrompt} onChange={e => setCoordinatorPrompt(e.target.value)} />
         </div>
       )}
       <div>
-        <label className="text-sm font-medium mb-1.5 block">最大协作轮数</label>
-        <Input type="number" value={maxRounds} onChange={e => setMaxRounds(Number(e.target.value))} min={1} max={10} />
+        <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 6 }}>最大协作轮数</label>
+        <InputNumber value={maxRounds} min={1} max={10}
+          onChange={(v) => setMaxRounds(Number(v))} style={{ width: 100 }} />
       </div>
     </div>
   );
@@ -538,50 +515,48 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
     config: '群聊设置',
     confirm: '',
   };
-
-  const stepNumbers: Record<WizardStep, number> = { type: 1, basic: 2, members: 3, config: 4, confirm: 5 };
+  const stepIndex: Record<WizardStep, number> = { type: 0, basic: 1, members: 2, config: 3, confirm: 4 };
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) reset(); onOpenChange(v); }}>
-      <DialogContent className="sm:max-w-[480px] max-h-[85vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <DialogTitle>{stepTitles[step]}</DialogTitle>
-          <DialogDescription>
-            步骤 {stepNumbers[step]} / 4
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="flex-1 overflow-auto py-2">
-          {step === 'type' && renderTypeStep()}
-          {step === 'basic' && renderBasicStep()}
-          {step === 'members' && renderMembersStep()}
-          {step === 'config' && renderConfigStep()}
-        </div>
-
-        <div className="flex items-center justify-between pt-4 mt-2 border-t">
+    <Modal
+      open={open}
+      onCancel={() => { reset(); onOpenChange(false); }}
+      title={stepTitles[step]}
+      width={520}
+      destroyOnClose
+      footer={
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
           <div>
             {step !== 'type' && (
-              <Button variant="ghost" size="sm" onClick={prevStep} className="-ml-2 text-muted-foreground hover:text-foreground">
-                <ChevronLeft className="w-4 h-4 mr-1" /> 上一步
-              </Button>
+              <Button type="text" onClick={prevStep}>上一步</Button>
             )}
           </div>
           <div>
             {step === 'config' ? (
-              <Button size="sm" onClick={handleCreate} disabled={!canProceed()}
-                className="bg-[#ff6600] hover:bg-[#e65c00] text-white font-medium px-4">
+              <Button type="primary" disabled={!canProceed()} onClick={handleCreate}
+                style={{ background: '#ff6600', borderColor: '#ff6600' }}>
                 创建群聊
               </Button>
             ) : (
-              <Button size="sm" onClick={nextStep} disabled={!canProceed()}
-                className="bg-[#ff6600] hover:bg-[#e65c00] text-white font-medium px-4">
-                下一步 <ChevronRight className="w-4 h-4 ml-1" />
+              <Button type="primary" disabled={!canProceed()} onClick={nextStep}
+                style={{ background: '#ff6600', borderColor: '#ff6600' }}>
+                下一步
               </Button>
             )}
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+      }
+    >
+      <Steps current={stepIndex[step]} size="small" style={{ marginBottom: 20 }} items={[
+        { title: '类型' }, { title: '基础' }, { title: '成员' }, { title: '配置' },
+      ]} />
+      <div>
+        {step === 'type' && renderTypeStep()}
+        {step === 'basic' && renderBasicStep()}
+        {step === 'members' && renderMembersStep()}
+        {step === 'config' && renderConfigStep()}
+      </div>
+    </Modal>
   );
 };
 

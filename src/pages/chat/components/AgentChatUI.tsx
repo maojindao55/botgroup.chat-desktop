@@ -4,16 +4,10 @@
  */
 import { useState, useRef, useEffect } from 'react';
 import { Send, Settings2, ChevronLeft, Puzzle } from 'lucide-react';
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
-import rehypeRaw from 'rehype-raw';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tooltip, Input as AntdInput, Button as AntdButton } from 'antd';
+import { ActionIcon, Avatar as LobeAvatar } from '@lobehub/ui';
+import { createStyles } from 'antd-style';
+import { ChatMarkdown } from '@/components/Markdown';
 import { useUserStore } from '@/store/userStore';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
@@ -41,6 +35,174 @@ interface AgentChatUIProps {
   onUpdateGroup?: (updates: Partial<AgentGroup>) => void;
 }
 
+const useStyles = createStyles(({ token, css }) => ({
+  page: css`
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    background: ${token.colorBgContainer};
+    display: flex;
+  `,
+  container: css`
+    height: 100%;
+    display: flex;
+    width: 100%;
+    position: relative;
+    overflow: hidden;
+  `,
+  rightCol: css`
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+  `,
+  headerBar: css`
+    background: ${token.colorBgContainer};
+    border-bottom: 1px solid ${token.colorBorderSecondary};
+    backdrop-filter: blur(12px);
+    flex: none;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  `,
+  headerInner: css`
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+  `,
+  chatArea: css`
+    flex: 1;
+    overflow: auto;
+    background: ${token.colorBgLayout};
+    padding: 12px 16px;
+    @media (min-width: 768px) {
+      padding: 16px 20px;
+    }
+  `,
+  inputArea: css`
+    background: ${token.colorBgContainer};
+    border-top: 1px solid ${token.colorBorderSecondary};
+    padding: 12px 20px;
+  `,
+  bubbleUser: css`
+    background: linear-gradient(to top right, #f97316, #f59e0b);
+    color: #fff;
+    text-align: left;
+    border-radius: 16px;
+    border-top-right-radius: 4px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    padding: 12px 16px;
+    margin-top: 4px;
+  `,
+  bubbleAI: css`
+    background: ${token.colorBgContainer};
+    border: 1px solid ${token.colorBorderSecondary};
+    border-radius: 16px;
+    border-top-left-radius: 4px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    padding: 12px 16px;
+    margin-top: 4px;
+    text-align: left;
+  `,
+  bubbleError: css`
+    background: rgba(239, 68, 68, 0.08);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 16px;
+    border-top-left-radius: 4px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    padding: 12px 16px;
+    margin-top: 4px;
+    text-align: left;
+  `,
+  metaRow: css`
+    font-size: 12px;
+    color: ${token.colorTextTertiary};
+    padding: 0 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  `,
+  agentBadge: css`
+    margin-left: 6px;
+    font-size: 10px;
+    color: #a855f7;
+  `,
+  agentTagPurple: css`
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(168, 85, 247, 0.12);
+    color: #a855f7;
+    font-weight: 500;
+  `,
+  avatarStack: css`
+    display: flex;
+    align-items: center;
+    & > * + * {
+      margin-left: -8px;
+    }
+  `,
+  avatarMore: css`
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: ${token.colorFillSecondary};
+    color: ${token.colorTextSecondary};
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 600;
+    border: 2px solid ${token.colorBgContainer};
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  `,
+  mobileBackBtn: css`
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin: 4px;
+    margin-right: 8px;
+    cursor: pointer;
+    color: ${token.colorTextTertiary};
+    @media (min-width: 768px) {
+      display: none;
+    }
+  `,
+  mobileOverlay: css`
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 10;
+    @media (min-width: 768px) {
+      display: none;
+    }
+  `,
+  messageList: css`
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  `,
+  messageRow: css`
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  `,
+  emptyState: css`
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 80px 0;
+    color: ${token.colorTextTertiary};
+  `,
+  emptyAgentTag: css`
+    font-size: 12px;
+    background: ${token.colorFillSecondary};
+    color: ${token.colorTextSecondary};
+    padding: 4px 10px;
+    border-radius: 999px;
+  `,
+}));
+
 const AgentChatUI = ({
   group,
   groups,
@@ -51,6 +213,7 @@ const AgentChatUI = ({
 }: AgentChatUIProps) => {
   const userStore = useUserStore();
   const isMobile = useIsMobile();
+  const { styles } = useStyles();
 
   // 策略中文标签映射
   const strategyLabels: Record<string, string> = {
@@ -171,8 +334,8 @@ const AgentChatUI = ({
         onUpdateGroup={(updates) => onUpdateGroup?.(updates)}
       />
 
-      <div className="fixed inset-0 overflow-hidden bg-white dark:bg-zinc-950 flex items-start justify-center">
-        <div className="h-full flex w-full relative overflow-hidden">
+      <div className={styles.page}>
+        <div className={styles.container}>
           <Sidebar
             isOpen={sidebarOpen}
             toggleSidebar={toggleSidebar}
@@ -182,222 +345,165 @@ const AgentChatUI = ({
             onCreateGroup={onCreateGroup}
           />
 
-          <div className="flex flex-col flex-1 min-w-0">
+          <div className={styles.rightCol}>
             {/* Header */}
-            <header className="bg-white/90 backdrop-blur-lg dark:bg-zinc-900/90 border-b border-border/60 flex-none shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
-              <div className="flex items-center justify-between px-3 py-2.5">
-                <div className="flex items-center md:px-1">
-                  <div className="md:hidden flex items-center justify-center m-1 cursor-pointer mr-2" onClick={toggleSidebar}>
-                    <ChevronLeft className="w-5 h-5 text-muted-foreground" />
+            <header className={styles.headerBar}>
+              <div className={styles.headerInner}>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <div className={styles.mobileBackBtn} onClick={toggleSidebar}>
+                    <ChevronLeft size={20} />
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Puzzle className="w-4 h-4 text-[#ff6600]" />
-                    <h1 className="font-semibold text-sm tracking-wide text-foreground/90">{group.name}</h1>
-                    <span className="text-xs text-muted-foreground">({group.agents.length} agents)</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Puzzle size={16} color="#ff6600" />
+                    <h1 style={{ margin: 0, fontWeight: 600, fontSize: 14, letterSpacing: '0.02em' }}>
+                      {group.name}
+                    </h1>
+                    <span style={{ fontSize: 12, opacity: 0.6 }}>
+                      ({group.agents.length} agents)
+                    </span>
                   </div>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="flex -space-x-2">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div className={styles.avatarStack}>
                     {group.agents.slice(0, 4).map(agent => {
-                      const avatarData = getAvatarData(agent.name);
-                      const resolvedAvatar = resolveAvatarByName(agent.name, agent.avatar);
+                      const a = getAvatarData(agent.name);
+                      const url = resolveAvatarByName(agent.name, agent.avatar, 32);
                       return (
-                        <TooltipProvider key={agent.id}>
-                          <Tooltip>
-                            <TooltipTrigger>
-                              <Avatar className="w-8 h-8 border-2 border-background shadow-sm">
-                                {resolvedAvatar ? (
-                                  <AvatarImage src={resolvedAvatar} className="object-cover" />
-                                ) : (
-                                  <AvatarFallback style={{ backgroundColor: avatarData.backgroundColor, color: 'white' }} className="text-xs">
-                                    {avatarData.text}
-                                  </AvatarFallback>
-                                )}
-                              </Avatar>
-                            </TooltipTrigger>
-                            <TooltipContent><p>{agent.name} - {agent.role}</p></TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
+                        <Tooltip key={agent.id} title={`${agent.name} - ${agent.role}`}>
+                          <LobeAvatar
+                            avatar={url || a.text}
+                            background={a.backgroundColor}
+                            shape="circle"
+                            size={32}
+                            title={agent.name}
+                            style={{ flexShrink: 0 }}
+                          />
+                        </Tooltip>
                       );
                     })}
                     {group.agents.length > 4 && (
-                      <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-semibold border-2 border-background shadow-sm text-muted-foreground">
-                        +{group.agents.length - 4}
-                      </div>
+                      <div className={styles.avatarMore}>+{group.agents.length - 4}</div>
                     )}
                   </div>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 font-medium">
+                  <span className={styles.agentTagPurple}>
                     {strategyLabels[group.strategy] || group.strategy}
                   </span>
-                  <Button variant="ghost" size="icon" onClick={() => setShowSettings(true)} className="h-8 w-8 rounded-lg hover:bg-accent/60">
-                    <Settings2 className="w-4 h-4 text-muted-foreground" />
-                  </Button>
+                  <ActionIcon
+                    icon={Settings2}
+                    size="small"
+                    onClick={() => setShowSettings(true)}
+                    title="设置"
+                  />
                 </div>
               </div>
             </header>
 
 
             {/* Chat Area */}
-            <div className="flex-1 overflow-hidden bg-stone-50 dark:bg-[#0a0a0f]">
-              <ScrollArea className="h-full px-4 py-3 md:px-5 md:py-4">
-                {messages.length === 0 && (
-                  <div className="flex flex-col items-center justify-center h-full text-muted-foreground py-20">
-                    <Puzzle className="w-12 h-12 mb-4 text-muted-foreground/40" />
-                    <p className="text-lg font-medium">Agent 协作群</p>
-                    <p className="text-sm mt-2 text-center max-w-md">{group.description}</p>
-                    <div className="mt-4 flex flex-wrap gap-2 justify-center">
-                      {group.agents.map(a => (
-                        <span key={a.id} className="text-xs bg-muted px-2 py-1 rounded-full">
-                          {a.name}: {a.role}
-                        </span>
-                      ))}
-                    </div>
-                    <p className="text-xs text-muted-foreground/60 mt-4">策略: {strategyLabels[group.strategy] || group.strategy} | 最大轮数: {group.maxRounds}</p>
+            <div className={styles.chatArea}>
+              {messages.length === 0 && (
+                <div className={styles.emptyState}>
+                  <Puzzle size={48} style={{ opacity: 0.4, marginBottom: 16 }} />
+                  <p style={{ fontSize: 18, fontWeight: 500, margin: 0 }}>Agent 协作群</p>
+                  <p style={{ fontSize: 14, marginTop: 8, textAlign: 'center', maxWidth: 480 }}>
+                    {group.description}
+                  </p>
+                  <div style={{ marginTop: 16, display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
+                    {group.agents.map(a => (
+                      <span key={a.id} className={styles.emptyAgentTag}>
+                        {a.name}: {a.role}
+                      </span>
+                    ))}
                   </div>
-                )}
-
-                <div className="space-y-4">
-                  {messages.map((message) => {
-                    const isUser = message.sender.name === userName;
-                    const avatarData = getAvatarData(message.sender.name);
-                    return (
-                      <div key={message.id} className={`flex items-start gap-3 ${isUser ? "justify-end" : ""}`}>
-                        {!isUser && (
-                          <Avatar className="w-8 h-8 rounded-full border-2 border-background shadow-sm flex-shrink-0">
-                            {resolveAvatarByName(message.sender.name, message.sender.avatar) ? (
-                              <AvatarImage src={resolveAvatarByName(message.sender.name, message.sender.avatar)} className="object-cover" />
-                            ) : (
-                              <AvatarFallback style={{ backgroundColor: avatarData.backgroundColor, color: 'white' }} className="text-xs">
-                                {avatarData.text}
-                              </AvatarFallback>
-                            )}
-                          </Avatar>
-                        )}
-                        <div className={isUser ? "text-right max-w-[75%]" : "max-w-[75%]"}>
-                          <div className="text-xs text-muted-foreground/75 px-1">
-                            {message.sender.name}
-                            {!isUser && (
-                              <span className="ml-1.5 text-[10px] text-purple-500">agent</span>
-                            )}
-                          </div>
-                          <div className={`mt-1 p-3 px-4 shadow-sm ${
-                            isUser
-                              ? "bg-gradient-to-tr from-orange-500 to-amber-500 text-white text-left rounded-2xl rounded-tr-sm shadow-sm"
-                              : message.isError
-                                ? "bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-2xl rounded-tl-sm text-left shadow-sm"
-                                : "bg-white dark:bg-zinc-800/90 border border-border/60 dark:border-zinc-700/50 rounded-2xl rounded-tl-sm text-left shadow-sm"
-                          }`}>
-                            <ReactMarkdown
-                              remarkPlugins={[remarkGfm, remarkMath]}
-                              rehypePlugins={[rehypeKatex, rehypeRaw]}
-                              className={`prose dark:prose-invert max-w-none text-sm leading-relaxed ${
-                                isUser ? "text-white [&_*]:text-white" : ""
-                              }
-                              [&_h2]:py-1
-                              [&_h2]:m-0
-                              [&_h3]:py-1.5
-                              [&_h3]:m-0
-                              [&_p]:m-0 
-                              [&_pre]:bg-gray-900 
-                              [&_pre]:p-2
-                              [&_pre]:m-0 
-                              [&_pre]:rounded-lg
-                              [&_pre]:text-gray-100
-                              [&_pre]:whitespace-pre-wrap
-                              [&_pre]:break-words
-                              [&_pre_code]:whitespace-pre-wrap
-                              [&_pre_code]:break-words
-                              [&_pre_code]:bg-transparent
-                              [&_pre_code]:text-inherit
-                              [&_pre_code]:p-0
-                              [&_pre_code]:rounded-none
-                              [&_code]:text-xs
-                              [&_code]:text-gray-800
-                              [&_code]:dark:text-gray-300
-                              [&_code:not(:where(pre_*))]:text-orange-800
-                              [&_code:not(:where(pre_*))]:bg-orange-100
-                              [&_code:not(:where(pre_*))]:px-1.5
-                              [&_code:not(:where(pre_*))]:py-0.5
-                              [&_code:not(:where(pre_*))]:rounded
-                              [&_code:not(:where(pre_*))]:dark:text-orange-300
-                              [&_code:not(:where(pre_*))]:dark:bg-orange-950/30
-                              [&_a]:text-[#ff6600]
-                              [&_a]:no-underline
-                              [&_a]:hover:underline
-                              [&_a]:underline-offset-2
-                              [&_ul]:my-2
-                              [&_ol]:my-2
-                              [&_li]:my-1
-                              [&_blockquote]:border-l-4
-                              [&_blockquote]:border-orange-300
-                              [&_blockquote]:dark:border-orange-700
-                              [&_blockquote]:bg-orange-50/50
-                              [&_blockquote]:dark:bg-orange-950/20
-                              [&_blockquote]:pl-4
-                              [&_blockquote]:my-2
-                              [&_blockquote]:italic
-                              [&_blockquote]:rounded-r-lg
-                              [&_details]:my-2
-                              [&_details]:rounded-lg
-                              [&_details]:bg-slate-100
-                              [&_details]:dark:bg-zinc-700/50
-                              [&_details]:p-3
-                              [&_details]:text-xs
-                              [&_summary]:cursor-pointer
-                              [&_summary]:font-semibold
-                              [&_summary]:text-foreground/70
-                              [&_summary]:select-none`}
-                            >
-                              {message.content}
-                            </ReactMarkdown>
-                            {message.isAI && isLoading && messages[messages.length - 1]?.id === message.id && (
-                              <span className="typing-indicator ml-1">▋</span>
-                            )}
-                          </div>
-                        </div>
-                        {isUser && (
-                          <Avatar className="w-8 h-8 rounded-full border-2 border-background shadow-sm flex-shrink-0">
-                            {userStore.userInfo?.avatar_url ? (
-                              <AvatarImage src={userStore.userInfo.avatar_url} className="object-cover" />
-                            ) : (
-                              <AvatarFallback style={{ backgroundColor: avatarData.backgroundColor, color: 'white' }} className="text-xs">
-                                {avatarData.text}
-                              </AvatarFallback>
-                            )}
-                          </Avatar>
-                        )}
-                      </div>
-                    );
-                  })}
-                  <div ref={messagesEndRef} />
+                  <p style={{ fontSize: 12, marginTop: 16, opacity: 0.6 }}>
+                    策略: {strategyLabels[group.strategy] || group.strategy} | 最大轮数: {group.maxRounds}
+                  </p>
                 </div>
-              </ScrollArea>
+              )}
+
+              <div className={styles.messageList}>
+                {messages.map((message) => {
+                  const isUser = message.sender.name === userName;
+                  const a = getAvatarData(message.sender.name);
+                  const url = resolveAvatarByName(message.sender.name, message.sender.avatar, 32);
+                  const isLatest = messages[messages.length - 1]?.id === message.id;
+                  const isStreaming = !!message.isAI && isLoading && isLatest;
+
+                  let bubbleClass = styles.bubbleAI;
+                  if (isUser) bubbleClass = styles.bubbleUser;
+                  else if (message.isError) bubbleClass = styles.bubbleError;
+
+                  return (
+                    <div
+                      key={message.id}
+                      className={styles.messageRow}
+                      style={{ justifyContent: isUser ? 'flex-end' : 'flex-start' }}
+                    >
+                      {!isUser && (
+                        <LobeAvatar
+                          avatar={url || a.text}
+                          background={a.backgroundColor}
+                          shape="circle"
+                          size={32}
+                          title={message.sender.name}
+                          style={{ flexShrink: 0 }}
+                        />
+                      )}
+                      <div style={{ maxWidth: '75%', textAlign: isUser ? 'right' : 'left' }}>
+                        <div className={styles.metaRow} style={{ justifyContent: isUser ? 'flex-end' : 'flex-start' }}>
+                          {message.sender.name}
+                          {!isUser && (
+                            <span className={styles.agentBadge}>agent</span>
+                          )}
+                        </div>
+                        <div className={bubbleClass}>
+                          <ChatMarkdown content={message.content} isUser={isUser} />
+                          {isStreaming && (
+                            <span className="typing-indicator" style={{ marginLeft: 4 }}>▋</span>
+                          )}
+                        </div>
+                      </div>
+                      {isUser && (
+                        <LobeAvatar
+                          avatar={userStore.userInfo?.avatar_url || a.text}
+                          background={a.backgroundColor}
+                          shape="circle"
+                          size={32}
+                          title={message.sender.name}
+                          style={{ flexShrink: 0 }}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+                <div ref={messagesEndRef} />
+              </div>
             </div>
 
 
             {/* Input Area */}
-            <div className="bg-white dark:bg-zinc-900 border-t border-border/60 dark:border-zinc-800 px-5 py-3 shadow-[0_-1px_3px_rgba(0,0,0,0.04)]">
-              <div className="flex items-center gap-3 pb-[env(safe-area-inset-bottom)]">
-                <div className="flex-1 relative">
-                  <Input
-                    placeholder="输入消息，Agent 将按策略协作回复..."
-                    className="w-full bg-muted/30 dark:bg-muted/15 border-border/30 focus-visible:ring-1 focus-visible:ring-[#ff6600]/50 focus-visible:border-[#ff6600]/30 rounded-xl px-4 py-2.5 h-11 text-sm transition-all"
-                    value={inputMessage}
-                    onChange={(e) => setInputMessage(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                  />
-                </div>
-                <Button
+            <div className={styles.inputArea}>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12 }}>
+                <AntdInput.TextArea
+                  value={inputMessage}
+                  onChange={(e) => setInputMessage(e.target.value)}
+                  onPressEnter={(e) => {
+                    if (!e.shiftKey) {
+                      e.preventDefault();
+                      handleSendMessage();
+                    }
+                  }}
+                  autoSize={{ minRows: 1, maxRows: 6 }}
+                  placeholder="输入消息，Agent 将按策略协作回复..."
+                  style={{ flex: 1, borderRadius: 12 }}
+                />
+                <AntdButton
+                  type="primary"
                   onClick={handleSendMessage}
-                  disabled={isLoading}
-                  className="bg-[#ff6600] hover:bg-[#e65c00] text-white shadow-sm hover:shadow-md hover:shadow-orange-500/15 transition-all rounded-xl h-11 px-5 flex-shrink-0"
-                >
-                  {isLoading ? (
-                    <div className="w-4 h-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                  ) : (
-                    <Send className="w-4 h-4" />
-                  )}
-                </Button>
+                  loading={isLoading}
+                  icon={isLoading ? undefined : <Send size={16} />}
+                  style={{ background: '#ff6600', borderColor: '#ff6600', height: 36, borderRadius: 12 }}
+                />
               </div>
             </div>
           </div>
@@ -406,7 +512,7 @@ const AgentChatUI = ({
 
       {/* Mobile overlay */}
       {sidebarOpen && (
-        <div className="fixed inset-0 bg-black/50 z-10 md:hidden" onClick={toggleSidebar} />
+        <div className={styles.mobileOverlay} onClick={toggleSidebar} />
       )}
     </>
   );
