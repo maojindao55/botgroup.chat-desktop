@@ -978,6 +978,13 @@ const ChatUI = () => {
           onShowStderrChange={setCliShowStderr}
           strategy={cliStrategy}
           onStrategyChange={setCliStrategy}
+          onExecutionPlanChange={(plan) => {
+            // Persist executionPlan override to localStorage for the current group
+            if (group.id) {
+              const key = `cli_exec_plan:${group.id}`;
+              localStorage.setItem(key, JSON.stringify(plan));
+            }
+          }}
           onRetryTask={(agentId, prompt) => {
             const agent = cliAgents.find(a => a.id === agentId);
             if (agent) {
@@ -1182,10 +1189,10 @@ const ChatUI = () => {
                                   onClick={async () => {
                                     if (message.cliCwd) {
                                       try {
-                                        const { invoke } = await import('@tauri-apps/api/core');
-                                        await invoke('select_directory'); // opens native file dialog
+                                        const { revealItemInDir } = await import('@tauri-apps/plugin-opener');
+                                        await revealItemInDir(message.cliCwd);
                                       } catch {
-                                        // fallback: copy to clipboard
+                                        // fallback: copy cd command to clipboard
                                         if (navigator.clipboard) {
                                           navigator.clipboard.writeText(`cd ${message.cliCwd}`).catch(() => {});
                                         }

@@ -1303,6 +1303,7 @@ pub async fn cli_tempcopy_prepare(
         // otherwise fall back to cp -a.
         let copy_result = {
             let src_str = format!("{}/", args.cwd); // trailing slash = copy contents
+            let _ = std::fs::create_dir_all(&dest);
             let output = std::process::Command::new("rsync")
                 .args(&[
                     "-a",
@@ -1318,26 +1319,11 @@ pub async fn cli_tempcopy_prepare(
 
             match output {
                 Ok(o) if o.status.success() => Ok(()),
-                Ok(o) => {
-                    // rsync failed, try cp -a as fallback
-                    let _ = std::fs::create_dir_all(&dest);
+                Ok(_) | Err(_) => {
+                    // rsync failed or not found, use cp -a with trailing /. to copy contents
+                    let src_contents = format!("{}/.") ;
                     let cp_output = std::process::Command::new("cp")
-                        .args(&["-a", &args.cwd, &dest_str])
-                        .output();
-                    match cp_output {
-                        Ok(co) if co.status.success() => Ok(()),
-                        Ok(co) => Err(format!(
-                            "cp failed: {}",
-                            String::from_utf8_lossy(&co.stderr)
-                        )),
-                        Err(e) => Err(format!("cp spawn failed: {}", e)),
-                    }
-                }
-                Err(_) => {
-                    // rsync not found, use cp -a
-                    let _ = std::fs::create_dir_all(&dest);
-                    let cp_output = std::process::Command::new("cp")
-                        .args(&["-a", &args.cwd, &dest_str])
+                        .args(&["-a", &src_contents, &dest_str])
                         .output();
                     match cp_output {
                         Ok(co) if co.status.success() => Ok(()),

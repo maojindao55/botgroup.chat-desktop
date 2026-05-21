@@ -457,9 +457,9 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
           { value: 'pipeline'   as const, label: '流水线',   desc: '按阶段接力执行，后者基于前者输出继续' },
           { value: 'race'       as const, label: '竞争模式', desc: '并行隔离 worktree 竞争方案（需要干净 git 仓库）' },
           { value: 'discussion' as const, label: '讨论模式', desc: '多 Agent 分轮讨论方案和风险，在临时只读副本中执行' },
-          { value: 'review'     as const, label: '评审模式', desc: '生成 → 审查 → 修正，三阶段优化代码质量' },
-          { value: 'debate'     as const, label: '辩论模式', desc: '多 Agent 独立提案 → 互评 → 最终建议' },
-          { value: 'mapreduce'  as const, label: '并行汇总', desc: '并行执行同一任务，汇总所有结果对比查看' },
+          { value: 'review'     as const, label: '评审模式', desc: '生成 → 审查 → 修正（规划中，当前复用流水线语义）' },
+          { value: 'debate'     as const, label: '辩论模式', desc: '多 Agent 独立提案 → 互评 → 最终建议（规划中）' },
+          { value: 'mapreduce'  as const, label: '并行汇总', desc: '并行执行同一任务（规划中，当前等同并行竞争无拆分）' },
         ].map(item => (
           <button key={item.value}
             onClick={() => setCliStrategy(item.value)}

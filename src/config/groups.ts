@@ -137,6 +137,7 @@ export function resolveExecutionPlan(
           maxRounds: 2,
         };
       case 'review':
+        // V3 planned: 生成→审查→修正. Currently maps to pipeline semantics.
         return {
           preset,
           selection: 'all',
@@ -146,6 +147,7 @@ export function resolveExecutionPlan(
           failurePolicy: 'continue',
         };
       case 'debate':
+        // V3 planned: 多 Agent 独立→互评→最终建议. Currently maps to discussion with 3 rounds.
         return {
           preset,
           selection: 'all',
@@ -157,6 +159,7 @@ export function resolveExecutionPlan(
           resultPolicy: 'manualPick',
         };
       case 'mapreduce':
+        // V3 planned: 拆分→并行→汇总. Currently maps to parallel-all (no task splitting).
         return {
           preset,
           selection: 'all',

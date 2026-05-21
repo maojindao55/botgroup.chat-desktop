@@ -70,6 +70,7 @@ interface CLIGroupSettingsProps {
   onShowStderrChange: (show: boolean) => void;
   strategy: CLIStrategy;
   onStrategyChange: (strategy: CLIStrategy) => void;
+  onExecutionPlanChange?: (plan: Partial<import('@/config/groups').CLIExecutionPlan>) => void;
   onRetryTask?: (agentId: string, prompt: string) => void;
 }
 
@@ -291,6 +292,7 @@ export const CLIGroupSettings = ({
   onShowStderrChange,
   strategy,
   onStrategyChange,
+  onExecutionPlanChange,
   onRetryTask,
 }: CLIGroupSettingsProps) => {
   const { styles, cx } = useStyles();
@@ -378,7 +380,7 @@ export const CLIGroupSettings = ({
 
   // Fetch tasks on history tab active
   useEffect(() => {
-    if (open && activeTab === 'history') {
+    if (open && (activeTab === 'history' || activeTab === 'worktree')) {
       fetchTasks(false);
     }
   }, [open, activeTab, group.id]);
@@ -513,9 +515,9 @@ export const CLIGroupSettings = ({
     race: '并行创建隔离 worktree，让多个 CLI Agent 竞争方案（需要干净 git 仓库）',
     pipeline: '按阶段接力执行，后者基于前者输出继续（失败默认继续，取消停止）',
     discussion: '多 Agent 分轮讨论方案和风险，在临时只读副本中执行（共 2 轮）',
-    review: '生成 → 审查 → 修正：三阶段接力优化代码质量',
-    debate: '多 Agent 独立提案 → 互评 → 最终建议（3 轮辩论）',
-    mapreduce: '并行执行同一任务，汇总所有结果对比查看',
+    review: '生成 → 审查 → 修正（规划中，当前复用流水线语义）',
+    debate: '多 Agent 独立提案 → 互评 → 最终建议（规划中，当前复用讨论语义 3 轮）',
+    mapreduce: '并行执行同一任务，汇总所有结果（规划中，当前等同并行竞争无拆分）',
   };
 
   const tabItems = [
@@ -662,8 +664,10 @@ export const CLIGroupSettings = ({
                 <select
                   value={group.executionPlan?.failurePolicy || 'continue'}
                   onChange={(e) => {
-                    // This would persist to group.executionPlan in a real implementation
-                    void e;
+                    onExecutionPlanChange?.({
+                      ...group.executionPlan,
+                      failurePolicy: e.target.value as any,
+                    });
                   }}
                   style={{ fontSize: 12, padding: '4px 8px', borderRadius: 4, border: '1px solid #d9d9d9' }}
                 >
@@ -684,7 +688,12 @@ export const CLIGroupSettings = ({
                     max={5}
                     size="small"
                     style={{ width: 60 }}
-                    onChange={() => { /* persist to executionPlan */ }}
+                    onChange={(v) => {
+                      onExecutionPlanChange?.({
+                        ...group.executionPlan,
+                        maxRounds: Number(v) || 2,
+                      });
+                    }}
                   />
                 </div>
               )}
@@ -692,17 +701,22 @@ export const CLIGroupSettings = ({
                 <div className={styles.rowBetween} style={{ marginTop: 8 }}>
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 500 }}>结果策略</div>
-                    <div className={styles.panelDesc} style={{ marginTop: 2 }}>多结果时如何取舍</div>
+                    <div className={styles.panelDesc} style={{ marginTop: 2 }}>多结果时如何取舍（当前仅展示全部）</div>
                   </div>
                   <select
                     value={group.executionPlan?.resultPolicy || 'all'}
-                    onChange={() => { /* persist */ }}
+                    onChange={(e) => {
+                      onExecutionPlanChange?.({
+                        ...group.executionPlan,
+                        resultPolicy: e.target.value as any,
+                      });
+                    }}
                     style={{ fontSize: 12, padding: '4px 8px', borderRadius: 4, border: '1px solid #d9d9d9' }}
                   >
                     <option value="all">全部展示</option>
-                    <option value="firstSuccess">首个成功</option>
-                    <option value="fastest">最快结果</option>
-                    <option value="manualPick">手动选择</option>
+                    <option value="firstSuccess">首个成功（规划中）</option>
+                    <option value="fastest">最快结果（规划中）</option>
+                    <option value="manualPick">手动选择（规划中）</option>
                   </select>
                 </div>
               )}
@@ -955,58 +969,128 @@ export const CLIGroupSettings = ({
     {
       key: 'worktree',
       label: 'Worktree',
-      children: (
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <span style={{ fontSize: 13, opacity: 0.8 }}>竞争模式 Worktree 管理</span>
-            <Button
-              type="text"
-              size="small"
-              icon={<RefreshCw size={14} />}
-              onClick={async () => {
-                // placeholder: in future this would list worktrees from app_data_dir
-              }}
-            />
-          </div>
-          <div style={{ padding: 12, background: 'rgba(0,0,0,0.04)', borderRadius: 8, marginBottom: 12 }}>
-            <p style={{ fontSize: 12, color: 'rgba(0,0,0,0.65)', margin: 0 }}>
-              竞争模式（race）会为每个 Agent 创建独立的 git worktree。
-              执行完成后 worktree 默认保留，你可以在此处查看和清理。
-            </p>
-          </div>
-          <div style={{ padding: 12, background: 'rgba(0,0,0,0.04)', borderRadius: 8 }}>
-            <Button
-              danger
-              size="small"
-              onClick={async () => {
-                const confirmed = window.confirm('确认清理所有该群的 worktree？此操作不可恢复。');
-                if (!confirmed) return;
-                try {
-                  // Get all worktree paths from recent race tasks
-                  const res = await request(`/api/cli/tasks/list?groupId=${group.id}&limit=50`);
-                  const json = await res.json();
-                  if (json.success && Array.isArray(json.data)) {
-                    const worktreePaths = json.data
-                      .filter((t: any) => t.cwd && t.cwd.includes('cli-worktrees'))
-                      .map((t: any) => t.cwd);
-                    if (worktreePaths.length > 0) {
+      children: (() => {
+        // Derive worktree entries from task history (race tasks with cli-worktrees in cwd)
+        const worktreeEntries = tasks
+          .filter((t) => t.cwd && t.cwd.includes('cli-worktrees'))
+          .map((t) => ({ path: t.cwd!, agent: t.agentName, status: t.status, taskId: t.id, createdAt: t.createdAt }));
+        const uniquePaths = [...new Map(worktreeEntries.map(e => [e.path, e])).values()];
+
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <span style={{ fontSize: 13, opacity: 0.8 }}>竞争模式 Worktree 管理</span>
+              <Button
+                type="text"
+                size="small"
+                icon={<RefreshCw size={14} />}
+                onClick={() => fetchTasks(false)}
+                loading={loadingTasks}
+              />
+            </div>
+            <div style={{ padding: 12, background: 'rgba(0,0,0,0.04)', borderRadius: 8, marginBottom: 12 }}>
+              <p style={{ fontSize: 12, color: 'rgba(0,0,0,0.65)', margin: 0 }}>
+                竞争模式（race）会为每个 Agent 创建独立的 git worktree。
+                执行完成后 worktree 默认保留，你可以在此处查看和清理。
+              </p>
+            </div>
+
+            {uniquePaths.length === 0 ? (
+              <div style={{ padding: '30px 0', textAlign: 'center', color: 'var(--ant-color-text-tertiary)', fontSize: 12 }}>
+                暂无 worktree 记录（使用竞争模式执行后会显示在此）
+              </div>
+            ) : (
+              <div style={{ maxHeight: 'calc(100vh - 320px)', overflowY: 'auto', paddingRight: 4 }}>
+                {uniquePaths.map((entry) => (
+                  <div key={entry.path} className={styles.taskItem}>
+                    <div className={styles.taskHeader}>
+                      <span className={styles.taskAgent}>{entry.agent}</span>
+                      {getStatusTag(entry.status)}
+                    </div>
+                    <div className={styles.runtimePath}>{entry.path}</div>
+                    <div className={styles.taskMeta}>
+                      <span>{formatDateTime(entry.createdAt)}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                      <Button
+                        type="default"
+                        size="small"
+                        className={styles.actionBtn}
+                        onClick={() => {
+                          if (navigator.clipboard) {
+                            navigator.clipboard.writeText(entry.path).catch(() => {});
+                          }
+                        }}
+                      >
+                        复制路径
+                      </Button>
+                      <Button
+                        type="default"
+                        size="small"
+                        className={styles.actionBtn}
+                        onClick={async () => {
+                          try {
+                            const { revealItemInDir } = await import('@tauri-apps/plugin-opener');
+                            await revealItemInDir(entry.path);
+                          } catch { /* ignore */ }
+                        }}
+                      >
+                        打开
+                      </Button>
+                      <Button
+                        danger
+                        size="small"
+                        className={styles.actionBtn}
+                        onClick={async () => {
+                          const confirmed = window.confirm(`确认删除此 worktree？\n${entry.path}`);
+                          if (!confirmed) return;
+                          try {
+                            await request('/api/cli/worktree/cleanup', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ paths: [entry.path] }),
+                            });
+                            fetchTasks(false); // refresh list
+                          } catch (e) {
+                            console.error('Failed to cleanup worktree:', e);
+                          }
+                        }}
+                      >
+                        删除
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {uniquePaths.length > 0 && (
+              <div style={{ marginTop: 12, padding: 12, background: 'rgba(0,0,0,0.04)', borderRadius: 8 }}>
+                <Button
+                  danger
+                  size="small"
+                  onClick={async () => {
+                    const confirmed = window.confirm(`确认清理所有 ${uniquePaths.length} 个 worktree？此操作不可恢复。`);
+                    if (!confirmed) return;
+                    try {
                       await request('/api/cli/worktree/cleanup', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ paths: [...new Set(worktreePaths)] }),
+                        body: JSON.stringify({ paths: uniquePaths.map(e => e.path) }),
                       });
+                      fetchTasks(false);
+                    } catch (e) {
+                      console.error('Failed to cleanup worktrees:', e);
                     }
-                  }
-                } catch (e) {
-                  console.error('Failed to cleanup worktrees:', e);
-                }
-              }}
-            >
-              清理所有 Worktree
-            </Button>
+                  }}
+                >
+                  清理所有 Worktree ({uniquePaths.length})
+                </Button>
+              </div>
+            )}
           </div>
-        </div>
-      )
+        );
+      })()
     }
   ];
 
