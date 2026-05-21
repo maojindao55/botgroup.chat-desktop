@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { groups as staticGroups } from '@/config/groups';
-import { generateAICharacters, modelConfigs } from '@/config/aiCharacters';
+import { defaultGroups as staticGroups } from '@/config/groups';
+import { generateAICharacters, cliAgents, modelConfigs } from '@/config/aiCharacters';
 
 const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
 if (isTauri) {
@@ -158,31 +158,13 @@ export async function request(url: string, options: RequestInit = {}) {
         }
       }
 
-      let dynamicGroups: any[] = [];
-      if (user) {
-        try {
-          const list: any = await invoke('get_claw_groups', { userId: user.id });
-          dynamicGroups = list.map((g: any) => ({
-            id: g.id,
-            name: `🦞${g.name}`,
-            description: g.description || '',
-            members: [],
-            isGroupDiscussionMode: true,
-            type: 'openclaw',
-            clawGroupId: g.id
-          }));
-        } catch (e) {
-          console.error('Failed to fetch local claw groups:', e);
-        }
-      }
-
-      const allGroups = [...staticGroups, ...dynamicGroups];
+      const allGroups = [...staticGroups];
 
       return mockResponse({
         code: 200,
         data: {
           groups: allGroups,
-          characters: generateAICharacters('#groupName#', '#allTags#'),
+          characters: [...generateAICharacters('#groupName#', '#allTags#'), ...cliAgents],
           user: user || null
         }
       });
@@ -215,77 +197,7 @@ export async function request(url: string, options: RequestInit = {}) {
       });
     }
 
-    // 4. Create claw group
-    if (cleanUrl === '/api/claw/create') {
-      const body = JSON.parse(options.body as string);
-      const user: any = await invoke('get_current_user');
-      if (!user) {
-        return mockResponse({ success: false, message: '请先登录' }, 401);
-      }
-      const group = await invoke('create_claw_group', {
-        userId: user.id,
-        name: body.name,
-        description: body.description || ''
-      });
-      return mockResponse({
-        success: true,
-        data: { group }
-      });
-    }
-
-    // 5. Join claw group
-    if (cleanUrl === '/api/claw/join') {
-      const body = JSON.parse(options.body as string);
-      const user: any = await invoke('get_current_user');
-      if (!user) {
-        return mockResponse({ success: false, message: '请先登录' }, 401);
-      }
-      await invoke('join_claw_group', {
-        userId: user.id,
-        groupId: body.groupId
-      });
-      return mockResponse({ success: true });
-    }
-
-    // 6. Get claw group messages
-    if (cleanUrl === '/api/claw/messages') {
-      const params = new URLSearchParams(url.split('?')[1] || '');
-      const group = params.get('group') || '';
-      const limit = params.get('limit') ? parseInt(params.get('limit')!) : 30;
-      const since = params.get('since') ? parseInt(params.get('since')!) : null;
-      const before = params.get('before') ? parseInt(params.get('before')!) : null;
-
-      const messages = await invoke('get_claw_messages', {
-        groupId: group,
-        limit,
-        since,
-        before
-      });
-
-      return mockResponse({
-        success: true,
-        data: messages
-      });
-    }
-
-    // 7. Send claw group message
-    if (cleanUrl === '/api/claw/send') {
-      const body = JSON.parse(options.body as string);
-      const message = await invoke('send_claw_message', {
-        groupId: body.groupId,
-        senderId: body.senderId || '1',
-        senderName: body.senderName || '用户',
-        senderType: body.senderType || 'user',
-        content: body.content
-      });
-
-      return mockResponse({
-        success: true,
-        data: message
-      });
-    }
-
-    // 8. Scheduler API for AI response selection
+    // 4. Scheduler API for AI response selection
     if (cleanUrl === '/api/scheduler') {
       const body = JSON.parse(options.body as string);
       const selectedAIs = await clientScheduleAI(body.message, body.history, body.availableAIs);
@@ -362,7 +274,7 @@ export async function request(url: string, options: RequestInit = {}) {
           const ensureDetailsOpen = () => {
             if (!detailsOpen) {
               detailsOpen = true;
-              enqueueChunk(`\n<details open><summary>🔧 执行过程</summary>\n\n`);
+              enqueueChunk(`\n<details open><summary>⚙️ 执行过程</summary>\n\n`);
             }
           };
 
@@ -370,6 +282,10 @@ export async function request(url: string, options: RequestInit = {}) {
           const closeDetails = () => {
             if (detailsOpen) {
               detailsOpen = false;
+              const summary = stepCount > 0
+                ? `⚙️ 已执行 ${stepCount} 个命令`
+                : `⚙️ 执行过程`;
+              // Replace the opening summary with final count by closing and re-emitting
               enqueueChunk(`\n</details>\n\n`);
             }
           };
@@ -396,30 +312,27 @@ export async function request(url: string, options: RequestInit = {}) {
                       // Thinking / reasoning — stream inside details block
                       else if (jsonEvt.type === 'item.completed' && jsonEvt.item?.type === 'reasoning' && jsonEvt.item?.text) {
                         ensureDetailsOpen();
-                        enqueueChunk(`> 💭 ${jsonEvt.item.text}\n\n`);
+                        enqueueChunk(`💭 **思考中**\n\n> ${jsonEvt.item.text.replace(/\n/g, '\n> ')}\n\n`);
                       }
-                      // Command started — stream immediately with ⏳
+                      // Command started — stream immediately
                       else if (jsonEvt.type === 'item.started' && jsonEvt.item?.type === 'command_execution') {
-                        ensureDetailsOpen();
                         stepCount++;
+                        ensureDetailsOpen();
                         const cmd = jsonEvt.item.command || '(unknown)';
-                        const cmdShort = cmd.length > 80 ? cmd.slice(0, 77) + '...' : cmd;
-                        enqueueChunk(`${stepCount}. ⏳ \`${cmdShort}\`\n`);
+                        const cmdShort = cmd.length > 120 ? cmd.slice(0, 117) + '...' : cmd;
+                        enqueueChunk(`\n---\n\n▶ **Step ${stepCount}** — \`${cmdShort}\`\n\n`);
                       }
                       // Command completed — stream result
                       else if (jsonEvt.type === 'item.completed' && jsonEvt.item?.type === 'command_execution') {
                         ensureDetailsOpen();
                         const exitCode = jsonEvt.item.exit_code ?? 0;
-                        const status = exitCode === 0 ? '✓' : `✗ exit ${exitCode}`;
-                        const cmd = jsonEvt.item.command || '(unknown)';
-                        const cmdShort = cmd.length > 80 ? cmd.slice(0, 77) + '...' : cmd;
-                        // Replace the pending line with completed status
-                        enqueueChunk(`   → \`${cmdShort}\` ${status}\n`);
+                        const status = exitCode === 0 ? '✅ 成功' : `❌ 失败 (exit ${exitCode})`;
+                        enqueueChunk(`${status}\n`);
                         if (jsonEvt.item.output) {
-                          const outShort = jsonEvt.item.output.length > 300
-                            ? jsonEvt.item.output.slice(0, 297) + '...'
+                          const outShort = jsonEvt.item.output.length > 500
+                            ? jsonEvt.item.output.slice(0, 497) + '...'
                             : jsonEvt.item.output;
-                          enqueueChunk(`   \`\`\`\n   ${outShort}\n   \`\`\`\n`);
+                          enqueueChunk(`\n\`\`\`\n${outShort}\n\`\`\`\n\n`);
                         }
                       }
                       // Skip turn.started, turn.completed, thread.started silently
@@ -451,7 +364,7 @@ export async function request(url: string, options: RequestInit = {}) {
                 // In JSON mode, stream stderr as thinking inside the details block
                 if (isJsonMode) {
                   ensureDetailsOpen();
-                  enqueueChunk(`> _${line.trim().replace(/_/g, '\\_')}_\n`);
+                  enqueueChunk(`> 📝 _${line.trim().replace(/_/g, '\\_')}_\n\n`);
                 } else {
                   enqueueChunk('> _' + line.replace(/_/g, '\\_') + '_\n');
                 }
