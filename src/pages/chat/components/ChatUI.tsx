@@ -6,7 +6,7 @@
  * - agent → AgentChatUI
  */
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Share2, Settings2, ChevronLeft } from 'lucide-react';
+import { Send, Share2, Settings2, ChevronLeft, Bot, Terminal } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -30,8 +30,8 @@ import Sidebar from './Sidebar';
 import { AdBanner, AdBannerMobile } from './AdSection';
 import { useUserStore } from '@/store/userStore';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { getAvatarData } from '@/utils/avatar';
-import type { Group, AIGroup, CLIGroup, AgentGroup } from '@/config/groups';
+import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
+import type { Group, AIGroup, CLIGroup, AgentGroup, CLIStrategy } from '@/config/groups';
 
 
 const KaTeXStyle = () => (
@@ -71,6 +71,7 @@ const ChatUI = () => {
   const [workspacePath, setWorkspacePath] = useState("");
   const [approvalMode, setApprovalMode] = useState<'auto' | 'ask'>('auto');
   const [cliTimeout, setCliTimeout] = useState(300000);
+  const [cliStrategy, setCliStrategy] = useState<CLIStrategy>('sequential');
 
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -131,6 +132,7 @@ const ChatUI = () => {
           setWorkspacePath(wsOverride || currentGroup.workspacePath || '');
           setApprovalMode(currentGroup.approvalMode || 'auto');
           setCliTimeout(currentGroup.timeout || 300000);
+          setCliStrategy(currentGroup.strategy || 'sequential');
 
           let nickname = '我';
           if (data.user) {
@@ -170,8 +172,15 @@ const ChatUI = () => {
   const handleSelectGroup = (index: number) => { window.location.href = `?id=${index}`; };
 
   const handleCreateGroup = (newGroup: Group) => {
+    try {
+      const stored = localStorage.getItem('custom_groups');
+      const customGroups = stored ? JSON.parse(stored) : [];
+      customGroups.push(newGroup);
+      localStorage.setItem('custom_groups', JSON.stringify(customGroups));
+    } catch (e) {
+      console.error('Failed to save custom group:', e);
+    }
     setGroups(prev => [...prev, newGroup]);
-    // In real app: persist to backend. For now add to local state
     window.location.href = `?id=${groups.length}`;
   };
 
@@ -445,6 +454,8 @@ const ChatUI = () => {
           onApprovalModeChange={setApprovalMode}
           timeout={cliTimeout}
           onTimeoutChange={setCliTimeout}
+          strategy={cliStrategy}
+          onStrategyChange={setCliStrategy}
         />
       )}
 
@@ -472,24 +483,46 @@ const ChatUI = () => {
                   <div className="md:hidden flex items-center justify-center m-1 cursor-pointer mr-2" onClick={toggleSidebar}>
                     <ChevronLeft className="w-5 h-5 text-muted-foreground" />
                   </div>
-                  <h1 className="font-semibold text-sm tracking-wide text-foreground/90 -ml-1">{group.name}({users.length})</h1>
+                  <div className="flex flex-col items-start justify-center">
+                    <div className="flex items-center gap-2">
+                      {group.type === 'cli' ? (
+                        <Terminal className="w-4 h-4 text-[#ff6600]" />
+                      ) : (
+                        <Bot className="w-4 h-4 text-[#ff6600]" />
+                      )}
+                      <h1 className="font-semibold text-sm tracking-wide text-foreground/90">{group.name}</h1>
+                      <span className="text-xs text-muted-foreground">({users.length})</span>
+                    </div>
+                    {group.type === 'cli' && workspacePath && (
+                      <div className="text-[10px] text-muted-foreground font-mono truncate max-w-[220px] sm:max-w-[450px] mt-0.5 flex items-center gap-1">
+                        <span className="text-[9px] uppercase tracking-wider opacity-60">CWD:</span>
+                        <span 
+                          onDoubleClick={() => setShowSettings(true)}
+                          className="bg-secondary/80 text-secondary-foreground px-1.5 py-0.5 rounded border border-border/40 truncate cursor-pointer hover:bg-secondary hover:text-foreground transition-all select-none" 
+                          title="双击以修改本地 Workspace 路径"
+                        >
+                          {workspacePath}
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <div className="hidden md:block">
                     <AdBanner show={showAd} closeAd={() => setShowAd(false)} />
                   </div>
-                  <div className="flex -space-x-1.5">
+                  <div className="flex -space-x-2">
                     {users.slice(0, 4).map((user) => {
                       const avatarData = getAvatarData(user.name);
                       return (
                         <TooltipProvider key={user.id}>
                           <Tooltip>
                             <TooltipTrigger>
-                              <Avatar className="w-7 h-7 border-2 border-background shadow-sm">
-                                {user.avatar ? (
-                                  <AvatarImage src={user.avatar} className="object-cover" />
+                              <Avatar className="w-8 h-8 border-2 border-background shadow-sm">
+                                {resolveAvatarByName(user.name, user.avatar) ? (
+                                  <AvatarImage src={resolveAvatarByName(user.name, user.avatar)} className="object-cover" />
                                 ) : (
-                                  <AvatarFallback style={{ backgroundColor: avatarData.backgroundColor, color: 'white' }} className="text-[10px]">
+                                  <AvatarFallback style={{ backgroundColor: avatarData.backgroundColor, color: 'white' }} className="text-xs">
                                     {avatarData.text}
                                   </AvatarFallback>
                                 )}
@@ -501,7 +534,7 @@ const ChatUI = () => {
                       );
                     })}
                     {users.length > 4 && (
-                      <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-[10px] font-semibold border-2 border-background shadow-sm text-muted-foreground">
+                      <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-semibold border-2 border-background shadow-sm text-muted-foreground">
                         +{users.length - 4}
                       </div>
                     )}
@@ -526,8 +559,8 @@ const ChatUI = () => {
                       className={`flex items-start gap-3 ${message.sender.name === userName ? "justify-end" : ""}`}>
                       {message.sender.name !== userName && (
                         <Avatar className="w-10 h-10 rounded-full border-2 border-background shadow-sm flex-shrink-0">
-                          {message.sender.avatar ? (
-                            <AvatarImage src={message.sender.avatar} className="w-10 h-10 object-cover" />
+                          {resolveAvatarByName(message.sender.name, message.sender.avatar) ? (
+                            <AvatarImage src={resolveAvatarByName(message.sender.name, message.sender.avatar)} className="w-10 h-10 object-cover" />
                           ) : (
                             <AvatarFallback style={{ backgroundColor: getAvatarData(message.sender.name).backgroundColor, color: 'white' }} className="text-xs">
                               {getAvatarData(message.sender.name).text}
@@ -658,8 +691,8 @@ const ChatUI = () => {
                       </div>
                       {message.sender.name === userName && (
                         <Avatar className="w-10 h-10 rounded-full border-2 border-background shadow-sm flex-shrink-0">
-                          {message.sender.avatar ? (
-                            <AvatarImage src={message.sender.avatar} className="object-cover" />
+                          {resolveAvatarByName(message.sender.name, message.sender.avatar) ? (
+                            <AvatarImage src={resolveAvatarByName(message.sender.name, message.sender.avatar)} className="object-cover" />
                           ) : (
                             <AvatarFallback style={{ backgroundColor: getAvatarData(message.sender.name).backgroundColor, color: 'white' }} className="text-xs">
                               {getAvatarData(message.sender.name).text}

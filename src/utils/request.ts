@@ -158,7 +158,16 @@ export async function request(url: string, options: RequestInit = {}) {
         }
       }
 
-      const allGroups = [...staticGroups];
+      let customGroups: any[] = [];
+      try {
+        const stored = localStorage.getItem('custom_groups');
+        if (stored) {
+          customGroups = JSON.parse(stored);
+        }
+      } catch (e) {
+        console.error('Failed to parse custom groups:', e);
+      }
+      const allGroups = [...staticGroups, ...customGroups];
 
       return mockResponse({
         code: 200,

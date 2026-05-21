@@ -8,12 +8,12 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Plus, Trash2, Puzzle, ChevronDown, ChevronUp, Check, Mic, MicOff } from 'lucide-react';
 import { cn } from "@/lib/utils";
 import type { AgentGroup, AgentMember, AgentStrategy, AgentTool } from '@/config/groups';
-import { getAvatarData } from '@/utils/avatar';
+import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
 
 
 const AVAILABLE_TOOLS: AgentTool[] = [
@@ -80,12 +80,16 @@ export const AgentGroupSettings = ({
             {/* 执行策略 */}
             <div className="space-y-2">
               <label className="text-sm font-medium">执行策略</label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-4 gap-2">
                 {[
                   { value: 'sequential' as const, label: '顺序执行' },
                   { value: 'router' as const, label: '意图路由' },
                   { value: 'discussion' as const, label: '全员讨论' },
                   { value: 'react' as const, label: 'ReAct' },
+                  { value: 'pipeline' as const, label: '流水线' },
+                  { value: 'debate' as const, label: '辩论' },
+                  { value: 'mapreduce' as const, label: 'MapReduce' },
+                  { value: 'supervisor' as const, label: '监督者' },
                 ].map(item => (
                   <button key={item.value}
                     onClick={() => onUpdateGroup({ strategy: item.value })}
@@ -99,10 +103,23 @@ export const AgentGroupSettings = ({
                   </button>
                 ))}
               </div>
+              {/* 策略描述 */}
+              <p className="text-[11px] text-muted-foreground mt-1.5">
+                {{
+                  sequential: '按成员顺序依次执行，后者可看到前者的输出',
+                  router: '智能分析用户意图，选择最相关的 Agent 回答',
+                  discussion: '所有 Agent 并行回复同一消息',
+                  react: '协调者分析→分派任务→执行→判断是否完成→循环',
+                  pipeline: '按角色分工形成流水线，每阶段产出作为下一阶段输入',
+                  debate: '多 Agent 独立回答→互相评论→最终综合裁决',
+                  mapreduce: '自动拆分任务→各 Agent 并行处理→汇总合并结果',
+                  supervisor: '监督者分派任务→审查质量→反馈修改→直到满意',
+                }[group.strategy]}
+              </p>
             </div>
 
             {/* 协调者 Prompt */}
-            {(group.strategy === 'router' || group.strategy === 'react' || group.strategy === 'discussion') && (
+            {(group.strategy === 'router' || group.strategy === 'react' || group.strategy === 'discussion' || group.strategy === 'supervisor' || group.strategy === 'debate' || group.strategy === 'mapreduce') && (
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">协调者 Prompt</label>
                 <textarea
@@ -141,12 +158,24 @@ export const AgentGroupSettings = ({
                       <div className="flex items-center gap-2 p-2.5 cursor-pointer hover:bg-accent/30"
                         onClick={() => setExpandedAgent(isExpanded ? null : agent.id)}>
                         <Avatar className="w-7 h-7">
-                          <AvatarFallback style={{ backgroundColor: avatarData.backgroundColor, color: 'white' }} className="text-[10px]">
-                            <Puzzle className="w-3 h-3" />
-                          </AvatarFallback>
+                          {resolveAvatarByName(agent.name || 'A', agent.avatar) ? (
+                            <AvatarImage src={resolveAvatarByName(agent.name || 'A', agent.avatar)} className="object-cover" />
+                          ) : (
+                            <AvatarFallback style={{ backgroundColor: avatarData.backgroundColor, color: 'white' }} className="text-[10px]">
+                              <Puzzle className="w-3 h-3" />
+                            </AvatarFallback>
+                          )}
                         </Avatar>
                         <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium truncate">{agent.name || '未命名 Agent'}</div>
+                          <div className="text-sm font-medium truncate flex items-center gap-1.5">
+                            {agent.name || '未命名 Agent'}
+                            {/* 监督者策略下，第一个 Agent 显示监督者徽章 */}
+                            {group.strategy === 'supervisor' && group.agents[0]?.id === agent.id && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-50 dark:bg-orange-950/20 text-[#ff6600] font-medium whitespace-nowrap">
+                                👑 监督者
+                              </span>
+                            )}
+                          </div>
                           <div className="text-[10px] text-muted-foreground truncate">{agent.role || '未设置角色'}</div>
                         </div>
                         <div className="flex items-center gap-1">

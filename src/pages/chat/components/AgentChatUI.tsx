@@ -7,7 +7,7 @@ import { Send, Settings2, ChevronLeft, Puzzle } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -16,7 +16,7 @@ import rehypeRaw from 'rehype-raw';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useUserStore } from '@/store/userStore';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { getAvatarData } from '@/utils/avatar';
+import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
 import { executeAgentStrategy } from '@/engine/agentEngine';
 import type { StreamCallback } from '@/engine/agentEngine';
 import AgentGroupSettings from './AgentGroupSettings';
@@ -51,6 +51,18 @@ const AgentChatUI = ({
 }: AgentChatUIProps) => {
   const userStore = useUserStore();
   const isMobile = useIsMobile();
+
+  // 策略中文标签映射
+  const strategyLabels: Record<string, string> = {
+    sequential: '顺序执行',
+    router: '意图路由',
+    discussion: '全员讨论',
+    react: 'ReAct 循环',
+    pipeline: '流水线',
+    debate: '辩论',
+    mapreduce: 'MapReduce',
+    supervisor: '监督者',
+  };
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputMessage, setInputMessage] = useState('');
@@ -185,17 +197,22 @@ const AgentChatUI = ({
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <div className="flex -space-x-1.5">
+                  <div className="flex -space-x-2">
                     {group.agents.slice(0, 4).map(agent => {
                       const avatarData = getAvatarData(agent.name);
+                      const resolvedAvatar = resolveAvatarByName(agent.name, agent.avatar);
                       return (
                         <TooltipProvider key={agent.id}>
                           <Tooltip>
                             <TooltipTrigger>
-                              <Avatar className="w-7 h-7 border-2 border-background shadow-sm">
-                                <AvatarFallback style={{ backgroundColor: avatarData.backgroundColor, color: 'white' }} className="text-[10px]">
-                                  {avatarData.text}
-                                </AvatarFallback>
+                              <Avatar className="w-8 h-8 border-2 border-background shadow-sm">
+                                {resolvedAvatar ? (
+                                  <AvatarImage src={resolvedAvatar} className="object-cover" />
+                                ) : (
+                                  <AvatarFallback style={{ backgroundColor: avatarData.backgroundColor, color: 'white' }} className="text-xs">
+                                    {avatarData.text}
+                                  </AvatarFallback>
+                                )}
                               </Avatar>
                             </TooltipTrigger>
                             <TooltipContent><p>{agent.name} - {agent.role}</p></TooltipContent>
@@ -204,13 +221,13 @@ const AgentChatUI = ({
                       );
                     })}
                     {group.agents.length > 4 && (
-                      <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-[10px] font-semibold border-2 border-background shadow-sm text-muted-foreground">
+                      <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-semibold border-2 border-background shadow-sm text-muted-foreground">
                         +{group.agents.length - 4}
                       </div>
                     )}
                   </div>
                   <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 font-medium">
-                    {group.strategy}
+                    {strategyLabels[group.strategy] || group.strategy}
                   </span>
                   <Button variant="ghost" size="icon" onClick={() => setShowSettings(true)} className="h-8 w-8 rounded-lg hover:bg-accent/60">
                     <Settings2 className="w-4 h-4 text-muted-foreground" />
@@ -235,7 +252,7 @@ const AgentChatUI = ({
                         </span>
                       ))}
                     </div>
-                    <p className="text-xs text-muted-foreground/60 mt-4">策略: {group.strategy} | 最大轮数: {group.maxRounds}</p>
+                    <p className="text-xs text-muted-foreground/60 mt-4">策略: {strategyLabels[group.strategy] || group.strategy} | 最大轮数: {group.maxRounds}</p>
                   </div>
                 )}
 
@@ -247,9 +264,13 @@ const AgentChatUI = ({
                       <div key={message.id} className={`flex items-start gap-3 ${isUser ? "justify-end" : ""}`}>
                         {!isUser && (
                           <Avatar className="w-8 h-8 rounded-full border-2 border-background shadow-sm flex-shrink-0">
-                            <AvatarFallback style={{ backgroundColor: avatarData.backgroundColor, color: 'white' }} className="text-xs">
-                              {avatarData.text}
-                            </AvatarFallback>
+                            {resolveAvatarByName(message.sender.name, message.sender.avatar) ? (
+                              <AvatarImage src={resolveAvatarByName(message.sender.name, message.sender.avatar)} className="object-cover" />
+                            ) : (
+                              <AvatarFallback style={{ backgroundColor: avatarData.backgroundColor, color: 'white' }} className="text-xs">
+                                {avatarData.text}
+                              </AvatarFallback>
+                            )}
                           </Avatar>
                         )}
                         <div className={isUser ? "text-right max-w-[75%]" : "max-w-[75%]"}>
@@ -336,9 +357,13 @@ const AgentChatUI = ({
                         </div>
                         {isUser && (
                           <Avatar className="w-8 h-8 rounded-full border-2 border-background shadow-sm flex-shrink-0">
-                            <AvatarFallback style={{ backgroundColor: avatarData.backgroundColor, color: 'white' }} className="text-xs">
-                              {avatarData.text}
-                            </AvatarFallback>
+                            {userStore.userInfo?.avatar_url ? (
+                              <AvatarImage src={userStore.userInfo.avatar_url} className="object-cover" />
+                            ) : (
+                              <AvatarFallback style={{ backgroundColor: avatarData.backgroundColor, color: 'white' }} className="text-xs">
+                                {avatarData.text}
+                              </AvatarFallback>
+                            )}
                           </Avatar>
                         )}
                       </div>
