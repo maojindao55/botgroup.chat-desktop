@@ -346,6 +346,7 @@ const ChatUI = () => {
   const [workspacePath, setWorkspacePath] = useState("");
   const [approvalMode, setApprovalMode] = useState<'auto' | 'ask'>('auto');
   const [cliTimeout, setCliTimeout] = useState(300000);
+  const [cliShowStderr, setCliShowStderr] = useState(true);
   const [cliStrategy, setCliStrategy] = useState<CLIStrategy>('sequential');
 
   // Refs
@@ -407,6 +408,7 @@ const ChatUI = () => {
           setWorkspacePath(wsOverride || currentGroup.workspacePath || '');
           setApprovalMode(currentGroup.approvalMode || 'auto');
           setCliTimeout(currentGroup.timeout || 300000);
+          setCliShowStderr(currentGroup.showStderr !== false);
           setCliStrategy(currentGroup.strategy || 'sequential');
 
           let nickname = '我';
@@ -530,10 +532,17 @@ const ChatUI = () => {
     try {
       const agent = cliAgents.find(a => a.id === msg.sender.id);
       if (!agent) throw new Error('找不到该 Agent 成员');
+      if (approvalMode === 'ask') {
+        const confirmed = window.confirm(`确认让 ${agent.name} 在 ${workspacePath || '默认目录'} 执行这次任务？`);
+        if (!confirmed) return;
+      }
 
       const tempGroup: CLIGroup = {
         ...(group as CLIGroup),
         strategy: 'sequential',
+        approvalMode,
+        timeout: cliTimeout,
+        showStderr: cliShowStderr,
       };
 
       await executeCLIStrategy(
@@ -575,10 +584,16 @@ const ChatUI = () => {
           onError: (taskId, error) => {
             setMessages(prev => prev.map(m => {
               if (m.taskId === taskId) {
+                const normalized = String(error || '').toLowerCase();
+                const status = normalized.includes('timeout')
+                  ? 'timeout'
+                  : normalized.includes('cancel')
+                    ? 'cancelled'
+                    : 'failed';
                 return {
                   ...m,
                   content: m.content ? m.content + `\n\n[错误: ${error}]` : `[错误: ${error}]`,
-                  status: 'failed',
+                  status,
                   isError: true,
                 };
               }
@@ -588,7 +603,8 @@ const ChatUI = () => {
         },
         {
           timeoutMs: cliTimeout,
-          showStderr: (group as CLIGroup).showStderr !== false,
+          approvalMode,
+          showStderr: cliShowStderr,
         }
       );
     } catch (e: any) {
@@ -624,11 +640,22 @@ const ChatUI = () => {
       return;
     }
 
+    if (approvalMode === 'ask') {
+      const names = activeAgents.map(a => a.name).join('、');
+      const confirmed = window.confirm(`确认让 ${names} 在 ${workspacePath || '默认目录'} 执行这次任务？`);
+      if (!confirmed) {
+        setIsLoading(false);
+        return;
+      }
+    }
+
     try {
       const customGroup: CLIGroup = {
         ...(group as CLIGroup),
         strategy: cliStrategy,
         timeout: cliTimeout,
+        approvalMode,
+        showStderr: cliShowStderr,
       };
 
       await executeCLIStrategy(
@@ -670,10 +697,16 @@ const ChatUI = () => {
           onError: (taskId, error) => {
             setMessages(prev => prev.map(m => {
               if (m.taskId === taskId) {
+                const normalized = String(error || '').toLowerCase();
+                const status = normalized.includes('timeout')
+                  ? 'timeout'
+                  : normalized.includes('cancel')
+                    ? 'cancelled'
+                    : 'failed';
                 return {
                   ...m,
                   content: m.content ? m.content + `\n\n[错误: ${error}]` : `[错误: ${error}]`,
-                  status: 'failed',
+                  status,
                   isError: true,
                 };
               }
@@ -683,7 +716,8 @@ const ChatUI = () => {
         },
         {
           timeoutMs: cliTimeout,
-          showStderr: (group as CLIGroup).showStderr !== false,
+          approvalMode,
+          showStderr: cliShowStderr,
         }
       );
     } catch (err: any) {
@@ -888,6 +922,8 @@ const ChatUI = () => {
           onApprovalModeChange={setApprovalMode}
           timeout={cliTimeout}
           onTimeoutChange={setCliTimeout}
+          showStderr={cliShowStderr}
+          onShowStderrChange={setCliShowStderr}
           strategy={cliStrategy}
           onStrategyChange={setCliStrategy}
           onRetryTask={(agentId, prompt) => {
@@ -1000,7 +1036,7 @@ const ChatUI = () => {
                   const a = getAvatarData(message.sender.name);
                   const url = resolveAvatarByName(message.sender.name, message.sender.avatar, 40);
                   const isLatest = messages[messages.length - 1]?.id === message.id;
-                  const isStreaming = !!message.isAI && isLoading && isLatest;
+                  const isStreaming = !!message.isAI && (message.status === 'running' || (isLoading && isLatest));
                   const isCli = !!message.sender?.id?.startsWith?.('cli-');
                   const bubbleClass = isUser
                     ? styles.bubbleUser
