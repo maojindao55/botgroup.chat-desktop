@@ -6,10 +6,9 @@
  * - agent → AgentChatUI
  */
 import { useState, useRef, useEffect } from "react";
-import { Share2, Settings2, ChevronLeft, Bot, Terminal } from "lucide-react";
-import { Tooltip } from 'antd';
+import { Send, Share2, Settings2, ChevronLeft, Bot, Terminal } from "lucide-react";
+import { Tooltip, Input as AntdInput, Button as AntdButton } from 'antd';
 import { ActionIcon, Avatar as LobeAvatar } from '@lobehub/ui';
-import { ChatInputArea } from '@lobehub/ui/chat';
 import { createStyles } from 'antd-style';
 import { request } from '@/utils/request';
 import type { AICharacter, CLIAgent } from "@/config/aiCharacters";
@@ -34,8 +33,6 @@ const useStyles = createStyles(({ token, css }) => ({
     overflow: hidden;
     background: ${token.colorBgContainer};
     display: flex;
-    align-items: flex-start;
-    justify-content: center;
   `,
   container: css`
     height: 100%;
@@ -841,27 +838,38 @@ const ChatUI = () => {
 
             {/* Input Area */}
             <div className={styles.inputArea}>
-              <ChatInputArea
-                value={inputMessage}
-                onInput={setInputMessage}
-                onSend={handleSendMessage}
-                loading={isLoading}
-                placeholder={isCLIGroup ? '输入指令，CLI Agent 将在 workspace 中执行...' : '输入消息...'}
-                topAddons={
-                  messages.length > 0 ? (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '0 4px' }}>
-                      <Tooltip title="分享聊天记录">
-                        <ActionIcon
-                          icon={Share2}
-                          size="small"
-                          onClick={() => setShowPoster(true)}
-                          title="分享聊天记录"
-                        />
-                      </Tooltip>
-                    </div>
-                  ) : null
-                }
-              />
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12 }}>
+                {messages.length > 0 && (
+                  <Tooltip title="分享聊天记录">
+                    <ActionIcon
+                      icon={Share2}
+                      size="small"
+                      onClick={() => setShowPoster(true)}
+                      title="分享聊天记录"
+                    />
+                  </Tooltip>
+                )}
+                <AntdInput.TextArea
+                  value={inputMessage}
+                  onChange={(e) => setInputMessage(e.target.value)}
+                  onPressEnter={(e) => {
+                    if (!e.shiftKey) {
+                      e.preventDefault();
+                      handleSendMessage();
+                    }
+                  }}
+                  autoSize={{ minRows: 1, maxRows: 6 }}
+                  placeholder={isCLIGroup ? '输入指令，CLI Agent 将在 workspace 中执行...' : '输入消息...'}
+                  style={{ flex: 1, borderRadius: 12 }}
+                />
+                <AntdButton
+                  type="primary"
+                  onClick={handleSendMessage}
+                  loading={isLoading}
+                  icon={isLoading ? undefined : <Send size={16} />}
+                  style={{ background: '#ff6600', borderColor: '#ff6600', height: 36, borderRadius: 12 }}
+                />
+              </div>
             </div>
           </div>
         </div>
