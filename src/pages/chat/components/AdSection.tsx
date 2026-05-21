@@ -35,7 +35,7 @@ const AdSection: React.FC<AdSectionProps> = ({ isOpen }) => {
   }, []);
 
   return (
-    <div className="p-3 border-t border-border/40">
+    <div className="p-3" style={{ borderTop: "1px solid rgba(0,0,0,0.06)" }}>
       <div
         className={cn(
           'rounded-lg p-2 text-center relative overflow-hidden min-h-[120px] flex flex-col justify-center',

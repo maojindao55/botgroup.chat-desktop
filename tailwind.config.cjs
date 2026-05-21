@@ -2,9 +2,6 @@
 module.exports = {
     darkMode: ["class"],
     content: ["./index.html", "./src/**/*.{ts,tsx,js,jsx}"],
-  corePlugins: {
-    preflight: false,
-  },
   theme: {
   	extend: {
   		borderRadius: {
@@ -68,6 +65,5 @@ module.exports = {
   },
   plugins: [
     require('@tailwindcss/typography'),
-    require("tailwindcss-animate"),
   ],
 }
