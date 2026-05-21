@@ -2,19 +2,13 @@
  * Agent 群聊配置面板
  * 管理自定义 Agent 成员、LLM配置、执行策略、工具等
  */
-import { useState } from "react";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Plus, Trash2, Puzzle, ChevronDown, ChevronUp, Check, Mic, MicOff } from 'lucide-react';
-import { cn } from "@/lib/utils";
+import { useState } from 'react';
+import { Drawer, Button, Input, InputNumber, Tooltip, Collapse, Checkbox } from 'antd';
+import { Avatar as LobeAvatar, ActionIcon } from '@lobehub/ui';
+import { createStyles } from 'antd-style';
+import { Plus, Trash2, Mic, MicOff } from 'lucide-react';
 import type { AgentGroup, AgentMember, AgentStrategy, AgentTool } from '@/config/groups';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
-
 
 const AVAILABLE_TOOLS: AgentTool[] = [
   { name: 'web_search', description: '联网搜索获取实时信息', enabled: false },
@@ -32,6 +26,68 @@ interface AgentGroupSettingsProps {
   onUpdateGroup: (updates: Partial<AgentGroup>) => void;
 }
 
+const useStyles = createStyles(({ token, css }) => ({
+  scrollArea: css`
+    height: calc(100vh - 80px);
+    overflow: auto;
+    padding-right: 8px;
+  `,
+  strategyGrid: css`
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+  `,
+  strategyBtn: css`
+    padding: 8px;
+    border-radius: 8px;
+    border: 1px solid ${token.colorBorderSecondary};
+    background: transparent;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    transition: all 0.15s;
+    text-align: center;
+    color: ${token.colorText};
+    &:hover {
+      background: ${token.colorFillTertiary};
+    }
+  `,
+  strategyBtnActive: css`
+    border-color: #ff6600;
+    background: rgba(255, 102, 0, 0.08);
+    color: #ff6600;
+    &:hover {
+      background: rgba(255, 102, 0, 0.12);
+    }
+  `,
+  strategyDesc: css`
+    font-size: 11px;
+    color: ${token.colorTextTertiary};
+    margin-top: 6px;
+  `,
+  supervisorBadge: css`
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(255, 102, 0, 0.12);
+    color: #ff6600;
+    font-weight: 500;
+    white-space: nowrap;
+  `,
+  agentHeader: css`
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+  `,
+  llmGrid: css`
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  `,
+}));
+
 export const AgentGroupSettings = ({
   open,
   onOpenChange,
@@ -40,13 +96,13 @@ export const AgentGroupSettings = ({
   onToggleMute,
   onUpdateGroup,
 }: AgentGroupSettingsProps) => {
-  const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
+  const { styles, cx } = useStyles();
+  const [activeAgentKeys, setActiveAgentKeys] = useState<string[]>([]);
 
   const updateAgent = (agentId: string, updates: Partial<AgentMember>) => {
-    const newAgents = group.agents.map(a =>
-      a.id === agentId ? { ...a, ...updates } : a
-    );
-    onUpdateGroup({ agents: newAgents });
+    onUpdateGroup({
+      agents: group.agents.map((a) => (a.id === agentId ? { ...a, ...updates } : a)),
+    });
   };
 
   const addAgent = () => {
@@ -56,226 +112,295 @@ export const AgentGroupSettings = ({
       role: '',
       systemPrompt: '',
       llm: { baseURL: '', apiKey: '', model: '' },
-      tools: AVAILABLE_TOOLS.map(t => ({ ...t })),
+      tools: AVAILABLE_TOOLS.map((t) => ({ ...t })),
       maxTurns: 5,
       temperature: 0.7,
     };
     onUpdateGroup({ agents: [...group.agents, newAgent] });
-    setExpandedAgent(newAgent.id);
+    setActiveAgentKeys([newAgent.id]);
   };
 
   const removeAgent = (agentId: string) => {
-    onUpdateGroup({ agents: group.agents.filter(a => a.id !== agentId) });
+    onUpdateGroup({ agents: group.agents.filter((a) => a.id !== agentId) });
   };
 
+  const strategyOptions: { value: AgentStrategy; label: string }[] = [
+    { value: 'sequential', label: '顺序执行' },
+    { value: 'router', label: '意图路由' },
+    { value: 'discussion', label: '全员讨论' },
+    { value: 'react', label: 'ReAct' },
+    { value: 'pipeline', label: '流水线' },
+    { value: 'debate', label: '辩论' },
+    { value: 'mapreduce', label: 'MapReduce' },
+    { value: 'supervisor', label: '监督者' },
+  ];
 
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-[340px] sm:w-[440px]">
-        <SheetHeader>
-          <SheetTitle>Agent 群聊配置</SheetTitle>
-        </SheetHeader>
-        <ScrollArea className="h-[calc(100vh-80px)] mt-4">
-          <div className="space-y-5 pr-2">
-            {/* 执行策略 */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium">执行策略</label>
-              <div className="grid grid-cols-4 gap-2">
-                {[
-                  { value: 'sequential' as const, label: '顺序执行' },
-                  { value: 'router' as const, label: '意图路由' },
-                  { value: 'discussion' as const, label: '全员讨论' },
-                  { value: 'react' as const, label: 'ReAct' },
-                  { value: 'pipeline' as const, label: '流水线' },
-                  { value: 'debate' as const, label: '辩论' },
-                  { value: 'mapreduce' as const, label: 'MapReduce' },
-                  { value: 'supervisor' as const, label: '监督者' },
-                ].map(item => (
-                  <button key={item.value}
-                    onClick={() => onUpdateGroup({ strategy: item.value })}
-                    className={cn(
-                      "p-2 rounded-lg border text-xs font-medium transition-all",
-                      group.strategy === item.value
-                        ? "border-[#ff6600] bg-orange-50 dark:bg-orange-950/20 text-[#ff6600]"
-                        : "border-border hover:bg-accent/30"
-                    )}>
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-              {/* 策略描述 */}
-              <p className="text-[11px] text-muted-foreground mt-1.5">
-                {{
-                  sequential: '按成员顺序依次执行，后者可看到前者的输出',
-                  router: '智能分析用户意图，选择最相关的 Agent 回答',
-                  discussion: '所有 Agent 并行回复同一消息',
-                  react: '协调者分析→分派任务→执行→判断是否完成→循环',
-                  pipeline: '按角色分工形成流水线，每阶段产出作为下一阶段输入',
-                  debate: '多 Agent 独立回答→互相评论→最终综合裁决',
-                  mapreduce: '自动拆分任务→各 Agent 并行处理→汇总合并结果',
-                  supervisor: '监督者分派任务→审查质量→反馈修改→直到满意',
-                }[group.strategy]}
-              </p>
+  const strategyDescriptions: Record<AgentStrategy, string> = {
+    sequential: '按成员顺序依次执行，后者可看到前者的输出',
+    router: '智能分析用户意图，选择最相关的 Agent 回答',
+    discussion: '所有 Agent 并行回复同一消息',
+    react: '协调者分析→分派任务→执行→判断是否完成→循环',
+    pipeline: '按角色分工形成流水线，每阶段产出作为下一阶段输入',
+    debate: '多 Agent 独立回答→互相评论→最终综合裁决',
+    mapreduce: '自动拆分任务→各 Agent 并行处理→汇总合并结果',
+    supervisor: '监督者分派任务→审查质量→反馈修改→直到满意',
+  };
+
+  const showCoordinatorPrompt = ['router', 'react', 'discussion', 'supervisor', 'debate', 'mapreduce'].includes(
+    group.strategy,
+  );
+
+  const agentItems = group.agents.map((agent) => {
+    const avatarData = getAvatarData(agent.name || 'A');
+    const avatarUrl = resolveAvatarByName(agent.name || 'A', agent.avatar);
+    const isSupervisor = group.strategy === 'supervisor' && group.agents[0]?.id === agent.id;
+    const muted = mutedUsers.includes(agent.id);
+
+    return {
+      key: agent.id,
+      label: (
+        <div className={styles.agentHeader}>
+          <LobeAvatar
+            avatar={avatarUrl || avatarData.text}
+            background={avatarData.backgroundColor}
+            size={28}
+          />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: 14,
+                fontWeight: 500,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {agent.name || '未命名 Agent'}
+              </span>
+              {isSupervisor && <span className={styles.supervisorBadge}>👑 监督者</span>}
             </div>
-
-            {/* 协调者 Prompt */}
-            {(group.strategy === 'router' || group.strategy === 'react' || group.strategy === 'discussion' || group.strategy === 'supervisor' || group.strategy === 'debate' || group.strategy === 'mapreduce') && (
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">协调者 Prompt</label>
-                <textarea
-                  className="w-full min-h-[60px] rounded-md border border-input bg-background px-3 py-2 text-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
-                  placeholder="定义协调者如何分派任务..."
-                  value={group.coordinatorPrompt || ''}
-                  onChange={e => onUpdateGroup({ coordinatorPrompt: e.target.value })}
-                />
-              </div>
-            )}
-
-            {/* 最大轮数 */}
-            <div className="flex items-center gap-3">
-              <label className="text-sm font-medium whitespace-nowrap">最大轮数</label>
-              <Input type="number" value={group.maxRounds} min={1} max={10} className="w-20 text-sm"
-                onChange={e => onUpdateGroup({ maxRounds: Number(e.target.value) })} />
-            </div>
-
-
-            {/* Agent 成员列表 */}
-            <div>
-              <div className="flex justify-between items-center mb-3">
-                <span className="text-sm font-medium">Agent 成员（{group.agents.length}）</span>
-                <Button variant="outline" size="sm" onClick={addAgent}>
-                  <Plus className="w-3.5 h-3.5 mr-1.5" />添加
-                </Button>
-              </div>
-
-              <div className="space-y-2">
-                {group.agents.map((agent) => {
-                  const isExpanded = expandedAgent === agent.id;
-                  const avatarData = getAvatarData(agent.name || 'A');
-                  return (
-                    <div key={agent.id} className="border rounded-lg overflow-hidden">
-                      {/* Agent 头部 */}
-                      <div className="flex items-center gap-2 p-2.5 cursor-pointer hover:bg-accent/30"
-                        onClick={() => setExpandedAgent(isExpanded ? null : agent.id)}>
-                        <Avatar className="w-7 h-7">
-                          {resolveAvatarByName(agent.name || 'A', agent.avatar) ? (
-                            <AvatarImage src={resolveAvatarByName(agent.name || 'A', agent.avatar)} className="object-cover" />
-                          ) : (
-                            <AvatarFallback style={{ backgroundColor: avatarData.backgroundColor, color: 'white' }} className="text-[10px]">
-                              <Puzzle className="w-3 h-3" />
-                            </AvatarFallback>
-                          )}
-                        </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium truncate flex items-center gap-1.5">
-                            {agent.name || '未命名 Agent'}
-                            {/* 监督者策略下，第一个 Agent 显示监督者徽章 */}
-                            {group.strategy === 'supervisor' && group.agents[0]?.id === agent.id && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-50 dark:bg-orange-950/20 text-[#ff6600] font-medium whitespace-nowrap">
-                                👑 监督者
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-[10px] text-muted-foreground truncate">{agent.role || '未设置角色'}</div>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          {mutedUsers.includes(agent.id) && (
-                            <span className="text-[10px] text-red-500 px-1">禁言</span>
-                          )}
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-6 w-6"
-                                  onClick={(e) => { e.stopPropagation(); onToggleMute(agent.id); }}>
-                                  {mutedUsers.includes(agent.id)
-                                    ? <MicOff className="w-3 h-3 text-red-500" />
-                                    : <Mic className="w-3 h-3 text-green-500" />}
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>{mutedUsers.includes(agent.id) ? '取消禁言' : '禁言'}</TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                          {isExpanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
-                        </div>
-                      </div>
-
-
-                      {/* Agent 展开的编辑面板 */}
-                      {isExpanded && (
-                        <div className="p-3 border-t bg-muted/20 space-y-2.5">
-                          <Input placeholder="Agent 名称" value={agent.name}
-                            onChange={e => updateAgent(agent.id, { name: e.target.value })} className="text-sm" />
-                          <Input placeholder="角色定位" value={agent.role}
-                            onChange={e => updateAgent(agent.id, { role: e.target.value })} className="text-sm" />
-
-                          <div className="space-y-1.5">
-                            <span className="text-xs font-medium text-muted-foreground">LLM 配置</span>
-                            <div className="grid grid-cols-2 gap-2">
-                              <Input placeholder="API 地址" value={agent.llm.baseURL} className="text-xs"
-                                onChange={e => updateAgent(agent.id, { llm: { ...agent.llm, baseURL: e.target.value } })} />
-                              <Input placeholder="模型名" value={agent.llm.model} className="text-xs"
-                                onChange={e => updateAgent(agent.id, { llm: { ...agent.llm, model: e.target.value } })} />
-                            </div>
-                            <Input placeholder="API Key" type="password" value={agent.llm.apiKey} className="text-xs"
-                              onChange={e => updateAgent(agent.id, { llm: { ...agent.llm, apiKey: e.target.value } })} />
-                          </div>
-
-                          <div className="space-y-1.5">
-                            <span className="text-xs font-medium text-muted-foreground">System Prompt</span>
-                            <textarea
-                              className="w-full min-h-[50px] rounded-md border border-input bg-background px-2 py-1.5 text-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
-                              placeholder="定义 Agent 人设和能力..."
-                              value={agent.systemPrompt}
-                              onChange={e => updateAgent(agent.id, { systemPrompt: e.target.value })}
-                            />
-                          </div>
-
-                          <div className="space-y-1.5">
-                            <span className="text-xs font-medium text-muted-foreground">工具能力</span>
-                            <div className="flex flex-wrap gap-2">
-                              {agent.tools.map((tool, tIdx) => (
-                                <label key={tool.name} className="flex items-center gap-1 text-[11px] cursor-pointer">
-                                  <input type="checkbox" checked={tool.enabled}
-                                    onChange={e => {
-                                      const newTools = [...agent.tools];
-                                      newTools[tIdx] = { ...newTools[tIdx], enabled: e.target.checked };
-                                      updateAgent(agent.id, { tools: newTools });
-                                    }}
-                                    className="rounded border-gray-300 w-3 h-3" />
-                                  <span>{tool.name}</span>
-                                </label>
-                              ))}
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-3">
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-[11px] text-muted-foreground">Temperature:</span>
-                              <Input type="number" value={agent.temperature} step={0.1} min={0} max={2} className="w-16 h-7 text-xs"
-                                onChange={e => updateAgent(agent.id, { temperature: Number(e.target.value) })} />
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-[11px] text-muted-foreground">MaxTurns:</span>
-                              <Input type="number" value={agent.maxTurns} min={1} max={20} className="w-14 h-7 text-xs"
-                                onChange={e => updateAgent(agent.id, { maxTurns: Number(e.target.value) })} />
-                            </div>
-                          </div>
-
-                          <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600 hover:bg-red-50 w-full"
-                            onClick={() => removeAgent(agent.id)}>
-                            <Trash2 className="w-3.5 h-3.5 mr-1.5" /> 删除此 Agent
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+            <div
+              style={{
+                fontSize: 10,
+                opacity: 0.6,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {agent.role || '未设置角色'}
             </div>
           </div>
-        </ScrollArea>
-      </SheetContent>
-    </Sheet>
+          {muted && <span style={{ fontSize: 10, color: '#ef4444' }}>禁言</span>}
+          <Tooltip title={muted ? '取消禁言' : '禁言'}>
+            <span
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleMute(agent.id);
+              }}
+              style={{ display: 'inline-flex' }}
+            >
+              <ActionIcon
+                icon={muted ? MicOff : Mic}
+                size="small"
+                style={{ color: muted ? '#ef4444' : '#22c55e' }}
+                title=""
+              />
+            </span>
+          </Tooltip>
+        </div>
+      ),
+      children: (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <Input
+            placeholder="Agent 名称"
+            value={agent.name}
+            onChange={(e) => updateAgent(agent.id, { name: e.target.value })}
+          />
+          <Input
+            placeholder="角色定位"
+            value={agent.role}
+            onChange={(e) => updateAgent(agent.id, { role: e.target.value })}
+          />
+
+          <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginTop: 2 }}>LLM 配置</div>
+          <div className={styles.llmGrid}>
+            <Input
+              placeholder="API 地址"
+              value={agent.llm.baseURL}
+              onChange={(e) =>
+                updateAgent(agent.id, { llm: { ...agent.llm, baseURL: e.target.value } })
+              }
+            />
+            <Input
+              placeholder="模型名"
+              value={agent.llm.model}
+              onChange={(e) =>
+                updateAgent(agent.id, { llm: { ...agent.llm, model: e.target.value } })
+              }
+            />
+          </div>
+          <Input.Password
+            placeholder="API Key"
+            value={agent.llm.apiKey}
+            onChange={(e) =>
+              updateAgent(agent.id, { llm: { ...agent.llm, apiKey: e.target.value } })
+            }
+          />
+
+          <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginTop: 2 }}>System Prompt</div>
+          <Input.TextArea
+            autoSize={{ minRows: 3, maxRows: 8 }}
+            placeholder="定义 Agent 人设和能力..."
+            value={agent.systemPrompt}
+            onChange={(e) => updateAgent(agent.id, { systemPrompt: e.target.value })}
+          />
+
+          <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>工具能力</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+            {agent.tools.map((tool, tIdx) => (
+              <Checkbox
+                key={tool.name}
+                checked={tool.enabled}
+                onChange={(e) => {
+                  const newTools = [...agent.tools];
+                  newTools[tIdx] = { ...newTools[tIdx], enabled: e.target.checked };
+                  updateAgent(agent.id, { tools: newTools });
+                }}
+              >
+                <span style={{ fontSize: 11 }}>{tool.name}</span>
+              </Checkbox>
+            ))}
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 11, opacity: 0.6 }}>Temperature:</span>
+              <InputNumber
+                size="small"
+                value={agent.temperature}
+                step={0.1}
+                min={0}
+                max={2}
+                style={{ width: 70 }}
+                onChange={(v) => updateAgent(agent.id, { temperature: Number(v) })}
+              />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 11, opacity: 0.6 }}>MaxTurns:</span>
+              <InputNumber
+                size="small"
+                value={agent.maxTurns}
+                min={1}
+                max={20}
+                style={{ width: 60 }}
+                onChange={(v) => updateAgent(agent.id, { maxTurns: Number(v) })}
+              />
+            </div>
+          </div>
+
+          <Button
+            danger
+            ghost
+            size="small"
+            icon={<Trash2 size={14} />}
+            onClick={() => removeAgent(agent.id)}
+            block
+          >
+            删除此 Agent
+          </Button>
+        </div>
+      ),
+    };
+  });
+
+  return (
+    <Drawer
+      title="Agent 群聊配置"
+      placement="right"
+      open={open}
+      onClose={() => onOpenChange(false)}
+      width={440}
+    >
+      <div className={styles.scrollArea}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {/* 执行策略 */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <label style={{ fontSize: 14, fontWeight: 500 }}>执行策略</label>
+            <div className={styles.strategyGrid}>
+              {strategyOptions.map((item) => (
+                <button
+                  key={item.value}
+                  type="button"
+                  onClick={() => onUpdateGroup({ strategy: item.value })}
+                  className={cx(
+                    styles.strategyBtn,
+                    group.strategy === item.value && styles.strategyBtnActive,
+                  )}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+            <p className={styles.strategyDesc}>{strategyDescriptions[group.strategy]}</p>
+          </div>
+
+          {/* 协调者 Prompt */}
+          {showCoordinatorPrompt && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontSize: 14, fontWeight: 500 }}>协调者 Prompt</label>
+              <Input.TextArea
+                autoSize={{ minRows: 3, maxRows: 6 }}
+                placeholder="定义协调者如何分派任务..."
+                value={group.coordinatorPrompt || ''}
+                onChange={(e) => onUpdateGroup({ coordinatorPrompt: e.target.value })}
+              />
+            </div>
+          )}
+
+          {/* 最大轮数 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <label style={{ fontSize: 14, fontWeight: 500, whiteSpace: 'nowrap' }}>最大轮数</label>
+            <InputNumber
+              value={group.maxRounds}
+              min={1}
+              max={10}
+              style={{ width: 80 }}
+              onChange={(v) => onUpdateGroup({ maxRounds: Number(v) })}
+            />
+          </div>
+
+          {/* Agent 成员列表 */}
+          <div>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: 12,
+              }}
+            >
+              <span style={{ fontSize: 14, fontWeight: 500 }}>
+                Agent 成员（{group.agents.length}）
+              </span>
+              <Button size="small" icon={<Plus size={14} />} onClick={addAgent}>
+                添加
+              </Button>
+            </div>
+
+            <Collapse
+              activeKey={activeAgentKeys}
+              onChange={(keys) =>
+                setActiveAgentKeys(Array.isArray(keys) ? (keys as string[]) : [keys as string])
+              }
+              items={agentItems}
+              size="small"
+            />
+          </div>
+        </div>
+      </div>
+    </Drawer>
   );
 };
 
