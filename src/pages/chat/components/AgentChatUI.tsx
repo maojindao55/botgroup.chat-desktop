@@ -8,11 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
-import rehypeRaw from 'rehype-raw';
+import { ChatMarkdown } from '@/components/Markdown';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useUserStore } from '@/store/userStore';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -287,69 +283,10 @@ const AgentChatUI = ({
                                 ? "bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-2xl rounded-tl-sm text-left shadow-sm"
                                 : "bg-white dark:bg-zinc-800/90 border border-border/60 dark:border-zinc-700/50 rounded-2xl rounded-tl-sm text-left shadow-sm"
                           }`}>
-                            <ReactMarkdown
-                              remarkPlugins={[remarkGfm, remarkMath]}
-                              rehypePlugins={[rehypeKatex, rehypeRaw]}
-                              className={`prose dark:prose-invert max-w-none text-sm leading-relaxed ${
-                                isUser ? "text-white [&_*]:text-white" : ""
-                              }
-                              [&_h2]:py-1
-                              [&_h2]:m-0
-                              [&_h3]:py-1.5
-                              [&_h3]:m-0
-                              [&_p]:m-0 
-                              [&_pre]:bg-gray-900 
-                              [&_pre]:p-2
-                              [&_pre]:m-0 
-                              [&_pre]:rounded-lg
-                              [&_pre]:text-gray-100
-                              [&_pre]:whitespace-pre-wrap
-                              [&_pre]:break-words
-                              [&_pre_code]:whitespace-pre-wrap
-                              [&_pre_code]:break-words
-                              [&_pre_code]:bg-transparent
-                              [&_pre_code]:text-inherit
-                              [&_pre_code]:p-0
-                              [&_pre_code]:rounded-none
-                              [&_code]:text-xs
-                              [&_code]:text-gray-800
-                              [&_code]:dark:text-gray-300
-                              [&_code:not(:where(pre_*))]:text-orange-800
-                              [&_code:not(:where(pre_*))]:bg-orange-100
-                              [&_code:not(:where(pre_*))]:px-1.5
-                              [&_code:not(:where(pre_*))]:py-0.5
-                              [&_code:not(:where(pre_*))]:rounded
-                              [&_code:not(:where(pre_*))]:dark:text-orange-300
-                              [&_code:not(:where(pre_*))]:dark:bg-orange-950/30
-                              [&_a]:text-[#ff6600]
-                              [&_a]:no-underline
-                              [&_a]:hover:underline
-                              [&_a]:underline-offset-2
-                              [&_ul]:my-2
-                              [&_ol]:my-2
-                              [&_li]:my-1
-                              [&_blockquote]:border-l-4
-                              [&_blockquote]:border-orange-300
-                              [&_blockquote]:dark:border-orange-700
-                              [&_blockquote]:bg-orange-50/50
-                              [&_blockquote]:dark:bg-orange-950/20
-                              [&_blockquote]:pl-4
-                              [&_blockquote]:my-2
-                              [&_blockquote]:italic
-                              [&_blockquote]:rounded-r-lg
-                              [&_details]:my-2
-                              [&_details]:rounded-lg
-                              [&_details]:bg-slate-100
-                              [&_details]:dark:bg-zinc-700/50
-                              [&_details]:p-3
-                              [&_details]:text-xs
-                              [&_summary]:cursor-pointer
-                              [&_summary]:font-semibold
-                              [&_summary]:text-foreground/70
-                              [&_summary]:select-none`}
-                            >
-                              {message.content}
-                            </ReactMarkdown>
+                            <ChatMarkdown
+                              content={message.content}
+                              isUser={isUser}
+                            />
                             {message.isAI && isLoading && messages[messages.length - 1]?.id === message.id && (
                               <span className="typing-indicator ml-1">▋</span>
                             )}

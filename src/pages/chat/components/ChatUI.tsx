@@ -17,11 +17,7 @@ import {
 } from "@/components/ui/tooltip";
 import type { AICharacter, CLIAgent } from "@/config/aiCharacters";
 import { cliAgents } from "@/config/aiCharacters";
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
-import rehypeRaw from 'rehype-raw';
+import { ChatMarkdown } from '@/components/Markdown';
 import { SharePoster } from '@/pages/chat/components/SharePoster';
 import AIGroupSettings from './AIGroupSettings';
 import CLIGroupSettings from './CLIGroupSettings';
@@ -33,14 +29,6 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
 import type { Group, AIGroup, CLIGroup, AgentGroup, CLIStrategy } from '@/config/groups';
 
-
-const KaTeXStyle = () => (
-  <style dangerouslySetInnerHTML={{ __html: `
-    .chat-message .katex-html { display: none; }
-    .chat-message .katex { font: normal 1.1em KaTeX_Main, Times New Roman, serif; line-height: 1.2; text-indent: 0; white-space: nowrap; }
-    .chat-message .katex-display { display: block; margin: 1em 0; text-align: center; }
-  `}} />
-);
 
 const ChatUI = () => {
   const userStore = useUserStore();
@@ -415,8 +403,6 @@ const ChatUI = () => {
 
   return (
     <>
-      <KaTeXStyle />
-
       {/* AI Group Settings */}
       {group.type === 'ai' && (
         <AIGroupSettings
@@ -583,107 +569,10 @@ const ChatUI = () => {
                             ? "bg-gradient-to-tr from-orange-500 to-amber-500 text-white text-left rounded-2xl rounded-tr-sm shadow-sm"
                             : "bg-white dark:bg-zinc-800/90 border border-border/60 dark:border-zinc-700/50 rounded-2xl rounded-tl-sm text-left shadow-sm"
                         }`}>
-                          <ReactMarkdown 
-                            remarkPlugins={[remarkGfm, remarkMath]}
-                            rehypePlugins={[rehypeKatex, rehypeRaw]}
-                            className={`prose dark:prose-invert max-w-none text-sm leading-relaxed ${
-                              message.sender.name === userName ? "text-white [&_*]:text-white" : ""
-                            }
-                            [&_h2]:py-1
-                            [&_h2]:m-0
-                            [&_h3]:py-1.5
-                            [&_h3]:m-0
-                            [&_p]:m-0 
-                            [&_pre]:bg-gray-900 
-                            [&_pre]:p-2
-                            [&_pre]:m-0 
-                            [&_pre]:rounded-lg
-                            [&_pre]:text-gray-100
-                            [&_pre]:whitespace-pre-wrap
-                            [&_pre]:break-words
-                            [&_pre_code]:whitespace-pre-wrap
-                            [&_pre_code]:break-words
-                            [&_pre_code]:bg-transparent
-                            [&_pre_code]:text-inherit
-                            [&_pre_code]:p-0
-                            [&_pre_code]:rounded-none
-                            [&_code]:text-xs
-                            [&_code]:text-gray-800
-                            [&_code]:dark:text-gray-300
-                            [&_code:not(:where(pre_*))]:text-orange-800
-                            [&_code:not(:where(pre_*))]:bg-orange-100
-                            [&_code:not(:where(pre_*))]:px-1.5
-                            [&_code:not(:where(pre_*))]:py-0.5
-                            [&_code:not(:where(pre_*))]:rounded
-                            [&_code:not(:where(pre_*))]:dark:text-orange-300
-                            [&_code:not(:where(pre_*))]:dark:bg-orange-950/30
-                            [&_a]:text-[#ff6600]
-                            [&_a]:no-underline
-                            [&_a]:hover:underline
-                            [&_a]:underline-offset-2
-                            [&_ul]:my-2
-                            [&_ol]:my-2
-                            [&_li]:my-1
-                            [&_blockquote]:border-l-4
-                            [&_blockquote]:border-orange-300
-                            [&_blockquote]:dark:border-orange-700
-                            [&_blockquote]:bg-orange-50/50
-                            [&_blockquote]:dark:bg-orange-950/20
-                            [&_blockquote]:pl-4
-                            [&_blockquote]:my-2
-                            [&_blockquote]:italic
-                            [&_blockquote]:rounded-r-lg
-                            [&_details]:my-2
-                            [&_details]:rounded-xl
-                            [&_details]:bg-gradient-to-b
-                            [&_details]:from-slate-50
-                            [&_details]:to-slate-100
-                            [&_details]:dark:from-zinc-800/70
-                            [&_details]:dark:to-zinc-800/40
-                            [&_details]:border
-                            [&_details]:border-slate-200/80
-                            [&_details]:dark:border-zinc-600/40
-                            [&_details]:p-3
-                            [&_details]:px-4
-                            [&_details]:text-xs
-                            [&_details]:shadow-sm
-                            [&_details_hr]:my-2
-                            [&_details_hr]:border-slate-200/60
-                            [&_details_hr]:dark:border-zinc-600/30
-                            [&_summary]:cursor-pointer
-                            [&_summary]:font-semibold
-                            [&_summary]:text-sm
-                            [&_summary]:text-slate-600
-                            [&_summary]:dark:text-slate-300
-                            [&_summary]:select-none
-                            [&_summary]:py-0.5
-                            [&_summary]:hover:text-orange-600
-                            [&_summary]:dark:hover:text-orange-400
-                            [&_summary]:transition-colors
-                            [&_details_blockquote]:border-l-2
-                            [&_details_blockquote]:border-slate-300
-                            [&_details_blockquote]:dark:border-zinc-500
-                            [&_details_blockquote]:bg-white/60
-                            [&_details_blockquote]:dark:bg-zinc-900/40
-                            [&_details_blockquote]:text-slate-500
-                            [&_details_blockquote]:dark:text-slate-400
-                            [&_details_blockquote]:pl-3
-                            [&_details_blockquote]:py-1
-                            [&_details_blockquote]:my-1.5
-                            [&_details_blockquote]:rounded-r-md
-                            [&_details_blockquote]:text-[11px]
-                            [&_details_blockquote]:not-italic
-                            [&_details_pre]:bg-slate-800
-                            [&_details_pre]:dark:bg-zinc-900
-                            [&_details_pre]:rounded-md
-                            [&_details_pre]:p-2
-                            [&_details_pre]:text-[11px]
-                            [&_details_pre]:my-1.5
-                            [&_details_pre]:max-h-[150px]
-                            [&_details_pre]:overflow-y-auto`}
-                          >
-                            {message.content}
-                          </ReactMarkdown>
+                          <ChatMarkdown
+                            content={message.content}
+                            isUser={message.sender.name === userName}
+                          />
                           {message.isAI && isLoading && messages[messages.length - 1]?.id === message.id && (
                             <span className="typing-indicator ml-1">▋</span>
                           )}
