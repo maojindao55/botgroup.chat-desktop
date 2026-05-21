@@ -588,15 +588,53 @@ const ChatUI = () => {
                             [&_blockquote]:italic
                             [&_blockquote]:rounded-r-lg
                             [&_details]:my-2
-                            [&_details]:rounded-lg
-                            [&_details]:bg-slate-100
-                            [&_details]:dark:bg-zinc-700/50
+                            [&_details]:rounded-xl
+                            [&_details]:bg-gradient-to-b
+                            [&_details]:from-slate-50
+                            [&_details]:to-slate-100
+                            [&_details]:dark:from-zinc-800/70
+                            [&_details]:dark:to-zinc-800/40
+                            [&_details]:border
+                            [&_details]:border-slate-200/80
+                            [&_details]:dark:border-zinc-600/40
                             [&_details]:p-3
+                            [&_details]:px-4
                             [&_details]:text-xs
+                            [&_details]:shadow-sm
+                            [&_details_hr]:my-2
+                            [&_details_hr]:border-slate-200/60
+                            [&_details_hr]:dark:border-zinc-600/30
                             [&_summary]:cursor-pointer
                             [&_summary]:font-semibold
-                            [&_summary]:text-foreground/70
-                            [&_summary]:select-none`}
+                            [&_summary]:text-sm
+                            [&_summary]:text-slate-600
+                            [&_summary]:dark:text-slate-300
+                            [&_summary]:select-none
+                            [&_summary]:py-0.5
+                            [&_summary]:hover:text-orange-600
+                            [&_summary]:dark:hover:text-orange-400
+                            [&_summary]:transition-colors
+                            [&_details_blockquote]:border-l-2
+                            [&_details_blockquote]:border-slate-300
+                            [&_details_blockquote]:dark:border-zinc-500
+                            [&_details_blockquote]:bg-white/60
+                            [&_details_blockquote]:dark:bg-zinc-900/40
+                            [&_details_blockquote]:text-slate-500
+                            [&_details_blockquote]:dark:text-slate-400
+                            [&_details_blockquote]:pl-3
+                            [&_details_blockquote]:py-1
+                            [&_details_blockquote]:my-1.5
+                            [&_details_blockquote]:rounded-r-md
+                            [&_details_blockquote]:text-[11px]
+                            [&_details_blockquote]:not-italic
+                            [&_details_pre]:bg-slate-800
+                            [&_details_pre]:dark:bg-zinc-900
+                            [&_details_pre]:rounded-md
+                            [&_details_pre]:p-2
+                            [&_details_pre]:text-[11px]
+                            [&_details_pre]:my-1.5
+                            [&_details_pre]:max-h-[150px]
+                            [&_details_pre]:overflow-y-auto`}
                           >
                             {message.content}
                           </ReactMarkdown>
