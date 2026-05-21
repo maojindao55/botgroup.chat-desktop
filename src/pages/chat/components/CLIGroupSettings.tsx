@@ -100,7 +100,7 @@ const useStyles = createStyles(({ token, css }) => ({
   `,
   strategyGrid: css`
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     gap: 8px;
   `,
   strategyBtn: css`
@@ -508,10 +508,11 @@ export const CLIGroupSettings = ({
   }, [open, activeTab]);
 
   const strategyDescriptions: Record<CLIStrategy, string> = {
-    sequential: '逐个 CLI Agent 依次执行任务',
-    router: '根据任务特征自动选择最合适的 CLI Agent',
-    race: '所有 CLI Agent 同时执行，对比结果取最优',
-    pipeline: '按顺序形成流水线：生成→审查→优化',
+    sequential: '按顺序让多个 CLI Agent 独立处理同一任务（失败默认继续）',
+    router: '智能选择最合适的 CLI Agent 执行（失败即终止）',
+    race: '并行创建隔离 worktree，让多个 CLI Agent 竞争方案（需要干净 git 仓库）',
+    pipeline: '按阶段接力执行，后者基于前者输出继续（失败默认继续，取消停止）',
+    discussion: '多 Agent 分轮讨论方案和风险，默认不修改文件（共 2 轮）',
   };
 
   const tabItems = [
@@ -602,6 +603,7 @@ export const CLIGroupSettings = ({
                 { value: 'router' as const, label: '智能路由' },
                 { value: 'race' as const, label: '竞争模式' },
                 { value: 'pipeline' as const, label: '流水线' },
+                { value: 'discussion' as const, label: '讨论模式' },
               ].map((item) => (
                 <button
                   key={item.value}
@@ -618,6 +620,21 @@ export const CLIGroupSettings = ({
             <p className={styles.panelDesc} style={{ marginTop: 4 }}>
               {strategyDescriptions[strategy]}
             </p>
+            {strategy === 'race' && (
+              <p className={styles.panelDesc} style={{ marginTop: 4, color: '#ff9500' }}>
+                需要 git 仓库，且当前工作区不能有未提交改动；每个 Agent 在独立 worktree 中执行。
+              </p>
+            )}
+            {strategy === 'pipeline' && (
+              <p className={styles.panelDesc} style={{ marginTop: 4 }}>
+                默认失败继续（让后续 Agent 诊断）；用户取消会停止后续阶段。
+              </p>
+            )}
+            {strategy === 'discussion' && (
+              <p className={styles.panelDesc} style={{ marginTop: 4 }}>
+                只用于分析与方案评审，请通过提示词约束 Agent 不修改文件。
+              </p>
+            )}
           </div>
 
           {/* members */}
