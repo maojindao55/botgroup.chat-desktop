@@ -5,16 +5,13 @@
  * - cli → CLIChatUI (复用原有 CLI 逻辑)
  * - agent → AgentChatUI
  */
-import React, { useState, useRef, useEffect } from 'react';
-import { Send, Share2, Settings2, ChevronLeft, Bot, Terminal } from 'lucide-react';
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { useState, useRef, useEffect } from "react";
+import { Share2, Settings2, ChevronLeft, Bot, Terminal } from "lucide-react";
+import { Tooltip } from 'antd';
+import { ActionIcon, Avatar as LobeAvatar } from '@lobehub/ui';
+import { ChatInputArea } from '@lobehub/ui/chat';
+import { createStyles } from 'antd-style';
 import { request } from '@/utils/request';
-import {
-  Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
-} from "@/components/ui/tooltip";
 import type { AICharacter, CLIAgent } from "@/config/aiCharacters";
 import { cliAgents } from "@/config/aiCharacters";
 import { ChatMarkdown } from '@/components/Markdown';
@@ -30,9 +27,237 @@ import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
 import type { Group, AIGroup, CLIGroup, AgentGroup, CLIStrategy } from '@/config/groups';
 
 
+const useStyles = createStyles(({ token, css }) => ({
+  page: css`
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    background: ${token.colorBgContainer};
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+  `,
+  container: css`
+    height: 100%;
+    display: flex;
+    width: 100%;
+    position: relative;
+    overflow: hidden;
+  `,
+  rightCol: css`
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+  `,
+  headerBar: css`
+    background: ${token.colorBgContainer};
+    border-bottom: 1px solid ${token.colorBorderSecondary};
+    backdrop-filter: blur(12px);
+    flex: none;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  `,
+  headerInner: css`
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+  `,
+  chatArea: css`
+    flex: 1;
+    overflow: auto;
+    background: ${token.colorBgLayout};
+    padding: 12px 16px;
+    @media (min-width: 768px) {
+      padding: 16px 20px;
+    }
+  `,
+  inputArea: css`
+    background: ${token.colorBgContainer};
+    border-top: 1px solid ${token.colorBorderSecondary};
+    padding: 12px 20px;
+  `,
+  cwdLabel: css`
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    opacity: 0.6;
+  `,
+  cwdPath: css`
+    font-family: ${token.fontFamilyCode};
+    font-size: 10px;
+    background: ${token.colorFillTertiary};
+    color: ${token.colorTextSecondary};
+    padding: 1px 6px;
+    border-radius: 4px;
+    border: 1px solid ${token.colorBorderSecondary};
+    cursor: pointer;
+    user-select: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 220px;
+    @media (min-width: 640px) {
+      max-width: 450px;
+    }
+    transition: all 0.2s;
+    &:hover {
+      background: ${token.colorFillSecondary};
+      color: ${token.colorText};
+    }
+  `,
+  bubbleUser: css`
+    background: linear-gradient(to top right, #f97316, #f59e0b);
+    color: #fff;
+    text-align: left;
+    border-radius: 16px;
+    border-top-right-radius: 4px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    padding: 12px 16px;
+    margin-top: 4px;
+  `,
+  bubbleAI: css`
+    background: ${token.colorBgContainer};
+    border: 1px solid ${token.colorBorderSecondary};
+    border-radius: 16px;
+    border-top-left-radius: 4px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    padding: 12px 16px;
+    margin-top: 4px;
+    text-align: left;
+  `,
+  bubbleError: css`
+    background: ${token.colorErrorBg};
+    border: 1px solid ${token.colorErrorBorder};
+    border-radius: 16px;
+    border-top-left-radius: 4px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    padding: 12px 16px;
+    margin-top: 4px;
+    text-align: left;
+  `,
+  metaRow: css`
+    font-size: 12px;
+    color: ${token.colorTextTertiary};
+    padding: 0 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  `,
+  streaming: css`
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    color: #f97316;
+    font-weight: 500;
+  `,
+  streamingDot: css`
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #f97316;
+    animation: pulse 1s infinite;
+    @keyframes pulse {
+      0%,
+      100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.5;
+      }
+    }
+  `,
+  avatarStack: css`
+    display: flex;
+    align-items: center;
+    & > * + * {
+      margin-left: -8px;
+    }
+  `,
+  avatarMore: css`
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: ${token.colorFillSecondary};
+    color: ${token.colorTextSecondary};
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 600;
+    border: 2px solid ${token.colorBgContainer};
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  `,
+  loadingPage: css`
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #fff7ed 0%, #fed7aa 100%);
+  `,
+  spinner: css`
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 4px solid #f97316;
+    border-top-color: transparent;
+    animation: spin 1s linear infinite;
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+  `,
+  mobileBackBtn: css`
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin: 4px;
+    margin-right: 8px;
+    cursor: pointer;
+    color: ${token.colorTextTertiary};
+    @media (min-width: 768px) {
+      display: none;
+    }
+  `,
+  mobileOverlay: css`
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 10;
+    @media (min-width: 768px) {
+      display: none;
+    }
+  `,
+  desktopOnly: css`
+    display: none;
+    @media (min-width: 768px) {
+      display: block;
+    }
+  `,
+  mobileOnly: css`
+    @media (min-width: 768px) {
+      display: none;
+    }
+  `,
+  messageList: css`
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  `,
+  messageRow: css`
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  `,
+}));
+
 const ChatUI = () => {
   const userStore = useUserStore();
   const isMobile = useIsMobile();
+  const { styles, cx } = useStyles();
 
   const urlParams = new URLSearchParams(window.location.search);
   const id = urlParams.get('id') ? parseInt(urlParams.get('id')!) : 0;
@@ -175,12 +400,23 @@ const ChatUI = () => {
   // Loading / Error states
   if (initError) {
     return (
-      <div className="fixed inset-0 bg-gradient-to-br from-orange-50 via-orange-50/70 to-orange-100 dark:from-background dark:via-background dark:to-background flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-5xl mb-4">⚠️</div>
-          <p className="text-lg font-medium text-foreground mb-2">{initError}</p>
-          <button onClick={() => { window.location.href = '/'; }}
-            className="px-6 py-2 bg-[#ff6600] text-white rounded-lg hover:bg-[#e55c00] transition-colors">返回首页</button>
+      <div className={styles.loadingPage}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>⚠️</div>
+          <p style={{ fontSize: 18, fontWeight: 500, marginBottom: 8 }}>{initError}</p>
+          <button
+            onClick={() => { window.location.href = '/'; }}
+            style={{
+              padding: '8px 24px',
+              background: '#ff6600',
+              color: '#fff',
+              borderRadius: 8,
+              border: 'none',
+              cursor: 'pointer',
+            }}
+          >
+            返回首页
+          </button>
         </div>
       </div>
     );
@@ -188,8 +424,8 @@ const ChatUI = () => {
 
   if (isInitializing || !group) {
     return (
-      <div className="fixed inset-0 bg-gradient-to-br from-orange-50 via-orange-50/70 to-orange-100 dark:from-background dark:via-background dark:to-background flex items-center justify-center">
-        <div className="w-8 h-8 animate-spin rounded-full border-4 border-orange-500 border-t-transparent"></div>
+      <div className={styles.loadingPage}>
+        <div className={styles.spinner} />
       </div>
     );
   }
@@ -450,8 +686,8 @@ const ChatUI = () => {
         <SharePoster messages={messages} onClose={() => setShowPoster(false)} />
       )}
 
-      <div className="fixed inset-0 overflow-hidden bg-white dark:bg-zinc-950 flex items-start justify-center">
-        <div className="h-full flex w-full relative overflow-hidden">
+      <div className={styles.page}>
+        <div className={styles.container}>
           <Sidebar
             isOpen={sidebarOpen}
             toggleSidebar={toggleSidebar}
@@ -461,30 +697,32 @@ const ChatUI = () => {
             onCreateGroup={handleCreateGroup}
           />
 
-          <div className="flex flex-col flex-1 min-w-0">
+          <div className={styles.rightCol}>
             {/* Header */}
-            <header className="bg-white/90 backdrop-blur-lg dark:bg-zinc-900/90 border-b border-border/60 flex-none shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
-              <div className="flex items-center justify-between px-3 py-2.5">
-                <div className="flex items-center md:px-1">
-                  <div className="md:hidden flex items-center justify-center m-1 cursor-pointer mr-2" onClick={toggleSidebar}>
-                    <ChevronLeft className="w-5 h-5 text-muted-foreground" />
+            <header className={styles.headerBar}>
+              <div className={styles.headerInner}>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <div className={styles.mobileBackBtn} onClick={toggleSidebar}>
+                    <ChevronLeft size={20} />
                   </div>
-                  <div className="flex flex-col items-start justify-center">
-                    <div className="flex items-center gap-2">
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       {group.type === 'cli' ? (
-                        <Terminal className="w-4 h-4 text-[#ff6600]" />
+                        <Terminal size={16} color="#ff6600" />
                       ) : (
-                        <Bot className="w-4 h-4 text-[#ff6600]" />
+                        <Bot size={16} color="#ff6600" />
                       )}
-                      <h1 className="font-semibold text-sm tracking-wide text-foreground/90">{group.name}</h1>
-                      <span className="text-xs text-muted-foreground">({users.length})</span>
+                      <h1 style={{ margin: 0, fontWeight: 600, fontSize: 14, letterSpacing: '0.02em' }}>
+                        {group.name}
+                      </h1>
+                      <span style={{ fontSize: 12, opacity: 0.6 }}>({users.length})</span>
                     </div>
                     {group.type === 'cli' && workspacePath && (
-                      <div className="text-[10px] text-muted-foreground font-mono truncate max-w-[220px] sm:max-w-[450px] mt-0.5 flex items-center gap-1">
-                        <span className="text-[9px] uppercase tracking-wider opacity-60">CWD:</span>
-                        <span 
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                        <span className={styles.cwdLabel}>CWD:</span>
+                        <span
+                          className={styles.cwdPath}
                           onDoubleClick={() => setShowSettings(true)}
-                          className="bg-secondary/80 text-secondary-foreground px-1.5 py-0.5 rounded border border-border/40 truncate cursor-pointer hover:bg-secondary hover:text-foreground transition-all select-none" 
                           title="双击以修改本地 Workspace 路径"
                         >
                           {workspacePath}
@@ -493,154 +731,144 @@ const ChatUI = () => {
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="hidden md:block">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div className={styles.desktopOnly}>
                     <AdBanner show={showAd} closeAd={() => setShowAd(false)} />
                   </div>
-                  <div className="flex -space-x-2">
+                  <div className={styles.avatarStack}>
                     {users.slice(0, 4).map((user) => {
-                      const avatarData = getAvatarData(user.name);
+                      const a = getAvatarData(user.name);
+                      const url = resolveAvatarByName(user.name, user.avatar);
                       return (
-                        <TooltipProvider key={user.id}>
-                          <Tooltip>
-                            <TooltipTrigger>
-                              <Avatar className="w-8 h-8 border-2 border-background shadow-sm">
-                                {resolveAvatarByName(user.name, user.avatar) ? (
-                                  <AvatarImage src={resolveAvatarByName(user.name, user.avatar)} className="object-cover" />
-                                ) : (
-                                  <AvatarFallback style={{ backgroundColor: avatarData.backgroundColor, color: 'white' }} className="text-xs">
-                                    {avatarData.text}
-                                  </AvatarFallback>
-                                )}
-                              </Avatar>
-                            </TooltipTrigger>
-                            <TooltipContent><p>{user.name}</p></TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
+                        <Tooltip key={user.id} title={user.name}>
+                          <LobeAvatar
+                            avatar={url || a.text}
+                            background={a.backgroundColor}
+                            shape="circle"
+                            size={32}
+                            title={user.name}
+                            style={{ flexShrink: 0 }}
+                          />
+                        </Tooltip>
                       );
                     })}
                     {users.length > 4 && (
-                      <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-semibold border-2 border-background shadow-sm text-muted-foreground">
-                        +{users.length - 4}
-                      </div>
+                      <div className={styles.avatarMore}>+{users.length - 4}</div>
                     )}
                   </div>
-                  <Button variant="ghost" size="icon" onClick={() => setShowSettings(true)} className="h-8 w-8 rounded-lg hover:bg-accent/60">
-                    <Settings2 className="w-4 h-4 text-muted-foreground" />
-                  </Button>
+                  <ActionIcon
+                    icon={Settings2}
+                    size="small"
+                    onClick={() => setShowSettings(true)}
+                    title="设置"
+                  />
                 </div>
               </div>
             </header>
 
 
             {/* Chat Area */}
-            <div className="flex-1 overflow-hidden bg-stone-50 dark:bg-[#0a0a0f]">
-              <ScrollArea className={`h-full ${!showAd ? 'px-4 py-3' : ''} md:px-5 md:py-4`}>
-                <div className="md:hidden">
-                  <AdBannerMobile show={showAd} closeAd={() => setShowAd(false)} />
-                </div>
-                <div className="space-y-4">
-                  {messages.map((message) => (
-                    <div key={message.id}
-                      className={`flex items-start gap-3 ${message.sender.name === userName ? "justify-end" : ""}`}>
-                      {message.sender.name !== userName && (
-                        <Avatar className="w-10 h-10 rounded-full border-2 border-background shadow-sm flex-shrink-0">
-                          {resolveAvatarByName(message.sender.name, message.sender.avatar) ? (
-                            <AvatarImage src={resolveAvatarByName(message.sender.name, message.sender.avatar)} className="w-10 h-10 object-cover" />
-                          ) : (
-                            <AvatarFallback style={{ backgroundColor: getAvatarData(message.sender.name).backgroundColor, color: 'white' }} className="text-xs">
-                              {getAvatarData(message.sender.name).text}
-                            </AvatarFallback>
-                          )}
-                        </Avatar>
+            <div className={styles.chatArea}>
+              <div className={styles.mobileOnly}>
+                <AdBannerMobile show={showAd} closeAd={() => setShowAd(false)} />
+              </div>
+              <div className={styles.messageList}>
+                {messages.map((message) => {
+                  const isUser = message.sender.name === userName;
+                  const a = getAvatarData(message.sender.name);
+                  const url = resolveAvatarByName(message.sender.name, message.sender.avatar);
+                  const isLatest = messages[messages.length - 1]?.id === message.id;
+                  const isStreaming = !!message.isAI && isLoading && isLatest;
+                  const isCli = !!message.sender?.id?.startsWith?.('cli-');
+                  const bubbleClass = isUser
+                    ? styles.bubbleUser
+                    : message.isError
+                      ? styles.bubbleError
+                      : styles.bubbleAI;
+                  return (
+                    <div
+                      key={message.id}
+                      className={styles.messageRow}
+                      style={{ justifyContent: isUser ? 'flex-end' : 'flex-start' }}
+                    >
+                      {!isUser && (
+                        <LobeAvatar
+                          avatar={url || a.text}
+                          background={a.backgroundColor}
+                          shape="circle"
+                          size={40}
+                          title={message.sender.name}
+                          style={{ flexShrink: 0 }}
+                        />
                       )}
-                      <div className={message.sender.name === userName ? "text-right max-w-[75%]" : "max-w-[75%]"}>
-                        <div className="text-xs text-muted-foreground/75 px-1 flex items-center gap-1.5">
+                      <div style={{ maxWidth: '75%', textAlign: isUser ? 'right' : 'left' }}>
+                        <div className={styles.metaRow} style={{ justifyContent: isUser ? 'flex-end' : 'flex-start' }}>
                           {message.sender.name}
-                          {message.isAI && isLoading && messages[messages.length - 1]?.id === message.id && !message.content.includes('</details>') && (
-                            <span className="inline-flex items-center gap-1 text-[10px] text-orange-500 font-medium">
-                              <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" />
-                              {message.content === '' ? '思考中' : (message.sender?.id?.startsWith('cli-') ? '执行中' : '输出中')}
+                          {isStreaming && !message.content.includes('</details>') && (
+                            <span className={styles.streaming}>
+                              <span className={styles.streamingDot} />
+                              {message.content === '' ? '思考中' : (isCli ? '执行中' : '输出中')}
                             </span>
                           )}
                         </div>
-                        <div className={`mt-1 p-3 px-4 shadow-sm chat-message ${
-                          message.sender.name === userName
-                            ? "bg-gradient-to-tr from-orange-500 to-amber-500 text-white text-left rounded-2xl rounded-tr-sm shadow-sm"
-                            : "bg-white dark:bg-zinc-800/90 border border-border/60 dark:border-zinc-700/50 rounded-2xl rounded-tl-sm text-left shadow-sm"
-                        }`}>
+                        <div className={cx(bubbleClass, 'chat-message')}>
                           <ChatMarkdown
                             content={message.content}
-                            isUser={message.sender.name === userName}
+                            isUser={isUser}
                           />
-                          {message.isAI && isLoading && messages[messages.length - 1]?.id === message.id && (
-                            <span className="typing-indicator ml-1">▋</span>
+                          {isStreaming && (
+                            <span className="typing-indicator" style={{ marginLeft: 4 }}>▋</span>
                           )}
                         </div>
                       </div>
-                      {message.sender.name === userName && (
-                        <Avatar className="w-10 h-10 rounded-full border-2 border-background shadow-sm flex-shrink-0">
-                          {resolveAvatarByName(message.sender.name, message.sender.avatar) ? (
-                            <AvatarImage src={resolveAvatarByName(message.sender.name, message.sender.avatar)} className="object-cover" />
-                          ) : (
-                            <AvatarFallback style={{ backgroundColor: getAvatarData(message.sender.name).backgroundColor, color: 'white' }} className="text-xs">
-                              {getAvatarData(message.sender.name).text}
-                            </AvatarFallback>
-                          )}
-                        </Avatar>
+                      {isUser && (
+                        <LobeAvatar
+                          avatar={url || a.text}
+                          background={a.backgroundColor}
+                          shape="circle"
+                          size={40}
+                          title={message.sender.name}
+                          style={{ flexShrink: 0 }}
+                        />
                       )}
                     </div>
-                  ))}
-                  <div ref={messagesEndRef} />
-                </div>
-              </ScrollArea>
+                  );
+                })}
+                <div ref={messagesEndRef} />
+              </div>
             </div>
 
 
             {/* Input Area */}
-            <div className="bg-white dark:bg-zinc-900 border-t border-border/60 dark:border-zinc-800 px-5 py-3 shadow-[0_-1px_3px_rgba(0,0,0,0.04)]">
-              <div className="flex items-center gap-3 pb-[env(safe-area-inset-bottom)]">
-                {messages.length > 0 && (
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button variant="ghost" size="icon" onClick={() => setShowPoster(true)}
-                          className="h-9 w-9 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent/50 flex-shrink-0">
-                          <Share2 className="w-4 h-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent><p>分享聊天记录</p></TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                )}
-                <div className="flex-1 relative">
-                  <Input
-                    placeholder={isCLIGroup ? "输入指令，CLI Agent 将在 workspace 中执行..." : "输入消息..."}
-                    className="w-full bg-muted/30 dark:bg-muted/15 border-border/30 focus-visible:ring-1 focus-visible:ring-[#ff6600]/50 focus-visible:border-[#ff6600]/30 rounded-xl px-4 py-2.5 h-11 text-sm transition-all"
-                    value={inputMessage}
-                    onChange={(e) => setInputMessage(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                  />
-                </div>
-                <Button
-                  onClick={handleSendMessage}
-                  disabled={isLoading}
-                  className="bg-[#ff6600] hover:bg-[#e65c00] text-white shadow-sm hover:shadow-md hover:shadow-orange-500/15 transition-all rounded-xl h-11 px-5 flex-shrink-0"
-                >
-                  {isLoading ? (
-                    <div className="w-4 h-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                  ) : (
-                    <Send className="w-4 h-4" />
-                  )}
-                </Button>
-              </div>
+            <div className={styles.inputArea}>
+              <ChatInputArea
+                value={inputMessage}
+                onInput={setInputMessage}
+                onSend={handleSendMessage}
+                loading={isLoading}
+                placeholder={isCLIGroup ? '输入指令，CLI Agent 将在 workspace 中执行...' : '输入消息...'}
+                topAddons={
+                  messages.length > 0 ? (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '0 4px' }}>
+                      <Tooltip title="分享聊天记录">
+                        <ActionIcon
+                          icon={Share2}
+                          size="small"
+                          onClick={() => setShowPoster(true)}
+                          title="分享聊天记录"
+                        />
+                      </Tooltip>
+                    </div>
+                  ) : null
+                }
+              />
             </div>
           </div>
         </div>
       </div>
 
       {sidebarOpen && (
-        <div className="fixed inset-0 bg-black/50 z-10 md:hidden" onClick={toggleSidebar} />
+        <div className={styles.mobileOverlay} onClick={toggleSidebar} />
       )}
     </>
   );
