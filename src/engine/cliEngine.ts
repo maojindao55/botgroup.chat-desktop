@@ -10,6 +10,7 @@ import { request } from '@/utils/request';
 // ============ 类型定义 ============
 
 export interface CLIRunResult {
+  taskId: string;
   agentId: string;
   agentName: string;
   content: string;
@@ -19,10 +20,10 @@ export interface CLIRunResult {
 }
 
 export interface CLIStreamCallback {
-  onAgentStart: (agentId: string, agentName: string) => void;
-  onToken: (agentId: string, token: string) => void;
-  onAgentEnd: (agentId: string, fullContent: string) => void;
-  onError: (agentId: string, error: string) => void;
+  onAgentStart: (taskId: string, agentId: string, agentName: string) => void;
+  onToken: (taskId: string, token: string) => void;
+  onAgentEnd: (taskId: string, fullContent: string) => void;
+  onError: (taskId: string, error: string) => void;
 }
 
 
@@ -33,24 +34,35 @@ export interface CLIStreamCallback {
  * 参考 ChatUI.tsx 中的 CLI 调用模式
  */
 async function callCLIAgent(
+  groupId: string,
   agent: CLIAgent,
   prompt: string,
   cwd: string,
+  options: { timeoutMs?: number; showStderr?: boolean },
   callbacks: CLIStreamCallback,
 ): Promise<CLIRunResult> {
-  callbacks.onAgentStart(agent.id, agent.name);
+  const sessionId = (typeof crypto !== 'undefined' && (crypto as any).randomUUID
+    ? (crypto as any).randomUUID()
+    : `cli-${Date.now()}-${Math.random().toString(36).slice(2)}`) as string;
+
+  callbacks.onAgentStart(sessionId, agent.id, agent.name);
 
   const startTime = Date.now();
   const cliCfg = agent.cli || { adapter: 'generic' as const };
 
   const requestBody = {
+    sessionId,
+    groupId,
+    agentId: agent.id,
+    agentName: agent.name,
     adapter: cliCfg.adapter,
     prompt,
     cwd: cwd || null,
     binary: cliCfg.binary || null,
     extraArgs: cliCfg.extraArgs || null,
     env: cliCfg.env || null,
-    showStderr: cliCfg.showStderr !== false,
+    timeoutMs: options.timeoutMs,
+    showStderr: options.showStderr ?? cliCfg.showStderr ?? true,
   };
 
   let fullContent = '';
@@ -91,23 +103,26 @@ async function callCLIAgent(
             const token = data.content || '';
             if (token) {
               fullContent += token;
-              callbacks.onToken(agent.id, token);
+              callbacks.onToken(sessionId, token);
             }
           } catch { /* 跳过解析错误 */ }
         }
       }
     }
 
-    callbacks.onAgentEnd(agent.id, fullContent);
+    exitCode = 0;
+    callbacks.onAgentEnd(sessionId, fullContent);
   } catch (error: any) {
     const errMsg = error?.message || '未知错误';
     fullContent = `[CLI Agent 执行出错: ${errMsg}]`;
-    callbacks.onError(agent.id, errMsg);
+    exitCode = -1;
+    callbacks.onError(sessionId, errMsg);
   }
 
   const durationMs = Date.now() - startTime;
 
   return {
+    taskId: sessionId,
     agentId: agent.id,
     agentName: agent.name,
     content: fullContent,
@@ -128,12 +143,13 @@ async function runCLISequential(
   agents: CLIAgent[],
   prompt: string,
   cwd: string,
+  options: { timeoutMs?: number; showStderr?: boolean },
   callbacks: CLIStreamCallback,
 ): Promise<CLIRunResult[]> {
   const results: CLIRunResult[] = [];
 
   for (const agent of agents) {
-    const result = await callCLIAgent(agent, prompt, cwd, callbacks);
+    const result = await callCLIAgent(group.id, agent, prompt, cwd, options, callbacks);
     results.push(result);
 
     // 间隔
@@ -155,6 +171,7 @@ async function runCLIRouter(
   agents: CLIAgent[],
   prompt: string,
   cwd: string,
+  options: { timeoutMs?: number; showStderr?: boolean },
   callbacks: CLIStreamCallback,
 ): Promise<CLIRunResult[]> {
   if (agents.length === 0) return [];
@@ -222,7 +239,7 @@ async function runCLIRouter(
 
   const results: CLIRunResult[] = [];
   for (const agent of selected) {
-    const result = await callCLIAgent(agent, prompt, cwd, callbacks);
+    const result = await callCLIAgent(group.id, agent, prompt, cwd, options, callbacks);
     results.push(result);
   }
 
@@ -238,13 +255,14 @@ async function runCLIRace(
   agents: CLIAgent[],
   prompt: string,
   cwd: string,
+  options: { timeoutMs?: number; showStderr?: boolean },
   callbacks: CLIStreamCallback,
 ): Promise<CLIRunResult[]> {
   if (agents.length === 0) return [];
 
   // 所有 Agent 真并行执行
   return Promise.all(
-    agents.map(agent => callCLIAgent(agent, prompt, cwd, callbacks))
+    agents.map(agent => callCLIAgent(group.id, agent, prompt, cwd, options, callbacks))
   );
 }
 
@@ -258,6 +276,7 @@ async function runCLIPipeline(
   agents: CLIAgent[],
   prompt: string,
   cwd: string,
+  options: { timeoutMs?: number; showStderr?: boolean },
   callbacks: CLIStreamCallback,
 ): Promise<CLIRunResult[]> {
   if (agents.length === 0) return [];
@@ -289,7 +308,7 @@ ${previousOutput}
 原始需求：${prompt}`;
     }
 
-    const result = await callCLIAgent(agent, pipelinePrompt, cwd, callbacks);
+    const result = await callCLIAgent(group.id, agent, pipelinePrompt, cwd, options, callbacks);
     results.push(result);
     previousOutput = result.content;
 
@@ -315,18 +334,24 @@ export async function executeCLIStrategy(
   prompt: string,
   cwd: string,
   callbacks: CLIStreamCallback,
+  options?: { timeoutMs?: number; showStderr?: boolean }
 ): Promise<CLIRunResult[]> {
+  const opt = {
+    timeoutMs: options?.timeoutMs ?? group.timeout ?? 300000,
+    showStderr: options?.showStderr ?? group.showStderr ?? true,
+  };
+
   switch (group.strategy) {
     case 'sequential':
-      return runCLISequential(group, agents, prompt, cwd, callbacks);
+      return runCLISequential(group, agents, prompt, cwd, opt, callbacks);
     case 'router':
-      return runCLIRouter(group, agents, prompt, cwd, callbacks);
+      return runCLIRouter(group, agents, prompt, cwd, opt, callbacks);
     case 'race':
-      return runCLIRace(group, agents, prompt, cwd, callbacks);
+      return runCLIRace(group, agents, prompt, cwd, opt, callbacks);
     case 'pipeline':
-      return runCLIPipeline(group, agents, prompt, cwd, callbacks);
+      return runCLIPipeline(group, agents, prompt, cwd, opt, callbacks);
     default:
-      return runCLISequential(group, agents, prompt, cwd, callbacks);
+      return runCLISequential(group, agents, prompt, cwd, opt, callbacks);
   }
 }
 
