@@ -274,7 +274,7 @@ export async function request(url: string, options: RequestInit = {}) {
           const ensureDetailsOpen = () => {
             if (!detailsOpen) {
               detailsOpen = true;
-              enqueueChunk(`\n<details><summary>🔧 执行过程</summary>\n\n`);
+              enqueueChunk(`\n<details><summary>⚙️ 执行过程</summary>\n\n`);
             }
           };
 
@@ -310,28 +310,25 @@ export async function request(url: string, options: RequestInit = {}) {
                         ensureDetailsOpen();
                         enqueueChunk(`> 💭 ${jsonEvt.item.text}\n\n`);
                       }
-                      // Command started — stream immediately with ⏳
+                      // Command started — stream immediately
                       else if (jsonEvt.type === 'item.started' && jsonEvt.item?.type === 'command_execution') {
-                        ensureDetailsOpen();
                         stepCount++;
+                        ensureDetailsOpen();
                         const cmd = jsonEvt.item.command || '(unknown)';
                         const cmdShort = cmd.length > 80 ? cmd.slice(0, 77) + '...' : cmd;
-                        enqueueChunk(`${stepCount}. ⏳ \`${cmdShort}\`\n`);
+                        enqueueChunk(`\n**▶ Ran command** \`${cmdShort}\`\n\n`);
                       }
                       // Command completed — stream result
                       else if (jsonEvt.type === 'item.completed' && jsonEvt.item?.type === 'command_execution') {
                         ensureDetailsOpen();
                         const exitCode = jsonEvt.item.exit_code ?? 0;
-                        const status = exitCode === 0 ? '✓' : `✗ exit ${exitCode}`;
-                        const cmd = jsonEvt.item.command || '(unknown)';
-                        const cmdShort = cmd.length > 80 ? cmd.slice(0, 77) + '...' : cmd;
-                        // Replace the pending line with completed status
-                        enqueueChunk(`   → \`${cmdShort}\` ${status}\n`);
+                        const status = exitCode === 0 ? '✓ 成功' : `✗ exit ${exitCode}`;
+                        enqueueChunk(`> ${status}\n`);
                         if (jsonEvt.item.output) {
                           const outShort = jsonEvt.item.output.length > 300
                             ? jsonEvt.item.output.slice(0, 297) + '...'
                             : jsonEvt.item.output;
-                          enqueueChunk(`   \`\`\`\n   ${outShort}\n   \`\`\`\n`);
+                          enqueueChunk(`\n\`\`\`\n${outShort}\n\`\`\`\n\n`);
                         }
                       }
                       // Skip turn.started, turn.completed, thread.started silently
