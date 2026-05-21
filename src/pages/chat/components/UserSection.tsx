@@ -250,6 +250,7 @@ export const UserSection: React.FC<UserSectionProps> = ({ isOpen }) => {
           />
           <div onClick={() => !uploadingAvatar && fileInputRef.current?.click()}>
             <LobeAvatar
+              shape="circle"
               avatar={userStore.userInfo?.avatar_url || avatarData.text}
               background={avatarData.backgroundColor}
               size={40}

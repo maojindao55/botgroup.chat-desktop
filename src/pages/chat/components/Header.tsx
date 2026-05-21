@@ -28,6 +28,7 @@ const Header: React.FC = () => {
         actions={
           <div className="flex items-center gap-2">
             <Segmented
+              className="theme-switcher-segmented"
               value={theme}
               onChange={(v) => setTheme(v as 'system' | 'light' | 'dark')}
               options={[

@@ -280,15 +280,15 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
           {characters.map(char => {
             const selected = selectedAIMembers.includes(char.id);
             const a = getAvatarData(char.name);
-            const url = resolveAvatarByName(char.name, char.avatar);
+            const url = resolveAvatarByName(char.name, char.avatar, 32);
             return (
               <button key={char.id}
                 onClick={() => setSelectedAIMembers(prev => selected ? prev.filter(id => id !== char.id) : [...prev, char.id])}
                 className={cx(styles.memberBtn, selected && styles.memberBtnActive)}>
-                <LobeAvatar avatar={url || a.text} background={a.backgroundColor} size={32} />
+                <LobeAvatar shape="circle" avatar={url || a.text} background={a.backgroundColor} size={32} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 14, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{char.name}</div>
-                  <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{char.tags?.join(', ')}</div>
+                  <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 4 }}>{char.tags?.join(', ')}</div>
                 </div>
                 {selected && <Check size={16} style={{ color: '#ff6600', flexShrink: 0 }} />}
               </button>
@@ -310,15 +310,15 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
           {cliList.map(agent => {
             const selected = selectedCLIMembers.includes(agent.id);
             const a = getAvatarData(agent.name);
-            const url = resolveAvatarByName(agent.name, agent.avatar);
+            const url = resolveAvatarByName(agent.name, agent.avatar, 32);
             return (
               <button key={agent.id}
                 onClick={() => setSelectedCLIMembers(prev => selected ? prev.filter(id => id !== agent.id) : [...prev, agent.id])}
                 className={cx(styles.memberBtn, selected && styles.memberBtnActive)}>
-                <LobeAvatar avatar={url || a.text} background={a.backgroundColor} size={32} />
+                <LobeAvatar shape="circle" avatar={url || a.text} background={a.backgroundColor} size={32} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 14, fontWeight: 500 }}>{agent.name}</div>
-                  <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>adapter: {agent.cli.adapter}</div>
+                  <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginTop: 4 }}>adapter: {agent.cli.adapter}</div>
                 </div>
                 {selected && <Check size={16} style={{ color: '#ff6600', flexShrink: 0 }} />}
               </button>
@@ -450,7 +450,7 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <div style={{ fontSize: 14, fontWeight: 500 }}>自动审批模式</div>
-            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>开启后 Agent 自动执行，无需确认</div>
+            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginTop: 4 }}>开启后 Agent 自动执行，无需确认</div>
           </div>
           <Switch checked={approvalMode === 'auto'} onChange={v => setApprovalMode(v ? 'auto' : 'ask')} />
         </div>

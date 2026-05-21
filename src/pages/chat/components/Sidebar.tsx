@@ -448,6 +448,7 @@ const Sidebar = ({
         >
           {isOpen ? (
             <Segmented
+              className="theme-switcher-segmented"
               value={theme}
               onChange={(v) => setTheme(v as 'system' | 'light' | 'dark')}
               options={[

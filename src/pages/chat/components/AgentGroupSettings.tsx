@@ -152,7 +152,7 @@ export const AgentGroupSettings = ({
 
   const agentItems = group.agents.map((agent) => {
     const avatarData = getAvatarData(agent.name || 'A');
-    const avatarUrl = resolveAvatarByName(agent.name || 'A', agent.avatar);
+    const avatarUrl = resolveAvatarByName(agent.name || 'A', agent.avatar, 28);
     const isSupervisor = group.strategy === 'supervisor' && group.agents[0]?.id === agent.id;
     const muted = mutedUsers.includes(agent.id);
 
@@ -161,6 +161,7 @@ export const AgentGroupSettings = ({
       label: (
         <div className={styles.agentHeader}>
           <LobeAvatar
+            shape="circle"
             avatar={avatarUrl || avatarData.text}
             background={avatarData.backgroundColor}
             size={28}

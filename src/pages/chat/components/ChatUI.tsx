@@ -735,7 +735,7 @@ const ChatUI = () => {
                   <div className={styles.avatarStack}>
                     {users.slice(0, 4).map((user) => {
                       const a = getAvatarData(user.name);
-                      const url = resolveAvatarByName(user.name, user.avatar);
+                      const url = resolveAvatarByName(user.name, user.avatar, 32);
                       return (
                         <Tooltip key={user.id} title={user.name}>
                           <LobeAvatar
@@ -773,7 +773,7 @@ const ChatUI = () => {
                 {messages.map((message) => {
                   const isUser = message.sender.name === userName;
                   const a = getAvatarData(message.sender.name);
-                  const url = resolveAvatarByName(message.sender.name, message.sender.avatar);
+                  const url = resolveAvatarByName(message.sender.name, message.sender.avatar, 40);
                   const isLatest = messages[messages.length - 1]?.id === message.id;
                   const isStreaming = !!message.isAI && isLoading && isLatest;
                   const isCli = !!message.sender?.id?.startsWith?.('cli-');

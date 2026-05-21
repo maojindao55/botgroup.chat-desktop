@@ -205,7 +205,7 @@ export const AIGroupSettings = ({
               <div className={styles.addScrollList}>
                 {availableToAdd.map((char) => {
                   const a = getAvatarData(char.name);
-                  const url = resolveAvatarByName(char.name, char.avatar);
+                  const url = resolveAvatarByName(char.name, char.avatar, 24);
                   return (
                     <button
                       key={char.id}
@@ -213,6 +213,7 @@ export const AIGroupSettings = ({
                       className={styles.addMemberItem}
                     >
                       <LobeAvatar
+                        shape="circle"
                         avatar={url || a.text}
                         background={a.backgroundColor}
                         size={24}
@@ -230,13 +231,14 @@ export const AIGroupSettings = ({
           <div className={styles.scrollList}>
             {users.map((user) => {
               const a = getAvatarData(user.name);
-              const url = resolveAvatarByName(user.name, user.avatar);
+              const url = resolveAvatarByName(user.name, user.avatar, 32);
               const isAI = 'personality' in user;
               const muted = mutedUsers.includes(user.id as string);
               return (
                 <div key={user.id} className={styles.memberRow}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <LobeAvatar
+                      shape="circle"
                       avatar={url || a.text}
                       background={a.backgroundColor}
                       size={32}
@@ -244,7 +246,7 @@ export const AIGroupSettings = ({
                     <div style={{ display: 'flex', flexDirection: 'column' }}>
                       <span style={{ fontSize: 14 }}>{user.name}</span>
                       {muted && (
-                        <span style={{ fontSize: 10, color: '#ef4444' }}>已禁言</span>
+                        <span style={{ fontSize: 10, color: '#ef4444', marginTop: 4 }}>已禁言</span>
                       )}
                     </div>
                   </div>

@@ -11,9 +11,23 @@ function App() {
   console.log("App rendering"); // 添加日志
   const { resolvedTheme } = useTheme();
   const themeMode = resolvedTheme === 'dark' ? 'dark' : 'light';
+
+  const customThemeConfig = resolvedTheme === 'dark' ? {
+    token: {
+      colorBgBase: '#121214',
+      colorBgLayout: '#121214',
+      colorBgContainer: '#1a1a1e',
+      colorBgElevated: '#222226',
+      colorBorderSecondary: '#222226',
+      colorFillSecondary: '#222226',
+      colorFillTertiary: '#1a1a1e',
+      colorFillQuaternary: '#222226',
+    }
+  } : undefined;
+
   return (
     <ConfigProvider motion={motion}>
-      <ThemeProvider themeMode={themeMode} customToken={lobeCustomToken}>
+      <ThemeProvider themeMode={themeMode} theme={customThemeConfig} customToken={lobeCustomToken}>
         <AntdApp>
           <RouterProvider router={router} />
           <Toaster

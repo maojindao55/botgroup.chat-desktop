@@ -367,7 +367,7 @@ const AgentChatUI = ({
                   <div className={styles.avatarStack}>
                     {group.agents.slice(0, 4).map(agent => {
                       const a = getAvatarData(agent.name);
-                      const url = resolveAvatarByName(agent.name, agent.avatar);
+                      const url = resolveAvatarByName(agent.name, agent.avatar, 32);
                       return (
                         <Tooltip key={agent.id} title={`${agent.name} - ${agent.role}`}>
                           <LobeAvatar
@@ -425,7 +425,7 @@ const AgentChatUI = ({
                 {messages.map((message) => {
                   const isUser = message.sender.name === userName;
                   const a = getAvatarData(message.sender.name);
-                  const url = resolveAvatarByName(message.sender.name, message.sender.avatar);
+                  const url = resolveAvatarByName(message.sender.name, message.sender.avatar, 32);
                   const isLatest = messages[messages.length - 1]?.id === message.id;
                   const isStreaming = !!message.isAI && isLoading && isLatest;
 

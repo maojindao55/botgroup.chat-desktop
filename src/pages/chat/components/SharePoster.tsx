@@ -146,7 +146,7 @@ export function SharePoster({ messages, onClose }: SharePosterProps) {
         {messages.map((m) => {
           const isUser = m.sender.name === userName;
           const a = getAvatarData(m.sender.name);
-          const url = resolveAvatarByName(m.sender.name, m.sender.avatar);
+          const url = resolveAvatarByName(m.sender.name, m.sender.avatar, 36);
           return (
             <div key={m.id} style={{
               display: 'flex',
@@ -155,7 +155,7 @@ export function SharePoster({ messages, onClose }: SharePosterProps) {
               justifyContent: isUser ? 'flex-end' : 'flex-start',
             }}>
               {!isUser && (
-                <LobeAvatar avatar={url || a.text} background={a.backgroundColor} size={36} />
+                <LobeAvatar shape="circle" avatar={url || a.text} background={a.backgroundColor} size={36} />
               )}
               <div style={{ maxWidth: '75%' }}>
                 <div style={{ fontSize: 12, color: '#6b7280', padding: '0 4px', marginBottom: 4, textAlign: isUser ? 'right' : 'left' }}>
@@ -179,7 +179,7 @@ export function SharePoster({ messages, onClose }: SharePosterProps) {
                 </div>
               </div>
               {isUser && (
-                <LobeAvatar avatar={url || a.text} background={a.backgroundColor} size={36} />
+                <LobeAvatar shape="circle" avatar={url || a.text} background={a.backgroundColor} size={36} />
               )}
             </div>
           );

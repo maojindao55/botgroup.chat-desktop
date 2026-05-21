@@ -213,7 +213,7 @@ export const CLIGroupSettings = ({
           <div className={styles.rowBetween}>
             <div>
               <div style={{ fontSize: 14, fontWeight: 500 }}>自动审批</div>
-              <div className={styles.panelDesc}>开启后 Agent 自动执行，无需确认</div>
+              <div className={styles.panelDesc} style={{ marginTop: 4 }}>开启后 Agent 自动执行，无需确认</div>
             </div>
             <Switch
               checked={approvalMode === 'auto'}
@@ -280,12 +280,13 @@ export const CLIGroupSettings = ({
             {members.map((agent) => {
               const status = cliStatus[agent.id];
               const a = getAvatarData(agent.name);
-              const url = resolveAvatarByName(agent.name, agent.avatar);
+              const url = resolveAvatarByName(agent.name, agent.avatar, 36);
               const muted = mutedUsers.includes(agent.id);
               return (
                 <div key={agent.id} className={styles.memberRow}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <LobeAvatar
+                      shape="circle"
                       avatar={url || a.text}
                       background={a.backgroundColor}
                       size={36}
@@ -298,7 +299,7 @@ export const CLIGroupSettings = ({
                         </span>
                       </div>
                       {status === 'loading' && (
-                        <span style={{ fontSize: 10, opacity: 0.6 }}>检测中...</span>
+                        <span style={{ fontSize: 10, opacity: 0.6, marginTop: 4 }}>检测中...</span>
                       )}
                       {status && status !== 'loading' && status.installed && (
                         <span
@@ -308,6 +309,7 @@ export const CLIGroupSettings = ({
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: 2,
+                            marginTop: 4,
                           }}
                         >
                           <CheckCircle2 size={10} />
@@ -322,6 +324,7 @@ export const CLIGroupSettings = ({
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: 2,
+                            marginTop: 4,
                           }}
                         >
                           <XCircle size={10} />
@@ -329,7 +332,7 @@ export const CLIGroupSettings = ({
                         </span>
                       )}
                       {muted && (
-                        <span style={{ fontSize: 10, color: '#ef4444' }}>已禁言</span>
+                        <span style={{ fontSize: 10, color: '#ef4444', marginTop: 4 }}>已禁言</span>
                       )}
                     </div>
                   </div>
