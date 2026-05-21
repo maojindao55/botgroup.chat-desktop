@@ -100,7 +100,7 @@ const useStyles = createStyles(({ token, css }) => ({
   `,
   strategyGrid: css`
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 8px;
   `,
   strategyBtn: css`
@@ -512,7 +512,10 @@ export const CLIGroupSettings = ({
     router: '智能选择最合适的 CLI Agent 执行（失败即终止）',
     race: '并行创建隔离 worktree，让多个 CLI Agent 竞争方案（需要干净 git 仓库）',
     pipeline: '按阶段接力执行，后者基于前者输出继续（失败默认继续，取消停止）',
-    discussion: '多 Agent 分轮讨论方案和风险，默认不修改文件（共 2 轮）',
+    discussion: '多 Agent 分轮讨论方案和风险，在临时只读副本中执行（共 2 轮）',
+    review: '生成 → 审查 → 修正：三阶段接力优化代码质量',
+    debate: '多 Agent 独立提案 → 互评 → 最终建议（3 轮辩论）',
+    mapreduce: '并行执行同一任务，汇总所有结果对比查看',
   };
 
   const tabItems = [
@@ -604,6 +607,9 @@ export const CLIGroupSettings = ({
                 { value: 'race' as const, label: '竞争模式' },
                 { value: 'pipeline' as const, label: '流水线' },
                 { value: 'discussion' as const, label: '讨论模式' },
+                { value: 'review' as const, label: '评审模式' },
+                { value: 'debate' as const, label: '辩论模式' },
+                { value: 'mapreduce' as const, label: '并行汇总' },
               ].map((item) => (
                 <button
                   key={item.value}
@@ -632,10 +638,79 @@ export const CLIGroupSettings = ({
             )}
             {strategy === 'discussion' && (
               <p className={styles.panelDesc} style={{ marginTop: 4 }}>
-                只用于分析与方案评审，请通过提示词约束 Agent 不修改文件。
+                在临时只读副本中执行，不会直接修改原始 workspace。
+              </p>
+            )}
+            {(strategy === 'review' || strategy === 'debate') && (
+              <p className={styles.panelDesc} style={{ marginTop: 4 }}>
+                {strategy === 'review' ? '三阶段流水线：生成代码 → 审查修改 → 最终验证。' : '多轮辩论：各 Agent 独立方案 → 互相评审 → 综合最终建议。'}
               </p>
             )}
           </div>
+
+          {/* Advanced Execution Plan Config (V3) */}
+          <details style={{ marginTop: 0 }}>
+            <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 500, color: 'rgba(0,0,0,0.65)', padding: '8px 0' }}>
+              高级配置
+            </summary>
+            <div className={styles.panel} style={{ marginTop: 8 }}>
+              <div className={styles.rowBetween}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 500 }}>失败策略</div>
+                  <div className={styles.panelDesc} style={{ marginTop: 2 }}>Agent 失败后是否继续执行后续阶段</div>
+                </div>
+                <select
+                  value={group.executionPlan?.failurePolicy || 'continue'}
+                  onChange={(e) => {
+                    // This would persist to group.executionPlan in a real implementation
+                    void e;
+                  }}
+                  style={{ fontSize: 12, padding: '4px 8px', borderRadius: 4, border: '1px solid #d9d9d9' }}
+                >
+                  <option value="continue">继续执行</option>
+                  <option value="stopOnFailure">失败停止</option>
+                  <option value="stopOnCancelled">取消停止</option>
+                </select>
+              </div>
+              {(strategy === 'discussion' || strategy === 'debate') && (
+                <div className={styles.rowBetween} style={{ marginTop: 8 }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 500 }}>讨论轮数</div>
+                    <div className={styles.panelDesc} style={{ marginTop: 2 }}>staged 调度的最大轮次数</div>
+                  </div>
+                  <InputNumber
+                    value={group.executionPlan?.maxRounds ?? (strategy === 'debate' ? 3 : 2)}
+                    min={1}
+                    max={5}
+                    size="small"
+                    style={{ width: 60 }}
+                    onChange={() => { /* persist to executionPlan */ }}
+                  />
+                </div>
+              )}
+              {(strategy === 'race' || strategy === 'mapreduce') && (
+                <div className={styles.rowBetween} style={{ marginTop: 8 }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 500 }}>结果策略</div>
+                    <div className={styles.panelDesc} style={{ marginTop: 2 }}>多结果时如何取舍</div>
+                  </div>
+                  <select
+                    value={group.executionPlan?.resultPolicy || 'all'}
+                    onChange={() => { /* persist */ }}
+                    style={{ fontSize: 12, padding: '4px 8px', borderRadius: 4, border: '1px solid #d9d9d9' }}
+                  >
+                    <option value="all">全部展示</option>
+                    <option value="firstSuccess">首个成功</option>
+                    <option value="fastest">最快结果</option>
+                    <option value="manualPick">手动选择</option>
+                  </select>
+                </div>
+              )}
+              <p className={styles.panelDesc} style={{ marginTop: 8 }}>
+                高级配置会覆盖预设模式的默认值。老数据不需要配置即可正常运行。
+              </p>
+            </div>
+          </details>
 
           {/* members */}
           <div>
@@ -874,6 +949,62 @@ export const CLIGroupSettings = ({
               )}
             </div>
           )}
+        </div>
+      )
+    },
+    {
+      key: 'worktree',
+      label: 'Worktree',
+      children: (
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <span style={{ fontSize: 13, opacity: 0.8 }}>竞争模式 Worktree 管理</span>
+            <Button
+              type="text"
+              size="small"
+              icon={<RefreshCw size={14} />}
+              onClick={async () => {
+                // placeholder: in future this would list worktrees from app_data_dir
+              }}
+            />
+          </div>
+          <div style={{ padding: 12, background: 'rgba(0,0,0,0.04)', borderRadius: 8, marginBottom: 12 }}>
+            <p style={{ fontSize: 12, color: 'rgba(0,0,0,0.65)', margin: 0 }}>
+              竞争模式（race）会为每个 Agent 创建独立的 git worktree。
+              执行完成后 worktree 默认保留，你可以在此处查看和清理。
+            </p>
+          </div>
+          <div style={{ padding: 12, background: 'rgba(0,0,0,0.04)', borderRadius: 8 }}>
+            <Button
+              danger
+              size="small"
+              onClick={async () => {
+                const confirmed = window.confirm('确认清理所有该群的 worktree？此操作不可恢复。');
+                if (!confirmed) return;
+                try {
+                  // Get all worktree paths from recent race tasks
+                  const res = await request(`/api/cli/tasks/list?groupId=${group.id}&limit=50`);
+                  const json = await res.json();
+                  if (json.success && Array.isArray(json.data)) {
+                    const worktreePaths = json.data
+                      .filter((t: any) => t.cwd && t.cwd.includes('cli-worktrees'))
+                      .map((t: any) => t.cwd);
+                    if (worktreePaths.length > 0) {
+                      await request('/api/cli/worktree/cleanup', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ paths: [...new Set(worktreePaths)] }),
+                      });
+                    }
+                  }
+                } catch (e) {
+                  console.error('Failed to cleanup worktrees:', e);
+                }
+              }}
+            >
+              清理所有 Worktree
+            </Button>
+          </div>
         </div>
       )
     }

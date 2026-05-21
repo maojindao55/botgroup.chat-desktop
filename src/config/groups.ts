@@ -26,7 +26,10 @@ export type CLIStrategy =
   | 'router'         // 智能路由：根据任务类型选择最合适的 CLI Agent
   | 'race'           // 竞争模式：多个 CLI Agent 并行竞争同一任务，默认隔离 worktree
   | 'pipeline'       // 流水线：Agent A 生成代码 → Agent B 审查 → Agent C 测试
-  | 'discussion';    // 讨论模式：多 Agent 分轮讨论方案和风险，默认只读
+  | 'discussion'     // 讨论模式：多 Agent 分轮讨论方案和风险，默认只读
+  | 'review'         // 评审模式：生成 → 审查 → 修正
+  | 'debate'         // 辩论模式：多 Agent 独立提案 → 互评 → 最终建议
+  | 'mapreduce';     // 拆分-并行-汇总：拆任务 → 并行执行 → 合并结果
 
 // ============ 执行计划模型（内部组合） ============
 /** 选择哪些 Agent */
@@ -129,9 +132,39 @@ export function resolveExecutionPlan(
           selection: 'all',
           collaboration: 'discussion',
           schedule: 'staged',
-          isolation: 'readOnly',
+          isolation: 'copyPerAgent',
           failurePolicy: 'continue',
           maxRounds: 2,
+        };
+      case 'review':
+        return {
+          preset,
+          selection: 'all',
+          collaboration: 'pipeline',
+          schedule: 'sequential',
+          isolation: 'sameWorkspace',
+          failurePolicy: 'continue',
+        };
+      case 'debate':
+        return {
+          preset,
+          selection: 'all',
+          collaboration: 'discussion',
+          schedule: 'staged',
+          isolation: 'copyPerAgent',
+          failurePolicy: 'continue',
+          maxRounds: 3,
+          resultPolicy: 'manualPick',
+        };
+      case 'mapreduce':
+        return {
+          preset,
+          selection: 'all',
+          collaboration: 'independent',
+          schedule: 'parallel',
+          isolation: 'sameWorkspace',
+          failurePolicy: 'continue',
+          resultPolicy: 'all',
         };
       default:
         // 穷尽性兜底：未知预设按 sequential 处理

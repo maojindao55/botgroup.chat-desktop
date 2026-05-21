@@ -598,6 +598,7 @@ const ChatUI = () => {
               stageLabel: meta?.stageLabel,
               cliCwd: meta?.cwd,
               cliBranch: meta?.branch,
+              baseSha: meta?.baseSha,
             };
             setMessages(prev => [...prev, aiMessage]);
           },
@@ -715,6 +716,7 @@ const ChatUI = () => {
               stageLabel: meta?.stageLabel,
               cliCwd: meta?.cwd,
               cliBranch: meta?.branch,
+              baseSha: meta?.baseSha,
             };
             setMessages(prev => [...prev, aiMessage]);
           },
@@ -1175,6 +1177,24 @@ const ChatUI = () => {
                                 >
                                   复制路径
                                 </button>
+                                <button
+                                  className={styles.cliWorktreeCopyBtn}
+                                  onClick={async () => {
+                                    if (message.cliCwd) {
+                                      try {
+                                        const { invoke } = await import('@tauri-apps/api/core');
+                                        await invoke('select_directory'); // opens native file dialog
+                                      } catch {
+                                        // fallback: copy to clipboard
+                                        if (navigator.clipboard) {
+                                          navigator.clipboard.writeText(`cd ${message.cliCwd}`).catch(() => {});
+                                        }
+                                      }
+                                    }
+                                  }}
+                                >
+                                  打开路径
+                                </button>
                               </div>
                               <div className={styles.cliWorktreePath}>{message.cliCwd}</div>
                               {message.cliBranch && (
@@ -1182,6 +1202,30 @@ const ChatUI = () => {
                                   <span style={{ fontWeight: 500 }}>分支：</span>
                                   <span className={styles.cliWorktreePath}>{message.cliBranch}</span>
                                 </div>
+                              )}
+                              {message.baseSha && (
+                                <div>
+                                  <span style={{ fontWeight: 500 }}>基准：</span>
+                                  <span className={styles.cliWorktreePath}>{message.baseSha.slice(0, 8)}</span>
+                                </div>
+                              )}
+                              {message.status === 'completed' && !message.adopted && (
+                                <button
+                                  className={styles.cliWorktreeCopyBtn}
+                                  style={{ marginTop: 4, marginLeft: 0, color: '#52c41a', borderColor: '#b7eb8f' }}
+                                  onClick={() => {
+                                    setMessages(prev => prev.map(m =>
+                                      m.taskId === message.taskId ? { ...m, adopted: true } : m
+                                    ));
+                                  }}
+                                >
+                                  标记采用
+                                </button>
+                              )}
+                              {message.adopted && (
+                                <span style={{ marginTop: 4, display: 'inline-block', fontSize: 10, color: '#52c41a', fontWeight: 600 }}>
+                                  ✓ 已采用
+                                </span>
                               )}
                             </div>
                           )}

@@ -35,6 +35,10 @@ export interface CLIRunResult {
   branch?: string;
   /** 阶段标签（pipeline 显示阶段名，discussion 显示 Round） */
   stageLabel?: string;
+  /** worktree 基准 commit SHA（用于对比 diff） */
+  baseSha?: string;
+  /** 用户是否标记采用此结果 */
+  adopted?: boolean;
 }
 
 export interface CLIStreamCallback {
@@ -51,6 +55,8 @@ export interface CLIAgentMeta {
   cwd?: string;
   /** worktree 分支名 */
   branch?: string;
+  /** worktree baseSha（用于后续 diff 对比） */
+  baseSha?: string;
 }
 
 export interface CLIRunOptions {
@@ -79,6 +85,10 @@ interface AgentExecutionContext {
   /** worktree 路径（worktreePerAgent 时有值） */
   worktreePath?: string;
   branchName?: string;
+  /** worktree 基准 SHA（worktreePerAgent 时有值，用于 diff 对比） */
+  baseSha?: string;
+  /** 临时 copy 路径（copyPerAgent 时有值） */
+  tempCopyPath?: string;
 }
 
 interface ScheduleInput {
@@ -123,6 +133,7 @@ async function callCLIAgent(
     stageLabel: meta.stageLabel,
     cwd: ctx.cwd,
     branch: ctx.branchName,
+    baseSha: ctx.baseSha,
   });
 
   const startTime = Date.now();
@@ -249,6 +260,7 @@ async function callCLIAgent(
     cwd: ctx.cwd,
     branch: ctx.branchName,
     stageLabel: meta.stageLabel,
+    baseSha: ctx.baseSha,
   };
 }
 
@@ -317,7 +329,7 @@ function selectAgents(
  * 准备每个 Agent 的执行 cwd 与隔离信息。
  * - sameWorkspace / readOnly：所有 Agent 共用 workspace
  * - worktreePerAgent：调用 /api/cli/worktree/prepare 为每个 Agent 创建独立 git worktree
- * - copyPerAgent：第一版未实现，回退到 sameWorkspace 并打 warning
+ * - copyPerAgent：创建临时只读副本目录（discussion 真只读隔离）
  */
 async function prepareExecutionContexts(
   plan: CLIExecutionPlan,
@@ -363,17 +375,53 @@ async function prepareExecutionContexts(
       return {
         agent,
         cwd: wt.path,
-        isolation: 'worktreePerAgent',
+        isolation: 'worktreePerAgent' as const,
         worktreePath: wt.path,
         branchName: wt.branchName,
+        baseSha: wt.baseSha,
       };
     });
   }
 
   if (plan.isolation === 'copyPerAgent') {
-    // 第一版未实现，按 sameWorkspace 处理（plan 不应直接走到这里，以防万一）
-    console.warn('[cliEngine] copyPerAgent 未实现，回退到 sameWorkspace');
-    return agents.map(agent => ({ agent, cwd, isolation: 'sameWorkspace' }));
+    if (!cwd) {
+      throw new Error('讨论模式需要先设置 workspacePath。');
+    }
+    // V2.5: 为 discussion 准备临时只读目录副本
+    try {
+      const res = await request('/api/cli/tempcopy/prepare', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          groupId: group.id,
+          cwd,
+          agentIds: agents.map(a => a.id),
+        }),
+      });
+      const json = await res.json();
+      if (!json?.success) {
+        // 如果 temp copy 创建失败，阻止启动 discussion
+        throw new Error(json?.message || '临时只读目录创建失败');
+      }
+      const copies: Array<{ agentId: string; path: string }> = json.data?.copies || [];
+      const byId = new Map(copies.map(c => [c.agentId, c.path]));
+
+      return agents.map(agent => {
+        const copyPath = byId.get(agent.id);
+        if (!copyPath) {
+          throw new Error(`Agent ${agent.name} 的只读环境创建失败，请重试。`);
+        }
+        return {
+          agent,
+          cwd: copyPath,
+          isolation: 'copyPerAgent' as const,
+          tempCopyPath: copyPath,
+        };
+      });
+    } catch (e: any) {
+      // 如果只读环境准备失败，阻止启动 discussion 并给出明确错误
+      throw new Error(`无法为讨论模式创建只读环境: ${e?.message || e}`);
+    }
   }
 
   return agents.map(agent => ({
@@ -384,14 +432,32 @@ async function prepareExecutionContexts(
 }
 
 /**
- * 第一版只对 worktreePerAgent 提供清理钩子；默认保留 worktree 让用户决定。
+ * 清理执行环境。
+ * - worktreePerAgent：保留 worktree 让用户检查（不自动清理）
+ * - copyPerAgent：执行结束后自动清理临时目录
  */
 async function finalizeExecutionContexts(
-  _plan: CLIExecutionPlan,
-  _contexts: AgentExecutionContext[],
+  plan: CLIExecutionPlan,
+  contexts: AgentExecutionContext[],
 ): Promise<void> {
-  // 第一版不自动清理 worktree（计划文档要求保留路径）
-  return;
+  // copyPerAgent：自动清理临时只读副本
+  if (plan.isolation === 'copyPerAgent') {
+    const paths = contexts
+      .map(c => c.tempCopyPath)
+      .filter((p): p is string => !!p);
+    if (paths.length > 0) {
+      try {
+        await request('/api/cli/tempcopy/cleanup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ paths }),
+        });
+      } catch (e) {
+        console.warn('[cliEngine] 临时目录清理失败（不影响执行结果）:', e);
+      }
+    }
+  }
+  // worktreePerAgent：不自动清理（计划文档要求保留路径）
 }
 
 // ============ 提示词构造 ============

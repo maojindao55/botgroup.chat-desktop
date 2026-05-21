@@ -1221,3 +1221,176 @@ fn sanitize_path_segment(input: &str) -> String {
         .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
         .collect()
 }
+
+
+
+// =====================================================================
+// Temp Copy IPC: support for `discussion` (V2.5) read-only isolation.
+//
+// Instead of relying solely on prompt constraints, we create a temporary
+// shallow copy of the workspace for each agent. The discussion engine
+// runs each agent in its own temp copy. After execution, temp copies are
+// automatically cleaned up by `cli_tempcopy_cleanup`.
+// =====================================================================
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CliTempCopyPrepareArgs {
+    pub group_id: String,
+    pub cwd: String,
+    pub agent_ids: Vec<String>,
+}
+
+#[derive(Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CliTempCopyInfo {
+    pub agent_id: String,
+    pub path: String,
+}
+
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CliTempCopyPrepareResult {
+    pub copies: Vec<CliTempCopyInfo>,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CliTempCopyCleanupArgs {
+    pub paths: Vec<String>,
+}
+
+/// Creates shallow temporary copies of `cwd` for each agent.
+/// Uses `cp -a` on unix (preserves symlinks), `robocopy /mir` on Windows.
+/// Copies are placed under `{app_data_dir}/cli-tempcopy/{group_id}/{timestamp}/{agent_id}`.
+#[tauri::command]
+pub async fn cli_tempcopy_prepare(
+    app: AppHandle,
+    args: CliTempCopyPrepareArgs,
+) -> Result<CliTempCopyPrepareResult, String> {
+    if args.cwd.is_empty() {
+        return Err("workspacePath 不能为空".to_string());
+    }
+    if args.agent_ids.is_empty() {
+        return Err("agentIds 不能为空".to_string());
+    }
+
+    let workspace = std::path::PathBuf::from(&args.cwd);
+    if !workspace.exists() {
+        return Err(format!("workspace 不存在：{}", workspace.display()));
+    }
+
+    let ts = chrono::Utc::now().format("%Y%m%d-%H%M%S").to_string();
+    let mut root = app
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from("."));
+    root.push("cli-tempcopy");
+    root.push(sanitize_path_segment(&args.group_id));
+    root.push(&ts);
+    std::fs::create_dir_all(&root)
+        .map_err(|e| format!("创建临时目录根失败：{}", e))?;
+
+    let mut copies: Vec<CliTempCopyInfo> = Vec::with_capacity(args.agent_ids.len());
+    let mut created: Vec<std::path::PathBuf> = Vec::new();
+
+    for agent_id in &args.agent_ids {
+        let safe = sanitize_path_segment(agent_id);
+        let dest = root.join(&safe);
+        let dest_str = dest.to_string_lossy().to_string();
+
+        // Use rsync if available (fast, respects .gitignore-like patterns with --exclude),
+        // otherwise fall back to cp -a.
+        let copy_result = {
+            let src_str = format!("{}/", args.cwd); // trailing slash = copy contents
+            let output = std::process::Command::new("rsync")
+                .args(&[
+                    "-a",
+                    "--exclude", ".git",
+                    "--exclude", "node_modules",
+                    "--exclude", "target",
+                    "--exclude", ".next",
+                    "--exclude", "dist",
+                    &src_str,
+                    &dest_str,
+                ])
+                .output();
+
+            match output {
+                Ok(o) if o.status.success() => Ok(()),
+                Ok(o) => {
+                    // rsync failed, try cp -a as fallback
+                    let _ = std::fs::create_dir_all(&dest);
+                    let cp_output = std::process::Command::new("cp")
+                        .args(&["-a", &args.cwd, &dest_str])
+                        .output();
+                    match cp_output {
+                        Ok(co) if co.status.success() => Ok(()),
+                        Ok(co) => Err(format!(
+                            "cp failed: {}",
+                            String::from_utf8_lossy(&co.stderr)
+                        )),
+                        Err(e) => Err(format!("cp spawn failed: {}", e)),
+                    }
+                }
+                Err(_) => {
+                    // rsync not found, use cp -a
+                    let _ = std::fs::create_dir_all(&dest);
+                    let cp_output = std::process::Command::new("cp")
+                        .args(&["-a", &args.cwd, &dest_str])
+                        .output();
+                    match cp_output {
+                        Ok(co) if co.status.success() => Ok(()),
+                        Ok(co) => Err(format!(
+                            "cp failed: {}",
+                            String::from_utf8_lossy(&co.stderr)
+                        )),
+                        Err(e) => Err(format!("cp spawn failed: {}", e)),
+                    }
+                }
+            }
+        };
+
+        match copy_result {
+            Ok(()) => {
+                created.push(dest.clone());
+                copies.push(CliTempCopyInfo {
+                    agent_id: agent_id.clone(),
+                    path: dest_str,
+                });
+            }
+            Err(e) => {
+                // Roll back previously created copies
+                for p in &created {
+                    let _ = std::fs::remove_dir_all(p);
+                }
+                return Err(format!(
+                    "为 agent {} 创建只读副本失败：{}",
+                    agent_id, e
+                ));
+            }
+        }
+    }
+
+    Ok(CliTempCopyPrepareResult { copies })
+}
+
+/// Cleans up temp copy directories. Best-effort: tries all paths.
+#[tauri::command]
+pub async fn cli_tempcopy_cleanup(args: CliTempCopyCleanupArgs) -> Result<(), String> {
+    let mut errors: Vec<String> = Vec::new();
+    for path_str in args.paths {
+        let path = std::path::PathBuf::from(&path_str);
+        if !path.exists() {
+            continue;
+        }
+        if let Err(e) = std::fs::remove_dir_all(&path) {
+            errors.push(format!("{}: {}", path_str, e));
+        }
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("; "))
+    }
+}

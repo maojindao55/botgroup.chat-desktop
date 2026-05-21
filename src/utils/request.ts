@@ -559,6 +559,44 @@ export async function request(url: string, options: RequestInit = {}) {
       }
     }
 
+    // 9.8 CLI temp copy prepare (discussion read-only isolation)
+    if (cleanUrl === '/api/cli/tempcopy/prepare') {
+      const body = JSON.parse(options.body as string);
+      const { groupId, cwd, agentIds } = body || {};
+      if (!groupId || !cwd || !Array.isArray(agentIds) || agentIds.length === 0) {
+        return mockResponse(
+          { success: false, message: '/api/cli/tempcopy/prepare requires { groupId, cwd, agentIds[] }' },
+          400,
+        );
+      }
+      try {
+        const result = await invoke('cli_tempcopy_prepare', {
+          args: { groupId, cwd, agentIds },
+        });
+        return mockResponse({ success: true, data: result });
+      } catch (e: any) {
+        return mockResponse(
+          { success: false, message: typeof e === 'string' ? e : (e?.message || 'tempcopy prepare failed') },
+          400,
+        );
+      }
+    }
+
+    // 9.9 CLI temp copy cleanup
+    if (cleanUrl === '/api/cli/tempcopy/cleanup') {
+      const body = JSON.parse(options.body as string);
+      const paths = Array.isArray(body?.paths) ? body.paths : [];
+      try {
+        await invoke('cli_tempcopy_cleanup', { args: { paths } });
+        return mockResponse({ success: true });
+      } catch (e: any) {
+        return mockResponse(
+          { success: false, message: typeof e === 'string' ? e : (e?.message || 'tempcopy cleanup failed') },
+          400,
+        );
+      }
+    }
+
     // 10. CLI Agent availability check — used by member list to grey out
     //     CLIs that aren't installed.
     if (cleanUrl === '/api/cli/check') {
