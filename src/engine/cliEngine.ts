@@ -26,6 +26,11 @@ export interface CLIStreamCallback {
   onError: (taskId: string, error: string) => void;
 }
 
+export interface CLIRunOptions {
+  timeoutMs?: number;
+  approvalMode?: 'auto' | 'ask';
+  showStderr?: boolean;
+}
 
 // ============ 单个 CLI Agent 执行 ============
 
@@ -38,7 +43,7 @@ async function callCLIAgent(
   agent: CLIAgent,
   prompt: string,
   cwd: string,
-  options: { timeoutMs?: number; showStderr?: boolean },
+  options: CLIRunOptions,
   callbacks: CLIStreamCallback,
 ): Promise<CLIRunResult> {
   const sessionId = (typeof crypto !== 'undefined' && (crypto as any).randomUUID
@@ -62,11 +67,14 @@ async function callCLIAgent(
     extraArgs: cliCfg.extraArgs || null,
     env: cliCfg.env || null,
     timeoutMs: options.timeoutMs,
+    approvalMode: options.approvalMode ?? cliCfg.approvalMode ?? 'auto',
     showStderr: options.showStderr ?? cliCfg.showStderr ?? true,
   };
 
   let fullContent = '';
   let exitCode: number | undefined;
+  let failed = false;
+  let errorMessage = '';
 
   try {
     const response = await request('/api/cli/run', {
@@ -105,13 +113,31 @@ async function callCLIAgent(
               fullContent += token;
               callbacks.onToken(sessionId, token);
             }
+            if (data.type === 'error') {
+              failed = true;
+              errorMessage = data.error || data.content || 'CLI 执行出错';
+            }
+            if (data.type === 'done') {
+              exitCode = typeof data.exitCode === 'number' ? data.exitCode : exitCode;
+              if (data.status && data.status !== 'completed') {
+                failed = true;
+                errorMessage = errorMessage || data.error || data.status;
+              } else if (typeof exitCode === 'number' && exitCode !== 0) {
+                failed = true;
+                errorMessage = errorMessage || `CLI 非 0 退出: ${exitCode}`;
+              }
+            }
           } catch { /* 跳过解析错误 */ }
         }
       }
     }
 
-    exitCode = 0;
-    callbacks.onAgentEnd(sessionId, fullContent);
+    exitCode = exitCode ?? (failed ? -1 : 0);
+    if (failed) {
+      callbacks.onError(sessionId, errorMessage || 'CLI 执行失败');
+    } else {
+      callbacks.onAgentEnd(sessionId, fullContent);
+    }
   } catch (error: any) {
     const errMsg = error?.message || '未知错误';
     fullContent = `[CLI Agent 执行出错: ${errMsg}]`;
@@ -128,7 +154,7 @@ async function callCLIAgent(
     content: fullContent,
     exitCode,
     durationMs,
-    isError: fullContent.startsWith('[CLI Agent 执行出错'),
+    isError: failed || fullContent.startsWith('[CLI Agent 执行出错'),
   };
 }
 
@@ -143,7 +169,7 @@ async function runCLISequential(
   agents: CLIAgent[],
   prompt: string,
   cwd: string,
-  options: { timeoutMs?: number; showStderr?: boolean },
+  options: CLIRunOptions,
   callbacks: CLIStreamCallback,
 ): Promise<CLIRunResult[]> {
   const results: CLIRunResult[] = [];
@@ -171,7 +197,7 @@ async function runCLIRouter(
   agents: CLIAgent[],
   prompt: string,
   cwd: string,
-  options: { timeoutMs?: number; showStderr?: boolean },
+  options: CLIRunOptions,
   callbacks: CLIStreamCallback,
 ): Promise<CLIRunResult[]> {
   if (agents.length === 0) return [];
@@ -255,7 +281,7 @@ async function runCLIRace(
   agents: CLIAgent[],
   prompt: string,
   cwd: string,
-  options: { timeoutMs?: number; showStderr?: boolean },
+  options: CLIRunOptions,
   callbacks: CLIStreamCallback,
 ): Promise<CLIRunResult[]> {
   if (agents.length === 0) return [];
@@ -276,7 +302,7 @@ async function runCLIPipeline(
   agents: CLIAgent[],
   prompt: string,
   cwd: string,
-  options: { timeoutMs?: number; showStderr?: boolean },
+  options: CLIRunOptions,
   callbacks: CLIStreamCallback,
 ): Promise<CLIRunResult[]> {
   if (agents.length === 0) return [];
@@ -289,6 +315,9 @@ async function runCLIPipeline(
   for (let i = 0; i < agents.length; i++) {
     const agent = agents[i];
     const stageLabel = stageLabels[i] || `阶段 ${i + 1}`;
+    const previousOutputForPrompt = previousOutput.length > 12000
+      ? `${previousOutput.slice(0, 12000)}\n\n[上一阶段输出过长，已截断到前 12000 字符]`
+      : previousOutput;
 
     // 构造流水线提示
     let pipelinePrompt: string;
@@ -300,7 +329,7 @@ async function runCLIPipeline(
       pipelinePrompt = `以下是上一阶段（${agents[i - 1].name} - ${stageLabels[i - 1] || '处理'}）的输出结果：
 
 ---
-${previousOutput}
+${previousOutputForPrompt}
 ---
 
 请基于以上结果，继续执行你的职责（${stageLabel}）。
@@ -310,6 +339,9 @@ ${previousOutput}
 
     const result = await callCLIAgent(group.id, agent, pipelinePrompt, cwd, options, callbacks);
     results.push(result);
+    if (result.isError || (typeof result.exitCode === 'number' && result.exitCode !== 0)) {
+      break;
+    }
     previousOutput = result.content;
 
     // 阶段间间隔
@@ -334,10 +366,11 @@ export async function executeCLIStrategy(
   prompt: string,
   cwd: string,
   callbacks: CLIStreamCallback,
-  options?: { timeoutMs?: number; showStderr?: boolean }
+  options?: CLIRunOptions
 ): Promise<CLIRunResult[]> {
   const opt = {
     timeoutMs: options?.timeoutMs ?? group.timeout ?? 300000,
+    approvalMode: options?.approvalMode ?? group.approvalMode ?? 'auto',
     showStderr: options?.showStderr ?? group.showStderr ?? true,
   };
 

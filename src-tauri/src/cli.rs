@@ -16,6 +16,7 @@ use tauri::{AppHandle, Emitter, State, Manager};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::Mutex;
+use tokio::time::{sleep, Duration};
 use std::io::Write;
 use rusqlite::{params, Connection};
 use crate::db::get_db_path;
@@ -36,9 +37,14 @@ pub enum CliEvent {
 
 #[derive(Default)]
 pub struct CliState {
-    /// session_id -> abort handle for the supervising task.
-    /// Aborting the task drops the Child, which (via kill_on_drop) SIGKILLs the process.
-    sessions: Arc<Mutex<HashMap<String, tokio::task::AbortHandle>>>,
+    /// session_id -> running session. We keep both the supervisor abort
+    /// handle and the OS pid so cancellation can force-kill stuck CLIs.
+    sessions: Arc<Mutex<HashMap<String, RunningCliSession>>>,
+}
+
+pub struct RunningCliSession {
+    abort_handle: tokio::task::AbortHandle,
+    pid: u32,
 }
 
 // ---------- DB Structs ---------------------------------------------------
@@ -81,6 +87,19 @@ pub struct CliTaskLogPage {
     pub total_lines: usize,
 }
 
+#[derive(Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CliRuntime {
+    pub adapter: String,
+    pub installed: bool,
+    pub binary_path: Option<String>,
+    pub version: Option<String>,
+    pub last_check_at: Option<String>,
+    pub last_run_at: Option<String>,
+    pub last_error: Option<String>,
+    pub updated_at: String,
+}
+
 // ---------- Public IPC commands -----------------------------------------
 
 #[derive(Deserialize, Debug)]
@@ -100,6 +119,7 @@ pub struct CliRunArgs {
     /// Extra env vars to set on the spawned process
     pub env: Option<HashMap<String, String>>,
     pub timeout_ms: Option<u64>,
+    pub approval_mode: Option<String>,
     pub show_stderr: Option<bool>,
 }
 
@@ -115,11 +135,7 @@ pub struct CliCheckResult {
 fn insert_task(app: &AppHandle, args: &CliRunArgs, log_path: &str) -> Result<(), String> {
     let db_path = get_db_path(app);
     let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
-    let summary = if args.prompt.len() > 60 {
-        format!("{}...", &args.prompt[..57])
-    } else {
-        args.prompt.clone()
-    };
+    let summary = prompt_summary(&args.prompt, 60);
     conn.execute(
         "INSERT INTO cli_tasks (id, group_id, agent_id, agent_name, adapter, status, cwd, prompt, prompt_summary, session_id, log_path, started_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
@@ -141,6 +157,17 @@ fn insert_task(app: &AppHandle, args: &CliRunArgs, log_path: &str) -> Result<(),
     Ok(())
 }
 
+fn prompt_summary(prompt: &str, max_chars: usize) -> String {
+    if prompt.chars().count() <= max_chars {
+        return prompt.to_string();
+    }
+
+    let keep = max_chars.saturating_sub(3);
+    let mut s: String = prompt.chars().take(keep).collect();
+    s.push_str("...");
+    s
+}
+
 fn update_task_status(
     app: &AppHandle,
     id: &str,
@@ -160,6 +187,110 @@ fn update_task_status(
     Ok(())
 }
 
+fn get_task_pid(app: &AppHandle, id: &str) -> Option<u32> {
+    let db_path = get_db_path(app);
+    let conn = Connection::open(&db_path).ok()?;
+    conn.query_row(
+        "SELECT pid FROM cli_tasks WHERE id = ?1",
+        params![id],
+        |row| row.get::<_, Option<u32>>(0),
+    )
+    .ok()
+    .flatten()
+}
+
+fn upsert_runtime_check(
+    app: &AppHandle,
+    adapter: &str,
+    installed: bool,
+    path: Option<&str>,
+    version: Option<&str>,
+    last_error: Option<&str>,
+) {
+    let db_path = get_db_path(app);
+    if let Ok(conn) = Connection::open(&db_path) {
+        let _ = conn.execute(
+            "INSERT INTO cli_runtimes (adapter, installed, binary_path, version, last_check_at, last_error, updated_at)
+             VALUES (?1, ?2, ?3, ?4, CURRENT_TIMESTAMP, ?5, CURRENT_TIMESTAMP)
+             ON CONFLICT(adapter) DO UPDATE SET
+               installed = excluded.installed,
+               binary_path = excluded.binary_path,
+               version = excluded.version,
+               last_check_at = CURRENT_TIMESTAMP,
+               last_error = excluded.last_error,
+               updated_at = CURRENT_TIMESTAMP",
+            params![adapter, if installed { 1 } else { 0 }, path, version, last_error],
+        );
+    }
+}
+
+fn update_runtime_run(
+    app: &AppHandle,
+    adapter: &str,
+    last_error: Option<&str>,
+    installed_hint: Option<bool>,
+) {
+    let db_path = get_db_path(app);
+    if let Ok(conn) = Connection::open(&db_path) {
+        let installed_value = installed_hint.map(|v| if v { 1 } else { 0 });
+        let _ = conn.execute(
+            "INSERT INTO cli_runtimes (adapter, installed, last_run_at, last_error, updated_at)
+             VALUES (?1, COALESCE(?3, 0), CURRENT_TIMESTAMP, ?2, CURRENT_TIMESTAMP)
+             ON CONFLICT(adapter) DO UPDATE SET
+               last_run_at = CURRENT_TIMESTAMP,
+               last_error = ?2,
+               installed = COALESCE(?3, installed),
+               updated_at = CURRENT_TIMESTAMP",
+            params![adapter, last_error, installed_value],
+        );
+    }
+}
+
+async fn kill_process_tree(pid: u32) {
+    if pid == 0 {
+        return;
+    }
+
+    #[cfg(unix)]
+    {
+        let pid_str = pid.to_string();
+        let _ = Command::new("pkill")
+            .arg("-TERM")
+            .arg("-P")
+            .arg(&pid_str)
+            .output()
+            .await;
+        let _ = Command::new("kill")
+            .arg("-TERM")
+            .arg(&pid_str)
+            .output()
+            .await;
+        sleep(Duration::from_millis(300)).await;
+        let _ = Command::new("pkill")
+            .arg("-KILL")
+            .arg("-P")
+            .arg(&pid_str)
+            .output()
+            .await;
+        let _ = Command::new("kill")
+            .arg("-KILL")
+            .arg(&pid_str)
+            .output()
+            .await;
+    }
+
+    #[cfg(windows)]
+    {
+        let _ = Command::new("taskkill")
+            .arg("/PID")
+            .arg(pid.to_string())
+            .arg("/T")
+            .arg("/F")
+            .output()
+            .await;
+    }
+}
+
 #[tauri::command]
 pub async fn cli_run(
     app: AppHandle,
@@ -169,6 +300,7 @@ pub async fn cli_run(
     let event_name = format!("cli://{}", args.session_id);
     let session_id = args.session_id.clone();
     let timeout_ms = args.timeout_ms;
+    let adapter_for_status = args.adapter.clone();
 
     let log_path = {
         let mut path = app.path().app_data_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
@@ -184,7 +316,13 @@ pub async fn cli_run(
         let log_entry = serde_json::json!({
             "ts": chrono::Utc::now().to_rfc3339(),
             "type": "system",
-            "content": format!("Starting task execution. Adapter: {}, Cwd: {:?}", args.adapter, args.cwd)
+            "content": format!(
+                "Starting task execution. Adapter: {}, Cwd: {:?}, Approval: {:?}, Show stderr: {:?}",
+                args.adapter,
+                args.cwd,
+                args.approval_mode,
+                args.show_stderr
+            )
         });
         if let Ok(serialized) = serde_json::to_string(&log_entry) {
             let _ = writeln!(f, "{}", serialized);
@@ -196,7 +334,29 @@ pub async fn cli_run(
         return Err(e);
     }
 
-    let mut cmd = build_command(&args)?;
+    let mut cmd = match build_command(&args) {
+        Ok(cmd) => cmd,
+        Err(e) => {
+            let msg = format!("build command failed: {}", e);
+            let _ = app.emit(&event_name, CliEvent::Error { message: msg.clone() });
+            let _ = app.emit(&event_name, CliEvent::Done { exit_code: -1 });
+
+            if let Some(mut f) = std::fs::OpenOptions::new().append(true).open(&log_path).ok() {
+                let log_entry = serde_json::json!({
+                    "ts": chrono::Utc::now().to_rfc3339(),
+                    "type": "system",
+                    "content": msg.clone()
+                });
+                if let Ok(serialized) = serde_json::to_string(&log_entry) {
+                    let _ = writeln!(f, "{}", serialized);
+                }
+            }
+
+            let _ = update_task_status(&app, &session_id, "failed", Some(-1), Some(&msg));
+            update_runtime_run(&app, &adapter_for_status, Some(&msg), None);
+            return Err(msg);
+        }
+    };
     let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(e) => {
@@ -217,6 +377,7 @@ pub async fn cli_run(
             }
 
             let _ = update_task_status(&app, &session_id, "failed", Some(-1), Some(&msg));
+            update_runtime_run(&app, &adapter_for_status, Some(&msg), None);
             return Err(msg);
         }
     };
@@ -330,6 +491,7 @@ pub async fn cli_run(
     let sessions_arc = state.sessions.clone();
     let session_id_for_task = session_id.clone();
     let log_path_wait = log_path.clone();
+    let adapter_for_task = adapter_for_status.clone();
 
     let supervisor = tokio::spawn(async move {
         let timeout_duration = timeout_ms.map(std::time::Duration::from_millis);
@@ -363,8 +525,8 @@ pub async fn cli_run(
             }
             Err(ref e) if e == "timeout" => {
                 let _ = app_wait.emit(&evt_wait, CliEvent::Error { message: "timeout".to_string() });
-                let _ = app_wait.emit(&evt_wait, CliEvent::Done { exit_code: -1 });
-                ("timeout", Some(-1), Some("Task execution timed out".to_string()))
+                let _ = app_wait.emit(&evt_wait, CliEvent::Done { exit_code: -3 });
+                ("timeout", Some(-3), Some("Task execution timed out".to_string()))
             }
             Err(e) => {
                 let _ = app_wait.emit(&evt_wait, CliEvent::Error { message: e.clone() });
@@ -387,13 +549,20 @@ pub async fn cli_run(
 
         // Update DB task entry
         let _ = update_task_status(&app_wait, &session_id_for_task, status, exit_code, err_msg.as_deref());
+        update_runtime_run(&app_wait, &adapter_for_task, err_msg.as_deref(), Some(true));
 
         // Remove ourselves from the registry on natural exit
         let mut sessions = sessions_arc.lock().await;
         sessions.remove(&session_id_for_task);
     });
 
-    sessions.insert(session_id, supervisor.abort_handle());
+    sessions.insert(
+        session_id,
+        RunningCliSession {
+            abort_handle: supervisor.abort_handle(),
+            pid,
+        },
+    );
     drop(sessions);
 
     Ok(())
@@ -405,9 +574,14 @@ pub async fn cli_kill(
     state: State<'_, CliState>,
     session_id: String,
 ) -> Result<bool, String> {
-    let mut sessions = state.sessions.lock().await;
-    if let Some(handle) = sessions.remove(&session_id) {
-        handle.abort();
+    let session = {
+        let mut sessions = state.sessions.lock().await;
+        sessions.remove(&session_id)
+    };
+
+    if let Some(session) = session {
+        kill_process_tree(session.pid).await;
+        session.abort_handle.abort();
 
         // Write system log about cancellation
         let mut log_path = app.path().app_data_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
@@ -425,7 +599,19 @@ pub async fn cli_kill(
         }
 
         // Update task status in DB to cancelled
-        let _ = update_task_status(&app, &session_id, "cancelled", Some(-1), Some("Task cancelled by user"));
+        let event_name = format!("cli://{}", session_id);
+        let _ = app.emit(&event_name, CliEvent::Error { message: "cancelled".to_string() });
+        let _ = app.emit(&event_name, CliEvent::Done { exit_code: -2 });
+        let _ = update_task_status(&app, &session_id, "cancelled", Some(-2), Some("Task cancelled by user"));
+        Ok(true)
+    }
+
+    else if let Some(pid) = get_task_pid(&app, &session_id) {
+        kill_process_tree(pid).await;
+        let event_name = format!("cli://{}", session_id);
+        let _ = app.emit(&event_name, CliEvent::Error { message: "cancelled".to_string() });
+        let _ = app.emit(&event_name, CliEvent::Done { exit_code: -2 });
+        let _ = update_task_status(&app, &session_id, "cancelled", Some(-2), Some("Task cancelled by user"));
         Ok(true)
     } else {
         Ok(false)
@@ -442,20 +628,17 @@ pub async fn cli_task_list(
     let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
 
     let limit_val = limit.unwrap_or(50);
-    let mut query = "SELECT id, group_id, agent_id, agent_name, adapter, status, cwd, prompt, prompt_summary, session_id, pid, exit_code, error_message, log_path, started_at, ended_at, created_at, updated_at 
-                     FROM cli_tasks WHERE group_id = ?1".to_string();
-
-    let mut params_vec: Vec<rusqlite::types::Value> = vec![rusqlite::types::Value::Text(group_id)];
-
-    if let Some(before_time) = before {
-        query.push_str(" AND created_at < ?2");
-        params_vec.push(rusqlite::types::Value::Text(before_time));
-    }
-
-    query.push_str(" ORDER BY created_at DESC LIMIT ?3");
+    let query = "SELECT id, group_id, agent_id, agent_name, adapter, status, cwd, prompt, prompt_summary, session_id, pid, exit_code, error_message, log_path, started_at, ended_at, created_at, updated_at 
+                 FROM cli_tasks 
+                 WHERE group_id = ?1 AND (?2 IS NULL OR created_at < ?2)
+                 ORDER BY created_at DESC LIMIT ?3";
+    let mut params_vec: Vec<rusqlite::types::Value> = vec![
+        rusqlite::types::Value::Text(group_id),
+        before.map_or(rusqlite::types::Value::Null, rusqlite::types::Value::Text),
+    ];
     params_vec.push(rusqlite::types::Value::Integer(limit_val));
 
-    let mut stmt = conn.prepare(&query).map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(query).map_err(|e| e.to_string())?;
     let task_iter = stmt
         .query_map(rusqlite::params_from_iter(params_vec), |row| {
             Ok(CliTask {
@@ -569,14 +752,45 @@ pub async fn cli_task_read_log(
     })
 }
 
+#[tauri::command]
+pub async fn cli_runtime_list(app: AppHandle) -> Result<Vec<CliRuntime>, String> {
+    let db_path = get_db_path(&app);
+    let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(
+        "SELECT adapter, installed, binary_path, version, last_check_at, last_run_at, last_error, updated_at
+         FROM cli_runtimes ORDER BY adapter"
+    ).map_err(|e| e.to_string())?;
+
+    let rows = stmt.query_map([], |row| {
+        let installed: i64 = row.get(1)?;
+        Ok(CliRuntime {
+            adapter: row.get(0)?,
+            installed: installed != 0,
+            binary_path: row.get(2)?,
+            version: row.get(3)?,
+            last_check_at: row.get(4)?,
+            last_run_at: row.get(5)?,
+            last_error: row.get(6)?,
+            updated_at: row.get(7)?,
+        })
+    }).map_err(|e| e.to_string())?;
+
+    let mut runtimes = Vec::new();
+    for row in rows {
+        runtimes.push(row.map_err(|e| e.to_string())?);
+    }
+    Ok(runtimes)
+}
+
 
 #[tauri::command]
-pub async fn cli_check(adapter: String) -> Result<CliCheckResult, String> {
+pub async fn cli_check(app: AppHandle, adapter: String) -> Result<CliCheckResult, String> {
     let bin = adapter_binary(&adapter)
         .ok_or_else(|| format!("unknown adapter: {}", adapter))?;
     let path = match which::which(bin) {
         Ok(p) => p,
         Err(_) => {
+            upsert_runtime_check(&app, &adapter, false, None, None, Some("binary not found"));
             return Ok(CliCheckResult {
                 installed: false,
                 path: None,
@@ -603,11 +817,20 @@ pub async fn cli_check(adapter: String) -> Result<CliCheckResult, String> {
         _ => None,
     };
 
-    Ok(CliCheckResult {
+    let result = CliCheckResult {
         installed: true,
         path: Some(path.to_string_lossy().into_owned()),
         version,
-    })
+    };
+    upsert_runtime_check(
+        &app,
+        &adapter,
+        true,
+        result.path.as_deref(),
+        result.version.as_deref(),
+        None,
+    );
+    Ok(result)
 }
 
 // ---------- Adapters: how each CLI is invoked in headless mode -----------
@@ -667,6 +890,9 @@ fn build_command(args: &CliRunArgs) -> Result<Command, String> {
         // Print mode (non-interactive). Streams answer to stdout.
         "claude" => {
             cmd.arg("-p").arg(&args.prompt);
+            if args.approval_mode.as_deref() == Some("auto") {
+                cmd.arg("--dangerously-skip-permissions");
+            }
             if let Some(extra) = &args.extra_args {
                 for a in extra {
                     cmd.arg(a);
@@ -757,4 +983,25 @@ fn build_command(args: &CliRunArgs) -> Result<Command, String> {
         .kill_on_drop(true);
 
     Ok(cmd)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::prompt_summary;
+
+    #[test]
+    fn prompt_summary_does_not_split_utf8() {
+        let prompt = "以下是上一阶段输出：写一个冒泡排序，请继续执行审查阶段。";
+        let summary = prompt_summary(prompt, 20);
+
+        assert!(summary.ends_with("..."));
+        assert!(summary.chars().count() <= 20);
+        assert!(std::str::from_utf8(summary.as_bytes()).is_ok());
+    }
+
+    #[test]
+    fn prompt_summary_keeps_short_prompt() {
+        let prompt = "写一个冒泡排序";
+        assert_eq!(prompt_summary(prompt, 60), prompt);
+    }
 }

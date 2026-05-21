@@ -230,6 +230,7 @@ export async function request(url: string, options: RequestInit = {}) {
         extraArgs,
         env,
         timeoutMs,
+        approvalMode = 'auto',
         showStderr = true,
       } = body || {};
 
@@ -255,15 +256,16 @@ export async function request(url: string, options: RequestInit = {}) {
       const readable = new ReadableStream({
         async start(controller) {
           const enc = new TextEncoder();
-          const enqueueChunk = (content: string) => {
+          const enqueueEvent = (payload: Record<string, any>) => {
             try {
               controller.enqueue(
-                enc.encode(`data: ${JSON.stringify({ content })}\n\n`)
+                enc.encode(`data: ${JSON.stringify(payload)}\n\n`)
               );
             } catch {
               /* controller already closed */
             }
           };
+          const enqueueChunk = (content: string) => enqueueEvent({ content });
 
           const closeOnce = () => {
             if (closed) return;
@@ -370,7 +372,11 @@ export async function request(url: string, options: RequestInit = {}) {
                 // Detect auth/token errors — show ONE friendly message then mute
                 if (/401|token.?invalid|unauthorized|session.?ended|auth.?error|app_session_terminated|please.*(log\s*in|sign\s*in)/i.test(line)) {
                   authErrorDetected = true;
-                  enqueueChunk(`\n**登录已过期，请在终端重新登录：**\n\`\`\`\ncodex login    # Codex\nclaude login   # Claude Code\n\`\`\`\n`);
+                  enqueueEvent({
+                    type: 'error',
+                    content: `\n**登录已过期，请在终端重新登录：**\n\`\`\`\ncodex login    # Codex\nclaude login   # Claude Code\n\`\`\`\n`,
+                    error: 'auth_error',
+                  });
                   break;
                 }
                 // Normal stderr — skip verbose codex boot info (workdir/model/session lines)
@@ -385,14 +391,31 @@ export async function request(url: string, options: RequestInit = {}) {
                 break;
               case 'error':
                 if (typeof payload.message === 'string') {
-                  enqueueChunk(`\n**[CLI error]** ${payload.message}\n`);
+                  enqueueEvent({
+                    type: 'error',
+                    content: `\n**[CLI error]** ${payload.message}\n`,
+                    error: payload.message,
+                  });
                 }
                 break;
               case 'done': {
                 const code = typeof payload.exit_code === 'number' ? payload.exit_code : -1;
                 closeDetails();
+                const status =
+                  code === -2 ? 'cancelled'
+                    : code === -3 ? 'timeout'
+                      : code === 0 ? 'completed'
+                        : 'failed';
                 if (code !== 0) {
-                  enqueueChunk(`\n_(exit ${code})_\n`);
+                  enqueueEvent({
+                    type: 'done',
+                    status,
+                    exitCode: code,
+                    content: `\n_(exit ${code})_\n`,
+                    error: status === 'completed' ? undefined : status,
+                  });
+                } else {
+                  enqueueEvent({ type: 'done', status, exitCode: code, content: '' });
                 }
                 closeOnce();
                 break;
@@ -414,12 +437,24 @@ export async function request(url: string, options: RequestInit = {}) {
                 extraArgs: extraArgs || null,
                 env: env || null,
                 timeoutMs: timeoutMs || null,
+                approvalMode,
                 showStderr: showStderr ?? true,
               },
             });
           } catch (e: any) {
             const msg = e instanceof Error ? e.message : String(e);
-            enqueueChunk(`**[CLI spawn failed]** ${msg}`);
+            enqueueEvent({
+              type: 'error',
+              content: `**[CLI spawn failed]** ${msg}`,
+              error: msg,
+            });
+            enqueueEvent({
+              type: 'done',
+              status: 'failed',
+              exitCode: -1,
+              content: '',
+              error: msg,
+            });
             closeOnce();
           }
         },
@@ -477,6 +512,12 @@ export async function request(url: string, options: RequestInit = {}) {
       const { taskId, sessionId } = body || {};
       const targetSessionId = taskId || sessionId || '';
       const result = await invoke('cli_kill', { sessionId: targetSessionId });
+      return mockResponse({ success: true, data: result });
+    }
+
+    // 9.5 CLI runtime list
+    if (cleanUrl === '/api/cli/runtimes/list') {
+      const result = await invoke('cli_runtime_list');
       return mockResponse({ success: true, data: result });
     }
 
