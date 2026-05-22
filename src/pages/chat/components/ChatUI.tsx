@@ -23,7 +23,7 @@ import Sidebar from './Sidebar';
 import { AdBanner, AdBannerMobile } from './AdSection';
 import { useUserStore } from '@/store/userStore';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { AIMemberLibrary } from './AIMemberLibrary';
+import { AIMemberLibrary, AI_MEMBER_LIBRARY_INLINE_WIDTH } from './AIMemberLibrary';
 import { useAIMemberStore } from '@/store/aiMemberStore';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
 import type { Group, AIGroup, CLIGroup, AgentGroup, CLIStrategy, CLIExecutionPlan } from '@/config/groups';
@@ -397,39 +397,49 @@ const ChatUI = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const isInitialized = useRef(false);
 
+  /** 桌面端打开右侧 inline 面板时同步扩展 Tauri 窗口宽度（移动端跳过） */
+  const adjustWindowWidthForPanel = (deltaPx: number) => {
+    if (isMobile) return;
+    if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return;
+    (async () => {
+      try {
+        const { getCurrentWindow, LogicalSize } = await import('@tauri-apps/api/window');
+        const appWindow = getCurrentWindow();
+        const isMax = await appWindow.isMaximized();
+        const isFull = await appWindow.isFullscreen();
+        if (isMax || isFull) return;
+        const scaleFactor = await appWindow.scaleFactor();
+        const physicalSize = await appWindow.innerSize();
+        const logicalSize = physicalSize.toLogical(scaleFactor);
+        await appWindow.setSize(new LogicalSize(logicalSize.width + deltaPx, logicalSize.height));
+      } catch (e) {
+        console.error('Failed to resize window:', e);
+      }
+    })();
+  };
+
+  const settingsPanelWidth = group?.type === 'agent' ? 440 : 400;
+
   const handleToggleSettings = (nextOpen: boolean) => {
     if (nextOpen === showSettings) return;
-    setShowSettings(nextOpen);
-
-    if (isMobile) return;
-
-    if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
-      (async () => {
-        try {
-          const { getCurrentWindow, LogicalSize } = await import('@tauri-apps/api/window');
-          const appWindow = getCurrentWindow();
-          const isMax = await appWindow.isMaximized();
-          const isFull = await appWindow.isFullscreen();
-          if (!isMax && !isFull) {
-            const scaleFactor = await appWindow.scaleFactor();
-            const physicalSize = await appWindow.innerSize();
-            const logicalSize = physicalSize.toLogical(scaleFactor);
-            const settingsWidth = group?.type === 'agent' ? 440 : 400;
-
-            let newWidth = logicalSize.width;
-            if (nextOpen) {
-              newWidth += settingsWidth;
-            } else {
-              newWidth -= settingsWidth;
-            }
-
-            await appWindow.setSize(new LogicalSize(newWidth, logicalSize.height));
-          }
-        } catch (e) {
-          console.error('Failed to resize window:', e);
-        }
-      })();
+    // 与「AI 群员库」面板互斥（同一侧位置，避免重叠）
+    if (nextOpen && showLibrary) {
+      setShowLibrary(false);
+      adjustWindowWidthForPanel(-AI_MEMBER_LIBRARY_INLINE_WIDTH);
     }
+    setShowSettings(nextOpen);
+    adjustWindowWidthForPanel(nextOpen ? settingsPanelWidth : -settingsPanelWidth);
+  };
+
+  const handleToggleLibrary = (nextOpen: boolean) => {
+    if (nextOpen === showLibrary) return;
+    // 与群设置面板互斥
+    if (nextOpen && showSettings) {
+      setShowSettings(false);
+      adjustWindowWidthForPanel(-settingsPanelWidth);
+    }
+    setShowLibrary(nextOpen);
+    adjustWindowWidthForPanel(nextOpen ? AI_MEMBER_LIBRARY_INLINE_WIDTH : -AI_MEMBER_LIBRARY_INLINE_WIDTH);
   };
 
   useEffect(() => {
@@ -1136,7 +1146,7 @@ const ChatUI = () => {
             onSelectGroup={handleSelectGroup}
             groups={groups}
             onCreateGroup={handleCreateGroup}
-            onOpenLibrary={() => setShowLibrary(true)}
+            onOpenLibrary={() => handleToggleLibrary(true)}
           />
 
           <div className={styles.rightCol}>
@@ -1488,6 +1498,16 @@ const ChatUI = () => {
               onMembersChange={handleMembersChange}
             />
           )}
+
+          {/* AI 群员库（Desktop Inline） */}
+          {!isMobile && (
+            <AIMemberLibrary
+              inline
+              open={showLibrary}
+              onClose={() => handleToggleLibrary(false)}
+              groups={groups}
+            />
+          )}
         </div>
       </div>
 
@@ -1495,11 +1515,14 @@ const ChatUI = () => {
         <div className={styles.mobileOverlay} onClick={toggleSidebar} />
       )}
 
-      <AIMemberLibrary
-        open={showLibrary}
-        onClose={() => setShowLibrary(false)}
-        groups={groups}
-      />
+      {/* AI 群员库（Mobile Drawer） */}
+      {isMobile && (
+        <AIMemberLibrary
+          open={showLibrary}
+          onClose={() => handleToggleLibrary(false)}
+          groups={groups}
+        />
+      )}
     </>
   );
 };

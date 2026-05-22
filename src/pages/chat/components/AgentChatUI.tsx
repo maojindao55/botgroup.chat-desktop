@@ -17,6 +17,7 @@ import AgentGroupSettings from './AgentGroupSettings';
 import Sidebar from './Sidebar';
 import type { AgentGroup, Group } from '@/config/groups';
 import { useAIMemberStore } from '@/store/aiMemberStore';
+import { AIMemberLibrary, AI_MEMBER_LIBRARY_INLINE_WIDTH } from './AIMemberLibrary';
 
 
 interface ChatMessage {
@@ -252,40 +253,49 @@ const AgentChatUI = ({
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showLibrary, setShowLibrary] = useState(false);
+
+  const AGENT_SETTINGS_WIDTH = 440;
+
+  /** 桌面端打开右侧 inline 面板时同步扩展 Tauri 窗口宽度（移动端跳过） */
+  const adjustWindowWidthForPanel = (deltaPx: number) => {
+    if (isMobile) return;
+    if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return;
+    (async () => {
+      try {
+        const { getCurrentWindow, LogicalSize } = await import('@tauri-apps/api/window');
+        const appWindow = getCurrentWindow();
+        const isMax = await appWindow.isMaximized();
+        const isFull = await appWindow.isFullscreen();
+        if (isMax || isFull) return;
+        const scaleFactor = await appWindow.scaleFactor();
+        const physicalSize = await appWindow.innerSize();
+        const logicalSize = physicalSize.toLogical(scaleFactor);
+        await appWindow.setSize(new LogicalSize(logicalSize.width + deltaPx, logicalSize.height));
+      } catch (e) {
+        console.error('Failed to resize window:', e);
+      }
+    })();
+  };
 
   const handleToggleSettings = (nextOpen: boolean) => {
     if (nextOpen === showSettings) return;
-    setShowSettings(nextOpen);
-
-    if (isMobile) return;
-
-    if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
-      (async () => {
-        try {
-          const { getCurrentWindow, LogicalSize } = await import('@tauri-apps/api/window');
-          const appWindow = getCurrentWindow();
-          const isMax = await appWindow.isMaximized();
-          const isFull = await appWindow.isFullscreen();
-          if (!isMax && !isFull) {
-            const scaleFactor = await appWindow.scaleFactor();
-            const physicalSize = await appWindow.innerSize();
-            const logicalSize = physicalSize.toLogical(scaleFactor);
-            const settingsWidth = 440;
-
-            let newWidth = logicalSize.width;
-            if (nextOpen) {
-              newWidth += settingsWidth;
-            } else {
-              newWidth -= settingsWidth;
-            }
-
-            await appWindow.setSize(new LogicalSize(newWidth, logicalSize.height));
-          }
-        } catch (e) {
-          console.error('Failed to resize window:', e);
-        }
-      })();
+    if (nextOpen && showLibrary) {
+      setShowLibrary(false);
+      adjustWindowWidthForPanel(-AI_MEMBER_LIBRARY_INLINE_WIDTH);
     }
+    setShowSettings(nextOpen);
+    adjustWindowWidthForPanel(nextOpen ? AGENT_SETTINGS_WIDTH : -AGENT_SETTINGS_WIDTH);
+  };
+
+  const handleToggleLibrary = (nextOpen: boolean) => {
+    if (nextOpen === showLibrary) return;
+    if (nextOpen && showSettings) {
+      setShowSettings(false);
+      adjustWindowWidthForPanel(-AGENT_SETTINGS_WIDTH);
+    }
+    setShowLibrary(nextOpen);
+    adjustWindowWidthForPanel(nextOpen ? AI_MEMBER_LIBRARY_INLINE_WIDTH : -AI_MEMBER_LIBRARY_INLINE_WIDTH);
   };
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -403,6 +413,7 @@ const AgentChatUI = ({
             onSelectGroup={onSelectGroup}
             groups={groups}
             onCreateGroup={onCreateGroup}
+            onOpenLibrary={() => handleToggleLibrary(true)}
           />
 
           <div className={styles.rightCol}>
@@ -591,12 +602,31 @@ const AgentChatUI = ({
               onUpdateGroup={(updates) => onUpdateGroup?.(updates)}
             />
           )}
+
+          {/* AI 群员库（Desktop Inline） */}
+          {!isMobile && (
+            <AIMemberLibrary
+              inline
+              open={showLibrary}
+              onClose={() => handleToggleLibrary(false)}
+              groups={groups}
+            />
+          )}
         </div>
       </div>
 
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div className={styles.mobileOverlay} onClick={toggleSidebar} />
+      )}
+
+      {/* AI 群员库（Mobile Drawer） */}
+      {isMobile && (
+        <AIMemberLibrary
+          open={showLibrary}
+          onClose={() => handleToggleLibrary(false)}
+          groups={groups}
+        />
       )}
     </>
   );

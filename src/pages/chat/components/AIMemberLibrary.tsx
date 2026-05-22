@@ -6,8 +6,11 @@ import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
 import { AIMember, AIMemberKind } from '@/config/aiMembers';
 import { Group } from '@/config/groups';
 import { AIMemberEditor } from './AIMemberEditor';
-import { Search, Plus, Edit2, Trash2, ShieldAlert, Cpu, Terminal, Users, Sparkles } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, ShieldAlert, Cpu, Terminal, Users, Sparkles, X } from 'lucide-react';
 import { createStyles } from 'antd-style';
+
+/** 桌面端 inline 面板的宽度（用于 ChatUI 窗口宽度联动） */
+export const AI_MEMBER_LIBRARY_INLINE_WIDTH = 680;
 
 const useStyles = createStyles(({ token, css }) => ({
   drawerBody: css`
@@ -120,16 +123,67 @@ const useStyles = createStyles(({ token, css }) => ({
     background: ${token.colorFillAlter} !important;
     color: ${token.colorTextSecondary} !important;
     border: 1px solid ${token.colorBorder} !important;
-  `
+  `,
+  // —— inline 模式（与 CLIGroupSettings 对齐）——
+  inlinePanel: css`
+    width: ${AI_MEMBER_LIBRARY_INLINE_WIDTH}px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: ${token.colorBgContainer};
+    border-left: 1px solid ${token.colorBorderSecondary};
+    flex-shrink: 0;
+    z-index: 5;
+  `,
+  inlineHeader: css`
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid ${token.colorBorderSecondary};
+    height: 52px;
+    flex-shrink: 0;
+  `,
+  inlineTitleWrap: css`
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: ${token.colorText};
+  `,
+  inlineCloseBtn: css`
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: ${token.colorTextSecondary};
+    border-radius: 4px;
+    transition: background 0.2s;
+    &:hover {
+      background: ${token.colorFillTertiary};
+    }
+  `,
+  inlineBody: css`
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  `,
 }));
 
 interface AIMemberLibraryProps {
   open: boolean;
   onClose: () => void;
   groups: Group[];
+  /** 桌面端使用内联面板（与 CLI/AI/Agent 群设置一致），移动端走 Drawer */
+  inline?: boolean;
 }
 
-export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose, groups }) => {
+export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose, groups, inline }) => {
   const { styles } = useStyles();
   const { list, load, remove, findReferencingGroups } = useAIMemberStore();
   const [activeTab, setActiveTab] = useState<string>('all');
@@ -362,6 +416,84 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
     );
   };
 
+  const body = (
+    <div className={styles.drawerBody}>
+      <div className={styles.searchBar}>
+        <Input
+          placeholder="搜索成员名称、描述或标签..."
+          prefix={<Search size={16} style={{ opacity: 0.45 }} />}
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          style={{ flex: 1, borderRadius: 8 }}
+          allowClear
+        />
+        <Space>
+          <Button type="primary" icon={<Plus size={16} />} onClick={() => handleCreate('llm')}>
+            新增 LLM 角色
+          </Button>
+          <Button icon={<Plus size={16} />} onClick={() => handleCreate('agent')}>
+            新增 Agent
+          </Button>
+          <Button icon={<Plus size={16} />} onClick={() => handleCreate('cli')}>
+            新增 CLI Agent
+          </Button>
+        </Space>
+      </div>
+
+      <div className={styles.tabContainer}>
+        <Tabs activeKey={activeTab} onChange={setActiveTab}>
+          <Tabs.TabPane tab="全部" key="all">
+            {renderTabContent()}
+          </Tabs.TabPane>
+          <Tabs.TabPane tab="LLM 角色" key="llm">
+            {renderTabContent('llm')}
+          </Tabs.TabPane>
+          <Tabs.TabPane tab="Agent 协作" key="agent">
+            {renderTabContent('agent')}
+          </Tabs.TabPane>
+          <Tabs.TabPane tab="CLI Agent" key="cli">
+            {renderTabContent('cli')}
+          </Tabs.TabPane>
+        </Tabs>
+      </div>
+    </div>
+  );
+
+  const editor = (
+    <AIMemberEditor
+      open={editorOpen}
+      memberId={editingId}
+      defaultKind={editorKind}
+      onClose={() => setEditorOpen(false)}
+      onSave={() => {
+        load();
+      }}
+    />
+  );
+
+  // 桌面端：与 CLI/AI/Agent 群设置一致的右侧推入式面板
+  if (inline) {
+    if (!open) return editor;
+    return (
+      <>
+        <div className={styles.inlinePanel}>
+          <div className={styles.inlineHeader}>
+            <span className={styles.inlineTitleWrap}>
+              <Users size={18} style={{ color: '#ff6600' }} />
+              AI 群员管理库
+            </span>
+            <button className={styles.inlineCloseBtn} onClick={onClose} aria-label="关闭群员库">
+              <X size={16} />
+            </button>
+          </div>
+          <div className={styles.inlineBody}>{body}</div>
+        </div>
+        {editor}
+      </>
+    );
+  }
+
+  // 移动端：保留 Drawer
   return (
     <>
       <Drawer
@@ -371,62 +503,14 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
             <span>AI 群员管理库</span>
           </div>
         }
-        width={680}
+        width={AI_MEMBER_LIBRARY_INLINE_WIDTH}
         open={open}
         onClose={onClose}
         styles={{ body: { padding: 0 } }}
       >
-        <div className={styles.drawerBody}>
-          <div className={styles.searchBar}>
-            <Input
-              placeholder="搜索成员名称、描述或标签..."
-              prefix={<Search size={16} style={{ opacity: 0.45 }} />}
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              style={{ flex: 1, borderRadius: 8 }}
-              allowClear
-            />
-            <Space>
-              <Button type="primary" icon={<Plus size={16} />} onClick={() => handleCreate('llm')}>
-                新增 LLM 角色
-              </Button>
-              <Button icon={<Plus size={16} />} onClick={() => handleCreate('agent')}>
-                新增 Agent
-              </Button>
-              <Button icon={<Plus size={16} />} onClick={() => handleCreate('cli')}>
-                新增 CLI Agent
-              </Button>
-            </Space>
-          </div>
-
-          <div className={styles.tabContainer}>
-            <Tabs activeKey={activeTab} onChange={setActiveTab}>
-              <Tabs.TabPane tab="全部" key="all">
-                {renderTabContent()}
-              </Tabs.TabPane>
-              <Tabs.TabPane tab="LLM 角色" key="llm">
-                {renderTabContent('llm')}
-              </Tabs.TabPane>
-              <Tabs.TabPane tab="Agent 协作" key="agent">
-                {renderTabContent('agent')}
-              </Tabs.TabPane>
-              <Tabs.TabPane tab="CLI Agent" key="cli">
-                {renderTabContent('cli')}
-              </Tabs.TabPane>
-            </Tabs>
-          </div>
-        </div>
+        {body}
       </Drawer>
-
-      <AIMemberEditor
-        open={editorOpen}
-        memberId={editingId}
-        defaultKind={editorKind}
-        onClose={() => setEditorOpen(false)}
-        onSave={() => {
-          load();
-        }}
-      />
+      {editor}
     </>
   );
 };
