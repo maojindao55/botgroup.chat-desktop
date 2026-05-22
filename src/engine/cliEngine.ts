@@ -2,7 +2,7 @@
  * CLI Agent 策略引擎
  *
  * 设计目标（参考 docs/cli-execution-strategy-refactor-plan.md）：
- *  - 用户视角仍是简单的预设模式：sequential / router / race / pipeline / discussion
+ *  - 用户视角是场景化工作流：快速处理 / 多模型对比 / 接力开发 / 隔离竞赛 / 规划实现评审
  *  - 内部统一为可组合的 `CLIExecutionPlan`：selection × collaboration × schedule × isolation × failurePolicy
  *  - 调度入口拆为：选择 Agent → 准备执行环境 → 构造提示 → 调度 → 清理
  *
@@ -479,8 +479,16 @@ interface PromptBuildInput {
 }
 
 const PIPELINE_STAGE_LABELS = ['生成代码', '审查/修改', '测试', '优化', '验证'];
+const REVIEW_STAGE_LABELS = ['规划', '实现', '评审'];
+const REVIEW_TWO_AGENT_STAGE_LABELS = ['规划', '实现+自检'];
+const REVIEW_ONE_AGENT_STAGE_LABELS = ['规划实现自评'];
 
-function pipelineStageLabel(index: number): string {
+function pipelineStageLabel(plan: CLIExecutionPlan, index: number, totalAgents = 0): string {
+  if (plan.preset === 'review') {
+    if (totalAgents <= 1) return REVIEW_ONE_AGENT_STAGE_LABELS[index] || `自评阶段 ${index + 1}`;
+    if (totalAgents === 2) return REVIEW_TWO_AGENT_STAGE_LABELS[index] || `自检阶段 ${index + 1}`;
+    return REVIEW_STAGE_LABELS[index] || `评审阶段 ${index + 1}`;
+  }
   return PIPELINE_STAGE_LABELS[index] || `阶段 ${index + 1}`;
 }
 
@@ -494,6 +502,81 @@ function buildPromptForAgent(input: PromptBuildInput): string {
   const readOnlyPrefix = input.readOnly || plan.collaboration === 'discussion'
     ? READ_ONLY_PROMPT_PREFIX
     : '';
+
+  if (plan.preset === 'review' && plan.collaboration === 'pipeline') {
+    const stage = input.currentStageLabel || '规划';
+    if (stage === '规划实现自评') {
+      return `你负责完整的规划、实现和自评闭环。
+当前规划实现评审模式只有 1 个 CLI Agent，因此请在一次执行中完成：
+1. 先简要规划目标、范围和步骤
+2. 再按计划完成必要代码修改
+3. 最后自评风险、验证结果和剩余问题
+
+原始需求：${basePrompt}`;
+    }
+
+    if (stage === '规划') {
+      return `你负责规划阶段。
+本阶段只做需求拆解、执行计划和验收标准，不要修改文件。
+请输出：
+1. 目标和范围
+2. 推荐实施步骤
+3. 每一步的验收标准
+4. 风险和注意事项
+
+原始需求：${basePrompt}`;
+    }
+
+    const prevStage = input.previousStageLabel || '上一阶段';
+    const prevAgent = input.previousAgentName || '上一阶段 Agent';
+    const prev = truncate(input.previousOutput || '(上一阶段无输出)', 12000);
+
+    if (stage === '实现') {
+      return `以下是上一阶段（${prevAgent} - ${prevStage}）的规划输出：
+
+---
+${prev}
+---
+
+你负责实现阶段。
+请严格依据规划完成代码修改，并运行必要验证。
+如果规划中有明显问题，先说明偏离原因，再执行最小必要调整。
+
+原始需求：${basePrompt}`;
+    }
+
+    if (stage === '实现+自检') {
+      return `以下是上一阶段（${prevAgent} - ${prevStage}）的规划输出：
+
+---
+${prev}
+---
+
+你负责实现阶段，并需要完成自检。
+当前规划实现评审模式只有 2 个 CLI Agent，缺少独立评审 Agent。
+请严格依据规划完成代码修改，运行必要验证，并在输出末尾补充：
+1. 自检发现的问题
+2. 已运行的验证
+3. 仍需人工关注的风险
+
+原始需求：${basePrompt}`;
+    }
+
+    if (stage === '评审') {
+      return `以下是上一阶段（${prevAgent} - ${prevStage}）的实现输出：
+
+---
+${prev}
+---
+
+你负责评审阶段。
+请按代码审查口径检查实现质量、行为回归、风险和测试覆盖。
+优先列出必须修复的问题，包含文件/位置线索；如果没有发现问题，明确说明剩余风险。
+不要直接修改文件，除非用户明确要求你继续修复。
+
+原始需求：${basePrompt}`;
+    }
+  }
 
   if (plan.collaboration === 'pipeline' && input.previousOutput !== undefined) {
     const stage = input.currentStageLabel || '继续';
@@ -602,7 +685,7 @@ async function runPipelineSchedule(input: ScheduleInput): Promise<CLIRunResult[]
 
   for (let i = 0; i < contexts.length; i++) {
     const ctx = contexts[i];
-    const stageLabel = pipelineStageLabel(i);
+    const stageLabel = pipelineStageLabel(plan, i, contexts.length);
     const finalPrompt = buildPromptForAgent({
       plan,
       basePrompt: prompt,

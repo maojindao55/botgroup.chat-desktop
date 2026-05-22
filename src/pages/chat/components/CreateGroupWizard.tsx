@@ -452,14 +452,11 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
       <div>
         <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 8 }}>执行策略</label>
         {[
-          { value: 'sequential' as const, label: '顺序执行', desc: '按顺序让多个 CLI Agent 独立处理同一任务' },
-          { value: 'router'     as const, label: '智能路由', desc: '智能选择最合适的 CLI Agent 执行' },
-          { value: 'pipeline'   as const, label: '流水线',   desc: '按阶段接力执行，后者基于前者输出继续' },
-          { value: 'race'       as const, label: '竞争模式', desc: '并行隔离 worktree 竞争方案（需要干净 git 仓库）' },
-          { value: 'discussion' as const, label: '讨论模式', desc: '多 Agent 分轮讨论方案和风险，在临时只读副本中执行' },
-          { value: 'review'     as const, label: '评审模式', desc: '生成 → 审查 → 修正，三阶段优化代码质量' },
-          { value: 'debate'     as const, label: '辩论模式', desc: '多 Agent 独立提案 → 互评 → 最终建议' },
-          { value: 'mapreduce'  as const, label: '并行汇总', desc: '并行执行同一任务，汇总所有结果对比查看' },
+          { value: 'router'     as const, label: '快速处理', desc: '自动选择最合适的 CLI Agent 处理当前任务' },
+          { value: 'sequential' as const, label: '模型对比', desc: '多个 CLI Agent 独立处理同一任务，结果并列展示' },
+          { value: 'pipeline'   as const, label: '接力开发', desc: '按成员顺序接力处理，后续 Agent 会看到上一阶段输出' },
+          { value: 'race'       as const, label: '隔离竞赛', desc: '每个 Agent 使用独立 worktree 并行完成同一任务' },
+          { value: 'review'     as const, label: '开发评审', desc: '规划 → 实现 → 评审，适合完整开发闭环' },
         ].map(item => (
           <button key={item.value}
             onClick={() => setCliStrategy(item.value)}

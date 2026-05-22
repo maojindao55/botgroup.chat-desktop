@@ -24,7 +24,8 @@ import { AdBanner, AdBannerMobile } from './AdSection';
 import { useUserStore } from '@/store/userStore';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
-import type { Group, AIGroup, CLIGroup, AgentGroup, CLIStrategy } from '@/config/groups';
+import type { Group, AIGroup, CLIGroup, AgentGroup, CLIStrategy, CLIExecutionPlan } from '@/config/groups';
+import { openPath } from '@tauri-apps/plugin-opener';
 
 
 const useStyles = createStyles(({ token, css }) => ({
@@ -381,6 +382,7 @@ const ChatUI = () => {
   const [cliTimeout, setCliTimeout] = useState(300000);
   const [cliShowStderr, setCliShowStderr] = useState(true);
   const [cliStrategy, setCliStrategy] = useState<CLIStrategy>('sequential');
+  const [cliExecutionPlan, setCliExecutionPlan] = useState<Partial<CLIExecutionPlan>>({});
 
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -442,7 +444,14 @@ const ChatUI = () => {
           setApprovalMode(currentGroup.approvalMode || 'auto');
           setCliTimeout(currentGroup.timeout || 300000);
           setCliShowStderr(currentGroup.showStderr !== false);
-          setCliStrategy(currentGroup.strategy || 'sequential');
+          const strategyOverride = localStorage.getItem(`cliStrategy:${currentGroup.id}`) as CLIStrategy | null;
+          setCliStrategy(strategyOverride || currentGroup.strategy || 'sequential');
+          try {
+            const storedPlan = localStorage.getItem(`cliExecutionPlan:${currentGroup.id}`);
+            setCliExecutionPlan(storedPlan ? JSON.parse(storedPlan) : (currentGroup.executionPlan || {}));
+          } catch {
+            setCliExecutionPlan(currentGroup.executionPlan || {});
+          }
 
           let nickname = '我';
           if (data.user) {
@@ -492,6 +501,30 @@ const ChatUI = () => {
     }
     setGroups(prev => [...prev, newGroup]);
     window.location.href = `?id=${groups.length}`;
+  };
+
+  const patchCurrentCLIGroup = (patch: Partial<CLIGroup>) => {
+    if (!group || group.type !== 'cli') return;
+    const nextGroup = { ...(group as CLIGroup), ...patch };
+    setGroup(nextGroup);
+    setGroups(prev => prev.map(g => g.id === nextGroup.id ? nextGroup : g));
+    if (patch.strategy) {
+      localStorage.setItem(`cliStrategy:${nextGroup.id}`, patch.strategy);
+    }
+    if (patch.executionPlan) {
+      localStorage.setItem(`cliExecutionPlan:${nextGroup.id}`, JSON.stringify(patch.executionPlan));
+    }
+  };
+
+  const handleCLIStrategyChange = (nextStrategy: CLIStrategy) => {
+    setCliStrategy(nextStrategy);
+    patchCurrentCLIGroup({ strategy: nextStrategy });
+  };
+
+  const handleCLIExecutionPlanChange = (patch: Partial<CLIExecutionPlan>) => {
+    const nextPlan = { ...cliExecutionPlan, ...patch };
+    setCliExecutionPlan(nextPlan);
+    patchCurrentCLIGroup({ executionPlan: nextPlan });
   };
 
   // Loading / Error states
@@ -576,6 +609,7 @@ const ChatUI = () => {
         approvalMode,
         timeout: cliTimeout,
         showStderr: cliShowStderr,
+        executionPlan: cliExecutionPlan,
       };
 
       await executeCLIStrategy(
@@ -694,6 +728,7 @@ const ChatUI = () => {
         timeout: cliTimeout,
         approvalMode,
         showStderr: cliShowStderr,
+        executionPlan: cliExecutionPlan,
       };
 
       await executeCLIStrategy(
@@ -958,7 +993,7 @@ const ChatUI = () => {
         <CLIGroupSettings
           open={showSettings}
           onOpenChange={setShowSettings}
-          group={group as CLIGroup}
+          group={{ ...(group as CLIGroup), strategy: cliStrategy, executionPlan: cliExecutionPlan }}
           members={cliAgents.filter(a => (group as CLIGroup).members?.includes(a.id))}
           mutedUsers={mutedUsers}
           onToggleMute={handleToggleMute}
@@ -977,7 +1012,8 @@ const ChatUI = () => {
           showStderr={cliShowStderr}
           onShowStderrChange={setCliShowStderr}
           strategy={cliStrategy}
-          onStrategyChange={setCliStrategy}
+          onStrategyChange={handleCLIStrategyChange}
+          onExecutionPlanChange={handleCLIExecutionPlanChange}
           onRetryTask={(agentId, prompt) => {
             const agent = cliAgents.find(a => a.id === agentId);
             if (agent) {
@@ -1182,8 +1218,7 @@ const ChatUI = () => {
                                   onClick={async () => {
                                     if (message.cliCwd) {
                                       try {
-                                        const { invoke } = await import('@tauri-apps/api/core');
-                                        await invoke('select_directory'); // opens native file dialog
+                                        await openPath(message.cliCwd);
                                       } catch {
                                         // fallback: copy to clipboard
                                         if (navigator.clipboard) {

@@ -1318,11 +1318,12 @@ pub async fn cli_tempcopy_prepare(
 
             match output {
                 Ok(o) if o.status.success() => Ok(()),
-                Ok(o) => {
+                Ok(_o) => {
                     // rsync failed, try cp -a as fallback
                     let _ = std::fs::create_dir_all(&dest);
+                    let cp_source = format!("{}/.", args.cwd.trim_end_matches('/'));
                     let cp_output = std::process::Command::new("cp")
-                        .args(&["-a", &args.cwd, &dest_str])
+                        .args(&["-a", &cp_source, &dest_str])
                         .output();
                     match cp_output {
                         Ok(co) if co.status.success() => Ok(()),
@@ -1336,8 +1337,9 @@ pub async fn cli_tempcopy_prepare(
                 Err(_) => {
                     // rsync not found, use cp -a
                     let _ = std::fs::create_dir_all(&dest);
+                    let cp_source = format!("{}/.", args.cwd.trim_end_matches('/'));
                     let cp_output = std::process::Command::new("cp")
-                        .args(&["-a", &args.cwd, &dest_str])
+                        .args(&["-a", &cp_source, &dest_str])
                         .output();
                     match cp_output {
                         Ok(co) if co.status.success() => Ok(()),
