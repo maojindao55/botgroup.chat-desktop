@@ -397,6 +397,41 @@ const ChatUI = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const isInitialized = useRef(false);
 
+  const handleToggleSettings = (nextOpen: boolean) => {
+    if (nextOpen === showSettings) return;
+    setShowSettings(nextOpen);
+
+    if (isMobile) return;
+
+    if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+      (async () => {
+        try {
+          const { getCurrentWindow, LogicalSize } = await import('@tauri-apps/api/window');
+          const appWindow = getCurrentWindow();
+          const isMax = await appWindow.isMaximized();
+          const isFull = await appWindow.isFullscreen();
+          if (!isMax && !isFull) {
+            const scaleFactor = await appWindow.scaleFactor();
+            const physicalSize = await appWindow.innerSize();
+            const logicalSize = physicalSize.toLogical(scaleFactor);
+            const settingsWidth = group?.type === 'agent' ? 440 : 400;
+
+            let newWidth = logicalSize.width;
+            if (nextOpen) {
+              newWidth += settingsWidth;
+            } else {
+              newWidth -= settingsWidth;
+            }
+
+            await appWindow.setSize(new LogicalSize(newWidth, logicalSize.height));
+          }
+        } catch (e) {
+          console.error('Failed to resize window:', e);
+        }
+      })();
+    }
+  };
+
   useEffect(() => {
     if (isMobile !== undefined) setSidebarOpen(!isMobile);
   }, [isMobile]);
@@ -1024,11 +1059,11 @@ const ChatUI = () => {
 
   return (
     <>
-      {/* AI Group Settings */}
-      {group.type === 'ai' && (
+      {/* AI Group Settings (Mobile Drawer) */}
+      {isMobile && group.type === 'ai' && (
         <AIGroupSettings
           open={showSettings}
-          onOpenChange={setShowSettings}
+          onOpenChange={handleToggleSettings}
           group={group as AIGroup}
           users={users}
           mutedUsers={mutedUsers}
@@ -1041,11 +1076,11 @@ const ChatUI = () => {
         />
       )}
 
-      {/* CLI Group Settings */}
-      {group.type === 'cli' && (
+      {/* CLI Group Settings (Mobile Drawer) */}
+      {isMobile && group.type === 'cli' && (
         <CLIGroupSettings
           open={showSettings}
-          onOpenChange={setShowSettings}
+          onOpenChange={handleToggleSettings}
           group={{ ...(group as CLIGroup), strategy: cliStrategy, executionPlan: cliExecutionPlan }}
           members={
             ((group as CLIGroup).memberIds || (group as CLIGroup).members || [])
@@ -1080,7 +1115,7 @@ const ChatUI = () => {
                 prompt,
                 sender: { id: agentId, name: agent.name }
               });
-              setShowSettings(false);
+              handleToggleSettings(false);
             }
           }}
           onMembersChange={handleMembersChange}
@@ -1129,7 +1164,7 @@ const ChatUI = () => {
                         <span className={styles.cwdLabel}>CWD:</span>
                         <span
                           className={styles.cwdPath}
-                          onDoubleClick={() => setShowSettings(true)}
+                          onDoubleClick={() => handleToggleSettings(!showSettings)}
                           title="双击以修改本地 Workspace 路径"
                         >
                           {workspacePath}
@@ -1166,7 +1201,7 @@ const ChatUI = () => {
                   <ActionIcon
                     icon={Settings2}
                     size="small"
-                    onClick={() => setShowSettings(true)}
+                    onClick={() => handleToggleSettings(!showSettings)}
                     title="设置"
                   />
                 </div>
@@ -1182,8 +1217,16 @@ const ChatUI = () => {
               <div className={styles.messageList}>
                 {messages.map((message) => {
                   const isUser = message.sender.name === userName;
-                  const a = getAvatarData(message.sender.name);
-                  const url = resolveAvatarByName(message.sender.name, message.sender.avatar, 40);
+                  const cliMember = message.sender?.id?.startsWith?.('cli-')
+                    ? aiMembers[message.sender.id]
+                    : undefined;
+                  const cliAgentInfo = cliMember && cliMember.kind === 'cli'
+                    ? (mapAIMemberToLegacy(cliMember) as CLIAgent)
+                    : undefined;
+                  const avatarName = cliAgentInfo?.name || message.sender.name;
+                  const avatarSource = cliAgentInfo?.avatar || message.sender.avatar;
+                  const a = getAvatarData(avatarName);
+                  const url = resolveAvatarByName(avatarName, avatarSource, 40);
                   const isLatest = messages[messages.length - 1]?.id === message.id;
                   const isStreaming = !!message.isAI && (message.status === 'running' || (isLoading && isLatest));
                   const isCli = !!message.sender?.id?.startsWith?.('cli-');
@@ -1381,6 +1424,70 @@ const ChatUI = () => {
               </div>
             </div>
           </div>
+
+          {/* AI Group Settings (Desktop Inline) */}
+          {!isMobile && group.type === 'ai' && (
+            <AIGroupSettings
+              inline
+              open={showSettings}
+              onOpenChange={handleToggleSettings}
+              group={group as AIGroup}
+              users={users}
+              mutedUsers={mutedUsers}
+              onToggleMute={handleToggleMute}
+              isGroupDiscussionMode={isGroupDiscussionMode}
+              onToggleGroupDiscussion={() => setIsGroupDiscussionMode(!isGroupDiscussionMode)}
+              schedulerStrategy={schedulerStrategy}
+              onStrategyChange={setSchedulerStrategy}
+            />
+          )}
+
+          {/* CLI Group Settings (Desktop Inline) */}
+          {!isMobile && group.type === 'cli' && (
+            <CLIGroupSettings
+              inline
+              open={showSettings}
+              onOpenChange={handleToggleSettings}
+              group={{ ...(group as CLIGroup), strategy: cliStrategy, executionPlan: cliExecutionPlan }}
+              members={
+                ((group as CLIGroup).memberIds || (group as CLIGroup).members || [])
+                  .map(id => aiMembers[id])
+                  .filter(m => m && m.kind === 'cli')
+                  .map(m => mapAIMemberToLegacy(m) as CLIAgent)
+              }
+              mutedUsers={mutedUsers}
+              onToggleMute={handleToggleMute}
+              workspacePath={workspacePath}
+              onWorkspacePathChange={(p) => {
+                setWorkspacePath(p);
+                if (group.id) {
+                  if (p) localStorage.setItem(`workspace:${group.id}`, p);
+                  else localStorage.removeItem(`workspace:${group.id}`);
+                }
+              }}
+              approvalMode={approvalMode}
+              onApprovalModeChange={setApprovalMode}
+              timeout={cliTimeout}
+              onTimeoutChange={setCliTimeout}
+              showStderr={cliShowStderr}
+              onShowStderrChange={setCliShowStderr}
+              strategy={cliStrategy}
+              onStrategyChange={handleCLIStrategyChange}
+              onExecutionPlanChange={handleCLIExecutionPlanChange}
+              onRetryTask={(agentId, prompt) => {
+                const m = aiMembers[agentId];
+                const agent = m && m.kind === 'cli' ? mapAIMemberToLegacy(m) as CLIAgent : undefined;
+                if (agent) {
+                  handleRetryTask({
+                    prompt,
+                    sender: { id: agentId, name: agent.name }
+                  });
+                  handleToggleSettings(false);
+                }
+              }}
+              onMembersChange={handleMembersChange}
+            />
+          )}
         </div>
       </div>
 

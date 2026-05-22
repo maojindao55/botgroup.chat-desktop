@@ -243,6 +243,42 @@ const AgentChatUI = ({
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+
+  const handleToggleSettings = (nextOpen: boolean) => {
+    if (nextOpen === showSettings) return;
+    setShowSettings(nextOpen);
+
+    if (isMobile) return;
+
+    if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+      (async () => {
+        try {
+          const { getCurrentWindow, LogicalSize } = await import('@tauri-apps/api/window');
+          const appWindow = getCurrentWindow();
+          const isMax = await appWindow.isMaximized();
+          const isFull = await appWindow.isFullscreen();
+          if (!isMax && !isFull) {
+            const scaleFactor = await appWindow.scaleFactor();
+            const physicalSize = await appWindow.innerSize();
+            const logicalSize = physicalSize.toLogical(scaleFactor);
+            const settingsWidth = 440;
+
+            let newWidth = logicalSize.width;
+            if (nextOpen) {
+              newWidth += settingsWidth;
+            } else {
+              newWidth -= settingsWidth;
+            }
+
+            await appWindow.setSize(new LogicalSize(newWidth, logicalSize.height));
+          }
+        } catch (e) {
+          console.error('Failed to resize window:', e);
+        }
+      })();
+    }
+  };
+
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [mutedUsers, setMutedUsers] = useState<string[]>([]);
 
@@ -337,14 +373,17 @@ const AgentChatUI = ({
 
   return (
     <>
-      <AgentGroupSettings
-        open={showSettings}
-        onOpenChange={setShowSettings}
-        group={group}
-        mutedUsers={mutedUsers}
-        onToggleMute={handleToggleMute}
-        onUpdateGroup={(updates) => onUpdateGroup?.(updates)}
-      />
+      {/* Agent Group Settings (Mobile Drawer) */}
+      {isMobile && (
+        <AgentGroupSettings
+          open={showSettings}
+          onOpenChange={handleToggleSettings}
+          group={group}
+          mutedUsers={mutedUsers}
+          onToggleMute={handleToggleMute}
+          onUpdateGroup={(updates) => onUpdateGroup?.(updates)}
+        />
+      )}
 
       <div className={styles.page}>
         <div className={styles.container}>
@@ -403,7 +442,7 @@ const AgentChatUI = ({
                   <ActionIcon
                     icon={Settings2}
                     size="small"
-                    onClick={() => setShowSettings(true)}
+                    onClick={() => handleToggleSettings(!showSettings)}
                     title="设置"
                   />
                 </div>
@@ -519,6 +558,19 @@ const AgentChatUI = ({
               </div>
             </div>
           </div>
+
+          {/* Agent Group Settings (Desktop Inline) */}
+          {!isMobile && (
+            <AgentGroupSettings
+              inline
+              open={showSettings}
+              onOpenChange={handleToggleSettings}
+              group={group}
+              mutedUsers={mutedUsers}
+              onToggleMute={handleToggleMute}
+              onUpdateGroup={(updates) => onUpdateGroup?.(updates)}
+            />
+          )}
         </div>
       </div>
 

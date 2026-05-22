@@ -1,6 +1,10 @@
 /**
  * Agent 群聊配置面板
  * 管理自定义 Agent 成员、执行策略、工具等
+ *
+ * 注意：成员（含 LLM/Prompt/Tools）现在统一由「AI 群员库」管理，
+ *      本面板只负责群级配置 + 引用成员 id。如需新建/编辑 Agent，
+ *      请到群员库（Sidebar 入口）操作。
  */
 import { Drawer, Input, InputNumber, Tooltip } from 'antd';
 import { Avatar as LobeAvatar, ActionIcon } from '@lobehub/ui';
@@ -18,6 +22,8 @@ interface AgentGroupSettingsProps {
   mutedUsers: string[];
   onToggleMute: (userId: string) => void;
   onUpdateGroup: (updates: Partial<AgentGroup>) => void;
+  /** 桌面端使用内联面板，移动端使用 Drawer */
+  inline?: boolean;
 }
 
 const useStyles = createStyles(({ token, css }) => ({
@@ -83,6 +89,53 @@ const useStyles = createStyles(({ token, css }) => ({
     max-height: calc(100vh - 420px);
     overflow: auto;
   `,
+  inlinePanel: css`
+    width: 440px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: ${token.colorBgContainer};
+    border-left: 1px solid ${token.colorBorderSecondary};
+    flex-shrink: 0;
+    z-index: 5;
+  `,
+  inlineHeader: css`
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid ${token.colorBorderSecondary};
+    height: 52px;
+    flex-shrink: 0;
+  `,
+  inlineTitle: css`
+    font-size: 14px;
+    font-weight: 600;
+    color: ${token.colorText};
+  `,
+  inlineCloseBtn: css`
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: ${token.colorTextSecondary};
+    border-radius: 4px;
+    transition: background 0.2s;
+    &:hover {
+      background: ${token.colorFillTertiary};
+    }
+  `,
+  inlineContent: css`
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  `,
 }));
 
 export const AgentGroupSettings = ({
@@ -92,6 +145,7 @@ export const AgentGroupSettings = ({
   mutedUsers,
   onToggleMute,
   onUpdateGroup,
+  inline,
 }: AgentGroupSettingsProps) => {
   const { styles, cx } = useStyles();
   const { members: allMembers } = useAIMemberStore();
@@ -127,6 +181,169 @@ export const AgentGroupSettings = ({
     group.strategy,
   );
 
+  const settingsContent = (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* 执行策略 */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <label style={{ fontSize: 14, fontWeight: 500 }}>执行策略</label>
+        <div className={styles.strategyGrid}>
+          {strategyOptions.map((item) => (
+            <button
+              key={item.value}
+              type="button"
+              onClick={() => onUpdateGroup({ strategy: item.value })}
+              className={cx(
+                styles.strategyBtn,
+                group.strategy === item.value && styles.strategyBtnActive,
+              )}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        <p className={styles.strategyDesc}>{strategyDescriptions[group.strategy]}</p>
+      </div>
+
+      {/* 协调者 Prompt */}
+      {showCoordinatorPrompt && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <label style={{ fontSize: 14, fontWeight: 500 }}>协调者 Prompt</label>
+          <Input.TextArea
+            autoSize={{ minRows: 3, maxRows: 6 }}
+            placeholder="定义协调者如何分派任务..."
+            value={group.coordinatorPrompt || ''}
+            onChange={(e) => onUpdateGroup({ coordinatorPrompt: e.target.value })}
+          />
+        </div>
+      )}
+
+      {/* 最大轮数 */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <label style={{ fontSize: 14, fontWeight: 500, whiteSpace: 'nowrap' }}>最大轮数</label>
+        <InputNumber
+          value={group.maxRounds}
+          min={1}
+          max={10}
+          style={{ width: 80 }}
+          onChange={(v) => onUpdateGroup({ maxRounds: Number(v) })}
+        />
+      </div>
+
+      {/* Agent 成员管理：从 AI 群员库选择 */}
+      <div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+          <span style={{ fontSize: 14, fontWeight: 500 }}>添加/管理 Agent 成员</span>
+          <MemberPicker
+            kind="agent"
+            value={currentMemberIds}
+            onChange={(newIds) => onUpdateGroup({ memberIds: newIds })}
+            placeholder="选择 Agent 成员加入群聊..."
+          />
+          <div style={{ fontSize: 11, color: 'rgba(0,0,0,0.45)', marginTop: -4 }}>
+            如需新建/编辑 Agent（LLM、Prompt、工具），请到「AI 群员库」操作
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 12 }}>
+          <span style={{ fontSize: 14, fontWeight: 500 }}>群成员（{currentAgents.length}）</span>
+        </div>
+
+        {/* 成员列表 */}
+        <div className={styles.scrollList}>
+          {currentAgents.map((agent) => {
+            if (!agent) return null;
+            const avatarData = getAvatarData(agent.name || 'A');
+            const avatarUrl = resolveAvatarByName(agent.name || 'A', agent.avatar, 32);
+            const isSupervisor = group.strategy === 'supervisor' && currentMemberIds[0] === agent.id;
+            const muted = mutedUsers.includes(agent.id);
+
+            return (
+              <div key={agent.id} className={styles.memberRow}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+                  <LobeAvatar
+                    shape="circle"
+                    avatar={avatarUrl || avatarData.text}
+                    background={avatarData.backgroundColor}
+                    size={32}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 500,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                      }}
+                    >
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {agent.name}
+                      </span>
+                      {isSupervisor && <span className={styles.supervisorBadge}>👑 监督者</span>}
+                    </div>
+                    {agent.description && (
+                      <div
+                        style={{
+                          fontSize: 11,
+                          opacity: 0.6,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {agent.description}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: 4 }}>
+                  <Tooltip title={muted ? '取消禁言' : '禁言'}>
+                    <ActionIcon
+                      icon={muted ? MicOff : Mic}
+                      size="small"
+                      onClick={() => onToggleMute(agent.id)}
+                      style={{ color: muted ? '#ef4444' : '#22c55e' }}
+                      title=""
+                    />
+                  </Tooltip>
+                  <Tooltip title="移除成员">
+                    <ActionIcon
+                      icon={X}
+                      size="small"
+                      onClick={() => {
+                        const newIds = currentMemberIds.filter((id) => id !== agent.id);
+                        onUpdateGroup({ memberIds: newIds });
+                      }}
+                      title=""
+                    />
+                  </Tooltip>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+
+  if (inline) {
+    if (!open) return null;
+    return (
+      <div className={styles.inlinePanel}>
+        <div className={styles.inlineHeader}>
+          <span className={styles.inlineTitle}>Agent 群聊配置</span>
+          <button className={styles.inlineCloseBtn} onClick={() => onOpenChange(false)}>
+            <X size={16} />
+          </button>
+        </div>
+        <div className={styles.inlineContent}>
+          {settingsContent}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <Drawer
       title="Agent 群聊配置"
@@ -135,148 +352,7 @@ export const AgentGroupSettings = ({
       onClose={() => onOpenChange(false)}
       width={440}
     >
-      <div className={styles.scrollArea}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          {/* 执行策略 */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <label style={{ fontSize: 14, fontWeight: 500 }}>执行策略</label>
-            <div className={styles.strategyGrid}>
-              {strategyOptions.map((item) => (
-                <button
-                  key={item.value}
-                  type="button"
-                  onClick={() => onUpdateGroup({ strategy: item.value })}
-                  className={cx(
-                    styles.strategyBtn,
-                    group.strategy === item.value && styles.strategyBtnActive,
-                  )}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-            <p className={styles.strategyDesc}>{strategyDescriptions[group.strategy]}</p>
-          </div>
-
-          {/* 协调者 Prompt */}
-          {showCoordinatorPrompt && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 14, fontWeight: 500 }}>协调者 Prompt</label>
-              <Input.TextArea
-                autoSize={{ minRows: 3, maxRows: 6 }}
-                placeholder="定义协调者如何分派任务..."
-                value={group.coordinatorPrompt || ''}
-                onChange={(e) => onUpdateGroup({ coordinatorPrompt: e.target.value })}
-              />
-            </div>
-          )}
-
-          {/* 最大轮数 */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <label style={{ fontSize: 14, fontWeight: 500, whiteSpace: 'nowrap' }}>最大轮数</label>
-            <InputNumber
-              value={group.maxRounds}
-              min={1}
-              max={10}
-              style={{ width: 80 }}
-              onChange={(v) => onUpdateGroup({ maxRounds: Number(v) })}
-            />
-          </div>
-
-          {/* Agent 成员管理 */}
-          <div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-              <span style={{ fontSize: 14, fontWeight: 500 }}>添加/管理 Agent 成员</span>
-              <MemberPicker
-                kind="agent"
-                value={currentMemberIds}
-                onChange={(newIds) => onUpdateGroup({ memberIds: newIds })}
-                placeholder="选择 Agent 成员加入群聊..."
-              />
-            </div>
-
-            <div style={{ marginBottom: 12 }}>
-              <span style={{ fontSize: 14, fontWeight: 500 }}>群成员（{currentAgents.length}）</span>
-            </div>
-
-            {/* 成员列表 */}
-            <div className={styles.scrollList}>
-              {currentAgents.map((agent) => {
-                if (!agent) return null;
-                const avatarData = getAvatarData(agent.name || 'A');
-                const avatarUrl = resolveAvatarByName(agent.name || 'A', agent.avatar, 32);
-                const isSupervisor = group.strategy === 'supervisor' && currentMemberIds[0] === agent.id;
-                const muted = mutedUsers.includes(agent.id);
-
-                return (
-                  <div key={agent.id} className={styles.memberRow}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
-                      <LobeAvatar
-                        shape="circle"
-                        avatar={avatarUrl || avatarData.text}
-                        background={avatarData.backgroundColor}
-                        size={32}
-                      />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div
-                          style={{
-                            fontSize: 13,
-                            fontWeight: 500,
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 6,
-                          }}
-                        >
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {agent.name}
-                          </span>
-                          {isSupervisor && <span className={styles.supervisorBadge}>👑 监督者</span>}
-                        </div>
-                        {agent.description && (
-                          <div
-                            style={{
-                              fontSize: 11,
-                              opacity: 0.6,
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            {agent.description}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      <Tooltip title={muted ? '取消禁言' : '禁言'}>
-                        <ActionIcon
-                          icon={muted ? MicOff : Mic}
-                          size="small"
-                          onClick={() => onToggleMute(agent.id)}
-                          style={{ color: muted ? '#ef4444' : '#22c55e' }}
-                          title=""
-                        />
-                      </Tooltip>
-                      <Tooltip title="移除成员">
-                        <ActionIcon
-                          icon={X}
-                          size="small"
-                          onClick={() => {
-                            const newIds = currentMemberIds.filter((id) => id !== agent.id);
-                            onUpdateGroup({ memberIds: newIds });
-                          }}
-                          title=""
-                        />
-                      </Tooltip>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      </div>
+      <div className={styles.scrollArea}>{settingsContent}</div>
     </Drawer>
   );
 };
