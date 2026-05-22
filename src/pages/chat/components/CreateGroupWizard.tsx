@@ -13,6 +13,15 @@ import type {
 import { MemberPicker } from './MemberPicker';
 import { invoke } from '@tauri-apps/api/core';
 
+interface CreateGroupWizardProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onCreateGroup: (group: Group) => void;
+}
+
+type GroupTypeChoice = 'ai' | 'cli' | 'agent';
+type WizardStep = 'type' | 'basic' | 'members' | 'config' | 'confirm';
+
 
 
 const useStyles = createStyles(({ token, css }) => ({

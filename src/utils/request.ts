@@ -530,10 +530,7 @@ export async function request(url: string, options: RequestInit = {}) {
           const closeDetails = () => {
             if (detailsOpen) {
               detailsOpen = false;
-              const summary = stepCount > 0
-                ? `⚙️ 已执行 ${stepCount} 个命令`
-                : `⚙️ 执行过程`;
-              // Replace the opening summary with final count by closing and re-emitting
+              void stepCount;
               enqueueChunk(`\n</details>\n\n`);
             }
           };
@@ -740,7 +737,7 @@ export async function request(url: string, options: RequestInit = {}) {
 
     // 9.4 CLI task cancel (kill)
     if (cleanUrl === '/api/cli/tasks/cancel') {
-      const body = JSON.parse(options.body || '{}');
+      const body = JSON.parse((options.body as string) || '{}');
       const { taskId, sessionId } = body || {};
       const targetSessionId = taskId || sessionId || '';
       const result = await invoke('cli_kill', { sessionId: targetSessionId });
@@ -854,18 +851,19 @@ export async function request(url: string, options: RequestInit = {}) {
       }
 
       // Try local storage for custom key, fallback to local env if compiled
-      let apiKey = getLocalApiKey(modelConfig.apiKey);
-      let baseURL = modelConfig.baseURL;
+      const apiKey = getLocalApiKey(modelConfig.apiKey);
+      let baseURL: string = modelConfig.baseURL;
+      const apiKeyName: string = modelConfig.apiKey;
 
       // Special handling for Ollama or Local Endpoint
-      if (modelConfig.apiKey === 'OLLAMA_API_KEY' || localStorage.getItem('API_KEY_OLLAMA_URL')) {
+      if (apiKeyName === 'OLLAMA_API_KEY' || localStorage.getItem('API_KEY_OLLAMA_URL')) {
         const customOllamaUrl = localStorage.getItem('API_KEY_OLLAMA_URL');
         if (customOllamaUrl) {
           baseURL = customOllamaUrl;
         }
       }
 
-      if (!apiKey && modelConfig.apiKey !== 'OLLAMA_API_KEY') {
+      if (!apiKey && apiKeyName !== 'OLLAMA_API_KEY') {
         throw new Error(`${model} 的API密钥未配置，请点击左下角头像配置 API Key`);
       }
 
@@ -874,7 +872,7 @@ export async function request(url: string, options: RequestInit = {}) {
 
       const baseMessages = [
         { role: 'system', content: systemPrompt },
-        ...history.slice(-10).map(h => ({
+        ...history.slice(-10).map((h: { role: string; content: string }) => ({
           role: h.role === 'user' ? 'user' : 'assistant',
           content: h.content
         })),

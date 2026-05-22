@@ -13,7 +13,7 @@ import { createStyles } from 'antd-style';
 import { request } from '@/utils/request';
 import { executeCLIStrategy } from '@/engine/cliEngine';
 import type { AICharacter, CLIAgent } from "@/config/aiCharacters";
-import { cliAgents, mapAIMemberToLegacy } from "@/config/aiCharacters";
+import { mapAIMemberToLegacy } from "@/config/aiCharacters";
 import { ChatMarkdown } from '@/components/Markdown';
 import { SharePoster } from '@/pages/chat/components/SharePoster';
 import AIGroupSettings from './AIGroupSettings';
@@ -405,7 +405,7 @@ const ChatUI = () => {
   useEffect(() => {
     if (!group) return;
 
-    const memberIds = group.memberIds || group.members || [];
+    const memberIds = group.memberIds || (group as AIGroup | CLIGroup).members || [];
     const nickname = userStore.userInfo?.nickname || '我';
     const avatar_url = userStore.userInfo?.avatar_url || null;
     const currentUser = { id: 1, name: nickname, avatar: avatar_url };
@@ -413,7 +413,7 @@ const ChatUI = () => {
     if (group.type === 'ai' || !group.type) {
       const resolvedMembers = memberIds
         .map(mid => aiMembers[mid])
-        .filter(m => m && m.enabled !== false && m.personality !== 'scheduler');
+        .filter(m => m && m.enabled !== false && !(m.kind === 'llm' && m.personality === 'scheduler'));
       const resolvedCharacters = resolvedMembers.map(m => mapAIMemberToLegacy(m) as AICharacter);
 
       setGroupAiCharacters(resolvedCharacters);
