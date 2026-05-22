@@ -16,6 +16,10 @@ pub const MASTER_KEY_FILENAME: &str = "master.key";
 pub const KEY_LEN: usize = 32;     // AES-256
 pub const NONCE_LEN: usize = 12;   // GCM standard nonce size
 
+// `allow(dead_code)`: some variants are constructed only by code paths not yet
+// wired up in PR1 (e.g., `NotFound` is reserved for higher-level wrappers in
+// PR2). The variants are part of the public API contract for the module.
+#[allow(dead_code)]
 #[derive(Debug)]
 pub enum VaultError {
     Io(std::io::Error),
@@ -133,6 +137,10 @@ pub fn encrypt(master: &[u8; KEY_LEN], name: &str, value: &str)
 
 /// Decrypt ciphertext produced by `encrypt`. The same `name` (AAD) must be
 /// supplied or decryption will fail.
+///
+/// `allow(dead_code)`: PR1 ships the function but no Rust-side caller exists
+/// yet; PR2 (`llm_proxy.rs`) is the first consumer. Remove the attribute then.
+#[allow(dead_code)]
 pub fn decrypt(master: &[u8; KEY_LEN], name: &str, ciphertext: &[u8], nonce: &[u8])
     -> Result<String, VaultError>
 {
@@ -174,6 +182,10 @@ pub fn set(conn: &Connection, master: &[u8; KEY_LEN], name: &str, value: &str)
 
 /// Decrypt and return value for `name`, or `Ok(None)` if not present.
 /// Returns `VaultError::Crypto` if decryption fails (e.g., AAD mismatch).
+///
+/// `allow(dead_code)`: PR1 ships the function but no Rust-side caller exists
+/// yet; PR2 (`llm_proxy.rs`) is the first consumer. Remove the attribute then.
+#[allow(dead_code)]
 pub fn get(conn: &Connection, master: &[u8; KEY_LEN], name: &str)
     -> Result<Option<String>, VaultError>
 {
