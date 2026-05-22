@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { defaultGroups as staticGroups } from '@/config/groups';
 import { generateAICharacters, cliAgents, modelConfigs } from '@/config/aiCharacters';
+import { builtinAIMembers, type AIMember } from '@/config/aiMembers';
 
 const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
 if (isTauri) {
@@ -167,13 +168,244 @@ export async function request(url: string, options: RequestInit = {}) {
       } catch (e) {
         console.error('Failed to parse custom groups:', e);
       }
+
+      // Check if we need to migrate custom groups
+      let needsSaveCustomGroups = false;
+      const migratedCustomGroups = customGroups.map((g: any) => {
+        let changed = false;
+        const newGroup = { ...g };
+        
+        // 1. Migrate AI group
+        if (newGroup.type === 'ai') {
+          if (newGroup.members && !newGroup.memberIds) {
+            newGroup.memberIds = newGroup.members;
+            changed = true;
+          }
+        }
+        
+        // 2. Migrate CLI group
+        if (newGroup.type === 'cli') {
+          if (newGroup.members && !newGroup.memberIds) {
+            newGroup.memberIds = newGroup.members;
+            changed = true;
+          }
+        }
+
+        // 3. Migrate Agent group
+        if (newGroup.type === 'agent') {
+          if (newGroup.agents && !newGroup.memberIds) {
+            newGroup.memberIds = [];
+            for (const agent of newGroup.agents) {
+              const agentId = agent.id || `agent-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+              newGroup.memberIds.push(agentId);
+              
+              const mappedMember = {
+                id: agentId,
+                kind: 'agent' as const,
+                name: agent.name || '未命名 Agent',
+                avatar: agent.avatar || '',
+                description: agent.role || '',
+                tags: [],
+                source: 'user' as const,
+                enabled: true,
+                role: agent.role || '',
+                systemPrompt: agent.systemPrompt || '',
+                llm: agent.llm || { baseURL: '', apiKey: '', model: '' },
+                tools: agent.tools || [],
+                maxTurns: agent.maxTurns || 5,
+                temperature: agent.temperature || 0.7
+              };
+
+              if (isTauri) {
+                invoke('upsert_ai_member', {
+                  member: {
+                    id: mappedMember.id,
+                    kind: mappedMember.kind,
+                    name: mappedMember.name,
+                    avatar: mappedMember.avatar || null,
+                    description: mappedMember.description || null,
+                    tags: '[]',
+                    source: 'user',
+                    config: JSON.stringify({
+                      role: mappedMember.role,
+                      systemPrompt: mappedMember.systemPrompt,
+                      llm: mappedMember.llm,
+                      tools: mappedMember.tools,
+                      maxTurns: mappedMember.maxTurns,
+                      temperature: mappedMember.temperature
+                    }),
+                    enabled: 1
+                  }
+                }).catch((e: any) => console.error('Failed to migrate agent to DB:', e));
+              } else {
+                const localStr = localStorage.getItem('custom_ai_members') || '[]';
+                const customMembers = JSON.parse(localStr);
+                if (!customMembers.some((m: any) => m.id === agentId)) {
+                  customMembers.push(mappedMember);
+                  localStorage.setItem('custom_ai_members', JSON.stringify(customMembers));
+                }
+              }
+            }
+            changed = true;
+          }
+        }
+
+        if (changed) {
+          needsSaveCustomGroups = true;
+        }
+        return newGroup;
+      });
+
+      if (needsSaveCustomGroups) {
+        localStorage.setItem('custom_groups', JSON.stringify(migratedCustomGroups));
+        customGroups = migratedCustomGroups;
+      }
+
       const allGroups = [...staticGroups, ...customGroups];
+
+      let characters: any[] = [];
+      if (isTauri) {
+        try {
+          let dbMembers: any[] = await invoke('list_ai_members', { kind: null });
+          if (dbMembers.length === 0) {
+            const toSeed = builtinAIMembers.map(m => {
+              let configObj: any = {};
+              if (m.kind === 'llm') {
+                configObj = {
+                  personality: m.personality,
+                  model: m.model,
+                  customPrompt: m.customPrompt,
+                  stages: m.stages,
+                };
+              } else if (m.kind === 'agent') {
+                configObj = {
+                  role: m.role,
+                  systemPrompt: m.systemPrompt,
+                  llm: m.llm,
+                  tools: m.tools,
+                  maxTurns: m.maxTurns,
+                  temperature: m.temperature,
+                };
+              } else if (m.kind === 'cli') {
+                configObj = { cli: m.cli };
+              }
+              return {
+                id: m.id,
+                kind: m.kind,
+                name: m.name,
+                avatar: m.avatar || null,
+                description: m.description || null,
+                tags: JSON.stringify(m.tags || []),
+                source: m.source,
+                config: JSON.stringify(configObj),
+                enabled: 1
+              };
+            });
+            await invoke('seed_builtin_ai_members', { members: toSeed });
+            dbMembers = await invoke('list_ai_members', { kind: null });
+          }
+
+          characters = dbMembers.map((r: any) => {
+            let tags: string[] = [];
+            if (r.tags) {
+              try { tags = JSON.parse(r.tags); } catch {}
+            }
+            let config: any = {};
+            if (r.config) {
+              try { config = JSON.parse(r.config); } catch {}
+            }
+            if (r.kind === 'llm') {
+              return {
+                id: r.id,
+                name: r.name,
+                personality: config.personality || '',
+                model: config.model || modelConfigs[0].model,
+                avatar: r.avatar || '',
+                custom_prompt: config.customPrompt || '',
+                tags,
+                stages: config.stages,
+                runtime: 'llm'
+              };
+            } else if (r.kind === 'cli') {
+              return {
+                id: r.id,
+                name: r.name,
+                personality: r.id + '-cli',
+                model: modelConfigs[0].model,
+                avatar: r.avatar || '',
+                custom_prompt: '',
+                tags,
+                runtime: 'cli',
+                cli: config.cli
+              };
+            } else {
+              return {
+                id: r.id,
+                name: r.name,
+                personality: 'agent',
+                model: modelConfigs[0].model,
+                avatar: r.avatar || '',
+                custom_prompt: config.systemPrompt || '',
+                tags
+              };
+            }
+          });
+          const scheduler = generateAICharacters('#groupName#', '#allTags#')[0];
+          characters.unshift(scheduler);
+        } catch (e) {
+          console.error('Failed to initialize AI members from Tauri SQLite:', e);
+          characters = [...generateAICharacters('#groupName#', '#allTags#'), ...cliAgents];
+        }
+      } else {
+        const localStr = localStorage.getItem('custom_ai_members') || '[]';
+        const customMembers = JSON.parse(localStr) as AIMember[];
+        const allAIMembers = [...builtinAIMembers, ...customMembers];
+        characters = allAIMembers.map((m) => {
+          if (m.kind === 'llm') {
+            return {
+              id: m.id,
+              name: m.name,
+              personality: m.personality,
+              model: m.model,
+              avatar: m.avatar || '',
+              custom_prompt: m.customPrompt || '',
+              tags: m.tags,
+              stages: m.stages,
+              runtime: 'llm'
+            };
+          } else if (m.kind === 'cli') {
+            return {
+              id: m.id,
+              name: m.name,
+              personality: m.id + '-cli',
+              model: modelConfigs[0].model,
+              avatar: m.avatar || '',
+              custom_prompt: '',
+              tags: m.tags,
+              runtime: 'cli',
+              cli: m.cli
+            };
+          } else {
+            return {
+              id: m.id,
+              name: m.name,
+              personality: 'agent',
+              model: modelConfigs[0].model,
+              avatar: m.avatar || '',
+              custom_prompt: m.systemPrompt || '',
+              tags: m.tags
+            };
+          }
+        });
+        const scheduler = generateAICharacters('#groupName#', '#allTags#')[0];
+        characters.unshift(scheduler);
+      }
 
       return mockResponse({
         code: 200,
         data: {
           groups: allGroups,
-          characters: [...generateAICharacters('#groupName#', '#allTags#'), ...cliAgents],
+          characters,
           user: user || null
         }
       });
@@ -704,6 +936,95 @@ export async function request(url: string, options: RequestInit = {}) {
                   try {
                     const parsed = JSON.parse(dataStr);
                     const content = parsed.choices?.[0]?.delta?.content || '';
+                    if (content) {
+                      controller.enqueue(
+                        new TextEncoder().encode(`data: ${JSON.stringify({ content })}\n\n`)
+                      );
+                    }
+                  } catch (e) {
+                    // Ignore JSON parse errors for non-standard lines
+                  }
+                }
+              }
+            }
+          } catch (e: any) {
+            controller.error(e);
+          }
+        }
+      });
+
+      return new Response(readable, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        }
+      });
+    }
+
+    // 12. Agent Chat API (Stream proxy for custom agents)
+    if (cleanUrl === '/api/agent/chat') {
+      const body = JSON.parse(options.body as string);
+      let apiKey = body.apiKey || '';
+      // Resolve env variable key reference if needed
+      if (apiKey.startsWith('API_KEY_') || apiKey.includes('KEY')) {
+        const localVal = getLocalApiKey(apiKey);
+        if (localVal) apiKey = localVal;
+      }
+
+      const response = await fetch(`${body.baseURL}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: body.model,
+          messages: body.messages,
+          temperature: body.temperature,
+          tools: body.tools && body.tools.length > 0 ? body.tools : undefined,
+          stream: true
+        })
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Agent LLM Error: ${response.status} - ${errText}`);
+      }
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+
+      const readable = new ReadableStream({
+        async start(controller) {
+          let buffer = '';
+          try {
+            while (true) {
+              const { done, value } = await reader!.read();
+              if (done) {
+                controller.close();
+                break;
+              }
+
+              buffer += decoder.decode(value, { stream: true });
+              let lines = buffer.split('\n');
+              buffer = lines.pop() || ''; // keep the last partial line in buffer
+
+              for (const line of lines) {
+                const cleanLine = line.trim();
+                if (!cleanLine) continue;
+
+                if (cleanLine.startsWith('data: ')) {
+                  const dataStr = cleanLine.slice(6);
+                  if (dataStr === '[DONE]') {
+                    controller.enqueue(new TextEncoder().encode(`data: [DONE]\n\n`));
+                    continue;
+                  }
+
+                  try {
+                    const parsed = JSON.parse(dataStr);
+                    // Pass along content or delta content
+                    const content = parsed.choices?.[0]?.delta?.content || parsed.content || '';
                     if (content) {
                       controller.enqueue(
                         new TextEncoder().encode(`data: ${JSON.stringify({ content })}\n\n`)

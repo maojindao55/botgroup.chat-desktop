@@ -13,7 +13,8 @@ export interface AIGroup {
   type: 'ai';
   name: string;
   description: string;
-  members: string[];                // 引用 aiCharacters 中 runtime !== 'cli' 的角色 id
+  memberIds: string[];                // 引用 ai_members 中的角色 id
+  members?: string[];                // 兼容老版本
   isGroupDiscussionMode: boolean;   // 全员讨论 vs 智能调度
   schedulerStrategy: 'tag' | 'round_robin' | 'all'; // 调度策略
   maxRespondents?: number;          // 单轮最大回复人数（tag/round_robin 模式）
@@ -67,7 +68,8 @@ export interface CLIGroup {
   type: 'cli';
   name: string;
   description: string;
-  members: string[];                // 引用 aiCharacters 中 runtime === 'cli' 的角色 id
+  memberIds: string[];                // 引用 ai_members 中的角色 id
+  members?: string[];                // 兼容老版本
   workspacePath: string;            // 必填，CLI Agent 执行目录（绝对路径）
   approvalMode: 'auto' | 'ask';    // 执行审批模式
   timeout: number;                  // 单次执行超时(ms)，默认 300000
@@ -235,7 +237,8 @@ export interface AgentGroup {
   type: 'agent';
   name: string;
   description: string;
-  agents: AgentMember[];            // Agent 成员列表
+  memberIds: string[];              // 引用 ai_members 中的角色 id
+  agents?: AgentMember[];            // 兼容老版本
   strategy: AgentStrategy;          // 执行策略
   coordinatorPrompt?: string;       // 协调者提示词（react/router/discussion 模式用）
   maxRounds: number;                // 多轮协作最大轮数，默认 3
@@ -251,7 +254,7 @@ export const defaultGroups: Group[] = [
     type: 'ai',
     name: '硅碳生命体交流群',
     description: '群消息关注度权重："user"的最新消息>其他成员最新消息>"user"的历史消息>其他成员历史消息>',
-    members: ['ai8', 'ai6', 'ai7', 'ai9', 'ai10', 'ai5'],
+    memberIds: ['ai8', 'ai6', 'ai7', 'ai9', 'ai10', 'ai5'],
     isGroupDiscussionMode: false,
     schedulerStrategy: 'tag',
   },
@@ -260,7 +263,7 @@ export const defaultGroups: Group[] = [
     type: 'cli',
     name: 'AI Coding 工作组',
     description: '多 CLI Agent 协作编码：你给需求，Agent 直接在本地 workspace 里执行修改。请先在群设置里指定 workspacePath。',
-    members: ['cli-codex', 'cli-claude-code', 'cli-opencode'],
+    memberIds: ['cli-codex', 'cli-claude-code', 'cli-opencode'],
     workspacePath: '',
     approvalMode: 'auto',
     timeout: 300000,
@@ -272,36 +275,7 @@ export const defaultGroups: Group[] = [
     type: 'agent',
     name: 'Agent 协作示例群',
     description: '自定义 Agent 群示例：产品经理 + 架构师协作讨论方案',
-    agents: [
-      {
-        id: 'agent-pm',
-        name: '产品经理',
-        role: '负责需求分析、方案评审、用户体验把控',
-        systemPrompt: '你是一位资深产品经理，擅长需求分析和方案评审。你会从用户价值、可行性、优先级等角度分析问题，给出清晰的产品建议。回复简洁有条理。',
-        llm: {
-          baseURL: 'https://api.deepseek.com/v1',
-          apiKey: 'DEEPSEEK_API_KEY',
-          model: 'deepseek-chat',
-        },
-        tools: [],
-        maxTurns: 3,
-        temperature: 0.7,
-      },
-      {
-        id: 'agent-architect',
-        name: '架构师',
-        role: '负责技术方案设计、架构评审、技术选型',
-        systemPrompt: '你是一位资深软件架构师，擅长系统设计和技术选型。你会从可扩展性、性能、维护成本等角度分析技术方案，给出架构建议。回复专业且有深度。',
-        llm: {
-          baseURL: 'https://api.deepseek.com/v1',
-          apiKey: 'DEEPSEEK_API_KEY',
-          model: 'deepseek-chat',
-        },
-        tools: [],
-        maxTurns: 3,
-        temperature: 0.5,
-      },
-    ],
+    memberIds: ['agent-pm', 'agent-architect'],
     strategy: 'sequential',
     maxRounds: 3,
   },

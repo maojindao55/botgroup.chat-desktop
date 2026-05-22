@@ -5,8 +5,22 @@
  *   pipeline / debate / mapreduce / supervisor
  * 每个 Agent 独立配置 LLM API，支持工具调用循环
  */
-import type { AgentGroup, AgentMember, AgentStrategy } from '@/config/groups';
+import type { AgentGroup, AgentMember } from '@/config/groups';
 import { request } from '@/utils/request';
+import { useAIMemberStore } from '@/store/aiMemberStore';
+
+export function getGroupAgents(group: AgentGroup): AgentMember[] {
+  const membersState = useAIMemberStore.getState().members;
+  const dbAgents = (group.memberIds || [])
+    .map(id => membersState[id])
+    .filter(m => m && m.kind === 'agent') as any[];
+  
+  if (dbAgents.length > 0) {
+    return dbAgents;
+  }
+  // fallback to legacy agents
+  return group.agents || [];
+}
 
 // ============ 类型定义 ============
 
@@ -127,8 +141,6 @@ async function runSingleAgent(
   messages.push({ role: 'user', content: userMessage });
 
   let fullContent = '';
-  let turns = 0;
-  const maxTurns = agent.maxTurns || 5;
 
   try {
     // 简单实现：直接调用 LLM，不做工具循环（第一期）
@@ -167,7 +179,7 @@ async function runSequential(
   const results: AgentRunResult[] = [];
   let accumulatedContext = history;
 
-  for (const agent of group.agents) {
+  for (const agent of getGroupAgents(group)) {
     if (mutedUsers.includes(agent.id)) continue;
 
     const result = await runSingleAgent(agent, userMessage, accumulatedContext, callbacks);
@@ -193,7 +205,7 @@ async function runRouter(
   mutedUsers: string[],
   callbacks: StreamCallback,
 ): Promise<AgentRunResult[]> {
-  const activeAgents = group.agents.filter(a => !mutedUsers.includes(a.id));
+  const activeAgents = getGroupAgents(group).filter(a => !mutedUsers.includes(a.id));
   if (activeAgents.length === 0) return [];
 
   // 用协调者 Prompt + 第一个可用 Agent 的 LLM 来做路由决策
@@ -261,7 +273,7 @@ async function runDiscussion(
   mutedUsers: string[],
   callbacks: StreamCallback,
 ): Promise<AgentRunResult[]> {
-  const activeAgents = group.agents.filter(a => !mutedUsers.includes(a.id));
+  const activeAgents = getGroupAgents(group).filter(a => !mutedUsers.includes(a.id));
   // 真并行：所有 Agent 同时执行
   return Promise.all(
     activeAgents.map(agent =>
@@ -280,7 +292,7 @@ async function runReAct(
   mutedUsers: string[],
   callbacks: StreamCallback,
 ): Promise<AgentRunResult[]> {
-  const activeAgents = group.agents.filter(a => !mutedUsers.includes(a.id));
+  const activeAgents = getGroupAgents(group).filter(a => !mutedUsers.includes(a.id));
   if (activeAgents.length === 0) return [];
 
   const results: AgentRunResult[] = [];
@@ -371,7 +383,7 @@ async function runPipeline(
   mutedUsers: string[],
   callbacks: StreamCallback,
 ): Promise<AgentRunResult[]> {
-  const activeAgents = group.agents.filter(a => !mutedUsers.includes(a.id));
+  const activeAgents = getGroupAgents(group).filter(a => !mutedUsers.includes(a.id));
   if (activeAgents.length === 0) return [];
 
   const results: AgentRunResult[] = [];
@@ -432,7 +444,7 @@ async function runDebate(
   mutedUsers: string[],
   callbacks: StreamCallback,
 ): Promise<AgentRunResult[]> {
-  const activeAgents = group.agents.filter(a => !mutedUsers.includes(a.id));
+  const activeAgents = getGroupAgents(group).filter(a => !mutedUsers.includes(a.id));
   if (activeAgents.length === 0) return [];
 
   const maxRounds = group.maxRounds || 3;
@@ -534,7 +546,7 @@ async function runMapReduce(
   mutedUsers: string[],
   callbacks: StreamCallback,
 ): Promise<AgentRunResult[]> {
-  const activeAgents = group.agents.filter(a => !mutedUsers.includes(a.id));
+  const activeAgents = getGroupAgents(group).filter(a => !mutedUsers.includes(a.id));
   if (activeAgents.length === 0) return [];
 
   const results: AgentRunResult[] = [];
@@ -637,7 +649,7 @@ async function runSupervisor(
   mutedUsers: string[],
   callbacks: StreamCallback,
 ): Promise<AgentRunResult[]> {
-  const activeAgents = group.agents.filter(a => !mutedUsers.includes(a.id));
+  const activeAgents = getGroupAgents(group).filter(a => !mutedUsers.includes(a.id));
   if (activeAgents.length <= 1) {
     // 只有 1 个 Agent，回退到顺序执行
     return runSequential(group, userMessage, history, mutedUsers, callbacks);

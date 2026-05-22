@@ -16,6 +16,7 @@ import type { StreamCallback } from '@/engine/agentEngine';
 import AgentGroupSettings from './AgentGroupSettings';
 import Sidebar from './Sidebar';
 import type { AgentGroup, Group } from '@/config/groups';
+import { useAIMemberStore } from '@/store/aiMemberStore';
 
 
 interface ChatMessage {
@@ -214,6 +215,17 @@ const AgentChatUI = ({
   const userStore = useUserStore();
   const isMobile = useIsMobile();
   const { styles } = useStyles();
+  const { members, load: loadMembers } = useAIMemberStore();
+
+  useEffect(() => {
+    loadMembers();
+  }, [loadMembers]);
+
+  const currentMemberIds = group.memberIds || group.agents?.map(a => a.id) || [];
+  const dbAgents = currentMemberIds
+    .map(id => members[id])
+    .filter(m => m && m.kind === 'agent');
+  const currentAgents = dbAgents.length > 0 ? dbAgents : (group.agents || []);
 
   // 策略中文标签映射
   const strategyLabels: Record<string, string> = {
@@ -359,13 +371,13 @@ const AgentChatUI = ({
                       {group.name}
                     </h1>
                     <span style={{ fontSize: 12, opacity: 0.6 }}>
-                      ({group.agents.length} agents)
+                      ({currentAgents.length} agents)
                     </span>
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <div className={styles.avatarStack}>
-                    {group.agents.slice(0, 4).map(agent => {
+                    {currentAgents.slice(0, 4).map(agent => {
                       const a = getAvatarData(agent.name);
                       const url = resolveAvatarByName(agent.name, agent.avatar, 32);
                       return (
@@ -381,8 +393,8 @@ const AgentChatUI = ({
                         </Tooltip>
                       );
                     })}
-                    {group.agents.length > 4 && (
-                      <div className={styles.avatarMore}>+{group.agents.length - 4}</div>
+                    {currentAgents.length > 4 && (
+                      <div className={styles.avatarMore}>+{currentAgents.length - 4}</div>
                     )}
                   </div>
                   <span className={styles.agentTagPurple}>
@@ -409,7 +421,7 @@ const AgentChatUI = ({
                     {group.description}
                   </p>
                   <div style={{ marginTop: 16, display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
-                    {group.agents.map(a => (
+                    {currentAgents.map(a => (
                       <span key={a.id} className={styles.emptyAgentTag}>
                         {a.name}: {a.role}
                       </span>

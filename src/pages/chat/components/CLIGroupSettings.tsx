@@ -6,7 +6,8 @@ import { useState, useEffect } from 'react';
 import { Drawer, Switch, Button, Input, InputNumber, Tooltip, Tabs, Tag, Modal, Spin } from 'antd';
 import { Avatar as LobeAvatar, ActionIcon } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
-import { FolderOpen, Terminal, Mic, MicOff, CheckCircle2, XCircle, Play, FileText, RefreshCw, Clock } from 'lucide-react';
+import { FolderOpen, Terminal, Mic, MicOff, CheckCircle2, XCircle, Play, FileText, RefreshCw, Clock, X } from 'lucide-react';
+import { MemberPicker } from './MemberPicker';
 import { request } from '@/utils/request';
 import type { CLIAgent } from '@/config/aiCharacters';
 import type { CLIExecutionPlan, CLIGroup, CLIStrategy } from '@/config/groups';
@@ -73,6 +74,7 @@ interface CLIGroupSettingsProps {
   onStrategyChange: (strategy: CLIStrategy) => void;
   onExecutionPlanChange?: (patch: Partial<CLIExecutionPlan>) => void;
   onRetryTask?: (agentId: string, prompt: string) => void;
+  onMembersChange?: (memberIds: string[]) => void;
 }
 
 const useStyles = createStyles(({ token, css }) => ({
@@ -304,6 +306,7 @@ export const CLIGroupSettings = ({
   onStrategyChange,
   onExecutionPlanChange,
   onRetryTask,
+  onMembersChange,
 }: CLIGroupSettingsProps) => {
   const { styles, cx } = useStyles();
   const [cliStatus, setCliStatus] = useState<Record<string, CliStatus | 'loading'>>({});
@@ -735,6 +738,15 @@ export const CLIGroupSettings = ({
 
           {/* members */}
           <div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+              <span style={{ fontSize: 14, fontWeight: 500 }}>添加/管理 CLI Agent</span>
+              <MemberPicker
+                kind="cli"
+                value={group.memberIds || group.members || []}
+                onChange={(newIds) => onMembersChange?.(newIds)}
+                placeholder="选择 CLI Agent 加入群聊..."
+              />
+            </div>
             <div
               style={{
                 display: 'flex',
@@ -805,15 +817,28 @@ export const CLIGroupSettings = ({
                         )}
                       </div>
                     </div>
-                    <Tooltip title={muted ? '取消禁言' : '禁言'}>
-                      <ActionIcon
-                        icon={muted ? MicOff : Mic}
-                        size="small"
-                        onClick={() => onToggleMute(agent.id)}
-                        style={{ color: muted ? '#ef4444' : '#22c55e' }}
-                        title=""
-                      />
-                    </Tooltip>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <Tooltip title={muted ? '取消禁言' : '禁言'}>
+                        <ActionIcon
+                          icon={muted ? MicOff : Mic}
+                          size="small"
+                          onClick={() => onToggleMute(agent.id)}
+                          style={{ color: muted ? '#ef4444' : '#22c55e' }}
+                          title=""
+                        />
+                      </Tooltip>
+                      <Tooltip title="移除成员">
+                        <ActionIcon
+                          icon={X}
+                          size="small"
+                          onClick={() => {
+                            const newIds = (group.memberIds || group.members || []).filter((id) => id !== agent.id);
+                            onMembersChange?.(newIds);
+                          }}
+                          title=""
+                        />
+                      </Tooltip>
+                    </div>
                   </div>
                 );
               })}

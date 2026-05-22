@@ -13,7 +13,7 @@ import { createStyles } from 'antd-style';
 import { request } from '@/utils/request';
 import { executeCLIStrategy } from '@/engine/cliEngine';
 import type { AICharacter, CLIAgent } from "@/config/aiCharacters";
-import { cliAgents } from "@/config/aiCharacters";
+import { cliAgents, mapAIMemberToLegacy } from "@/config/aiCharacters";
 import { ChatMarkdown } from '@/components/Markdown';
 import { SharePoster } from '@/pages/chat/components/SharePoster';
 import AIGroupSettings from './AIGroupSettings';
@@ -23,6 +23,8 @@ import Sidebar from './Sidebar';
 import { AdBanner, AdBannerMobile } from './AdSection';
 import { useUserStore } from '@/store/userStore';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { AIMemberLibrary } from './AIMemberLibrary';
+import { useAIMemberStore } from '@/store/aiMemberStore';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
 import type { Group, AIGroup, CLIGroup, AgentGroup, CLIStrategy, CLIExecutionPlan } from '@/config/groups';
 import { openPath } from '@tauri-apps/plugin-opener';
@@ -360,7 +362,14 @@ const ChatUI = () => {
 
   // State
   const [groups, setGroups] = useState<Group[]>([]);
-  const [selectedGroupIndex, setSelectedGroupIndex] = useState(id);
+  const selectedGroupIndex = id;
+  const [showLibrary, setShowLibrary] = useState(false);
+  const { load: loadAIMembers } = useAIMemberStore();
+  const aiMembers = useAIMemberStore(state => state.members);
+
+  useEffect(() => {
+    loadAIMembers();
+  }, []);
   const [group, setGroup] = useState<Group | null>(null);
   const [groupAiCharacters, setGroupAiCharacters] = useState<AICharacter[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -392,6 +401,35 @@ const ChatUI = () => {
     if (isMobile !== undefined) setSidebarOpen(!isMobile);
   }, [isMobile]);
 
+  // Reactively compute members/users whenever group, aiMembers store, or user info updates
+  useEffect(() => {
+    if (!group) return;
+
+    const memberIds = group.memberIds || group.members || [];
+    const nickname = userStore.userInfo?.nickname || '我';
+    const avatar_url = userStore.userInfo?.avatar_url || null;
+    const currentUser = { id: 1, name: nickname, avatar: avatar_url };
+
+    if (group.type === 'ai' || !group.type) {
+      const resolvedMembers = memberIds
+        .map(mid => aiMembers[mid])
+        .filter(m => m && m.enabled !== false && m.personality !== 'scheduler');
+      const resolvedCharacters = resolvedMembers.map(m => mapAIMemberToLegacy(m) as AICharacter);
+
+      setGroupAiCharacters(resolvedCharacters);
+      setAllNames([...resolvedCharacters.map(c => c.name), 'user']);
+      setUsers([currentUser, ...resolvedCharacters]);
+    } else if (group.type === 'cli') {
+      const resolvedMembers = memberIds
+        .map(mid => aiMembers[mid])
+        .filter(m => m && m.enabled !== false);
+      const resolvedCLIAgents = resolvedMembers.map(m => mapAIMemberToLegacy(m) as CLIAgent);
+
+      setGroupAiCharacters(resolvedCLIAgents as any);
+      setAllNames([...resolvedCLIAgents.map(a => a.name), 'user']);
+      setUsers([currentUser, ...resolvedCLIAgents]);
+    }
+  }, [group, aiMembers, userStore.userInfo]);
 
   // Init data
   useEffect(() => {
@@ -410,34 +448,22 @@ const ChatUI = () => {
           return;
         }
 
-        const characters = data.characters || [];
         setGroups(data.groups);
         setGroup(currentGroup);
         setIsInitializing(false);
 
-        // AI/CLI group: resolve members
+        // AI/CLI group: resolve details
         if (currentGroup.type === 'ai' || !currentGroup.type) {
           setIsGroupDiscussionMode(currentGroup.isGroupDiscussionMode || false);
           setSchedulerStrategy(currentGroup.schedulerStrategy || 'tag');
-          const groupChars = characters
-            .filter((c: any) => currentGroup.members?.includes(c.id))
-            .filter((c: any) => c.personality !== "sheduler")
-            .sort((a: any, b: any) => currentGroup.members.indexOf(a.id) - currentGroup.members.indexOf(b.id));
-          setGroupAiCharacters(groupChars);
-          setAllNames([...groupChars.map((c: any) => c.name), 'user']);
 
-          let avatar_url = null;
-          let nickname = '我';
           if (data.user) {
             const r = await request('/api/user/info');
             const userInfo = await r.json();
             userStore.setUserInfo(userInfo.data);
-            avatar_url = userInfo.data.avatar_url;
-            nickname = userInfo.data.nickname;
           } else {
-            userStore.setUserInfo({ id: 0, phone: '', nickname, avatar_url: null, status: 0 });
+            userStore.setUserInfo({ id: 0, phone: '', nickname: '我', avatar_url: null, status: 0 });
           }
-          setUsers([{ id: 1, name: nickname, avatar: avatar_url }, ...groupChars]);
         } else if (currentGroup.type === 'cli') {
           const wsOverride = localStorage.getItem(`workspace:${currentGroup.id}`);
           setWorkspacePath(wsOverride || currentGroup.workspacePath || '');
@@ -453,22 +479,14 @@ const ChatUI = () => {
             setCliExecutionPlan(currentGroup.executionPlan || {});
           }
 
-          let nickname = '我';
           if (data.user) {
             const r = await request('/api/user/info');
             const userInfo = await r.json();
             userStore.setUserInfo(userInfo.data);
-            nickname = userInfo.data.nickname;
           } else {
-            userStore.setUserInfo({ id: 0, phone: '', nickname, avatar_url: null, status: 0 });
+            userStore.setUserInfo({ id: 0, phone: '', nickname: '我', avatar_url: null, status: 0 });
           }
-
-          const cliMembers = cliAgents.filter(a => currentGroup.members?.includes(a.id));
-          setUsers([{ id: 1, name: nickname, avatar: null }, ...cliMembers]);
-          setGroupAiCharacters(cliMembers as any);
-          setAllNames([...cliMembers.map(a => a.name), 'user']);
         }
-        // Agent group handled by AgentChatUI directly
       } catch (error) {
         console.error("初始化数据失败:", error);
         setInitError('加载失败，请刷新重试');
@@ -478,7 +496,7 @@ const ChatUI = () => {
 
     initData();
     isInitialized.current = true;
-  }, [userStore]);
+  }, [userStore, selectedGroupIndex]);
 
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
@@ -489,6 +507,34 @@ const ChatUI = () => {
   };
   const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
   const handleSelectGroup = (index: number) => { window.location.href = `?id=${index}`; };
+
+  const updateGroup = (updatedGroup: Group) => {
+    setGroup(updatedGroup);
+    setGroups(prev => prev.map(g => g.id === updatedGroup.id ? updatedGroup : g));
+
+    try {
+      const stored = localStorage.getItem('custom_groups');
+      if (stored) {
+        const customGroups = JSON.parse(stored) as Group[];
+        const nextCustom = customGroups.map(g => g.id === updatedGroup.id ? updatedGroup : g);
+        localStorage.setItem('custom_groups', JSON.stringify(nextCustom));
+      }
+    } catch (e) {
+      console.error('Failed to update custom group:', e);
+    }
+  };
+
+  const handleMembersChange = (newIds: string[]) => {
+    if (!group) return;
+    const nextGroup = { ...group, memberIds: newIds } as Group;
+    updateGroup(nextGroup);
+  };
+
+  const handleUpdateGroup = (updates: Partial<Group>) => {
+    if (!group) return;
+    const nextGroup = { ...group, ...updates } as Group;
+    updateGroup(nextGroup);
+  };
 
   const handleCreateGroup = (newGroup: Group) => {
     try {
@@ -571,6 +617,7 @@ const ChatUI = () => {
         selectedGroupIndex={selectedGroupIndex}
         onSelectGroup={handleSelectGroup}
         onCreateGroup={handleCreateGroup}
+        onUpdateGroup={handleUpdateGroup}
       />
     );
   }
@@ -596,7 +643,8 @@ const ChatUI = () => {
 
     setIsLoading(true);
     try {
-      const agent = cliAgents.find(a => a.id === msg.sender.id);
+      const m = aiMembers[msg.sender.id];
+      const agent = m && m.kind === 'cli' ? mapAIMemberToLegacy(m) as CLIAgent : undefined;
       if (!agent) throw new Error('找不到该 Agent 成员');
       if (approvalMode === 'ask') {
         const confirmed = window.confirm(`确认让 ${agent.name} 在 ${workspacePath || '默认目录'} 执行这次任务？`);
@@ -619,7 +667,8 @@ const ChatUI = () => {
         workspacePath,
         {
           onAgentStart: (taskId, agentId, agentName, meta) => {
-            const agentInfo = cliAgents.find(a => a.id === agentId);
+            const agentInfoMember = aiMembers[agentId];
+            const agentInfo = agentInfoMember && agentInfoMember.kind === 'cli' ? mapAIMemberToLegacy(agentInfoMember) as CLIAgent : undefined;
             const baseName = agentInfo?.name || agentName;
             const aiMessage = {
               id: taskId,
@@ -695,9 +744,11 @@ const ChatUI = () => {
     const cleanHistory = messageHistory.slice(-6).map((m: any) => m.content).join('\n');
     const finalPrompt = cleanHistory ? `${cleanHistory}\nuser: ${promptText}` : promptText;
 
-    const activeAgents = cliAgents.filter(
-      a => (group as CLIGroup).members?.includes(a.id) && !mutedUsers.includes(a.id)
-    );
+    const memberIds = (group as CLIGroup).memberIds || (group as CLIGroup).members || [];
+    const activeAgents = memberIds
+      .map(id => aiMembers[id])
+      .filter(m => m && m.kind === 'cli' && !mutedUsers.includes(m.id))
+      .map(m => mapAIMemberToLegacy(m) as CLIAgent);
 
     if (activeAgents.length === 0) {
       const systemMsg = {
@@ -738,7 +789,8 @@ const ChatUI = () => {
         workspacePath,
         {
           onAgentStart: (taskId, agentId, agentName, meta) => {
-            const agentInfo = cliAgents.find(a => a.id === agentId);
+            const agentInfoMember = aiMembers[agentId];
+            const agentInfo = agentInfoMember && agentInfoMember.kind === 'cli' ? mapAIMemberToLegacy(agentInfoMember) as CLIAgent : undefined;
             const baseName = agentInfo?.name || agentName;
             const aiMessage = {
               id: taskId,
@@ -985,6 +1037,7 @@ const ChatUI = () => {
           onToggleGroupDiscussion={() => setIsGroupDiscussionMode(!isGroupDiscussionMode)}
           schedulerStrategy={schedulerStrategy}
           onStrategyChange={setSchedulerStrategy}
+          onMembersChange={handleMembersChange}
         />
       )}
 
@@ -994,7 +1047,12 @@ const ChatUI = () => {
           open={showSettings}
           onOpenChange={setShowSettings}
           group={{ ...(group as CLIGroup), strategy: cliStrategy, executionPlan: cliExecutionPlan }}
-          members={cliAgents.filter(a => (group as CLIGroup).members?.includes(a.id))}
+          members={
+            ((group as CLIGroup).memberIds || (group as CLIGroup).members || [])
+              .map(id => aiMembers[id])
+              .filter(m => m && m.kind === 'cli')
+              .map(m => mapAIMemberToLegacy(m) as CLIAgent)
+          }
           mutedUsers={mutedUsers}
           onToggleMute={handleToggleMute}
           workspacePath={workspacePath}
@@ -1015,7 +1073,8 @@ const ChatUI = () => {
           onStrategyChange={handleCLIStrategyChange}
           onExecutionPlanChange={handleCLIExecutionPlanChange}
           onRetryTask={(agentId, prompt) => {
-            const agent = cliAgents.find(a => a.id === agentId);
+            const m = aiMembers[agentId];
+            const agent = m && m.kind === 'cli' ? mapAIMemberToLegacy(m) as CLIAgent : undefined;
             if (agent) {
               handleRetryTask({
                 prompt,
@@ -1024,6 +1083,7 @@ const ChatUI = () => {
               setShowSettings(false);
             }
           }}
+          onMembersChange={handleMembersChange}
         />
       )}
 
@@ -1041,6 +1101,7 @@ const ChatUI = () => {
             onSelectGroup={handleSelectGroup}
             groups={groups}
             onCreateGroup={handleCreateGroup}
+            onOpenLibrary={() => setShowLibrary(true)}
           />
 
           <div className={styles.rightCol}>
@@ -1326,6 +1387,12 @@ const ChatUI = () => {
       {sidebarOpen && (
         <div className={styles.mobileOverlay} onClick={toggleSidebar} />
       )}
+
+      <AIMemberLibrary
+        open={showLibrary}
+        onClose={() => setShowLibrary(false)}
+        groups={groups}
+      />
     </>
   );
 };

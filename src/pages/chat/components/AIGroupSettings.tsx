@@ -2,15 +2,14 @@
  * AI 群聊配置面板 - 成员管理 + 调度策略配置
  * 用于 AI 群聊的 MembersManagement 替代组件
  */
-import { useState } from 'react';
-import { Drawer, Switch, Button, Tooltip } from 'antd';
+import { Drawer, Switch, Tooltip } from 'antd';
 import { Avatar as LobeAvatar, ActionIcon } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
-import { UserPlus, Mic, MicOff, Check, X } from 'lucide-react';
-import { getAvailableAICharacters } from '@/config/aiCharacters';
+import { Mic, MicOff, Check, X } from 'lucide-react';
 import type { AICharacter } from '@/config/aiCharacters';
 import type { AIGroup } from '@/config/groups';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
+import { MemberPicker } from './MemberPicker';
 
 interface User {
   id: number | string;
@@ -29,8 +28,7 @@ interface AIGroupSettingsProps {
   onToggleGroupDiscussion: () => void;
   schedulerStrategy: 'tag' | 'round_robin' | 'all';
   onStrategyChange: (strategy: 'tag' | 'round_robin' | 'all') => void;
-  onAddMember?: (memberId: string) => void;
-  onRemoveMember?: (memberId: string) => void;
+  onMembersChange?: (memberIds: string[]) => void;
 }
 
 const useStyles = createStyles(({ token, css }) => ({
@@ -75,43 +73,16 @@ const useStyles = createStyles(({ token, css }) => ({
       background: ${token.colorFillTertiary};
     }
   `,
-  addMemberBox: css`
-    margin-bottom: 12px;
-    padding: 12px;
-    border: 1px solid ${token.colorBorderSecondary};
-    border-radius: 8px;
-    background: ${token.colorFillQuaternary};
-  `,
   scrollList: css`
     max-height: calc(100vh - 420px);
     overflow: auto;
-  `,
-  addScrollList: css`
-    max-height: 120px;
-    overflow: auto;
-  `,
-  addMemberItem: css`
-    width: 100%;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px;
-    border-radius: 6px;
-    background: transparent;
-    border: none;
-    text-align: left;
-    cursor: pointer;
-    transition: background 0.15s;
-    &:hover {
-      background: ${token.colorFillSecondary};
-    }
   `,
 }));
 
 export const AIGroupSettings = ({
   open,
   onOpenChange,
-  group: _group,
+  group,
   users,
   mutedUsers,
   onToggleMute,
@@ -119,14 +90,10 @@ export const AIGroupSettings = ({
   onToggleGroupDiscussion,
   schedulerStrategy,
   onStrategyChange,
-  onAddMember,
-  onRemoveMember,
+  onMembersChange,
 }: AIGroupSettingsProps) => {
   const { styles, cx } = useStyles();
-  const [showAddMember, setShowAddMember] = useState(false);
-  const allCharacters = getAvailableAICharacters();
-  const currentMemberIds = users.filter((u) => 'personality' in u).map((u) => u.id as string);
-  const availableToAdd = allCharacters.filter((c) => !currentMemberIds.includes(c.id));
+  const currentMemberIds = group.memberIds || group.members || [];
 
   return (
     <Drawer
@@ -180,59 +147,26 @@ export const AIGroupSettings = ({
 
         {/* 成员管理 */}
         <div>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: 12,
-            }}
-          >
-            <span style={{ fontSize: 14, fontWeight: 500 }}>群成员（{users.length}）</span>
-            <Button
-              size="small"
-              icon={<UserPlus size={14} />}
-              onClick={() => setShowAddMember(!showAddMember)}
-            >
-              添加成员
-            </Button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+            <span style={{ fontSize: 14, fontWeight: 500 }}>添加/管理群成员</span>
+            <MemberPicker
+              kind="llm"
+              value={currentMemberIds}
+              onChange={(newIds) => onMembersChange?.(newIds)}
+              placeholder="选择 AI 成员加入群聊..."
+            />
           </div>
 
-          {/* 添加成员面板 */}
-          {showAddMember && availableToAdd.length > 0 && (
-            <div className={styles.addMemberBox}>
-              <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 8 }}>点击添加到群聊</div>
-              <div className={styles.addScrollList}>
-                {availableToAdd.map((char) => {
-                  const a = getAvatarData(char.name);
-                  const url = resolveAvatarByName(char.name, char.avatar, 24);
-                  return (
-                    <button
-                      key={char.id}
-                      onClick={() => onAddMember?.(char.id)}
-                      className={styles.addMemberItem}
-                    >
-                      <LobeAvatar
-                        shape="circle"
-                        avatar={url || a.text}
-                        background={a.backgroundColor}
-                        size={24}
-                      />
-                      <span style={{ fontSize: 12, flex: 1 }}>{char.name}</span>
-                      <UserPlus size={12} style={{ opacity: 0.6 }} />
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+          <div style={{ marginBottom: 12 }}>
+            <span style={{ fontSize: 14, fontWeight: 500 }}>群成员（{users.length}）</span>
+          </div>
 
           {/* 成员列表 */}
           <div className={styles.scrollList}>
             {users.map((user) => {
               const a = getAvatarData(user.name);
               const url = resolveAvatarByName(user.name, user.avatar, 32);
-              const isAI = 'personality' in user;
+              const isUser = user.name === '我' || user.id === 1;
               const muted = mutedUsers.includes(user.id as string);
               return (
                 <div key={user.id} className={styles.memberRow}>
@@ -250,7 +184,7 @@ export const AIGroupSettings = ({
                       )}
                     </div>
                   </div>
-                  {user.name !== '我' && (
+                  {!isUser && (
                     <div style={{ display: 'flex', gap: 4 }}>
                       <Tooltip title={muted ? '取消禁言' : '禁言'}>
                         <ActionIcon
@@ -261,16 +195,17 @@ export const AIGroupSettings = ({
                           title=""
                         />
                       </Tooltip>
-                      {isAI && (
-                        <Tooltip title="移除成员">
-                          <ActionIcon
-                            icon={X}
-                            size="small"
-                            onClick={() => onRemoveMember?.(user.id as string)}
-                            title=""
-                          />
-                        </Tooltip>
-                      )}
+                      <Tooltip title="移除成员">
+                        <ActionIcon
+                          icon={X}
+                          size="small"
+                          onClick={() => {
+                            const newIds = currentMemberIds.filter((id) => id !== user.id);
+                            onMembersChange?.(newIds);
+                          }}
+                          title=""
+                        />
+                      </Tooltip>
                     </div>
                   )}
                 </div>

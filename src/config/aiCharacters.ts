@@ -1,8 +1,4 @@
-/**
- * AI 角色配置 - 严格分为两类：
- * 1. LLM 角色（用于 AI 群聊）
- * 2. CLI Agent（用于 CLI Agent 群聊）
- */
+import { builtinAIMembers, AIMember } from './aiMembers';
 
 // ============ 模型配置 ============
 export const modelConfigs = [
@@ -96,8 +92,48 @@ export interface CLIAgent {
 // 联合类型（兼容旧代码中 `AICharacter` 的使用）
 export type Character = AICharacter | CLIAgent;
 
+// Helper to convert AIMember to legacy AICharacter / CLIAgent
+export function mapAIMemberToLegacy(m: AIMember): Character {
+  if (m.kind === 'llm') {
+    return {
+      id: m.id,
+      name: m.name,
+      personality: m.personality,
+      model: m.model,
+      avatar: m.avatar,
+      custom_prompt: m.customPrompt,
+      tags: m.tags,
+      stages: m.stages,
+      runtime: 'llm'
+    };
+  } else if (m.kind === 'cli') {
+    return {
+      id: m.id,
+      name: m.name,
+      personality: m.id + '-cli',
+      model: modelConfigs[0].model,
+      avatar: m.avatar,
+      custom_prompt: '',
+      tags: m.tags,
+      runtime: 'cli',
+      cli: m.cli
+    };
+  } else {
+    // Agent
+    return {
+      id: m.id,
+      name: m.name,
+      personality: 'agent',
+      model: modelConfigs[0].model,
+      avatar: m.avatar,
+      custom_prompt: m.systemPrompt,
+      tags: m.tags
+    };
+  }
+}
+
 // ============ LLM 角色列表（AI 群聊专用）============
-export function generateAICharacters(groupName: string, allTags: string): AICharacter[] {
+export function generateAICharacters(_groupName: string, allTags: string): AICharacter[] {
   return [
     {
       id: 'ai0',
@@ -109,216 +145,23 @@ export function generateAICharacters(groupName: string, allTags: string): AIChar
       1、只能从给定的标签列表中选择最相关的标签，可选标签："${allTags}"。
       2、请只返回标签列表，用逗号分隔，不要有其他解释, 不要有任何前缀。
       3、回复格式示例：文字游戏, 新闻报道, 娱乐`
-    },
-    {
-      id: 'ai1',
-      name: "游戏主持人",
-      personality: "SpyMaster",
-      model: modelConfigs[0].model,
-      avatar: "/img/spymaster.jpg",
-      custom_prompt: `你是一位谁是卧底游戏主持人，你当前在一个叫"${groupName}" 的聊天群里`,
-      stages: [
-        { name: "游戏未开始", prompt: `请提醒用户输入"开始游戏"` },
-        { name: "分配词语", prompt: `游戏进行中，请根据群聊内容，判断谁是卧底，谁是平民。` },
-        { name: "描述词语", prompt: `请描述词语，不要有任何前缀。` },
-        { name: "投票", prompt: `请投票，不要有任何前缀。` },
-        { name: "公布结果", prompt: `请根据聊天记录公布结果，不要有任何前缀。` }
-      ]
-    },
-    {
-      id: 'ai4',
-      name: "元宝",
-      personality: "yuanbao",
-      model: modelConfigs[2].model,
-      avatar: "/img/yuanbao.png",
-      custom_prompt: `你是一个名叫"元宝"的硅基生命体，你当前在一个叫"${groupName}" 的聊天群里`,
-      tags: ["微信", "聊天", "新闻报道", "文字游戏", "娱乐", "信息总结"]
-    },
-    {
-      id: 'ai5',
-      name: "豆包",
-      personality: "doubao",
-      model: modelConfigs[3].model,
-      avatar: "/img/doubao_new.png",
-      custom_prompt: `你是一个名叫"豆包"的硅基生命体，你当前在一个叫"${groupName}" 的聊天群里`,
-      tags: ["聊天", "文字游戏", "学生", "娱乐"]
-    },
-    {
-      id: 'ai6',
-      name: "千问",
-      personality: "qianwen",
-      model: modelConfigs[0].model,
-      avatar: "/img/qwen.jpg",
-      custom_prompt: `你是一个名叫"千问"的硅基生命体，你当前在一个叫"${groupName}" 的聊天群里`,
-      tags: ["广告文案", "分析数据", "文字游戏", "信息总结", "聊天"]
-    },
-    {
-      id: 'ai7',
-      name: "DeepSeek",
-      personality: "deepseek-V3",
-      model: modelConfigs[1].model,
-      avatar: "/img/ds.svg",
-      custom_prompt: `你是一个名叫"DeepSeek"的硅基生命体，你当前在一个叫"${groupName}" 的聊天群里`,
-      tags: ["深度推理", "编码", "编程", "文字游戏", "数学", "信息总结", "聊天"]
-    },
-    {
-      id: 'ai8',
-      name: "智谱",
-      personality: "glm",
-      model: modelConfigs[5].model,
-      avatar: "/img/glm.gif",
-      custom_prompt: `你是一个名叫"智谱"的硅基生命体，你当前在一个叫"${groupName}" 的聊天群里`,
-      tags: ["深度推理", "数学", "信息总结", "分析数据", "文字游戏", "聊天"]
-    },
-    {
-      id: 'ai9',
-      name: "Kimi",
-      personality: "kimi",
-      model: modelConfigs[8].model,
-      avatar: "/img/kimi.jpg",
-      custom_prompt: `你是一个名叫"Kimi"的硅基生命体，你当前在一个叫"${groupName}" 的聊天群里`,
-      tags: ["深度推理", "数学", "信息总结", "分析数据", "文字游戏", "聊天"]
-    },
-    {
-      id: 'ai10',
-      name: "文小言",
-      personality: "baidu",
-      model: modelConfigs[9].model,
-      avatar: "/img/baidu.svg",
-      custom_prompt: `你是一个名叫"文心一言"的硅基生命体，你当前在一个叫"${groupName}" 的聊天群里`,
-      tags: ["深度推理", "数学", "信息总结", "分析数据", "文字游戏", "聊天"]
-    },
-    {
-      id: 'ai11',
-      name: "豆沙",
-      personality: "doubao",
-      model: modelConfigs[3].model,
-      avatar: "/img/dousha.jpeg",
-      custom_prompt: `你名字叫豆沙你是豆包的老公，你当前在一个叫"${groupName}" 的聊天群里`,
-      tags: ["聊天", "文字游戏", "学生", "娱乐"]
-    },
-    {
-      id: 'ai12',
-      name: "豆奶",
-      personality: "doubao",
-      model: modelConfigs[3].model,
-      avatar: "/img/dounai.jpeg",
-      custom_prompt: `你名字叫豆奶你是豆包的奶奶，你当前在一个叫"${groupName}" 的聊天群里`,
-      tags: ["聊天", "文字游戏", "学生", "娱乐"]
-    },
-    {
-      id: 'ai13',
-      name: "豆姐",
-      personality: "doubao",
-      model: modelConfigs[3].model,
-      avatar: "/img/doujie.jpeg",
-      custom_prompt: `你名字叫豆姐你是豆包的姐姐，你当前在一个叫"${groupName}" 的聊天群里`,
-      tags: ["聊天", "文字游戏", "学生", "娱乐"]
-    },
-    {
-      id: 'ai14',
-      name: "豆孩",
-      personality: "doubao",
-      model: modelConfigs[3].model,
-      avatar: "/img/douhai.jpeg",
-      custom_prompt: `你名字叫豆孩你是豆包和豆沙的孩子，你当前在一个叫"${groupName}" 的聊天群里`,
-      tags: ["聊天", "文字游戏", "学生", "娱乐"]
-    },
-    {
-      id: 'ai15',
-      name: "豆爸",
-      personality: "doubao",
-      model: modelConfigs[3].model,
-      avatar: "/img/douba.jpeg",
-      custom_prompt: `你名字叫豆爸你是豆包的爸爸，你当前在一个叫"${groupName}" 的聊天群里`,
-      tags: ["聊天", "文字游戏", "学生", "娱乐"]
-    },
-    {
-      id: 'ai16',
-      name: "豆妈",
-      personality: "doubao",
-      model: modelConfigs[3].model,
-      avatar: "/img/douma.jpeg",
-      custom_prompt: `你名字叫豆妈你是豆包的妈妈，你当前在一个叫"${groupName}" 的聊天群里`,
-      tags: ["聊天", "文字游戏", "学生", "娱乐"]
-    },
-    {
-      id: 'ai17',
-      name: "豆爷",
-      personality: "doubao",
-      model: modelConfigs[3].model,
-      avatar: "/img/douye.jpeg",
-      custom_prompt: `你名字叫豆爷你是豆包的爷爷，你当前在一个叫"${groupName}" 的聊天群里`,
-      tags: ["聊天", "文字游戏", "学生", "娱乐"]
-    },
-    {
-      id: 'ai18',
-      name: "豆妹",
-      personality: "doubao",
-      model: modelConfigs[3].model,
-      avatar: "/img/doumei.jpeg",
-      custom_prompt: `你名字叫豆妹你是豆包的妹妹，你当前在一个叫"${groupName}" 的聊天群里`,
-      tags: ["聊天", "文字游戏", "学生", "娱乐"]
-    },
+    }
   ];
 }
 
-// ============ CLI Agent 列表（CLI 群聊专用）============
-export const cliAgents: CLIAgent[] = [
-  {
-    id: 'cli-codex',
-    name: 'Codex',
-    personality: 'codex-cli',
-    model: modelConfigs[0].model,
-    avatar: '/img/codex.webp?v=1779334925',
-    custom_prompt: '',
-    tags: ['编码', '重构', '调试', '编程', '深度推理'],
-    runtime: 'cli',
-    cli: {
-      adapter: 'codex',
-      extraArgs: ['--json', '--sandbox', 'workspace-write'],
-      approvalMode: 'auto',
-      showStderr: true,
-    },
-  },
-  {
-    id: 'cli-claude-code',
-    name: 'ClaudeCode',
-    personality: 'claude-cli',
-    model: modelConfigs[0].model,
-    avatar: '/img/claude.webp?v=1779334925',
-    custom_prompt: '',
-    tags: ['编码', '重构', '调试', '编程', '分析数据', '深度推理'],
-    runtime: 'cli',
-    cli: {
-      adapter: 'claude',
-      approvalMode: 'auto',
-      showStderr: false,
-    },
-  },
-  {
-    id: 'cli-opencode',
-    name: 'OpenCode',
-    personality: 'opencode-cli',
-    model: modelConfigs[0].model,
-    avatar: '/img/opencode.webp?v=1779334925',
-    custom_prompt: '',
-    tags: ['编码', '重构', '调试', '编程'],
-    runtime: 'cli',
-    cli: {
-      adapter: 'opencode',
-      approvalMode: 'auto',
-      showStderr: true,
-    },
-  },
-];
+export const cliAgents: CLIAgent[] = builtinAIMembers
+  .filter(m => m.kind === 'cli')
+  .map(mapAIMemberToLegacy) as CLIAgent[];
 
 /** 获取所有 LLM 角色（不含调度器） */
 export function getAvailableAICharacters(): AICharacter[] {
-  return generateAICharacters('', '').filter(c => c.personality !== 'sheduler');
+  return builtinAIMembers
+    .filter(m => m.kind === 'llm')
+    .map(mapAIMemberToLegacy) as AICharacter[];
 }
 
 /** 获取所有 CLI Agent */
 export function getAvailableCLIAgents(): CLIAgent[] {
   return cliAgents;
 }
+
