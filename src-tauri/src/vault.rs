@@ -52,6 +52,8 @@ use std::io::Write;
 
 use aes_gcm::aead::OsRng;
 use aes_gcm::aead::rand_core::RngCore;
+use aes_gcm::{Aes256Gcm, Key, Nonce};
+use aes_gcm::aead::{Aead, KeyInit, Payload};
 
 /// Load existing master key from disk, or create a new random one.
 ///
@@ -107,6 +109,48 @@ pub fn load_or_create_master_key(key_path: &Path) -> Result<[u8; KEY_LEN], Vault
     }
 
     Ok(key)
+}
+
+/// Encrypt `value` with AES-256-GCM. AAD is bound to `name` so the resulting
+/// ciphertext cannot be successfully decrypted under a different name even
+/// with the correct key.
+pub fn encrypt(master: &[u8; KEY_LEN], name: &str, value: &str)
+    -> Result<(Vec<u8>, Vec<u8>), VaultError>
+{
+    let key = Key::<Aes256Gcm>::from_slice(master);
+    let cipher = Aes256Gcm::new(key);
+
+    let mut nonce_bytes = [0u8; NONCE_LEN];
+    OsRng.fill_bytes(&mut nonce_bytes);
+    let nonce = Nonce::from_slice(&nonce_bytes);
+
+    let ct = cipher
+        .encrypt(nonce, Payload { msg: value.as_bytes(), aad: name.as_bytes() })
+        .map_err(|e| VaultError::Crypto(format!("encrypt: {}", e)))?;
+
+    Ok((ct, nonce_bytes.to_vec()))
+}
+
+/// Decrypt ciphertext produced by `encrypt`. The same `name` (AAD) must be
+/// supplied or decryption will fail.
+pub fn decrypt(master: &[u8; KEY_LEN], name: &str, ciphertext: &[u8], nonce: &[u8])
+    -> Result<String, VaultError>
+{
+    if nonce.len() != NONCE_LEN {
+        return Err(VaultError::Crypto(format!(
+            "nonce has {} bytes, expected {}", nonce.len(), NONCE_LEN
+        )));
+    }
+    let key = Key::<Aes256Gcm>::from_slice(master);
+    let cipher = Aes256Gcm::new(key);
+    let nonce = Nonce::from_slice(nonce);
+
+    let pt = cipher
+        .decrypt(nonce, Payload { msg: ciphertext, aad: name.as_bytes() })
+        .map_err(|e| VaultError::Crypto(format!("decrypt: {}", e)))?;
+
+    String::from_utf8(pt)
+        .map_err(|e| VaultError::Crypto(format!("decrypt: invalid utf-8: {}", e)))
 }
 
 #[cfg(test)]
@@ -173,5 +217,59 @@ mod tests {
         let mode = fs::metadata(&key_path).unwrap().permissions().mode();
         // Mask off file type bits, only check user/group/other
         assert_eq!(mode & 0o777, 0o600, "master.key permissions must be 0600, got {:o}", mode);
+    }
+
+    fn dummy_key() -> [u8; KEY_LEN] {
+        let mut k = [0u8; KEY_LEN];
+        for i in 0..KEY_LEN { k[i] = i as u8; }
+        k
+    }
+
+    #[test]
+    fn encrypt_decrypt_round_trip() {
+        let key = dummy_key();
+        let (ct, nonce) = encrypt(&key, "provider:qwen", "sk-abc123").unwrap();
+
+        assert_eq!(nonce.len(), NONCE_LEN);
+        assert_ne!(&ct, b"sk-abc123", "ciphertext must differ from plaintext");
+
+        let pt = decrypt(&key, "provider:qwen", &ct, &nonce).unwrap();
+        assert_eq!(pt, "sk-abc123");
+    }
+
+    #[test]
+    fn decrypt_with_wrong_aad_fails() {
+        // Critical: ciphertext bound to name. Swapping name = AAD mismatch.
+        let key = dummy_key();
+        let (ct, nonce) = encrypt(&key, "provider:qwen", "sk-abc123").unwrap();
+
+        let res = decrypt(&key, "provider:deepseek", &ct, &nonce);
+        match res {
+            Err(VaultError::Crypto(_)) => (),
+            other => panic!("expected Crypto error on AAD mismatch, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn decrypt_with_wrong_key_fails() {
+        let key1 = dummy_key();
+        let mut key2 = dummy_key();
+        key2[0] ^= 0xff;
+
+        let (ct, nonce) = encrypt(&key1, "k", "v").unwrap();
+        let res = decrypt(&key2, "k", &ct, &nonce);
+        match res {
+            Err(VaultError::Crypto(_)) => (),
+            other => panic!("expected Crypto error on wrong key, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn nonces_are_random_per_encrypt() {
+        // Same key + same plaintext + same AAD must produce different nonces.
+        let key = dummy_key();
+        let (_ct1, n1) = encrypt(&key, "k", "v").unwrap();
+        let (_ct2, n2) = encrypt(&key, "k", "v").unwrap();
+        assert_ne!(n1, n2, "nonces must be random per encrypt");
     }
 }
