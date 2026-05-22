@@ -153,6 +153,76 @@ pub fn decrypt(master: &[u8; KEY_LEN], name: &str, ciphertext: &[u8], nonce: &[u
         .map_err(|e| VaultError::Crypto(format!("decrypt: invalid utf-8: {}", e)))
 }
 
+use rusqlite::{params, Connection};
+
+/// Upsert: encrypt `value` and store under `name` (overwriting if exists).
+pub fn set(conn: &Connection, master: &[u8; KEY_LEN], name: &str, value: &str)
+    -> Result<(), VaultError>
+{
+    let (ct, nonce) = encrypt(master, name, value)?;
+    conn.execute(
+        "INSERT INTO secrets (name, ciphertext, nonce, updated_at)
+         VALUES (?1, ?2, ?3, CURRENT_TIMESTAMP)
+         ON CONFLICT(name) DO UPDATE SET
+            ciphertext = excluded.ciphertext,
+            nonce      = excluded.nonce,
+            updated_at = CURRENT_TIMESTAMP",
+        params![name, ct, nonce],
+    )?;
+    Ok(())
+}
+
+/// Decrypt and return value for `name`, or `Ok(None)` if not present.
+/// Returns `VaultError::Crypto` if decryption fails (e.g., AAD mismatch).
+pub fn get(conn: &Connection, master: &[u8; KEY_LEN], name: &str)
+    -> Result<Option<String>, VaultError>
+{
+    let row: Option<(Vec<u8>, Vec<u8>)> = conn
+        .query_row(
+            "SELECT ciphertext, nonce FROM secrets WHERE name = ?1",
+            params![name],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map(Some)
+        .or_else(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => Ok(None),
+            other => Err(other),
+        })?;
+
+    match row {
+        None => Ok(None),
+        Some((ct, nonce)) => {
+            let pt = decrypt(master, name, &ct, &nonce)?;
+            Ok(Some(pt))
+        }
+    }
+}
+
+/// Returns true iff a row with `name` exists. Does NOT touch crypto.
+pub fn has(conn: &Connection, name: &str) -> Result<bool, VaultError> {
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM secrets WHERE name = ?1",
+        params![name],
+        |row| row.get(0),
+    )?;
+    Ok(count > 0)
+}
+
+/// Delete the row with `name`. Idempotent (no error if missing).
+pub fn delete(conn: &Connection, name: &str) -> Result<(), VaultError> {
+    conn.execute("DELETE FROM secrets WHERE name = ?1", params![name])?;
+    Ok(())
+}
+
+/// Return all stored secret names (no values, no ciphertexts).
+pub fn list_names(conn: &Connection) -> Result<Vec<String>, VaultError> {
+    let mut stmt = conn.prepare("SELECT name FROM secrets ORDER BY name")?;
+    let names = stmt
+        .query_map([], |row| row.get(0))?
+        .collect::<Result<Vec<String>, _>>()?;
+    Ok(names)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -271,5 +341,108 @@ mod tests {
         let (_ct1, n1) = encrypt(&key, "k", "v").unwrap();
         let (_ct2, n2) = encrypt(&key, "k", "v").unwrap();
         assert_ne!(n1, n2, "nonces must be random per encrypt");
+    }
+
+    use rusqlite::Connection;
+
+    fn fresh_conn() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        crate::db::init_db_schemas(&conn).unwrap();
+        conn
+    }
+
+    #[test]
+    fn db_set_and_has() {
+        let conn = fresh_conn();
+        let key = dummy_key();
+
+        assert!(!has(&conn, "provider:qwen").unwrap());
+        set(&conn, &key, "provider:qwen", "sk-abc123").unwrap();
+        assert!(has(&conn, "provider:qwen").unwrap());
+    }
+
+    #[test]
+    fn db_set_then_get_round_trip() {
+        let conn = fresh_conn();
+        let key = dummy_key();
+
+        set(&conn, &key, "provider:deepseek", "sk-xyz").unwrap();
+        let got = get(&conn, &key, "provider:deepseek").unwrap();
+        assert_eq!(got, Some("sk-xyz".to_string()));
+    }
+
+    #[test]
+    fn db_get_missing_returns_none() {
+        let conn = fresh_conn();
+        let key = dummy_key();
+        let got = get(&conn, &key, "provider:does-not-exist").unwrap();
+        assert_eq!(got, None);
+    }
+
+    #[test]
+    fn db_set_overwrites_existing() {
+        let conn = fresh_conn();
+        let key = dummy_key();
+        set(&conn, &key, "k", "v1").unwrap();
+        set(&conn, &key, "k", "v2").unwrap();
+        assert_eq!(get(&conn, &key, "k").unwrap(), Some("v2".to_string()));
+    }
+
+    #[test]
+    fn db_delete_removes_entry() {
+        let conn = fresh_conn();
+        let key = dummy_key();
+        set(&conn, &key, "k", "v").unwrap();
+        assert!(has(&conn, "k").unwrap());
+
+        delete(&conn, "k").unwrap();
+        assert!(!has(&conn, "k").unwrap());
+        assert_eq!(get(&conn, &key, "k").unwrap(), None);
+    }
+
+    #[test]
+    fn db_delete_missing_is_idempotent() {
+        let conn = fresh_conn();
+        // Should not error even if name doesn't exist
+        delete(&conn, "never-existed").unwrap();
+    }
+
+    #[test]
+    fn db_list_names_returns_only_names_not_values() {
+        let conn = fresh_conn();
+        let key = dummy_key();
+        set(&conn, &key, "provider:a", "secret-a-value").unwrap();
+        set(&conn, &key, "provider:b", "secret-b-value").unwrap();
+
+        let mut names = list_names(&conn).unwrap();
+        names.sort();
+        assert_eq!(names, vec!["provider:a", "provider:b"]);
+    }
+
+    #[test]
+    fn db_decrypt_fails_if_ciphertext_swapped_between_names() {
+        // Integration check that AAD binding works through the DB layer.
+        let conn = fresh_conn();
+        let key = dummy_key();
+        set(&conn, &key, "provider:a", "value-a").unwrap();
+        set(&conn, &key, "provider:b", "value-b").unwrap();
+
+        // Swap ciphertexts directly in DB
+        let (ct_a, nonce_a): (Vec<u8>, Vec<u8>) = conn.query_row(
+            "SELECT ciphertext, nonce FROM secrets WHERE name = 'provider:a'",
+            [], |row| Ok((row.get(0)?, row.get(1)?))
+        ).unwrap();
+        conn.execute(
+            "UPDATE secrets SET ciphertext = ?1, nonce = ?2 WHERE name = 'provider:b'",
+            rusqlite::params![ct_a, nonce_a],
+        ).unwrap();
+
+        // Now provider:b holds ciphertext encrypted under AAD='provider:a'.
+        // get should fail because AAD won't match.
+        let res = get(&conn, &key, "provider:b");
+        match res {
+            Err(VaultError::Crypto(_)) => (),
+            other => panic!("expected Crypto error on AAD swap, got {:?}", other),
+        }
     }
 }
