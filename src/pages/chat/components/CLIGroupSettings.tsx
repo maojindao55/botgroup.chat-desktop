@@ -6,7 +6,7 @@ import { useState, useEffect } from 'react';
 import { Drawer, Switch, Button, Input, InputNumber, Tooltip, Tabs, Tag, Modal, Spin } from 'antd';
 import { Avatar as LobeAvatar, ActionIcon } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
-import { FolderOpen, Terminal, Mic, MicOff, CheckCircle2, XCircle, Play, FileText, RefreshCw, Clock } from 'lucide-react';
+import { FolderOpen, Terminal, Mic, MicOff, CheckCircle2, XCircle, Play, FileText, RefreshCw, Clock, X } from 'lucide-react';
 import { request } from '@/utils/request';
 import type { CLIAgent } from '@/config/aiCharacters';
 import type { CLIExecutionPlan, CLIGroup, CLIStrategy } from '@/config/groups';
@@ -73,6 +73,7 @@ interface CLIGroupSettingsProps {
   onStrategyChange: (strategy: CLIStrategy) => void;
   onExecutionPlanChange?: (patch: Partial<CLIExecutionPlan>) => void;
   onRetryTask?: (agentId: string, prompt: string) => void;
+  inline?: boolean;
 }
 
 const useStyles = createStyles(({ token, css }) => ({
@@ -283,6 +284,53 @@ const useStyles = createStyles(({ token, css }) => ({
       color: ${token.colorPrimary};
     }
   `,
+  inlinePanel: css`
+    width: 400px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: ${token.colorBgContainer};
+    border-left: 1px solid ${token.colorBorderSecondary};
+    flex-shrink: 0;
+    z-index: 5;
+  `,
+  inlineHeader: css`
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid ${token.colorBorderSecondary};
+    height: 52px;
+    flex-shrink: 0;
+  `,
+  inlineTitle: css`
+    font-size: 14px;
+    font-weight: 600;
+    color: ${token.colorText};
+  `,
+  inlineCloseBtn: css`
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: ${token.colorTextSecondary};
+    border-radius: 4px;
+    transition: background 0.2s;
+    &:hover {
+      background: ${token.colorFillTertiary};
+    }
+  `,
+  inlineContent: css`
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  `,
 }));
 
 export const CLIGroupSettings = ({
@@ -304,6 +352,7 @@ export const CLIGroupSettings = ({
   onStrategyChange,
   onExecutionPlanChange,
   onRetryTask,
+  inline,
 }: CLIGroupSettingsProps) => {
   const { styles, cx } = useStyles();
   const [cliStatus, setCliStatus] = useState<Record<string, CliStatus | 'loading'>>({});
@@ -1097,6 +1146,135 @@ export const CLIGroupSettings = ({
       })()
     }
   ];
+
+  if (inline) {
+    if (!open) return null;
+    return (
+      <>
+        <div className={styles.inlinePanel}>
+          <div className={styles.inlineHeader}>
+            <span className={styles.inlineTitle}>CLI Agent 配置</span>
+            <button className={styles.inlineCloseBtn} onClick={() => onOpenChange(false)}>
+              <X size={16} />
+            </button>
+          </div>
+          <div className={styles.inlineContent}>
+            <div className={styles.tabsContainer}>
+              <Tabs
+                activeKey={activeTab}
+                onChange={setActiveTab}
+                items={tabItems}
+              />
+            </div>
+          </div>
+        </div>
+
+        <Modal
+          title={
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingRight: 24 }}>
+              <span>任务执行日志</span>
+              {activeLogTask && (
+                <span style={{ fontSize: 12, fontWeight: 'normal', color: 'var(--ant-color-text-secondary)' }}>
+                  {activeLogTask.agentName} ({activeLogTask.adapter}) | 状态: {activeLogTask.status}
+                </span>
+              )}
+            </div>
+          }
+          open={logModalOpen}
+          onCancel={() => {
+            setLogModalOpen(false);
+            setActiveLogTask(null);
+            setLogEntries([]);
+          }}
+          footer={[
+            activeLogTask?.status === 'running' && (
+              <Button
+                key="cancel-task"
+                danger
+                onClick={async () => {
+                  try {
+                    await request('/api/cli/tasks/cancel', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ taskId: activeLogTask.id }),
+                    });
+                    const res = await request(`/api/cli/tasks/get?taskId=${activeLogTask.id}`);
+                    const json = await res.json();
+                    if (json.success && json.data) {
+                      setActiveLogTask(json.data);
+                    }
+                  } catch (e) {
+                    console.error('Failed to cancel task from log modal:', e);
+                  }
+                }}
+              >
+                停止运行
+              </Button>
+            ),
+            <Button 
+              key="refresh" 
+              onClick={() => activeLogTask && fetchLogs(activeLogTask.id)}
+              loading={loadingLogs}
+            >
+              刷新
+            </Button>,
+            <Button key="close" type="primary" onClick={() => setLogModalOpen(false)}>
+              关闭
+            </Button>
+          ]}
+          width={700}
+          destroyOnClose
+        >
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 12, color: 'var(--ant-color-text-secondary)', marginBottom: 4 }}>
+              <strong>执行命令/提示词:</strong>
+            </div>
+            <div style={{ 
+              fontSize: 12, 
+              padding: '8px 12px', 
+              background: 'var(--ant-color-fill-alter)', 
+              borderRadius: 6, 
+              fontFamily: 'monospace',
+              maxHeight: 80,
+              overflowY: 'auto',
+              whiteSpace: 'pre-wrap'
+            }}>
+              {activeLogTask?.prompt}
+            </div>
+          </div>
+
+          {loadingLogs && logEntries.length === 0 ? (
+            <div style={{ padding: '60px 0', textAlign: 'center' }}>
+              <Spin tip="加载日志中..." />
+            </div>
+          ) : logEntries.length === 0 ? (
+            <div className={styles.logConsole}>
+              <div className={cx(styles.logRow, styles.logTypeSystem)}>
+                <span>暂无日志输出</span>
+              </div>
+            </div>
+          ) : (
+            <div className={styles.logConsole}>
+              {logEntries.map((entry, idx) => {
+                let typeClass = styles.logTypeStdout;
+                if (entry.type === 'stderr') typeClass = styles.logTypeStderr;
+                else if (entry.type === 'system') typeClass = styles.logTypeSystem;
+                
+                const timeStr = entry.ts ? entry.ts.split('T')[1]?.slice(0, 8) || entry.ts : '';
+
+                return (
+                  <div key={idx} className={styles.logRow}>
+                    {timeStr && <span className={styles.logTimestamp}>[{timeStr}]</span>}
+                    <span className={cx(styles.logText, typeClass)}>{entry.content}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Modal>
+      </>
+    );
+  }
 
   return (
     <>

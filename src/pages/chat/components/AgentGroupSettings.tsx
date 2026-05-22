@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { Drawer, Button, Input, InputNumber, Tooltip, Collapse, Checkbox } from 'antd';
 import { Avatar as LobeAvatar, ActionIcon } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
-import { Plus, Trash2, Mic, MicOff } from 'lucide-react';
+import { Plus, Trash2, Mic, MicOff, X } from 'lucide-react';
 import type { AgentGroup, AgentMember, AgentStrategy, AgentTool } from '@/config/groups';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
 
@@ -24,6 +24,7 @@ interface AgentGroupSettingsProps {
   mutedUsers: string[];
   onToggleMute: (userId: string) => void;
   onUpdateGroup: (updates: Partial<AgentGroup>) => void;
+  inline?: boolean;
 }
 
 const useStyles = createStyles(({ token, css }) => ({
@@ -86,6 +87,53 @@ const useStyles = createStyles(({ token, css }) => ({
     grid-template-columns: 1fr 1fr;
     gap: 8px;
   `,
+  inlinePanel: css`
+    width: 440px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: ${token.colorBgContainer};
+    border-left: 1px solid ${token.colorBorderSecondary};
+    flex-shrink: 0;
+    z-index: 5;
+  `,
+  inlineHeader: css`
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid ${token.colorBorderSecondary};
+    height: 52px;
+    flex-shrink: 0;
+  `,
+  inlineTitle: css`
+    font-size: 14px;
+    font-weight: 600;
+    color: ${token.colorText};
+  `,
+  inlineCloseBtn: css`
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: ${token.colorTextSecondary};
+    border-radius: 4px;
+    transition: background 0.2s;
+    &:hover {
+      background: ${token.colorFillTertiary};
+    }
+  `,
+  inlineContent: css`
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  `,
 }));
 
 export const AgentGroupSettings = ({
@@ -95,6 +143,7 @@ export const AgentGroupSettings = ({
   mutedUsers,
   onToggleMute,
   onUpdateGroup,
+  inline,
 }: AgentGroupSettingsProps) => {
   const { styles, cx } = useStyles();
   const [activeAgentKeys, setActiveAgentKeys] = useState<string[]>([]);
@@ -316,6 +365,103 @@ export const AgentGroupSettings = ({
     };
   });
 
+  const settingsContent = (
+    <div className={styles.scrollArea} style={inline ? { height: 'auto', paddingRight: 0 } : undefined}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        {/* 执行策略 */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <label style={{ fontSize: 14, fontWeight: 500 }}>执行策略</label>
+          <div className={styles.strategyGrid}>
+            {strategyOptions.map((item) => (
+              <button
+                key={item.value}
+                type="button"
+                onClick={() => onUpdateGroup({ strategy: item.value })}
+                className={cx(
+                  styles.strategyBtn,
+                  group.strategy === item.value && styles.strategyBtnActive,
+                )}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+          <p className={styles.strategyDesc}>{strategyDescriptions[group.strategy]}</p>
+        </div>
+
+        {/* 协调者 Prompt */}
+        {showCoordinatorPrompt && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label style={{ fontSize: 14, fontWeight: 500 }}>协调者 Prompt</label>
+            <Input.TextArea
+              autoSize={{ minRows: 3, maxRows: 6 }}
+              placeholder="定义协调者如何分派任务..."
+              value={group.coordinatorPrompt || ''}
+              onChange={(e) => onUpdateGroup({ coordinatorPrompt: e.target.value })}
+            />
+          </div>
+        )}
+
+        {/* 最大轮数 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <label style={{ fontSize: 14, fontWeight: 500, whiteSpace: 'nowrap' }}>最大轮数</label>
+          <InputNumber
+            value={group.maxRounds}
+            min={1}
+            max={10}
+            style={{ width: 80 }}
+            onChange={(v) => onUpdateGroup({ maxRounds: Number(v) })}
+          />
+        </div>
+
+        {/* Agent 成员列表 */}
+        <div>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 12,
+            }}
+          >
+            <span style={{ fontSize: 14, fontWeight: 500 }}>
+              Agent 成员（{group.agents.length}）
+            </span>
+            <Button size="small" icon={<Plus size={14} />} onClick={addAgent}>
+              添加
+            </Button>
+          </div>
+
+          <Collapse
+            activeKey={activeAgentKeys}
+            onChange={(keys) =>
+              setActiveAgentKeys(Array.isArray(keys) ? (keys as string[]) : [keys as string])
+            }
+            items={agentItems}
+            size="small"
+          />
+        </div>
+      </div>
+    </div>
+  );
+
+  if (inline) {
+    if (!open) return null;
+    return (
+      <div className={styles.inlinePanel}>
+        <div className={styles.inlineHeader}>
+          <span className={styles.inlineTitle}>Agent 群聊配置</span>
+          <button className={styles.inlineCloseBtn} onClick={() => onOpenChange(false)}>
+            <X size={16} />
+          </button>
+        </div>
+        <div className={styles.inlineContent}>
+          {settingsContent}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <Drawer
       title="Agent 群聊配置"
@@ -324,83 +470,7 @@ export const AgentGroupSettings = ({
       onClose={() => onOpenChange(false)}
       width={440}
     >
-      <div className={styles.scrollArea}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          {/* 执行策略 */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <label style={{ fontSize: 14, fontWeight: 500 }}>执行策略</label>
-            <div className={styles.strategyGrid}>
-              {strategyOptions.map((item) => (
-                <button
-                  key={item.value}
-                  type="button"
-                  onClick={() => onUpdateGroup({ strategy: item.value })}
-                  className={cx(
-                    styles.strategyBtn,
-                    group.strategy === item.value && styles.strategyBtnActive,
-                  )}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-            <p className={styles.strategyDesc}>{strategyDescriptions[group.strategy]}</p>
-          </div>
-
-          {/* 协调者 Prompt */}
-          {showCoordinatorPrompt && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 14, fontWeight: 500 }}>协调者 Prompt</label>
-              <Input.TextArea
-                autoSize={{ minRows: 3, maxRows: 6 }}
-                placeholder="定义协调者如何分派任务..."
-                value={group.coordinatorPrompt || ''}
-                onChange={(e) => onUpdateGroup({ coordinatorPrompt: e.target.value })}
-              />
-            </div>
-          )}
-
-          {/* 最大轮数 */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <label style={{ fontSize: 14, fontWeight: 500, whiteSpace: 'nowrap' }}>最大轮数</label>
-            <InputNumber
-              value={group.maxRounds}
-              min={1}
-              max={10}
-              style={{ width: 80 }}
-              onChange={(v) => onUpdateGroup({ maxRounds: Number(v) })}
-            />
-          </div>
-
-          {/* Agent 成员列表 */}
-          <div>
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: 12,
-              }}
-            >
-              <span style={{ fontSize: 14, fontWeight: 500 }}>
-                Agent 成员（{group.agents.length}）
-              </span>
-              <Button size="small" icon={<Plus size={14} />} onClick={addAgent}>
-                添加
-              </Button>
-            </div>
-
-            <Collapse
-              activeKey={activeAgentKeys}
-              onChange={(keys) =>
-                setActiveAgentKeys(Array.isArray(keys) ? (keys as string[]) : [keys as string])
-              }
-              items={agentItems}
-              size="small"
-            />
-          </div>
-        </div>
-      </div>
+      {settingsContent}
     </Drawer>
   );
 };
