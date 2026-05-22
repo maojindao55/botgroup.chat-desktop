@@ -709,7 +709,7 @@ export const CLIGroupSettings = ({
                 <div className={styles.rowBetween} style={{ marginTop: 8 }}>
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 500 }}>结果策略</div>
-                    <div className={styles.panelDesc} style={{ marginTop: 2 }}>多结果时如何取舍</div>
+                    <div className={styles.panelDesc} style={{ marginTop: 2 }}>多结果时如何取舍（当前仅展示全部）</div>
                   </div>
                   <select
                     value={group.executionPlan?.resultPolicy || 'all'}
@@ -721,9 +721,9 @@ export const CLIGroupSettings = ({
                     style={{ fontSize: 12, padding: '4px 8px', borderRadius: 4, border: '1px solid #d9d9d9' }}
                   >
                     <option value="all">全部展示</option>
-                    <option value="firstSuccess">首个成功</option>
-                    <option value="fastest">最快结果</option>
-                    <option value="manualPick">手动选择</option>
+                    <option value="firstSuccess">首个成功（规划中）</option>
+                    <option value="fastest">最快结果（规划中）</option>
+                    <option value="manualPick">手动选择（规划中）</option>
                   </select>
                 </div>
               )}
@@ -976,115 +976,125 @@ export const CLIGroupSettings = ({
     {
       key: 'worktree',
       label: 'Worktree',
-      children: (
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <span style={{ fontSize: 13, opacity: 0.8 }}>竞争模式 Worktree 管理</span>
-            <Button
-              type="text"
-              size="small"
-              icon={<RefreshCw size={14} />}
-              onClick={async () => {
-                await fetchTasks(false);
-              }}
-              loading={loadingTasks}
-            />
-          </div>
-          <div style={{ padding: 12, background: 'rgba(0,0,0,0.04)', borderRadius: 8, marginBottom: 12 }}>
-            <p style={{ fontSize: 12, color: 'rgba(0,0,0,0.65)', margin: 0 }}>
-              竞争模式（race）会为每个 Agent 创建独立的 git worktree。
-              执行完成后 worktree 默认保留，你可以在此处查看和清理。
-            </p>
-          </div>
-          {loadingTasks && tasks.length === 0 ? (
-            <div style={{ padding: '32px 0', textAlign: 'center' }}>
-              <Spin />
+      children: (() => {
+        const uniqueWorktrees = [...new Map(worktreeTasks
+          .filter((task): task is CliTask & { cwd: string } => !!task.cwd)
+          .map((task) => [task.cwd, task]))
+          .values()];
+
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <span style={{ fontSize: 13, opacity: 0.8 }}>竞争模式 Worktree 管理</span>
+              <Button
+                type="text"
+                size="small"
+                icon={<RefreshCw size={14} />}
+                onClick={() => fetchTasks(false)}
+                loading={loadingTasks}
+              />
             </div>
-          ) : worktreeTasks.length === 0 ? (
-            <div style={{ padding: 12, background: 'rgba(0,0,0,0.04)', borderRadius: 8, marginBottom: 12, fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>
-              暂无可管理的 worktree 记录。
+            <div style={{ padding: 12, background: 'rgba(0,0,0,0.04)', borderRadius: 8, marginBottom: 12 }}>
+              <p style={{ fontSize: 12, color: 'rgba(0,0,0,0.65)', margin: 0 }}>
+                竞争模式（race）会为每个 Agent 创建独立的 git worktree。
+                执行完成后 worktree 默认保留，你可以在此处查看和清理。
+              </p>
             </div>
-          ) : (
-            <div style={{ maxHeight: 'calc(100vh - 330px)', overflowY: 'auto', paddingRight: 4, marginBottom: 12 }}>
-              {worktreeTasks.map(task => (
-                <div key={task.id} className={styles.taskItem}>
-                  <div className={styles.taskHeader}>
-                    <span className={styles.taskAgent}>{task.agentName}</span>
-                    {getStatusTag(task.status)}
+
+            {loadingTasks && tasks.length === 0 ? (
+              <div style={{ padding: '32px 0', textAlign: 'center' }}>
+                <Spin />
+              </div>
+            ) : uniqueWorktrees.length === 0 ? (
+              <div style={{ padding: 12, background: 'rgba(0,0,0,0.04)', borderRadius: 8, marginBottom: 12, fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>
+                暂无可管理的 worktree 记录。
+              </div>
+            ) : (
+              <div style={{ maxHeight: 'calc(100vh - 330px)', overflowY: 'auto', paddingRight: 4, marginBottom: 12 }}>
+                {uniqueWorktrees.map((task) => (
+                  <div key={task.cwd} className={styles.taskItem}>
+                    <div className={styles.taskHeader}>
+                      <span className={styles.taskAgent}>{task.agentName}</span>
+                      {getStatusTag(task.status)}
+                    </div>
+                    <div className={styles.taskMeta}>
+                      <span>{formatDateTime(task.createdAt)}</span>
+                      {task.exitCode !== undefined && <span>exit {task.exitCode}</span>}
+                    </div>
+                    <div className={styles.runtimePath}>{task.cwd}</div>
+                    <div className={styles.taskActions}>
+                      <Button
+                        size="small"
+                        className={styles.actionBtn}
+                        onClick={() => openPath(task.cwd)}
+                      >
+                        打开路径
+                      </Button>
+                      <Button
+                        size="small"
+                        className={styles.actionBtn}
+                        onClick={() => {
+                          if (navigator.clipboard) {
+                            navigator.clipboard.writeText(task.cwd).catch(() => {});
+                          }
+                        }}
+                      >
+                        复制路径
+                      </Button>
+                      <Button
+                        danger
+                        size="small"
+                        className={styles.actionBtn}
+                        onClick={async () => {
+                          const confirmed = window.confirm(`确认清理 ${task.agentName} 的 worktree？此操作不可恢复。`);
+                          if (!confirmed) return;
+                          try {
+                            await request('/api/cli/worktree/cleanup', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ paths: [task.cwd] }),
+                            });
+                            await fetchTasks(false);
+                          } catch (e) {
+                            console.error('Failed to cleanup worktree:', e);
+                          }
+                        }}
+                      >
+                        清理
+                      </Button>
+                    </div>
                   </div>
-                  <div className={styles.taskMeta}>
-                    <span>{formatDateTime(task.createdAt)}</span>
-                    {task.exitCode !== undefined && <span>exit {task.exitCode}</span>}
-                  </div>
-                  <div className={styles.runtimePath}>{task.cwd}</div>
-                  <div className={styles.taskActions}>
-                    <Button
-                      size="small"
-                      className={styles.actionBtn}
-                      onClick={() => task.cwd && openPath(task.cwd)}
-                    >
-                      打开路径
-                    </Button>
-                    <Button
-                      size="small"
-                      className={styles.actionBtn}
-                      onClick={() => {
-                        if (task.cwd && navigator.clipboard) {
-                          navigator.clipboard.writeText(task.cwd).catch(() => { /* ignore */ });
-                        }
-                      }}
-                    >
-                      复制路径
-                    </Button>
-                    <Button
-                      danger
-                      size="small"
-                      className={styles.actionBtn}
-                      onClick={async () => {
-                        if (!task.cwd) return;
-                        const confirmed = window.confirm(`确认清理 ${task.agentName} 的 worktree？此操作不可恢复。`);
-                        if (!confirmed) return;
-                        await request('/api/cli/worktree/cleanup', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ paths: [task.cwd] }),
-                        });
-                        await fetchTasks(false);
-                      }}
-                    >
-                      清理
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          <div style={{ padding: 12, background: 'rgba(0,0,0,0.04)', borderRadius: 8 }}>
-            <Button
-              danger
-              size="small"
-              onClick={async () => {
-                const confirmed = window.confirm('确认清理所有该群的 worktree？此操作不可恢复。');
-                if (!confirmed) return;
-                try {
-                  if (worktreePaths.length > 0) {
-                    await request('/api/cli/worktree/cleanup', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ paths: worktreePaths }),
-                    });
-                    await fetchTasks(false);
-                  }
-                } catch (e) {
-                  console.error('Failed to cleanup worktrees:', e);
-                }
-              }}
-            >
-              清理所有 Worktree
-            </Button>
+                ))}
+              </div>
+            )}
+
+            {uniqueWorktrees.length > 0 && (
+              <div style={{ marginTop: 12, padding: 12, background: 'rgba(0,0,0,0.04)', borderRadius: 8 }}>
+                <Button
+                  danger
+                  size="small"
+                  onClick={async () => {
+                    const confirmed = window.confirm(`确认清理所有 ${uniqueWorktrees.length} 个 worktree？此操作不可恢复。`);
+                    if (!confirmed) return;
+                    try {
+                      await request('/api/cli/worktree/cleanup', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ paths: worktreePaths }),
+                      });
+                      await fetchTasks(false);
+                    } catch (e) {
+                      console.error('Failed to cleanup worktrees:', e);
+                    }
+                  }}
+                >
+                  清理所有 Worktree ({uniqueWorktrees.length})
+                </Button>
+              </div>
+            )}
           </div>
-        </div>
-      )
+        );
+      })()
     }
   ];
 

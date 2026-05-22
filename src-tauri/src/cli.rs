@@ -1303,6 +1303,7 @@ pub async fn cli_tempcopy_prepare(
         // otherwise fall back to cp -a.
         let copy_result = {
             let src_str = format!("{}/", args.cwd); // trailing slash = copy contents
+            let _ = std::fs::create_dir_all(&dest);
             let output = std::process::Command::new("rsync")
                 .args(&[
                     "-a",

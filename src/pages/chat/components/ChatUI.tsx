@@ -1220,7 +1220,7 @@ const ChatUI = () => {
                                       try {
                                         await openPath(message.cliCwd);
                                       } catch {
-                                        // fallback: copy to clipboard
+                                        // fallback: copy cd command to clipboard
                                         if (navigator.clipboard) {
                                           navigator.clipboard.writeText(`cd ${message.cliCwd}`).catch(() => {});
                                         }
