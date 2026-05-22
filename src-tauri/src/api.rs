@@ -482,10 +482,26 @@ pub fn delete_ai_member(app: AppHandle, id: String) -> Result<(), String> {
     let db_path = get_db_path(&app);
     let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
 
-    conn.execute("DELETE FROM ai_members WHERE id = ?1", params![id])
-        .map_err(|e| e.to_string())?;
+    // 后端兜底：禁止删除内置预设成员（前端 UI 也会拦截，这里防绕过）
+    let source: Option<String> = conn
+        .query_row(
+            "SELECT source FROM ai_members WHERE id = ?1",
+            params![id],
+            |row| row.get(0),
+        )
+        .ok();
 
-    Ok(())
+    match source.as_deref() {
+        Some("builtin") => Err(format!(
+            "内置预设成员不允许删除 (id={}), 请先 fork 为自建副本再修改",
+            id
+        )),
+        _ => {
+            conn.execute("DELETE FROM ai_members WHERE id = ?1", params![id])
+                .map_err(|e| e.to_string())?;
+            Ok(())
+        }
+    }
 }
 
 #[tauri::command]

@@ -191,7 +191,7 @@ export async function request(url: string, options: RequestInit = {}) {
           }
         }
 
-        // 3. Migrate Agent group
+        // 3. Migrate Agent group: 把内联 agents 抽到 ai_members 库 + 写入 memberIds，然后清理旧字段
         if (newGroup.type === 'agent') {
           if (newGroup.agents && !newGroup.memberIds) {
             newGroup.memberIds = [];
@@ -246,6 +246,8 @@ export async function request(url: string, options: RequestInit = {}) {
                 }
               }
             }
+            // 迁移完成后清理内联 agents 字段，避免 memberIds + agents 双写不一致
+            delete newGroup.agents;
             changed = true;
           }
         }

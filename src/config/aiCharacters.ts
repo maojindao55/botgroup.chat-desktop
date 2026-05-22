@@ -92,8 +92,17 @@ export interface CLIAgent {
 // 联合类型（兼容旧代码中 `AICharacter` 的使用）
 export type Character = AICharacter | CLIAgent;
 
-// Helper to convert AIMember to legacy AICharacter / CLIAgent
-export function mapAIMemberToLegacy(m: AIMember): Character {
+/** 替换 prompt 中的 `#groupName#` 占位符，未传 groupName 时原样返回 */
+function applyGroupNamePlaceholder(text: string | undefined, groupName?: string): string | undefined {
+  if (!text || !groupName) return text;
+  return text.split('#groupName#').join(groupName);
+}
+
+/**
+ * Convert AIMember to legacy AICharacter / CLIAgent
+ * @param groupName 可选，传入后会把 customPrompt / stages 内的 `#groupName#` 占位符替换为实际群名
+ */
+export function mapAIMemberToLegacy(m: AIMember, groupName?: string): Character {
   if (m.kind === 'llm') {
     return {
       id: m.id,
@@ -101,9 +110,11 @@ export function mapAIMemberToLegacy(m: AIMember): Character {
       personality: m.personality,
       model: m.model,
       avatar: m.avatar,
-      custom_prompt: m.customPrompt,
+      custom_prompt: applyGroupNamePlaceholder(m.customPrompt, groupName),
       tags: m.tags,
-      stages: m.stages,
+      stages: groupName && m.stages
+        ? m.stages.map(s => ({ name: s.name, prompt: applyGroupNamePlaceholder(s.prompt, groupName) || s.prompt }))
+        : m.stages,
       runtime: 'llm'
     };
   } else if (m.kind === 'cli') {
@@ -119,14 +130,14 @@ export function mapAIMemberToLegacy(m: AIMember): Character {
       cli: m.cli
     };
   } else {
-    // Agent
+    // Agent: systemPrompt 当作老 custom_prompt 暴露
     return {
       id: m.id,
       name: m.name,
       personality: 'agent',
       model: modelConfigs[0].model,
       avatar: m.avatar,
-      custom_prompt: m.systemPrompt,
+      custom_prompt: applyGroupNamePlaceholder(m.systemPrompt, groupName),
       tags: m.tags
     };
   }
@@ -151,13 +162,13 @@ export function generateAICharacters(_groupName: string, allTags: string): AICha
 
 export const cliAgents: CLIAgent[] = builtinAIMembers
   .filter(m => m.kind === 'cli')
-  .map(mapAIMemberToLegacy) as CLIAgent[];
+  .map(m => mapAIMemberToLegacy(m)) as CLIAgent[];
 
 /** 获取所有 LLM 角色（不含调度器） */
 export function getAvailableAICharacters(): AICharacter[] {
   return builtinAIMembers
     .filter(m => m.kind === 'llm')
-    .map(mapAIMemberToLegacy) as AICharacter[];
+    .map(m => mapAIMemberToLegacy(m)) as AICharacter[];
 }
 
 /** 获取所有 CLI Agent */

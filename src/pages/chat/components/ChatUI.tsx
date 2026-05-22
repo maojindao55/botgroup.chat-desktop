@@ -449,7 +449,7 @@ const ChatUI = () => {
       const resolvedMembers = memberIds
         .map(mid => aiMembers[mid])
         .filter(m => m && m.enabled !== false && !(m.kind === 'llm' && m.personality === 'scheduler'));
-      const resolvedCharacters = resolvedMembers.map(m => mapAIMemberToLegacy(m) as AICharacter);
+      const resolvedCharacters = resolvedMembers.map(m => mapAIMemberToLegacy(m, group.name) as AICharacter);
 
       setGroupAiCharacters(resolvedCharacters);
       setAllNames([...resolvedCharacters.map(c => c.name), 'user']);
@@ -945,7 +945,7 @@ const ChatUI = () => {
         history: messageHistory,
         index: i,
         aiName: char.name,
-        custom_prompt: (char.custom_prompt || '').replace('#groupName#', group.name) + "\n" + group.description,
+        custom_prompt: (char.custom_prompt || '') + "\n" + group.description,
       };
 
       try {

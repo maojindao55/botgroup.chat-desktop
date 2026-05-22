@@ -215,7 +215,9 @@ const AgentChatUI = ({
   const userStore = useUserStore();
   const isMobile = useIsMobile();
   const { styles } = useStyles();
-  const { members, load: loadMembers } = useAIMemberStore();
+  const members = useAIMemberStore(s => s.members);
+  const membersLoading = useAIMemberStore(s => s.loading);
+  const loadMembers = useAIMemberStore(s => s.load);
 
   useEffect(() => {
     loadMembers();
@@ -225,7 +227,14 @@ const AgentChatUI = ({
   const dbAgents = currentMemberIds
     .map(id => members[id])
     .filter(m => m && m.kind === 'agent');
+  // 优先 store 数据；store 未 ready 时回落到群里的内联 agents（兼容旧数据）
   const currentAgents = dbAgents.length > 0 ? dbAgents : (group.agents || []);
+  // store 已加载完成但成员仍解析不出来（id 引用失效 / 成员被删）
+  const hasUnresolvedMembers =
+    !membersLoading && currentMemberIds.length > 0 && currentAgents.length === 0;
+  // store 仍在首次加载中且暂时拿不到成员
+  const isResolvingMembers =
+    membersLoading && currentMemberIds.length > 0 && currentAgents.length === 0;
 
   // 策略中文标签映射
   const strategyLabels: Record<string, string> = {
@@ -459,10 +468,21 @@ const AgentChatUI = ({
                   <p style={{ fontSize: 14, marginTop: 8, textAlign: 'center', maxWidth: 480 }}>
                     {group.description}
                   </p>
+                  {isResolvingMembers && (
+                    <p style={{ fontSize: 13, marginTop: 12, opacity: 0.6 }}>
+                      正在加载 AI 群员库...
+                    </p>
+                  )}
+                  {hasUnresolvedMembers && (
+                    <p style={{ fontSize: 13, marginTop: 12, color: '#ef4444' }}>
+                      该群引用了 {currentMemberIds.length} 位 Agent，但当前 AI 群员库中找不到。<br />
+                      请到「AI 群员库」检查或重新添加成员。
+                    </p>
+                  )}
                   <div style={{ marginTop: 16, display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
                     {currentAgents.map(a => (
                       <span key={a.id} className={styles.emptyAgentTag}>
-                        {a.name}: {a.role}
+                        {a.name}: {('role' in a ? a.role : '')}
                       </span>
                     ))}
                   </div>

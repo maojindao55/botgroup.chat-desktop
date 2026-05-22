@@ -57,6 +57,7 @@ export const builtinAIMembers: AIMember[] = [
     description: '谁是卧底游戏主持人角色',
     tags: ['文字游戏', '娱乐'],
     source: 'builtin',
+    enabled: true,
     personality: 'SpyMaster',
     model: 'qwen-plus',
     customPrompt: '你是一位谁是卧底游戏主持人，你当前在一个叫"#groupName#" 的聊天群里',
@@ -76,6 +77,7 @@ export const builtinAIMembers: AIMember[] = [
     description: '腾讯混元大模型助手',
     tags: ['微信', '聊天', '新闻报道', '文字游戏', '娱乐', '信息总结'],
     source: 'builtin',
+    enabled: true,
     personality: 'yuanbao',
     model: 'hunyuan-turbos-latest',
     customPrompt: '你是一个名叫"元宝"的硅基生命体，你当前在一个叫"#groupName#" 的聊天群里'
@@ -88,6 +90,7 @@ export const builtinAIMembers: AIMember[] = [
     description: '字节跳动豆包大模型助手',
     tags: ['聊天', '文字游戏', '学生', '娱乐'],
     source: 'builtin',
+    enabled: true,
     personality: 'doubao',
     model: 'doubao-1-5-lite-32k-250115',
     customPrompt: '你是一个名叫"豆包"的硅基生命体，你当前在一个叫"#groupName#" 的聊天群里'
@@ -100,6 +103,7 @@ export const builtinAIMembers: AIMember[] = [
     description: '阿里通义千问大模型助手',
     tags: ['广告文案', '分析数据', '文字游戏', '信息总结', '聊天'],
     source: 'builtin',
+    enabled: true,
     personality: 'qianwen',
     model: 'qwen-plus',
     customPrompt: '你是一个名叫"千问"的硅基生命体，你当前在一个叫"#groupName#" 的聊天群里'
@@ -112,6 +116,7 @@ export const builtinAIMembers: AIMember[] = [
     description: '深度求索 DeepSeek 大模型助手',
     tags: ['深度推理', '编码', '编程', '文字游戏', '数学', '信息总结', '聊天'],
     source: 'builtin',
+    enabled: true,
     personality: 'deepseek-V3',
     model: 'deepseek-v3-250324',
     customPrompt: '你是一个名叫"DeepSeek"的硅基生命体，你当前在一个叫"#groupName#" 的聊天群里'
@@ -124,6 +129,7 @@ export const builtinAIMembers: AIMember[] = [
     description: '智谱清言 GLM 大模型助手',
     tags: ['深度推理', '数学', '信息总结', '分析数据', '文字游戏', '聊天'],
     source: 'builtin',
+    enabled: true,
     personality: 'glm',
     model: 'glm-4-air',
     customPrompt: '你是一个名叫"智谱"的硅基生命体，你当前在一个叫"#groupName#" 的聊天群里'
@@ -136,6 +142,7 @@ export const builtinAIMembers: AIMember[] = [
     description: '月之暗面 Kimi 大模型助手',
     tags: ['深度推理', '数学', '信息总结', '分析数据', '文字游戏', '聊天'],
     source: 'builtin',
+    enabled: true,
     personality: 'kimi',
     model: 'moonshot-v1-8k',
     customPrompt: '你是一个名叫"Kimi"的硅基生命体，你当前在一个叫"#groupName#" 的聊天群里'
@@ -148,6 +155,7 @@ export const builtinAIMembers: AIMember[] = [
     description: '百度文心一言大模型助手',
     tags: ['深度推理', '数学', '信息总结', '分析数据', '文字游戏', '聊天'],
     source: 'builtin',
+    enabled: true,
     personality: 'baidu',
     model: 'ernie-3.5-128k',
     customPrompt: '你是一个名叫"文心一言"的硅基生命体，你当前在一个叫"#groupName#" 的聊天群里'
@@ -159,6 +167,7 @@ export const builtinAIMembers: AIMember[] = [
     avatar: '/img/dousha.jpeg',
     tags: ['聊天', '文字游戏', '学生', '娱乐'],
     source: 'builtin',
+    enabled: true,
     personality: 'doubao',
     model: 'doubao-1-5-lite-32k-250115',
     customPrompt: '你名字叫豆沙你是豆包的老公，你当前在一个叫"#groupName#" 的聊天群里'
@@ -170,6 +179,7 @@ export const builtinAIMembers: AIMember[] = [
     avatar: '/img/dounai.jpeg',
     tags: ['聊天', '文字游戏', '学生', '娱乐'],
     source: 'builtin',
+    enabled: true,
     personality: 'doubao',
     model: 'doubao-1-5-lite-32k-250115',
     customPrompt: '你名字叫豆奶你是豆包的奶奶，你当前在一个叫"#groupName#" 的聊天群里'
@@ -181,6 +191,7 @@ export const builtinAIMembers: AIMember[] = [
     avatar: '/img/doujie.jpeg',
     tags: ['聊天', '文字游戏', '学生', '娱乐'],
     source: 'builtin',
+    enabled: true,
     personality: 'doubao',
     model: 'doubao-1-5-lite-32k-250115',
     customPrompt: '你名字叫豆姐你是豆包的姐姐，你当前在一个叫"#groupName#" 的聊天群里'
@@ -192,6 +203,7 @@ export const builtinAIMembers: AIMember[] = [
     avatar: '/img/douhai.jpeg',
     tags: ['聊天', '文字游戏', '学生', '娱乐'],
     source: 'builtin',
+    enabled: true,
     personality: 'doubao',
     model: 'doubao-1-5-lite-32k-250115',
     customPrompt: '你名字叫豆孩你是豆包和豆沙的孩子，你当前在一个叫"#groupName#" 的聊天群里'
@@ -203,6 +215,7 @@ export const builtinAIMembers: AIMember[] = [
     avatar: '/img/douba.jpeg',
     tags: ['聊天', '文字游戏', '学生', '娱乐'],
     source: 'builtin',
+    enabled: true,
     personality: 'doubao',
     model: 'doubao-1-5-lite-32k-250115',
     customPrompt: '你名字叫豆爸你是豆包的爸爸，你当前在一个叫"#groupName#" 的聊天群里'
@@ -214,6 +227,7 @@ export const builtinAIMembers: AIMember[] = [
     avatar: '/img/douma.jpeg',
     tags: ['聊天', '文字游戏', '学生', '娱乐'],
     source: 'builtin',
+    enabled: true,
     personality: 'doubao',
     model: 'doubao-1-5-lite-32k-250115',
     customPrompt: '你名字叫豆妈你是豆包的妈妈，你当前在一个叫"#groupName#" 的聊天群里'
@@ -225,6 +239,7 @@ export const builtinAIMembers: AIMember[] = [
     avatar: '/img/douye.jpeg',
     tags: ['聊天', '文字游戏', '学生', '娱乐'],
     source: 'builtin',
+    enabled: true,
     personality: 'doubao',
     model: 'doubao-1-5-lite-32k-250115',
     customPrompt: '你名字叫豆爷你是豆包的爷爷，你当前在一个叫"#groupName#" 的聊天群里'
@@ -236,6 +251,7 @@ export const builtinAIMembers: AIMember[] = [
     avatar: '/img/doumei.jpeg',
     tags: ['聊天', '文字游戏', '学生', '娱乐'],
     source: 'builtin',
+    enabled: true,
     personality: 'doubao',
     model: 'doubao-1-5-lite-32k-250115',
     customPrompt: '你名字叫豆妹你是豆包的妹妹，你当前在一个叫"#groupName#" 的聊天群里'
@@ -250,6 +266,7 @@ export const builtinAIMembers: AIMember[] = [
     description: 'Codex CLI Agent，擅长自动编码及代码重构',
     tags: ['编码', '重构', '调试', '编程', '深度推理'],
     source: 'builtin',
+    enabled: true,
     cli: {
       adapter: 'codex',
       extraArgs: ['--json', '--sandbox', 'workspace-write'],
@@ -265,6 +282,7 @@ export const builtinAIMembers: AIMember[] = [
     description: 'Claude Code CLI Agent，擅长代码库分析及复杂调试',
     tags: ['编码', '重构', '调试', '编程', '分析数据', '深度推理'],
     source: 'builtin',
+    enabled: true,
     cli: {
       adapter: 'claude',
       approvalMode: 'auto',
@@ -279,6 +297,7 @@ export const builtinAIMembers: AIMember[] = [
     description: 'OpenCode 开源编码助手',
     tags: ['编码', '重构', '调试', '编程'],
     source: 'builtin',
+    enabled: true,
     cli: {
       adapter: 'opencode',
       approvalMode: 'auto',
@@ -295,6 +314,7 @@ export const builtinAIMembers: AIMember[] = [
     description: '产品经理角色，专注于需求分析与PRD方案把控',
     tags: ['需求分析', '产品设计', '协作'],
     source: 'builtin',
+    enabled: true,
     role: '负责需求分析、方案评审、用户体验把控',
     systemPrompt: '你是一位资深产品经理，擅长需求分析和方案评审。你会从用户价值、可行性、优先级等角度分析问题，给出清晰的产品建议。回复简洁有条理。',
     llm: {
@@ -314,6 +334,7 @@ export const builtinAIMembers: AIMember[] = [
     description: '软件架构师角色，专注于技术设计与高可用选型',
     tags: ['系统设计', '技术评审', '协作'],
     source: 'builtin',
+    enabled: true,
     role: '负责技术方案设计、架构评审、技术选型',
     systemPrompt: '你是一位资深软件架构师，擅长系统设计和技术选型。你会从可扩展性、性能、维护成本等角度分析技术方案，给出架构建议。回复专业且有深度。',
     llm: {
