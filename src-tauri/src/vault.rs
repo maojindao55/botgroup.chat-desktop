@@ -8,6 +8,18 @@
 //!   boundary; Rust-internal modules call `vault::get` directly.
 //!
 //! Master key loss = vault loss. v1 does not back up; document accordingly.
+//!
+//! ## Contract for downstream PRs
+//!
+//! - **PR2** (`llm_proxy.rs`) should call `vault::get(conn, master, name)` from
+//!   Rust-internal code. It MUST NOT expose a Tauri command that returns
+//!   plaintext.
+//! - **PR4** (one-shot migration) should call `vault::set(...)` inside the
+//!   same SQLite transaction as the rest of the migration; pass a `&Connection`
+//!   obtained from `tx`/conn (rusqlite::Transaction `deref`s to `Connection`).
+//! - Future "user-password-wraps-master-key" (v2) should change
+//!   `load_or_create_master_key` signature to accept an optional passphrase;
+//!   keep the existing call sites working with `None`.
 
 use std::fmt;
 use std::path::Path;
