@@ -219,12 +219,18 @@ export async function request(url: string, options: RequestInit = {}) {
     if (cleanUrl === '/api/cli/run') {
       const body = JSON.parse(options.body as string);
       const {
+        sessionId,
+        groupId,
+        agentId,
+        agentName,
         adapter,
         prompt,
         cwd,
         binary,
         extraArgs,
         env,
+        timeoutMs,
+        approvalMode = 'auto',
         showStderr = true,
       } = body || {};
 
@@ -235,12 +241,12 @@ export async function request(url: string, options: RequestInit = {}) {
         );
       }
 
-      const sessionId =
+      const finalSessionId = sessionId ||
         (typeof crypto !== 'undefined' && (crypto as any).randomUUID
           ? (crypto as any).randomUUID()
           : `cli-${Date.now()}-${Math.random().toString(36).slice(2)}`) as string;
 
-      const eventName = `cli://${sessionId}`;
+      const eventName = `cli://${finalSessionId}`;
 
       // We build a ReadableStream that closes when we receive the `done`
       // event (or `error`). Listener is detached on close/cancel.
@@ -250,15 +256,16 @@ export async function request(url: string, options: RequestInit = {}) {
       const readable = new ReadableStream({
         async start(controller) {
           const enc = new TextEncoder();
-          const enqueueChunk = (content: string) => {
+          const enqueueEvent = (payload: Record<string, any>) => {
             try {
               controller.enqueue(
-                enc.encode(`data: ${JSON.stringify({ content })}\n\n`)
+                enc.encode(`data: ${JSON.stringify(payload)}\n\n`)
               );
             } catch {
               /* controller already closed */
             }
           };
+          const enqueueChunk = (content: string) => enqueueEvent({ content });
 
           const closeOnce = () => {
             if (closed) return;
@@ -365,7 +372,11 @@ export async function request(url: string, options: RequestInit = {}) {
                 // Detect auth/token errors — show ONE friendly message then mute
                 if (/401|token.?invalid|unauthorized|session.?ended|auth.?error|app_session_terminated|please.*(log\s*in|sign\s*in)/i.test(line)) {
                   authErrorDetected = true;
-                  enqueueChunk(`\n**登录已过期，请在终端重新登录：**\n\`\`\`\ncodex login    # Codex\nclaude login   # Claude Code\n\`\`\`\n`);
+                  enqueueEvent({
+                    type: 'error',
+                    content: `\n**登录已过期，请在终端重新登录：**\n\`\`\`\ncodex login    # Codex\nclaude login   # Claude Code\n\`\`\`\n`,
+                    error: 'auth_error',
+                  });
                   break;
                 }
                 // Normal stderr — skip verbose codex boot info (workdir/model/session lines)
@@ -380,14 +391,31 @@ export async function request(url: string, options: RequestInit = {}) {
                 break;
               case 'error':
                 if (typeof payload.message === 'string') {
-                  enqueueChunk(`\n**[CLI error]** ${payload.message}\n`);
+                  enqueueEvent({
+                    type: 'error',
+                    content: `\n**[CLI error]** ${payload.message}\n`,
+                    error: payload.message,
+                  });
                 }
                 break;
               case 'done': {
                 const code = typeof payload.exit_code === 'number' ? payload.exit_code : -1;
                 closeDetails();
+                const status =
+                  code === -2 ? 'cancelled'
+                    : code === -3 ? 'timeout'
+                      : code === 0 ? 'completed'
+                        : 'failed';
                 if (code !== 0) {
-                  enqueueChunk(`\n_(exit ${code})_\n`);
+                  enqueueEvent({
+                    type: 'done',
+                    status,
+                    exitCode: code,
+                    content: `\n_(exit ${code})_\n`,
+                    error: status === 'completed' ? undefined : status,
+                  });
+                } else {
+                  enqueueEvent({ type: 'done', status, exitCode: code, content: '' });
                 }
                 closeOnce();
                 break;
@@ -398,25 +426,42 @@ export async function request(url: string, options: RequestInit = {}) {
           try {
             await invoke('cli_run', {
               args: {
-                sessionId,
+                sessionId: finalSessionId,
+                groupId: groupId || 'group-coding',
+                agentId: agentId || 'cli-generic',
+                agentName: agentName || 'CLI Agent',
                 adapter,
                 prompt,
                 cwd: cwd || null,
                 binary: binary || null,
                 extraArgs: extraArgs || null,
                 env: env || null,
+                timeoutMs: timeoutMs || null,
+                approvalMode,
+                showStderr: showStderr ?? true,
               },
             });
           } catch (e: any) {
             const msg = e instanceof Error ? e.message : String(e);
-            enqueueChunk(`**[CLI spawn failed]** ${msg}`);
+            enqueueEvent({
+              type: 'error',
+              content: `**[CLI spawn failed]** ${msg}`,
+              error: msg,
+            });
+            enqueueEvent({
+              type: 'done',
+              status: 'failed',
+              exitCode: -1,
+              content: '',
+              error: msg,
+            });
             closeOnce();
           }
         },
         async cancel() {
           // Stream consumer aborted — kill the process.
           if (unlistenFn) { try { unlistenFn(); } catch {} unlistenFn = null; }
-          try { await invoke('cli_kill', { sessionId }); } catch { /* ignore */ }
+          try { await invoke('cli_kill', { sessionId: finalSessionId }); } catch { /* ignore */ }
         },
       });
 
@@ -425,9 +470,131 @@ export async function request(url: string, options: RequestInit = {}) {
           'Content-Type': 'text/event-stream',
           'Cache-Control': 'no-cache',
           'Connection': 'keep-alive',
-          'X-CLI-Session-Id': sessionId,
+          'X-CLI-Session-Id': finalSessionId,
         },
       });
+    }
+
+    // 9.1 CLI task list
+    if (cleanUrl === '/api/cli/tasks/list') {
+      const urlObj = new URL(url, 'http://localhost');
+      const groupId = urlObj.searchParams.get('groupId') || '';
+      const limitVal = urlObj.searchParams.get('limit');
+      const limit = limitVal ? parseInt(limitVal, 10) : undefined;
+      const before = urlObj.searchParams.get('before') || undefined;
+
+      const result = await invoke('cli_task_list', { groupId, limit, before });
+      return mockResponse({ success: true, data: result });
+    }
+
+    // 9.2 CLI task get
+    if (cleanUrl === '/api/cli/tasks/get') {
+      const urlObj = new URL(url, 'http://localhost');
+      const taskId = urlObj.searchParams.get('taskId') || '';
+      const result = await invoke('cli_task_get', { taskId });
+      return mockResponse({ success: true, data: result });
+    }
+
+    // 9.3 CLI task read log
+    if (cleanUrl === '/api/cli/tasks/log') {
+      const urlObj = new URL(url, 'http://localhost');
+      const taskId = urlObj.searchParams.get('taskId') || '';
+      const sinceLineVal = urlObj.searchParams.get('sinceLine') || urlObj.searchParams.get('since_line');
+      const sinceLine = sinceLineVal ? parseInt(sinceLineVal, 10) : undefined;
+
+      const result = await invoke('cli_task_read_log', { taskId, sinceLine });
+      return mockResponse({ success: true, data: result });
+    }
+
+    // 9.4 CLI task cancel (kill)
+    if (cleanUrl === '/api/cli/tasks/cancel') {
+      const body = JSON.parse(options.body || '{}');
+      const { taskId, sessionId } = body || {};
+      const targetSessionId = taskId || sessionId || '';
+      const result = await invoke('cli_kill', { sessionId: targetSessionId });
+      return mockResponse({ success: true, data: result });
+    }
+
+    // 9.5 CLI runtime list
+    if (cleanUrl === '/api/cli/runtimes/list') {
+      const result = await invoke('cli_runtime_list');
+      return mockResponse({ success: true, data: result });
+    }
+
+    // 9.6 CLI worktree prepare (race strategy isolation)
+    if (cleanUrl === '/api/cli/worktree/prepare') {
+      const body = JSON.parse(options.body as string);
+      const { groupId, cwd, agentIds } = body || {};
+      if (!groupId || !cwd || !Array.isArray(agentIds) || agentIds.length === 0) {
+        return mockResponse(
+          { success: false, message: '/api/cli/worktree/prepare requires { groupId, cwd, agentIds[] }' },
+          400,
+        );
+      }
+      try {
+        const result = await invoke('cli_worktree_prepare', {
+          args: { groupId, cwd, agentIds },
+        });
+        return mockResponse({ success: true, data: result });
+      } catch (e: any) {
+        return mockResponse(
+          { success: false, message: typeof e === 'string' ? e : (e?.message || 'worktree prepare failed') },
+          400,
+        );
+      }
+    }
+
+    // 9.7 CLI worktree cleanup
+    if (cleanUrl === '/api/cli/worktree/cleanup') {
+      const body = JSON.parse(options.body as string);
+      const paths = Array.isArray(body?.paths) ? body.paths : [];
+      try {
+        await invoke('cli_worktree_cleanup', { args: { paths } });
+        return mockResponse({ success: true });
+      } catch (e: any) {
+        return mockResponse(
+          { success: false, message: typeof e === 'string' ? e : (e?.message || 'worktree cleanup failed') },
+          400,
+        );
+      }
+    }
+
+    // 9.8 CLI temp copy prepare (discussion read-only isolation)
+    if (cleanUrl === '/api/cli/tempcopy/prepare') {
+      const body = JSON.parse(options.body as string);
+      const { groupId, cwd, agentIds } = body || {};
+      if (!groupId || !cwd || !Array.isArray(agentIds) || agentIds.length === 0) {
+        return mockResponse(
+          { success: false, message: '/api/cli/tempcopy/prepare requires { groupId, cwd, agentIds[] }' },
+          400,
+        );
+      }
+      try {
+        const result = await invoke('cli_tempcopy_prepare', {
+          args: { groupId, cwd, agentIds },
+        });
+        return mockResponse({ success: true, data: result });
+      } catch (e: any) {
+        return mockResponse(
+          { success: false, message: typeof e === 'string' ? e : (e?.message || 'tempcopy prepare failed') },
+          400,
+        );
+      }
+    }
+
+    // 9.9 CLI temp copy cleanup
+    if (cleanUrl === '/api/cli/tempcopy/cleanup') {
+      const body = JSON.parse(options.body as string);
+      const paths = Array.isArray(body?.paths) ? body.paths : [];
+      try {
+        await invoke('cli_tempcopy_cleanup', { args: { paths } });
+        return mockResponse({ success: true });
+      } catch (e: any) {
+        return mockResponse(
+          { success: false, message: typeof e === 'string' ? e : (e?.message || 'tempcopy cleanup failed') },
+          400,
+        );
+      }
     }
 
     // 10. CLI Agent availability check — used by member list to grey out

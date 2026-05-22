@@ -2,8 +2,6 @@ mod db;
 mod api;
 mod cli;
 
-use tauri::Manager;
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -29,7 +27,15 @@ pub fn run() {
             api::select_directory,
             cli::cli_run,
             cli::cli_kill,
-            cli::cli_check
+            cli::cli_check,
+            cli::cli_task_list,
+            cli::cli_task_get,
+            cli::cli_task_read_log,
+            cli::cli_runtime_list,
+            cli::cli_worktree_prepare,
+            cli::cli_worktree_cleanup,
+            cli::cli_tempcopy_prepare,
+            cli::cli_tempcopy_cleanup
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

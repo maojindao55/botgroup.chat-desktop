@@ -11,6 +11,7 @@ import { Tooltip, Input as AntdInput, Button as AntdButton } from 'antd';
 import { ActionIcon, Avatar as LobeAvatar } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 import { request } from '@/utils/request';
+import { executeCLIStrategy } from '@/engine/cliEngine';
 import type { AICharacter, CLIAgent } from "@/config/aiCharacters";
 import { cliAgents } from "@/config/aiCharacters";
 import { ChatMarkdown } from '@/components/Markdown';
@@ -23,7 +24,8 @@ import { AdBanner, AdBannerMobile } from './AdSection';
 import { useUserStore } from '@/store/userStore';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
-import type { Group, AIGroup, CLIGroup, AgentGroup, CLIStrategy } from '@/config/groups';
+import type { Group, AIGroup, CLIGroup, AgentGroup, CLIStrategy, CLIExecutionPlan } from '@/config/groups';
+import { openPath } from '@tauri-apps/plugin-opener';
 
 
 const useStyles = createStyles(({ token, css }) => ({
@@ -249,6 +251,103 @@ const useStyles = createStyles(({ token, css }) => ({
     align-items: flex-start;
     gap: 12px;
   `,
+  cliTaskFooter: css`
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px dashed ${token.colorBorderSecondary};
+    font-size: 12px;
+    gap: 16px;
+  `,
+  cliTaskStatus: css`
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 500;
+  `,
+  cliTaskActions: css`
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  `,
+  cliActionBtnCancel: css`
+    padding: 2px 10px;
+    background: ${token.colorErrorBg};
+    color: ${token.colorError};
+    border: 1px solid ${token.colorErrorBorder};
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 500;
+    transition: all 0.2s;
+    &:hover {
+      background: ${token.colorError};
+      color: #fff;
+    }
+  `,
+  cliActionBtnRetry: css`
+    padding: 2px 10px;
+    background: ${token.colorInfoBg};
+    color: ${token.colorInfo};
+    border: 1px solid ${token.colorInfoBorder};
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 500;
+    transition: all 0.2s;
+    &:hover {
+      background: ${token.colorInfo};
+      color: #fff;
+    }
+  `,
+  cliWorktreeInfo: css`
+    margin-top: 6px;
+    padding: 6px 10px;
+    background: ${token.colorFillTertiary};
+    border-radius: 4px;
+    font-size: 11px;
+    color: ${token.colorTextSecondary};
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    word-break: break-all;
+  `,
+  cliWorktreePath: css`
+    font-family: var(--ant-font-family-code);
+    font-size: 11px;
+    color: ${token.colorTextSecondary};
+    word-break: break-all;
+  `,
+  cliWorktreeCopyBtn: css`
+    margin-left: 6px;
+    padding: 0 6px;
+    height: 18px;
+    line-height: 18px;
+    font-size: 10px;
+    background: transparent;
+    color: ${token.colorPrimary};
+    border: 1px solid ${token.colorBorderSecondary};
+    border-radius: 3px;
+    cursor: pointer;
+    &:hover {
+      background: ${token.colorFillSecondary};
+    }
+  `,
+  spinnerIcon: css`
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid ${token.colorInfo};
+    border-top-color: transparent;
+    animation: cli-spin 1s linear infinite;
+    @keyframes cli-spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+  `,
 }));
 
 const ChatUI = () => {
@@ -281,7 +380,9 @@ const ChatUI = () => {
   const [workspacePath, setWorkspacePath] = useState("");
   const [approvalMode, setApprovalMode] = useState<'auto' | 'ask'>('auto');
   const [cliTimeout, setCliTimeout] = useState(300000);
+  const [cliShowStderr, setCliShowStderr] = useState(true);
   const [cliStrategy, setCliStrategy] = useState<CLIStrategy>('sequential');
+  const [cliExecutionPlan, setCliExecutionPlan] = useState<Partial<CLIExecutionPlan>>({});
 
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -342,7 +443,15 @@ const ChatUI = () => {
           setWorkspacePath(wsOverride || currentGroup.workspacePath || '');
           setApprovalMode(currentGroup.approvalMode || 'auto');
           setCliTimeout(currentGroup.timeout || 300000);
-          setCliStrategy(currentGroup.strategy || 'sequential');
+          setCliShowStderr(currentGroup.showStderr !== false);
+          const strategyOverride = localStorage.getItem(`cliStrategy:${currentGroup.id}`) as CLIStrategy | null;
+          setCliStrategy(strategyOverride || currentGroup.strategy || 'sequential');
+          try {
+            const storedPlan = localStorage.getItem(`cliExecutionPlan:${currentGroup.id}`);
+            setCliExecutionPlan(storedPlan ? JSON.parse(storedPlan) : (currentGroup.executionPlan || {}));
+          } catch {
+            setCliExecutionPlan(currentGroup.executionPlan || {});
+          }
 
           let nickname = '我';
           if (data.user) {
@@ -394,6 +503,30 @@ const ChatUI = () => {
     window.location.href = `?id=${groups.length}`;
   };
 
+  const patchCurrentCLIGroup = (patch: Partial<CLIGroup>) => {
+    if (!group || group.type !== 'cli') return;
+    const nextGroup = { ...(group as CLIGroup), ...patch };
+    setGroup(nextGroup);
+    setGroups(prev => prev.map(g => g.id === nextGroup.id ? nextGroup : g));
+    if (patch.strategy) {
+      localStorage.setItem(`cliStrategy:${nextGroup.id}`, patch.strategy);
+    }
+    if (patch.executionPlan) {
+      localStorage.setItem(`cliExecutionPlan:${nextGroup.id}`, JSON.stringify(patch.executionPlan));
+    }
+  };
+
+  const handleCLIStrategyChange = (nextStrategy: CLIStrategy) => {
+    setCliStrategy(nextStrategy);
+    patchCurrentCLIGroup({ strategy: nextStrategy });
+  };
+
+  const handleCLIExecutionPlanChange = (patch: Partial<CLIExecutionPlan>) => {
+    const nextPlan = { ...cliExecutionPlan, ...patch };
+    setCliExecutionPlan(nextPlan);
+    patchCurrentCLIGroup({ executionPlan: nextPlan });
+  };
+
   // Loading / Error states
   if (initError) {
     return (
@@ -442,23 +575,246 @@ const ChatUI = () => {
     );
   }
 
+  const handleCancelTask = async (taskId: string) => {
+    try {
+      await request('/api/cli/tasks/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskId }),
+      });
+      setMessages(prev => prev.map(msg =>
+        msg.taskId === taskId ? { ...msg, status: 'cancelled' } : msg
+      ));
+    } catch (e) {
+      console.error('Failed to cancel task:', e);
+    }
+  };
 
-  // ============ AI / CLI 群的发送消息逻辑 ============
-  const handleSendMessage = async () => {
+  const handleRetryTask = async (msg: any) => {
     if (isLoading) return;
-    if (!inputMessage.trim()) return;
+    if (!msg.prompt) return;
 
-    const userMessage = {
-      id: messages.length + 1,
-      sender: users[0],
-      content: inputMessage,
-      isAI: false,
-    };
-    setMessages(prev => [...prev, userMessage]);
-    setInputMessage("");
     setIsLoading(true);
+    try {
+      const agent = cliAgents.find(a => a.id === msg.sender.id);
+      if (!agent) throw new Error('找不到该 Agent 成员');
+      if (approvalMode === 'ask') {
+        const confirmed = window.confirm(`确认让 ${agent.name} 在 ${workspacePath || '默认目录'} 执行这次任务？`);
+        if (!confirmed) return;
+      }
 
-    // 构建历史
+      const tempGroup: CLIGroup = {
+        ...(group as CLIGroup),
+        strategy: 'sequential',
+        approvalMode,
+        timeout: cliTimeout,
+        showStderr: cliShowStderr,
+        executionPlan: cliExecutionPlan,
+      };
+
+      await executeCLIStrategy(
+        tempGroup,
+        [agent],
+        msg.prompt,
+        workspacePath,
+        {
+          onAgentStart: (taskId, agentId, agentName, meta) => {
+            const agentInfo = cliAgents.find(a => a.id === agentId);
+            const baseName = agentInfo?.name || agentName;
+            const aiMessage = {
+              id: taskId,
+              sender: { id: agentId, name: meta?.stageLabel ? `${baseName} · ${meta.stageLabel}` : baseName, avatar: agentInfo?.avatar },
+              content: "",
+              isAI: true,
+              taskId: taskId,
+              status: 'running',
+              prompt: msg.prompt,
+              stageLabel: meta?.stageLabel,
+              cliCwd: meta?.cwd,
+              cliBranch: meta?.branch,
+              baseSha: meta?.baseSha,
+            };
+            setMessages(prev => [...prev, aiMessage]);
+          },
+          onToken: (taskId, token) => {
+            setMessages(prev => prev.map(m =>
+              m.taskId === taskId ? { ...m, content: m.content + token } : m
+            ));
+          },
+          onAgentEnd: (taskId, fullContent) => {
+            setMessages(prev => prev.map(m => {
+              if (m.taskId === taskId) {
+                let finalContent = fullContent;
+                if (finalContent.includes('<details open>')) {
+                  finalContent = finalContent.replace(/<details open>/g, '<details>');
+                }
+                return { ...m, content: finalContent, status: 'completed' };
+              }
+              return m;
+            }));
+          },
+          onError: (taskId, error) => {
+            setMessages(prev => prev.map(m => {
+              if (m.taskId === taskId) {
+                const normalized = String(error || '').toLowerCase();
+                const status = normalized.includes('timeout')
+                  ? 'timeout'
+                  : normalized.includes('cancel')
+                    ? 'cancelled'
+                    : 'failed';
+                return {
+                  ...m,
+                  content: m.content ? m.content + `\n\n[错误: ${error}]` : `[错误: ${error}]`,
+                  status,
+                  isError: true,
+                };
+              }
+              return m;
+            }));
+          },
+        },
+        {
+          timeoutMs: cliTimeout,
+          approvalMode,
+          showStderr: cliShowStderr,
+        }
+      );
+    } catch (e: any) {
+      console.error('Failed to retry task:', e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSendCLIMessage = async (promptText: string) => {
+    let messageHistory = messages.map(msg => ({
+      role: 'user',
+      content: msg.sender.name === userStore.userInfo.nickname ? 'user：' + msg.content : msg.sender.name + '：' + msg.content,
+      name: msg.sender.name,
+    }));
+    const cleanHistory = messageHistory.slice(-6).map((m: any) => m.content).join('\n');
+    const finalPrompt = cleanHistory ? `${cleanHistory}\nuser: ${promptText}` : promptText;
+
+    const activeAgents = cliAgents.filter(
+      a => (group as CLIGroup).members?.includes(a.id) && !mutedUsers.includes(a.id)
+    );
+
+    if (activeAgents.length === 0) {
+      const systemMsg = {
+        id: `sys-${Date.now()}`,
+        sender: { id: 'sys', name: '系统提示' },
+        content: '群聊中没有启用的 CLI Agent 成员。请在右侧设置面板中开启成员。',
+        isAI: true,
+        isError: true,
+      };
+      setMessages(prev => [...prev, systemMsg]);
+      setIsLoading(false);
+      return;
+    }
+
+    if (approvalMode === 'ask') {
+      const names = activeAgents.map(a => a.name).join('、');
+      const confirmed = window.confirm(`确认让 ${names} 在 ${workspacePath || '默认目录'} 执行这次任务？`);
+      if (!confirmed) {
+        setIsLoading(false);
+        return;
+      }
+    }
+
+    try {
+      const customGroup: CLIGroup = {
+        ...(group as CLIGroup),
+        strategy: cliStrategy,
+        timeout: cliTimeout,
+        approvalMode,
+        showStderr: cliShowStderr,
+        executionPlan: cliExecutionPlan,
+      };
+
+      await executeCLIStrategy(
+        customGroup,
+        activeAgents,
+        finalPrompt,
+        workspacePath,
+        {
+          onAgentStart: (taskId, agentId, agentName, meta) => {
+            const agentInfo = cliAgents.find(a => a.id === agentId);
+            const baseName = agentInfo?.name || agentName;
+            const aiMessage = {
+              id: taskId,
+              sender: { id: agentId, name: meta?.stageLabel ? `${baseName} · ${meta.stageLabel}` : baseName, avatar: agentInfo?.avatar },
+              content: "",
+              isAI: true,
+              taskId: taskId,
+              status: 'running',
+              prompt: finalPrompt,
+              stageLabel: meta?.stageLabel,
+              cliCwd: meta?.cwd,
+              cliBranch: meta?.branch,
+              baseSha: meta?.baseSha,
+            };
+            setMessages(prev => [...prev, aiMessage]);
+          },
+          onToken: (taskId, token) => {
+            setMessages(prev => prev.map(m =>
+              m.taskId === taskId ? { ...m, content: m.content + token } : m
+            ));
+          },
+          onAgentEnd: (taskId, fullContent) => {
+            setMessages(prev => prev.map(m => {
+              if (m.taskId === taskId) {
+                let finalContent = fullContent;
+                if (finalContent.includes('<details open>')) {
+                  finalContent = finalContent.replace(/<details open>/g, '<details>');
+                }
+                return { ...m, content: finalContent, status: 'completed' };
+              }
+              return m;
+            }));
+          },
+          onError: (taskId, error) => {
+            setMessages(prev => prev.map(m => {
+              if (m.taskId === taskId) {
+                const normalized = String(error || '').toLowerCase();
+                const status = normalized.includes('timeout')
+                  ? 'timeout'
+                  : normalized.includes('cancel')
+                    ? 'cancelled'
+                    : 'failed';
+                return {
+                  ...m,
+                  content: m.content ? m.content + `\n\n[错误: ${error}]` : `[错误: ${error}]`,
+                  status,
+                  isError: true,
+                };
+              }
+              return m;
+            }));
+          },
+        },
+        {
+          timeoutMs: cliTimeout,
+          approvalMode,
+          showStderr: cliShowStderr,
+        }
+      );
+    } catch (err: any) {
+      console.error('executeCLIStrategy error:', err);
+      const errMsg = err?.message || String(err);
+      const systemMsg = {
+        id: `sys-${Date.now()}`,
+        sender: { id: 'sys', name: '系统提示' },
+        content: `❌ 任务执行未启动：${errMsg}`,
+        isAI: true,
+        isError: true,
+      };
+      setMessages(prev => [...prev, systemMsg]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSendAIMessage = async (promptText: string) => {
     let messageHistory = messages.map(msg => ({
       role: 'user',
       content: msg.sender.name === userStore.userInfo.nickname ? 'user：' + msg.content : msg.sender.name + '：' + msg.content,
@@ -467,13 +823,12 @@ const ChatUI = () => {
 
     let selectedChars = groupAiCharacters;
 
-    // AI 群：智能调度
     if (group.type === 'ai' && !isGroupDiscussionMode && schedulerStrategy === 'tag') {
       try {
         const res = await request(`/api/scheduler`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: inputMessage, history: messageHistory, availableAIs: groupAiCharacters }),
+          body: JSON.stringify({ message: promptText, history: messageHistory, availableAIs: groupAiCharacters }),
         });
         const data = await res.json();
         if (data.selectedAIs) {
@@ -482,7 +837,6 @@ const ChatUI = () => {
       } catch { /* fallback to all */ }
     }
 
-    // 逐个调用
     for (let i = 0; i < selectedChars.length; i++) {
       const char = selectedChars[i] as any;
       if (mutedUsers.includes(char.id)) continue;
@@ -495,35 +849,17 @@ const ChatUI = () => {
       };
       setMessages(prev => [...prev, aiMessage]);
 
-      const isCliAgent = char.runtime === 'cli';
-      let uri = isCliAgent ? "/api/cli/run" : "/api/chat";
-      let requestBody: any;
-
-      if (isCliAgent) {
-        const cliCfg = char.cli || { adapter: 'generic' };
-        const cleanHistory = messageHistory.slice(-6).map((m: any) => m.content).join('\n');
-        requestBody = {
-          adapter: cliCfg.adapter,
-          prompt: cleanHistory ? `${cleanHistory}\nuser: ${inputMessage}` : inputMessage,
-          cwd: workspacePath || null,
-          binary: cliCfg.binary || null,
-          extraArgs: cliCfg.extraArgs || null,
-          env: cliCfg.env || null,
-          showStderr: cliCfg.showStderr !== false,
-        };
-      } else {
-        requestBody = {
-          model: char.model,
-          message: inputMessage,
-          query: inputMessage,
-          personality: char.personality,
-          history: messageHistory,
-          index: i,
-          aiName: char.name,
-          custom_prompt: (char.custom_prompt || '').replace('#groupName#', group.name) + "\n" + group.description,
-        };
-      }
-
+      let uri = "/api/chat";
+      let requestBody = {
+        model: char.model,
+        message: promptText,
+        query: promptText,
+        personality: char.personality,
+        history: messageHistory,
+        index: i,
+        aiName: char.name,
+        custom_prompt: (char.custom_prompt || '').replace('#groupName#', group.name) + "\n" + group.description,
+      };
 
       try {
         const response = await request(uri, {
@@ -539,7 +875,7 @@ const ChatUI = () => {
 
         let buffer = '';
         let completeResponse = '';
-        const timeout = isCliAgent ? 300000 : 10000;
+        const timeout = 10000;
 
         while (true) {
           const startTime = Date.now();
@@ -551,7 +887,6 @@ const ChatUI = () => {
 
           if (Date.now() - startTime > timeout) {
             reader.cancel();
-            console.log("读取超时")
             if (completeResponse.trim() === "") {
               throw new Error('响应超时');
             }
@@ -560,24 +895,11 @@ const ChatUI = () => {
 
           if (done) {
             if (completeResponse.trim() === "") {
-              completeResponse = "对不起，我还不够智能，服务又断开了。";
+              completeResponse = "对不起，服务暂时无法响应。";
             }
-            // Post-process: collapse <details open> → <details> so the
-            // execution block folds up once streaming finishes.
-            if (completeResponse.includes('<details open>')) {
-              completeResponse = completeResponse.replace(/<details open>/g, '<details>');
-            }
-            setMessages(prev => {
-              const newMessages = [...prev];
-              const aiMessageIndex = newMessages.findIndex(msg => msg.id === aiMessage.id);
-              if (aiMessageIndex !== -1) {
-                newMessages[aiMessageIndex] = {
-                  ...newMessages[aiMessageIndex],
-                  content: completeResponse
-                };
-              }
-              return newMessages;
-            });
+            setMessages(prev => prev.map(msg =>
+              msg.id === aiMessage.id ? { ...msg, content: completeResponse } : msg
+            ));
             break;
           }
 
@@ -608,14 +930,6 @@ const ChatUI = () => {
           ));
         }
 
-        // 流式结束后，将 <details open> 折叠为 <details>（自动收起执行过程）
-        if (completeResponse.includes('<details open>')) {
-          completeResponse = completeResponse.replace(/<details open>/g, '<details>');
-          setMessages(prev => prev.map(msg =>
-            msg.id === aiMessage.id ? { ...msg, content: completeResponse } : msg
-          ));
-        }
-
         messageHistory.push({ role: 'user', content: char.name + '：' + completeResponse, name: char.name });
         if (i < selectedChars.length - 1) await new Promise(r => setTimeout(r, 1000));
       } catch (error: any) {
@@ -627,6 +941,28 @@ const ChatUI = () => {
       }
     }
     setIsLoading(false);
+  };
+
+  const handleSendMessage = async () => {
+    if (isLoading) return;
+    if (!inputMessage.trim()) return;
+
+    const userMessage = {
+      id: messages.length + 1,
+      sender: users[0],
+      content: inputMessage,
+      isAI: false,
+    };
+    setMessages(prev => [...prev, userMessage]);
+    const prompt = inputMessage;
+    setInputMessage("");
+    setIsLoading(true);
+
+    if (group.type === 'cli') {
+      await handleSendCLIMessage(prompt);
+    } else {
+      await handleSendAIMessage(prompt);
+    }
   };
 
 
@@ -657,7 +993,7 @@ const ChatUI = () => {
         <CLIGroupSettings
           open={showSettings}
           onOpenChange={setShowSettings}
-          group={group as CLIGroup}
+          group={{ ...(group as CLIGroup), strategy: cliStrategy, executionPlan: cliExecutionPlan }}
           members={cliAgents.filter(a => (group as CLIGroup).members?.includes(a.id))}
           mutedUsers={mutedUsers}
           onToggleMute={handleToggleMute}
@@ -673,8 +1009,21 @@ const ChatUI = () => {
           onApprovalModeChange={setApprovalMode}
           timeout={cliTimeout}
           onTimeoutChange={setCliTimeout}
+          showStderr={cliShowStderr}
+          onShowStderrChange={setCliShowStderr}
           strategy={cliStrategy}
-          onStrategyChange={setCliStrategy}
+          onStrategyChange={handleCLIStrategyChange}
+          onExecutionPlanChange={handleCLIExecutionPlanChange}
+          onRetryTask={(agentId, prompt) => {
+            const agent = cliAgents.find(a => a.id === agentId);
+            if (agent) {
+              handleRetryTask({
+                prompt,
+                sender: { id: agentId, name: agent.name }
+              });
+              setShowSettings(false);
+            }
+          }}
         />
       )}
 
@@ -775,7 +1124,7 @@ const ChatUI = () => {
                   const a = getAvatarData(message.sender.name);
                   const url = resolveAvatarByName(message.sender.name, message.sender.avatar, 40);
                   const isLatest = messages[messages.length - 1]?.id === message.id;
-                  const isStreaming = !!message.isAI && isLoading && isLatest;
+                  const isStreaming = !!message.isAI && (message.status === 'running' || (isLoading && isLatest));
                   const isCli = !!message.sender?.id?.startsWith?.('cli-');
                   const bubbleClass = isUser
                     ? styles.bubbleUser
@@ -815,6 +1164,105 @@ const ChatUI = () => {
                           />
                           {isStreaming && (
                             <span className="typing-indicator" style={{ marginLeft: 4 }}>▋</span>
+                          )}
+                          {message.taskId && (
+                            <div className={styles.cliTaskFooter}>
+                              <span className={styles.cliTaskStatus}>
+                                {message.status === 'running' && (
+                                  <>
+                                    <span className={styles.spinnerIcon} />
+                                    <span>执行中</span>
+                                  </>
+                                )}
+                                {message.status === 'completed' && <span style={{ color: '#52c41a' }}>✅ 已完成</span>}
+                                {message.status === 'failed' && <span style={{ color: '#ff4d4f' }}>❌ 运行失败</span>}
+                                {message.status === 'cancelled' && <span style={{ color: '#faad14' }}>⏹ 已取消</span>}
+                                {message.status === 'timeout' && <span style={{ color: '#ff4d4f' }}>⏰ 执行超时</span>}
+                              </span>
+                              <div className={styles.cliTaskActions}>
+                                {message.status === 'running' && (
+                                  <button
+                                    onClick={() => handleCancelTask(message.taskId)}
+                                    className={styles.cliActionBtnCancel}
+                                  >
+                                    停止
+                                  </button>
+                                )}
+                                {['failed', 'cancelled', 'timeout'].includes(message.status || '') && (
+                                  <button
+                                    onClick={() => handleRetryTask(message)}
+                                    className={styles.cliActionBtnRetry}
+                                  >
+                                    重试
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                          {message.taskId && (message.cliCwd || message.cliBranch) && message.cliCwd !== workspacePath && (
+                            <div className={styles.cliWorktreeInfo}>
+                              <div>
+                                <span style={{ fontWeight: 500 }}>工作目录</span>
+                                <button
+                                  className={styles.cliWorktreeCopyBtn}
+                                  onClick={() => {
+                                    if (message.cliCwd && navigator.clipboard) {
+                                      navigator.clipboard.writeText(message.cliCwd).catch(() => { /* ignore */ });
+                                    }
+                                  }}
+                                >
+                                  复制路径
+                                </button>
+                                <button
+                                  className={styles.cliWorktreeCopyBtn}
+                                  onClick={async () => {
+                                    if (message.cliCwd) {
+                                      try {
+                                        await openPath(message.cliCwd);
+                                      } catch {
+                                        // fallback: copy cd command to clipboard
+                                        if (navigator.clipboard) {
+                                          navigator.clipboard.writeText(`cd ${message.cliCwd}`).catch(() => {});
+                                        }
+                                      }
+                                    }
+                                  }}
+                                >
+                                  打开路径
+                                </button>
+                              </div>
+                              <div className={styles.cliWorktreePath}>{message.cliCwd}</div>
+                              {message.cliBranch && (
+                                <div>
+                                  <span style={{ fontWeight: 500 }}>分支：</span>
+                                  <span className={styles.cliWorktreePath}>{message.cliBranch}</span>
+                                </div>
+                              )}
+                              {message.baseSha && (
+                                <div>
+                                  <span style={{ fontWeight: 500 }}>基准：</span>
+                                  <span className={styles.cliWorktreePath}>{message.baseSha.slice(0, 8)}</span>
+                                </div>
+                              )}
+                              {message.status === 'completed' && !message.adopted && (
+                                <button
+                                  className={styles.cliWorktreeCopyBtn}
+                                  style={{ marginTop: 4, marginLeft: 0, color: '#52c41a', borderColor: '#b7eb8f' }}
+                                  onClick={() => {
+                                    setMessages(prev => prev.map(m =>
+                                      m.taskId === message.taskId ? { ...m, adopted: true } : m
+                                    ));
+                                  }}
+                                >
+                                  标记采用
+                                </button>
+                              )}
+                              {message.adopted && (
+                                <span style={{ marginTop: 4, display: 'inline-block', fontSize: 10, color: '#52c41a', fontWeight: 600 }}>
+                                  ✓ 已采用
+                                </span>
+                              )}
+                            </div>
                           )}
                         </div>
                       </div>

@@ -14,7 +14,27 @@ pub fn get_db_path(app: &AppHandle) -> PathBuf {
 pub fn init_db(app: &AppHandle) -> Result<()> {
     let db_path = get_db_path(app);
     let conn = Connection::open(&db_path)?;
+    init_db_schemas(&conn)?;
 
+    // Insert default group if empty
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM claw_groups WHERE id = 'claw-g1'",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if count == 0 {
+        conn.execute(
+            "INSERT INTO claw_groups (id, name, description, max_rounds, max_responders)
+             VALUES ('claw-g1', '🦞龙虾交流群', '多个 OpenClaw 龙虾在一起聊天互动的群', 3, 3);",
+            [],
+        )?;
+    }
+
+    Ok(())
+}
+
+pub fn init_db_schemas(conn: &Connection) -> Result<()> {
     // Enable foreign keys
     conn.execute("PRAGMA foreign_keys = ON;", [])?;
 
@@ -180,21 +200,139 @@ pub fn init_db(app: &AppHandle) -> Result<()> {
     conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_game_players_room ON ai_game_players(room_id);", [])?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_game_messages_room_id ON ai_game_messages(room_id, id);", [])?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_game_votes_room ON ai_game_votes(room_id);", [])?;
-
-    // Insert default group if empty
-    let count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM claw_groups WHERE id = 'claw-g1'",
+    
+    // Create CLI task and profile tables
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS cli_tasks (
+            id TEXT PRIMARY KEY,
+            group_id TEXT NOT NULL,
+            agent_id TEXT NOT NULL,
+            agent_name TEXT NOT NULL,
+            adapter TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('queued', 'running', 'completed', 'failed', 'cancelled', 'timeout')),
+            cwd TEXT,
+            prompt TEXT NOT NULL,
+            prompt_summary TEXT,
+            session_id TEXT,
+            pid INTEGER,
+            exit_code INTEGER,
+            error_message TEXT,
+            log_path TEXT,
+            started_at TIMESTAMP,
+            ended_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );",
         [],
-        |row| row.get(0),
     )?;
 
-    if count == 0 {
-        conn.execute(
-            "INSERT INTO claw_groups (id, name, description, max_rounds, max_responders)
-             VALUES ('claw-g1', '🦞龙虾交流群', '多个 OpenClaw 龙虾在一起聊天互动的群', 3, 3);",
-            [],
-        )?;
-    }
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS cli_runtimes (
+            adapter TEXT PRIMARY KEY,
+            installed INTEGER NOT NULL DEFAULT 0,
+            binary_path TEXT,
+            version TEXT,
+            last_check_at TIMESTAMP,
+            last_run_at TIMESTAMP,
+            last_error TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS cli_agent_profiles (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            adapter TEXT NOT NULL,
+            avatar TEXT,
+            tags TEXT,
+            binary TEXT,
+            extra_args TEXT,
+            env TEXT,
+            default_cwd TEXT,
+            approval_mode TEXT DEFAULT 'auto',
+            show_stderr INTEGER DEFAULT 1,
+            max_concurrent_tasks INTEGER DEFAULT 1,
+            enabled INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS cli_skill_packs (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            root_path TEXT NOT NULL,
+            entry_file TEXT DEFAULT 'SKILL.md',
+            enabled INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS cli_agent_skill_packs (
+            agent_id TEXT NOT NULL,
+            skill_id TEXT NOT NULL,
+            PRIMARY KEY (agent_id, skill_id),
+            FOREIGN KEY (agent_id) REFERENCES cli_agent_profiles(id),
+            FOREIGN KEY (skill_id) REFERENCES cli_skill_packs(id)
+        );",
+        [],
+    )?;
+
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cli_tasks_group_created ON cli_tasks(group_id, created_at DESC);", [])?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cli_tasks_status ON cli_tasks(status);", [])?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cli_tasks_agent ON cli_tasks(agent_id, created_at DESC);", [])?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_init_db_schemas() {
+        let conn = Connection::open_in_memory().unwrap();
+        let result = init_db_schemas(&conn);
+        assert!(result.is_ok());
+
+        // Verify that the table structures are created correctly
+        let tables: Vec<String> = conn
+            .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+
+        assert!(tables.contains(&"users".to_string()));
+        assert!(tables.contains(&"claw_groups".to_string()));
+        assert!(tables.contains(&"cli_tasks".to_string()));
+        assert!(tables.contains(&"cli_runtimes".to_string()));
+        assert!(tables.contains(&"cli_agent_profiles".to_string()));
+        assert!(tables.contains(&"cli_skill_packs".to_string()));
+        assert!(tables.contains(&"cli_agent_skill_packs".to_string()));
+
+        // Verify we can insert a CLI task and retrieve it
+        let task_id = "test-task-123";
+        conn.execute(
+            "INSERT INTO cli_tasks (id, group_id, agent_id, agent_name, adapter, status, prompt)
+             VALUES (?, 'group-1', 'agent-1', 'Agent 1', 'codex', 'running', 'hello world')",
+            rusqlite::params![task_id],
+        ).unwrap();
+
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM cli_tasks WHERE id = ?",
+            rusqlite::params![task_id],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(count, 1);
+    }
 }
