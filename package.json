@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "test:cli": "node src/engine/cliEngine.modes.test.mjs",
+    "test:llm": "node src/utils/llmClient.test.mjs",
     "preview": "vite preview",
     "tauri": "tauri"
   },
