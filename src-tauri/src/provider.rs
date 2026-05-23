@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 
 use crate::db::get_db_path;
+use crate::vault;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -20,7 +21,7 @@ pub struct Provider {
     pub updated_at: Option<String>,
 }
 
-mod db {
+pub(crate) mod db {
     use super::*;
 
     const SELECT_COLS: &str =
@@ -181,6 +182,27 @@ mod db {
 
         Ok(())
     }
+}
+
+/// Resolve `(base_url, api_key)` for a provider from DB + vault.
+pub(crate) fn load_provider_endpoint(
+    conn: &Connection,
+    master: &[u8; crate::vault::KEY_LEN],
+    provider_id: &str,
+) -> Result<(String, String), String> {
+    let provider = db::get_provider(conn, provider_id)?
+        .ok_or_else(|| format!("provider '{provider_id}' not found"))?;
+
+    let base_url = provider.base_url.trim().trim_end_matches('/').to_string();
+    if base_url.is_empty() {
+        return Err("provider baseUrl is empty".into());
+    }
+
+    let api_key = crate::vault::get(conn, master, &provider.api_key_ref)
+        .map_err(|e| e.to_string())?
+        .unwrap_or_default();
+
+    Ok((base_url, api_key))
 }
 
 #[tauri::command]

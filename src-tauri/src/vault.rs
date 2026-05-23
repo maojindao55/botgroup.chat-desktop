@@ -66,6 +66,19 @@ impl From<rusqlite::Error> for VaultError {
 use std::fs;
 use std::io::Write;
 
+use tauri::{AppHandle, Manager};
+
+/// Load or create the app master key from `${app_data}/master.key`.
+pub fn load_master_key(app: &AppHandle) -> Result<[u8; KEY_LEN], String> {
+    let mut path = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("vault: cannot resolve app_data_dir: {}", e))?;
+    fs::create_dir_all(&path).map_err(|e| e.to_string())?;
+    path.push(MASTER_KEY_FILENAME);
+    load_or_create_master_key(&path).map_err(|e| e.to_string())
+}
+
 use aes_gcm::aead::OsRng;
 use aes_gcm::aead::rand_core::RngCore;
 use aes_gcm::{Aes256Gcm, Key, Nonce};
@@ -194,10 +207,6 @@ pub fn set(conn: &Connection, master: &[u8; KEY_LEN], name: &str, value: &str)
 
 /// Decrypt and return value for `name`, or `Ok(None)` if not present.
 /// Returns `VaultError::Crypto` if decryption fails (e.g., AAD mismatch).
-///
-/// `allow(dead_code)`: PR1 ships the function but no Rust-side caller exists
-/// yet; PR2 (`llm_proxy.rs`) is the first consumer. Remove the attribute then.
-#[allow(dead_code)]
 pub fn get(conn: &Connection, master: &[u8; KEY_LEN], name: &str)
     -> Result<Option<String>, VaultError>
 {

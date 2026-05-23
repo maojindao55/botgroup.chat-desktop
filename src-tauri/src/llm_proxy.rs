@@ -1,11 +1,6 @@
 //! OpenAI-compatible chat/completions proxy with SSE streaming.
 //!
 //! Events emit on `llm://{session_id}`. See design doc §2.4.
-//!
-//! ## PR4 follow-up
-//! - Replace inline `apiKey` with `vault::get(conn, master, provider.api_key_ref)`
-//! - Implement `provider_id` resolution via `providers` table
-//! - Remove plaintext key crossing IPC boundary
 
 use serde::{Deserialize, Serialize};
 
@@ -54,8 +49,13 @@ use std::time::Duration;
 
 use futures_util::StreamExt;
 use reqwest::Client;
+use rusqlite::Connection;
 use tauri::{AppHandle, Emitter};
 use tokio::time::timeout;
+
+use crate::db::get_db_path;
+use crate::provider;
+use crate::vault;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -98,16 +98,14 @@ impl std::fmt::Display for LlmProxyError {
     }
 }
 
-/// Resolve endpoint credentials. PR2: inline baseURL+apiKey only.
-pub fn resolve_endpoint(args: &LlmChatStreamArgs) -> Result<(String, String), LlmProxyError> {
-    if let Some(pid) = &args.provider_id {
-        if args.base_url.is_none() && args.api_key.is_none() {
-            return Err(LlmProxyError::BadRequest(format!(
-                "providerId '{}' resolution is not implemented until PR3/PR4; pass baseUrl+apiKey",
-                pid
-            )));
-        }
-    }
+fn inline_credentials_provided(args: &LlmChatStreamArgs) -> bool {
+    args.base_url
+        .as_ref()
+        .is_some_and(|s| !s.trim().is_empty())
+        && args.api_key.is_some()
+}
+
+fn resolve_endpoint_inline(args: &LlmChatStreamArgs) -> Result<(String, String), LlmProxyError> {
     let base_url = args
         .base_url
         .as_ref()
@@ -116,6 +114,27 @@ pub fn resolve_endpoint(args: &LlmChatStreamArgs) -> Result<(String, String), Ll
         .ok_or_else(|| LlmProxyError::BadRequest("baseUrl is required".into()))?;
     let api_key = args.api_key.clone().unwrap_or_default();
     Ok((base_url, api_key))
+}
+
+/// Resolve endpoint credentials from inline args or provider DB + vault.
+pub fn resolve_endpoint_with_provider(
+    app: &AppHandle,
+    args: &LlmChatStreamArgs,
+) -> Result<(String, String), LlmProxyError> {
+    if inline_credentials_provided(args) {
+        return resolve_endpoint_inline(args);
+    }
+
+    if let Some(provider_id) = &args.provider_id {
+        let db_path = get_db_path(app);
+        let conn = Connection::open(&db_path)
+            .map_err(|e| LlmProxyError::BadRequest(e.to_string()))?;
+        let master = vault::load_master_key(app).map_err(LlmProxyError::BadRequest)?;
+        return provider::load_provider_endpoint(&conn, &master, provider_id)
+            .map_err(LlmProxyError::BadRequest);
+    }
+
+    resolve_endpoint_inline(args)
 }
 
 pub fn build_chat_body(args: &LlmChatStreamArgs) -> serde_json::Value {
@@ -142,7 +161,7 @@ pub async fn stream_chat_completions(
     args: LlmChatStreamArgs,
 ) -> Result<(), LlmProxyError> {
     let event_name = format!("llm://{}", args.session_id);
-    let (base_url, api_key) = resolve_endpoint(&args)?;
+    let (base_url, api_key) = resolve_endpoint_with_provider(&app, &args)?;
     let url = format!("{}/chat/completions", base_url);
     let body = build_chat_body(&args);
 
@@ -225,7 +244,7 @@ pub async fn llm_chat_stream(app: AppHandle, args: LlmChatStreamArgs) -> Result<
     if args.messages.is_empty() {
         return Err("messages must not be empty".into());
     }
-    resolve_endpoint(&args).map_err(|e| e.to_string())?;
+    resolve_endpoint_with_provider(&app, &args).map_err(|e| e.to_string())?;
 
     let session_id = args.session_id.clone();
     let event_name = format!("llm://{}", session_id);
@@ -314,18 +333,40 @@ mod tests {
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[test]
-    fn resolve_endpoint_rejects_provider_only() {
-        let args = LlmChatStreamArgs {
-            session_id: "s".into(),
-            model: "m".into(),
-            messages: vec![],
-            temperature: None,
-            tools: None,
-            base_url: None,
-            api_key: None,
-            provider_id: Some("qwen".into()),
+    fn resolve_endpoint_from_db_uses_vault_secret() {
+        use crate::db::init_db_schemas;
+        use crate::provider::db::upsert_provider;
+        use crate::provider::Provider;
+        use crate::vault::{self, KEY_LEN};
+
+        let conn = Connection::open_in_memory().unwrap();
+        init_db_schemas(&conn).unwrap();
+
+        let mut master = [0u8; KEY_LEN];
+        for (i, b) in master.iter_mut().enumerate() {
+            *b = i as u8;
+        }
+
+        let provider = Provider {
+            id: "deepseek".into(),
+            name: "DeepSeek".into(),
+            base_url: "https://api.deepseek.com/v1/".into(),
+            api_key_ref: "provider:deepseek".into(),
+            models: vec!["deepseek-chat".into()],
+            source: "user".into(),
+            icon_url: None,
+            description: None,
+            enabled: true,
+            created_at: None,
+            updated_at: None,
         };
-        assert!(resolve_endpoint(&args).is_err());
+        upsert_provider(&conn, &provider).unwrap();
+        vault::set(&conn, &master, "provider:deepseek", "sk-from-vault").unwrap();
+
+        let (base_url, api_key) =
+            provider::load_provider_endpoint(&conn, &master, "deepseek").unwrap();
+        assert_eq!(base_url, "https://api.deepseek.com/v1");
+        assert_eq!(api_key, "sk-from-vault");
     }
 
     #[tokio::test]
@@ -357,7 +398,7 @@ mod tests {
             provider_id: None,
         };
 
-        let (base, key) = resolve_endpoint(&args).unwrap();
+        let (base, key) = resolve_endpoint_inline(&args).unwrap();
         assert_eq!(base, server.uri());
         assert_eq!(key, "sk-test");
         let body = build_chat_body(&args);
