@@ -43,6 +43,7 @@ pub fn run() {
             provider::upsert_provider,
             provider::delete_provider,
             provider::seed_builtin_providers,
+            provider::provider_test,
             cli::cli_run,
             cli::cli_kill,
             cli::cli_check,

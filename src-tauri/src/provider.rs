@@ -1,5 +1,6 @@
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
+use std::time::{Duration, Instant};
 use tauri::AppHandle;
 
 use crate::db::get_db_path;
@@ -205,6 +206,119 @@ pub(crate) fn load_provider_endpoint(
     Ok((base_url, api_key))
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderTestResult {
+    pub ok: bool,
+    pub latency_ms: u64,
+    pub model_echo: Option<String>,
+    pub error_class: Option<String>,
+    pub message: Option<String>,
+}
+
+fn classify_http_error(status: u16) -> &'static str {
+    if status == 401 || status == 403 {
+        "auth"
+    } else if (500..600).contains(&status) {
+        "5xx"
+    } else if (400..500).contains(&status) {
+        "4xx"
+    } else {
+        "4xx"
+    }
+}
+
+pub(crate) async fn ping_provider(
+    base_url: &str,
+    api_key: &str,
+    models: &[String],
+) -> ProviderTestResult {
+    let model = models
+        .first()
+        .cloned()
+        .unwrap_or_else(|| "gpt-3.5-turbo".to_string());
+    let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
+    let body = serde_json::json!({
+        "model": model,
+        "messages": [{"role": "user", "content": "hi"}],
+        "max_tokens": 1,
+        "stream": false,
+    });
+
+    let started = Instant::now();
+    let client = match reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            return ProviderTestResult {
+                ok: false,
+                latency_ms: started.elapsed().as_millis() as u64,
+                model_echo: None,
+                error_class: Some("network".into()),
+                message: Some(e.to_string()),
+            };
+        }
+    };
+
+    let mut req = client
+        .post(&url)
+        .header("Content-Type", "application/json")
+        .json(&body);
+    if !api_key.is_empty() {
+        req = req.header("Authorization", format!("Bearer {api_key}"));
+    }
+
+    match req.send().await {
+        Err(e) => ProviderTestResult {
+            ok: false,
+            latency_ms: started.elapsed().as_millis() as u64,
+            model_echo: None,
+            error_class: Some("network".into()),
+            message: Some(e.to_string()),
+        },
+        Ok(resp) => {
+            let latency_ms = started.elapsed().as_millis() as u64;
+            let status = resp.status().as_u16();
+            if !resp.status().is_success() {
+                let body_text = resp.text().await.unwrap_or_default();
+                return ProviderTestResult {
+                    ok: false,
+                    latency_ms,
+                    model_echo: None,
+                    error_class: Some(classify_http_error(status).into()),
+                    message: Some(body_text),
+                };
+            }
+
+            let body_text = resp.text().await.unwrap_or_default();
+            let model_echo = serde_json::from_str::<serde_json::Value>(&body_text)
+                .ok()
+                .and_then(|v| v.get("model").and_then(|m| m.as_str()).map(String::from));
+
+            ProviderTestResult {
+                ok: true,
+                latency_ms,
+                model_echo,
+                error_class: Some("ok".into()),
+                message: None,
+            }
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn provider_test(app: AppHandle, provider_id: String) -> Result<ProviderTestResult, String> {
+    let db_path = get_db_path(&app);
+    let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
+    let master = vault::load_master_key(&app)?;
+    let provider = db::get_provider(&conn, &provider_id)?
+        .ok_or_else(|| format!("provider '{provider_id}' not found"))?;
+    let (base_url, api_key) = load_provider_endpoint(&conn, &master, &provider_id)?;
+    Ok(ping_provider(&base_url, &api_key, &provider.models).await)
+}
+
 #[tauri::command]
 pub fn list_providers(app: AppHandle) -> Result<Vec<Provider>, String> {
     let db_path = get_db_path(&app);
@@ -345,5 +459,49 @@ mod tests {
 
         let got = get_provider(&conn, "volcengine").unwrap().unwrap();
         assert_eq!(got.models, p.models);
+    }
+
+    use wiremock::matchers::{header, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[tokio::test]
+    async fn provider_test_ping_success() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .and(header("Authorization", "Bearer sk-test"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "model": "deepseek-chat",
+                "choices": [{"message": {"role": "assistant", "content": "Hi"}}]
+            })))
+            .mount(&server)
+            .await;
+
+        let result = ping_provider(
+            &server.uri(),
+            "sk-test",
+            &["deepseek-chat".to_string()],
+        )
+        .await;
+
+        assert!(result.ok);
+        assert_eq!(result.error_class.as_deref(), Some("ok"));
+        assert_eq!(result.model_echo.as_deref(), Some("deepseek-chat"));
+    }
+
+    #[tokio::test]
+    async fn provider_test_ping_auth_error() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(ResponseTemplate::new(401).set_body_string("invalid key"))
+            .mount(&server)
+            .await;
+
+        let result = ping_provider(&server.uri(), "bad-key", &[]).await;
+
+        assert!(!result.ok);
+        assert_eq!(result.error_class.as_deref(), Some("auth"));
+        assert!(result.message.as_deref().unwrap_or("").contains("invalid key"));
     }
 }
