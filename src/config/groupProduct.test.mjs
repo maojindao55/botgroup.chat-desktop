@@ -77,3 +77,19 @@ const labels = JSON.stringify({
 });
 assert.doesNotMatch(labels, /工作台/);
 assert.doesNotMatch(labels, /Workbench/i);
+
+const wizard = await readFile(new URL('../pages/chat/components/CreateGroupWizard.tsx', import.meta.url), 'utf8');
+
+for (const symbol of [
+  'productGroupTypes',
+  'aiSpeechModes',
+  'agentWorkflowTemplates',
+  'cliWorkflowTemplates',
+  'applyAISpeechMode',
+]) {
+  assert.match(wizard, new RegExp(symbol));
+}
+
+for (const oldCopy of ['选择你要创建的群聊类型', 'AI 群聊', 'Agent 群聊', 'CLI Agent 群']) {
+  assert.doesNotMatch(wizard, new RegExp(oldCopy));
+}
