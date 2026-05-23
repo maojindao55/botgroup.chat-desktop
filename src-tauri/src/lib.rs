@@ -2,6 +2,7 @@ mod db;
 mod api;
 mod cli;
 mod llm_proxy;
+mod provider;
 mod vault;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
