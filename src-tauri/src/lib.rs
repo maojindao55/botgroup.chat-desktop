@@ -44,6 +44,7 @@ pub fn run() {
             provider::delete_provider,
             provider::seed_builtin_providers,
             provider::provider_test,
+            provider::provider_ping,
             cli::cli_run,
             cli::cli_kill,
             cli::cli_check,

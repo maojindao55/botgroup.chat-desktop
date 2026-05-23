@@ -322,6 +322,16 @@ pub(crate) async fn ping_provider(
 }
 
 #[tauri::command]
+pub async fn provider_ping(
+    base_url: String,
+    api_key: String,
+    model: Option<String>,
+) -> Result<ProviderTestResult, String> {
+    let models: Vec<String> = model.into_iter().collect();
+    Ok(ping_provider(&base_url, &api_key, &models).await)
+}
+
+#[tauri::command]
 pub async fn provider_test(app: AppHandle, provider_id: String) -> Result<ProviderTestResult, String> {
     let db_path = get_db_path(&app);
     let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;

@@ -59,7 +59,12 @@ interface ProviderStore {
   get: (id: string) => Provider | undefined;
   upsert: (p: Provider) => Promise<void>;
   remove: (id: string) => Promise<void>;
-  testConnection: (id: string) => Promise<ProviderTestResult>;
+  testConnection: (params: {
+    id?: string;
+    baseURL: string;
+    apiKey: string;
+    models?: string[];
+  }) => Promise<ProviderTestResult>;
   setSecret: (providerId: string, value: string) => Promise<void>;
   hasSecret: (providerId: string) => Promise<boolean>;
   /** 若 vault 无密钥，尝试从左下角 legacy localStorage 导入 */
@@ -80,7 +85,23 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
   load: async () => {
     try {
       if (isTauri) {
-        const rustProviders = await invoke<RustProvider[]>('list_providers');
+        let rustProviders = await invoke<RustProvider[]>('list_providers');
+        if (rustProviders.length === 0) {
+          await invoke('seed_builtin_providers', {
+            providers: builtinProviders.map((p) => ({
+              id: p.id,
+              name: p.name,
+              baseURL: p.baseURL,
+              apiKeyRef: p.apiKeyRef,
+              models: p.models,
+              source: p.source,
+              iconUrl: p.iconUrl ?? null,
+              description: p.description ?? null,
+              enabled: p.enabled !== false,
+            })),
+          });
+          rustProviders = await invoke<RustProvider[]>('list_providers');
+        }
         const record: Record<string, Provider> = {};
         rustProviders.forEach((r) => {
           record[r.id] = mapFromRust(r);
@@ -147,8 +168,13 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
     });
   },
 
-  testConnection: async (id: string) => {
-    return invoke<ProviderTestResult>('provider_test', { providerId: id });
+  testConnection: async (params) => {
+    const model = params.models?.[0];
+    return invoke<ProviderTestResult>('provider_ping', {
+      baseUrl: params.baseURL.replace(/\/$/, ''),
+      apiKey: params.apiKey,
+      model: model ?? null,
+    });
   },
 
   setSecret: async (providerId: string, value: string) => {

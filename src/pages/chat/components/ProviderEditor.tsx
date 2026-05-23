@@ -11,8 +11,9 @@ import {
   Tag,
   message,
 } from 'antd';
-import { useProviderStore } from '@/store/providerStore';
-import type { Provider } from '@/config/providers';
+import { invoke } from '@tauri-apps/api/core';
+import { useProviderStore, type ProviderTestResult } from '@/store/providerStore';
+import { readLegacyApiKey, type Provider } from '@/config/providers';
 import { Copy, Zap } from 'lucide-react';
 
 interface ProviderEditorProps {
@@ -21,6 +22,15 @@ interface ProviderEditorProps {
   onClose: () => void;
   onSave?: () => void;
   onCloneEdit?: (newId: string) => void;
+}
+
+function formatInvokeError(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (typeof e === 'string') return e;
+  if (e && typeof e === 'object' && 'message' in e && typeof (e as { message: unknown }).message === 'string') {
+    return (e as { message: string }).message;
+  }
+  return String(e);
 }
 
 export const ProviderEditor: React.FC<ProviderEditorProps> = ({
@@ -113,33 +123,67 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
 
   const handleTest = async () => {
     try {
-      const values = await form.validateFields(['name', 'baseURL']);
       setTesting(true);
 
       const id = providerId || `user-${Date.now()}`;
-      if (!readOnly) {
-        await persistProvider({ ...form.getFieldsValue(), ...values }, id);
-      }
+      const formValues = form.getFieldsValue();
+      const baseURL = (formValues.baseURL as string)?.trim() || provider?.baseURL;
+      const models = (formValues.models as string[]) || provider?.models || [];
+      const name = (formValues.name as string)?.trim() || provider?.name;
 
-      const inlineKey = (form.getFieldValue('apiKey') as string)?.trim();
-      const hasKey = await ensureSecret(id, inlineKey || undefined);
-      if (!hasKey) {
-        message.warning('未配置 API 密钥：请在下方输入，或先在左下角头像处配置后重试');
+      if (!baseURL) {
+        message.warning('请填写 API 地址 (Base URL)');
         return;
       }
-      if (inlineKey) {
-        setSecretConfigured(true);
+      if (!models.length) {
+        message.warning('请至少添加一个可用模型（如 qwen-plus）');
+        return;
       }
 
-      const result = await testConnection(id);
+      if (!readOnly) {
+        await persistProvider({ ...formValues, name, baseURL, models }, id);
+      }
+
+      const inlineKey = (formValues.apiKey as string)?.trim();
+      let apiKey = inlineKey || readLegacyApiKey(id) || readLegacyApiKey(provider?.id || '') || '';
+
+      if (!apiKey) {
+        const configured = await hasSecret(id);
+        if (!configured) {
+          message.warning('未配置 API 密钥：请在下方输入 API Key');
+          return;
+        }
+        // Key in vault only — use provider_test path (reads vault server-side)
+        const result = await invoke<ProviderTestResult>('provider_test', {
+          providerId: id,
+        });
+        if (result.ok) {
+          message.success(`连接成功 (${result.latencyMs}ms${result.modelEcho ? ` · ${result.modelEcho}` : ''})`);
+        } else {
+          message.error(result.message || `连接失败 (${result.errorClass || 'unknown'})`);
+        }
+        return;
+      }
+
+      const result = await testConnection({
+        id,
+        baseURL,
+        apiKey,
+        models,
+      });
+
       if (result.ok) {
+        // Persist key to vault after successful ping
+        await ensureSecret(id, apiKey);
+        setSecretConfigured(true);
         message.success(`连接成功 (${result.latencyMs}ms${result.modelEcho ? ` · ${result.modelEcho}` : ''})`);
       } else {
         message.error(result.message || `连接失败 (${result.errorClass || 'unknown'})`);
       }
     } catch (e) {
       if (e && typeof e === 'object' && 'errorFields' in e) return;
-      message.error('测试连接失败，请检查配置');
+      console.error('[ProviderEditor] test connection failed:', e);
+      message.error(formatInvokeError(e) || '测试连接失败，请检查配置');
     } finally {
       setTesting(false);
     }
