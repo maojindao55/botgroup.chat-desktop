@@ -304,6 +304,18 @@ pub fn init_db_schemas(conn: &Connection) -> Result<()> {
         [],
     )?;
 
+    // Create secrets table for AI member API keys (encrypted with AES-256-GCM,
+    // AAD = name to prevent ciphertext swap attacks). See vault.rs for crypto.
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS secrets (
+            name        TEXT PRIMARY KEY,
+            ciphertext  BLOB NOT NULL,
+            nonce       BLOB NOT NULL,
+            updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );",
+        [],
+    )?;
+
     // Create indices
     conn.execute("CREATE INDEX IF NOT EXISTS idx_cli_tasks_group_created ON cli_tasks(group_id, created_at DESC);", [])?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_cli_tasks_status ON cli_tasks(status);", [])?;
@@ -340,6 +352,7 @@ mod tests {
         assert!(tables.contains(&"cli_skill_packs".to_string()));
         assert!(tables.contains(&"cli_agent_skill_packs".to_string()));
         assert!(tables.contains(&"ai_members".to_string()));
+        assert!(tables.contains(&"secrets".to_string()));
 
         // Verify we can insert a CLI task and retrieve it
         let task_id = "test-task-123";

@@ -1,6 +1,7 @@
 mod db;
 mod api;
 mod cli;
+mod vault;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -30,6 +31,10 @@ pub fn run() {
             api::upsert_ai_member,
             api::delete_ai_member,
             api::seed_builtin_ai_members,
+            api::secret_set,
+            api::secret_has,
+            api::secret_delete,
+            api::secret_list_names,
             cli::cli_run,
             cli::cli_kill,
             cli::cli_check,
