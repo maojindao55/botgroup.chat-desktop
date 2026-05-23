@@ -93,3 +93,12 @@ for (const symbol of [
 for (const oldCopy of ['选择你要创建的群聊类型', 'AI 群聊', 'Agent 群聊', 'CLI Agent 群']) {
   assert.doesNotMatch(wizard, new RegExp(oldCopy));
 }
+
+const aiSettings = await readFile(new URL('../pages/chat/components/AIGroupSettings.tsx', import.meta.url), 'utf8');
+
+assert.match(aiSettings, /发言方式/);
+for (const symbol of ['aiSpeechModes', 'applyAISpeechMode', 'resolveAISpeechMode']) {
+  assert.match(aiSettings, new RegExp(symbol));
+}
+assert.doesNotMatch(aiSettings, /全员讨论模式/);
+assert.doesNotMatch(aiSettings, /调度策略/);
