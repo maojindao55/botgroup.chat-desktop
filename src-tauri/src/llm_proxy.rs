@@ -50,6 +50,7 @@ use std::time::Duration;
 use futures_util::StreamExt;
 use reqwest::Client;
 use tauri::{AppHandle, Emitter};
+use tokio::time::timeout;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -204,6 +205,56 @@ pub async fn stream_chat_completions(
     }
 
     let _ = app.emit(&event_name, LlmEvent::Done);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn llm_chat_stream(app: AppHandle, args: LlmChatStreamArgs) -> Result<(), String> {
+    if args.session_id.is_empty() {
+        return Err("sessionId is required".into());
+    }
+    if args.model.is_empty() {
+        return Err("model is required".into());
+    }
+    if args.messages.is_empty() {
+        return Err("messages must not be empty".into());
+    }
+    resolve_endpoint(&args).map_err(|e| e.to_string())?;
+
+    let session_id = args.session_id.clone();
+    let event_name = format!("llm://{}", session_id);
+    let app_bg = app.clone();
+
+    tokio::spawn(async move {
+        let result = timeout(STREAM_TIMEOUT, stream_chat_completions(app_bg.clone(), args)).await;
+        match result {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => {
+                let _ = app_bg.emit(
+                    &event_name,
+                    LlmEvent::Error {
+                        message: e.to_string(),
+                        status: match &e {
+                            LlmProxyError::Http { status, .. } => Some(*status),
+                            _ => None,
+                        },
+                    },
+                );
+                let _ = app_bg.emit(&event_name, LlmEvent::Done);
+            }
+            Err(_) => {
+                let _ = app_bg.emit(
+                    &event_name,
+                    LlmEvent::Error {
+                        message: "stream timeout".into(),
+                        status: None,
+                    },
+                );
+                let _ = app_bg.emit(&event_name, LlmEvent::Done);
+            }
+        }
+    });
+
     Ok(())
 }
 

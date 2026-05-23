@@ -36,6 +36,7 @@ pub fn run() {
             api::secret_has,
             api::secret_delete,
             api::secret_list_names,
+            llm_proxy::llm_chat_stream,
             cli::cli_run,
             cli::cli_kill,
             cli::cli_check,
