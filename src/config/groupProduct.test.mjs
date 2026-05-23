@@ -116,3 +116,60 @@ assert.match(cliSettings, /开发群配置/);
 assert.match(cliSettings, /群规/);
 assert.match(cliSettings, /cliWorkflowTemplates/);
 assert.match(cliSettings, /开发群友/);
+
+const memberLibrary = await readFile(new URL('../pages/chat/components/AIMemberLibrary.tsx', import.meta.url), 'utf8');
+
+for (const copy of ['资源库', '新增角色', '新增专家', '新增开发群友', '模型服务']) {
+  assert.match(memberLibrary, new RegExp(copy));
+}
+for (const oldCopy of ['AI 群员管理库', 'AI 群员库', 'LLM 角色', 'Agent 协作', 'CLI Agent', '暂无群员']) {
+  assert.doesNotMatch(memberLibrary, new RegExp(oldCopy));
+}
+
+const memberEditor = await readFile(new URL('../pages/chat/components/AIMemberEditor.tsx', import.meta.url), 'utf8');
+
+for (const copy of ['编辑资源', '新建资源', '资源类型', '资源名称', '角色', '专家', '开发群友']) {
+  assert.match(memberEditor, new RegExp(copy));
+}
+for (const oldCopy of ['编辑群员', '新建群员', '群员类型', '群员名称', 'LLM 角色', '>Agent<', 'CLI Agent']) {
+  assert.doesNotMatch(memberEditor, new RegExp(oldCopy));
+}
+
+const memberPicker = await readFile(new URL('../pages/chat/components/MemberPicker.tsx', import.meta.url), 'utf8');
+
+assert.match(memberPicker, /开发群友/);
+assert.doesNotMatch(memberPicker, /CLI Agent/);
+assert.doesNotMatch(memberPicker, /选择群员/);
+
+const sidebar = await readFile(new URL('../pages/chat/components/Sidebar.tsx', import.meta.url), 'utf8');
+
+assert.match(sidebar, /getProductGroupType/);
+assert.match(sidebar, /群聊空间/);
+assert.match(sidebar, /资源库/);
+for (const oldCopy of ['工作空间', 'AI 群员库', '>AI<', '>CLI<', '>Agent<']) {
+  assert.doesNotMatch(sidebar, new RegExp(oldCopy));
+}
+
+const chatUI = await readFile(new URL('../pages/chat/components/ChatUI.tsx', import.meta.url), 'utf8');
+
+assert.match(chatUI, /群聊中没有启用的开发群友/);
+assert.match(chatUI, /开发群友将在 workspace 中协作执行/);
+assert.match(chatUI, /资源库/);
+assert.doesNotMatch(chatUI, /CLI Agent 将在 workspace 中执行/);
+assert.doesNotMatch(chatUI, /AI 群员库（/);
+
+const agentChatUI = await readFile(new URL('../pages/chat/components/AgentChatUI.tsx', import.meta.url), 'utf8');
+
+assert.match(agentChatUI, /专家群/);
+assert.match(agentChatUI, /位专家/);
+assert.match(agentChatUI, /资源库/);
+assert.match(agentChatUI, /专家群友将按群规协作回复/);
+assert.doesNotMatch(agentChatUI, /Agent 协作群/);
+assert.doesNotMatch(agentChatUI, /AI 群员库/);
+
+const readme = await readFile(new URL('../../README.md', import.meta.url), 'utf8');
+
+for (const copy of ['角色群', '专家群', '开发群', '资源库']) {
+  assert.match(readme, new RegExp(copy));
+}
+assert.doesNotMatch(readme, /AI 群聊/);

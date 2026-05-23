@@ -1,5 +1,5 @@
 /**
- * Agent 群聊对话组件
+ * 专家群聊对话组件
  * 独立的聊天 UI，使用 agentEngine 策略引擎驱动对话
  */
 import { useState, useRef, useEffect } from 'react';
@@ -430,7 +430,7 @@ const AgentChatUI = ({
                       {group.name}
                     </h1>
                     <span style={{ fontSize: 12, opacity: 0.6 }}>
-                      ({currentAgents.length} agents)
+                      ({currentAgents.length} 位专家)
                     </span>
                   </div>
                 </div>
@@ -475,19 +475,19 @@ const AgentChatUI = ({
               {messages.length === 0 && (
                 <div className={styles.emptyState}>
                   <Puzzle size={48} style={{ opacity: 0.4, marginBottom: 16 }} />
-                  <p style={{ fontSize: 18, fontWeight: 500, margin: 0 }}>Agent 协作群</p>
+                  <p style={{ fontSize: 18, fontWeight: 500, margin: 0 }}>专家群</p>
                   <p style={{ fontSize: 14, marginTop: 8, textAlign: 'center', maxWidth: 480 }}>
                     {group.description}
                   </p>
                   {isResolvingMembers && (
                     <p style={{ fontSize: 13, marginTop: 12, opacity: 0.6 }}>
-                      正在加载 AI 群员库...
+                      正在加载资源库...
                     </p>
                   )}
                   {hasUnresolvedMembers && (
                     <p style={{ fontSize: 13, marginTop: 12, color: '#ef4444' }}>
-                      该群引用了 {currentMemberIds.length} 位 Agent，但当前 AI 群员库中找不到。<br />
-                      请到「AI 群员库」检查或重新添加成员。
+                      该群引用了 {currentMemberIds.length} 位专家，但当前资源库中找不到。<br />
+                      请到「资源库」检查或重新添加成员。
                     </p>
                   )}
                   <div style={{ marginTop: 16, display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
@@ -535,7 +535,7 @@ const AgentChatUI = ({
                         <div className={styles.metaRow} style={{ justifyContent: isUser ? 'flex-end' : 'flex-start' }}>
                           {message.sender.name}
                           {!isUser && (
-                            <span className={styles.agentBadge}>agent</span>
+                            <span className={styles.agentBadge}>专家</span>
                           )}
                         </div>
                         <div className={bubbleClass}>
@@ -576,7 +576,7 @@ const AgentChatUI = ({
                     }
                   }}
                   autoSize={{ minRows: 1, maxRows: 6 }}
-                  placeholder="输入消息，Agent 将按策略协作回复..."
+                  placeholder="输入消息，专家群友将按群规协作回复..."
                   style={{ flex: 1, borderRadius: 12 }}
                 />
                 <AntdButton
@@ -603,7 +603,7 @@ const AgentChatUI = ({
             />
           )}
 
-          {/* AI 群员库（Desktop Inline） */}
+          {/* 资源库（Desktop Inline） */}
           {!isMobile && (
             <AIMemberLibrary
               inline
@@ -620,7 +620,7 @@ const AgentChatUI = ({
         <div className={styles.mobileOverlay} onClick={toggleSidebar} />
       )}
 
-      {/* AI 群员库（Mobile Drawer） */}
+      {/* 资源库（Mobile Drawer） */}
       {isMobile && (
         <AIMemberLibrary
           open={showLibrary}

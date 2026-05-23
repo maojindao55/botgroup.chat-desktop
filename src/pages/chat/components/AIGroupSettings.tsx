@@ -30,7 +30,7 @@ interface AIGroupSettingsProps {
   onToggleGroupDiscussion: () => void;
   schedulerStrategy: 'tag' | 'round_robin' | 'all';
   onStrategyChange: (strategy: 'tag' | 'round_robin' | 'all') => void;
-  /** 新接口：批量替换成员（来自 AI 群员库 MemberPicker） */
+  /** 新接口：批量替换成员（来自资源库 MemberPicker） */
   onMembersChange?: (memberIds: string[]) => void;
   /** 旧接口：单个添加 */
   onAddMember?: (memberId: string) => void;
@@ -191,7 +191,7 @@ export const AIGroupSettings = ({
     || group.members
     || users.filter((u) => 'personality' in u).map((u) => u.id as string);
 
-  // 从 AI 群员库取 LLM 类成员，作为可添加候选
+  // 从资源库取 LLM 类成员，作为可添加候选
   const availableToAdd = Object.values(allMembers)
     .filter((m) => m && m.kind === 'llm' && m.enabled !== false)
     .filter((m) => !currentMemberIds.includes(m.id));

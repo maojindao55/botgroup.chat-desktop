@@ -243,7 +243,7 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
 
   return (
     <Drawer
-      title={memberId ? '编辑群员' : '新建群员'}
+      title={memberId ? '编辑资源' : '新建资源'}
       width={460}
       open={open}
       onClose={onClose}
@@ -258,15 +258,15 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
       }
     >
       <Form form={form} layout="vertical" onFinish={handleFinish}>
-        <Form.Item label="群员类型" name="kind">
+        <Form.Item label="资源类型" name="kind">
           <Radio.Group disabled={!!memberId}>
-            <Radio.Button value="llm">LLM 角色</Radio.Button>
-            <Radio.Button value="agent">Agent</Radio.Button>
-            <Radio.Button value="cli">CLI Agent</Radio.Button>
+            <Radio.Button value="llm">角色</Radio.Button>
+            <Radio.Button value="agent">专家</Radio.Button>
+            <Radio.Button value="cli">开发群友</Radio.Button>
           </Radio.Group>
         </Form.Item>
 
-        <Form.Item label="群员名称" name="name" rules={[{ required: true, message: '请输入群员名称' }]}>
+        <Form.Item label="资源名称" name="name" rules={[{ required: true, message: '请输入资源名称' }]}>
           <Input placeholder="名称" />
         </Form.Item>
 
@@ -275,7 +275,7 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
         </Form.Item>
 
         <Form.Item label="描述" name="description">
-          <Input.TextArea autoSize={{ minRows: 2 }} placeholder="描述该群员的功能或定位" />
+          <Input.TextArea autoSize={{ minRows: 2 }} placeholder="描述该资源的功能或定位" />
         </Form.Item>
 
         <Form.Item label="标签" name="tags">
@@ -346,7 +346,7 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
 
         {kind === 'agent' && (
           <>
-            <Form.Item label="角色定位 (Role)" name="role">
+            <Form.Item label="专家定位 (Role)" name="role">
               <Input placeholder="例如：负责需求分析、方案评审、用户体验把控" />
             </Form.Item>
 
@@ -355,7 +355,7 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
               name="systemPrompt"
               extra={<span style={{ fontSize: 11, opacity: 0.6 }}>{PROMPT_PLACEHOLDER_HINT}</span>}
             >
-              <Input.TextArea autoSize={{ minRows: 4 }} placeholder="详细定义 Agent 的人格、知识背景和输出风格" />
+              <Input.TextArea autoSize={{ minRows: 4 }} placeholder="详细定义专家的职责、知识背景和输出风格" />
             </Form.Item>
 
             <Divider orientation={'left' as const} style={{ fontSize: 13, margin: '12px 0' }}>
@@ -394,9 +394,9 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
 
         {kind === 'cli' && (
           <>
-            <Form.Item label="CLI 适配器类型 (Adapter)" name="cliAdapter" rules={[{ required: true, message: '请选择适配器' }]}>
+            <Form.Item label="开发工具适配器 (Adapter)" name="cliAdapter" rules={[{ required: true, message: '请选择适配器' }]}>
               <Select placeholder="选择适配器">
-                <Select.Option value="codex">Codex (自研编码 Agent)</Select.Option>
+                <Select.Option value="codex">Codex (编码 CLI)</Select.Option>
                 <Select.Option value="claude">ClaudeCode (Claude 官方 CLI)</Select.Option>
                 <Select.Option value="opencode">OpenCode (开源通用编码)</Select.Option>
                 <Select.Option value="aider">Aider (开源 Aider 编码器)</Select.Option>

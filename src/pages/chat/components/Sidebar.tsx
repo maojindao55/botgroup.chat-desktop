@@ -23,6 +23,7 @@ import '@fontsource/audiowide';
 import { UserSection } from './UserSection';
 import { useTheme } from '@/hooks/use-theme';
 import CreateGroupWizard from './CreateGroupWizard';
+import { getProductGroupType } from '@/config/groupProduct';
 import type { Group } from '@/config/groups';
 
 const getGroupIcon = (group: Group) => {
@@ -212,13 +213,15 @@ const renderGroupTag = (
   styles: ReturnType<typeof useStyles>['styles'],
   cx: ReturnType<typeof useStyles>['cx'],
 ) => {
+  const label = getProductGroupType(type as Group['type']).shortLabel;
+
   switch (type) {
     case 'ai':
-      return <span className={cx(styles.tag, styles.tagAi)}>AI</span>;
+      return <span className={cx(styles.tag, styles.tagAi)}>{label}</span>;
     case 'cli':
-      return <span className={cx(styles.tag, styles.tagCli)}>CLI</span>;
+      return <span className={cx(styles.tag, styles.tagCli)}>{label}</span>;
     case 'agent':
-      return <span className={cx(styles.tag, styles.tagAgent)}>Agent</span>;
+      return <span className={cx(styles.tag, styles.tagAgent)}>{label}</span>;
     default:
       return null;
   }
@@ -292,7 +295,7 @@ const Sidebar = ({
         )}
       >
         <div className={styles.headerRow}>
-          {isOpen && <span className={styles.workspaceTitle}>工作空间</span>}
+          {isOpen && <span className={styles.workspaceTitle}>群聊空间</span>}
           <ActionIcon
             icon={isOpen ? PanelLeftCloseIcon : MenuIcon}
             size="small"
@@ -469,14 +472,14 @@ const Sidebar = ({
                     style={{ color: '#ff6600', flexShrink: 0 }}
                   />
                   {isOpen && (
-                    <span className={styles.navItemLabel}>AI 群员库</span>
+                    <span className={styles.navItemLabel}>资源库</span>
                   )}
                 </div>
               </a>
             );
             return !isOpen ? (
               <Tooltip
-                title="AI 群员库"
+                title="资源库"
                 placement="right"
                 mouseEnterDelay={0.15}
               >

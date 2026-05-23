@@ -422,7 +422,7 @@ const ChatUI = () => {
 
   const handleToggleSettings = (nextOpen: boolean) => {
     if (nextOpen === showSettings) return;
-    // 与「AI 群员库」面板互斥（同一侧位置，避免重叠）
+    // 与「资源库」面板互斥（同一侧位置，避免重叠）
     if (nextOpen && showLibrary) {
       setShowLibrary(false);
       adjustWindowWidthForPanel(-AI_MEMBER_LIBRARY_INLINE_WIDTH);
@@ -690,7 +690,7 @@ const ChatUI = () => {
     try {
       const m = aiMembers[msg.sender.id];
       const agent = m && m.kind === 'cli' ? mapAIMemberToLegacy(m) as CLIAgent : undefined;
-      if (!agent) throw new Error('找不到该 Agent 成员');
+      if (!agent) throw new Error('找不到该开发群友');
       if (approvalMode === 'ask') {
         const confirmed = window.confirm(`确认让 ${agent.name} 在 ${workspacePath || '默认目录'} 执行这次任务？`);
         if (!confirmed) return;
@@ -799,7 +799,7 @@ const ChatUI = () => {
       const systemMsg = {
         id: `sys-${Date.now()}`,
         sender: { id: 'sys', name: '系统提示' },
-        content: '群聊中没有启用的 CLI Agent 成员。请在右侧设置面板中开启成员。',
+        content: '群聊中没有启用的开发群友。请在右侧设置面板中添加或开启成员。',
         isAI: true,
         isError: true,
       };
@@ -1422,7 +1422,7 @@ const ChatUI = () => {
                     }
                   }}
                   autoSize={{ minRows: 1, maxRows: 6 }}
-                  placeholder={isCLIGroup ? '输入指令，CLI Agent 将在 workspace 中执行...' : '输入消息...'}
+                  placeholder={isCLIGroup ? '输入代码任务，开发群友将在 workspace 中协作执行...' : '在角色群里输入消息...'}
                   style={{ flex: 1, borderRadius: 12 }}
                 />
                 <AntdButton
@@ -1500,7 +1500,7 @@ const ChatUI = () => {
             />
           )}
 
-          {/* AI 群员库（Desktop Inline） */}
+          {/* 资源库（Desktop Inline） */}
           {!isMobile && (
             <AIMemberLibrary
               inline
@@ -1516,7 +1516,7 @@ const ChatUI = () => {
         <div className={styles.mobileOverlay} onClick={toggleSidebar} />
       )}
 
-      {/* AI 群员库（Mobile Drawer） */}
+      {/* 资源库（Mobile Drawer） */}
       {isMobile && (
         <AIMemberLibrary
           open={showLibrary}

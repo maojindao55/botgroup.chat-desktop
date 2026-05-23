@@ -24,14 +24,14 @@ function memberMetaLine(member: AIMember, providerName?: string): string {
     const unmapped = member.providerId?.startsWith('unmapped-');
     return `${providerName || member.providerId} · ${member.model} · 🛠 ${tools} tools${unmapped ? ' ⚠️' : ''}`;
   }
-  return `${member.cli?.adapter || 'cli'} · CLI Agent`;
+  return `${member.cli?.adapter || 'cli'} · 开发群友`;
 }
 
 export const MemberPicker: React.FC<MemberPickerProps> = ({
   kind,
   value,
   onChange,
-  placeholder = '选择群员...',
+  placeholder = '选择资源...',
   disabled = false,
 }) => {
   const { list, load } = useAIMemberStore();
