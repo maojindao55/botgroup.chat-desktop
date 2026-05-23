@@ -99,10 +99,15 @@ impl std::fmt::Display for LlmProxyError {
 }
 
 fn inline_credentials_provided(args: &LlmChatStreamArgs) -> bool {
-    args.base_url
-        .as_ref()
-        .is_some_and(|s| !s.trim().is_empty())
-        && args.api_key.is_some()
+    args.provider_id.is_none()
+        && args
+            .base_url
+            .as_ref()
+            .is_some_and(|s| !s.trim().is_empty())
+        && args
+            .api_key
+            .as_ref()
+            .is_some_and(|k| !k.is_empty())
 }
 
 fn resolve_endpoint_inline(args: &LlmChatStreamArgs) -> Result<(String, String), LlmProxyError> {

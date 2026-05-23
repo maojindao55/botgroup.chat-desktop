@@ -9,8 +9,10 @@ export interface LlmMessage {
 
 export interface LlmStreamParams {
   sessionId?: string;
-  baseURL: string;
-  apiKey: string;
+  /** 优先：Rust 从 providers 表 + vault 解析 */
+  providerId?: string;
+  baseURL?: string;
+  apiKey?: string;
   model: string;
   messages: LlmMessage[];
   temperature?: number;
@@ -92,17 +94,24 @@ export async function llmChatReadableStream(params: LlmStreamParams): Promise<Re
       });
 
       try {
-        await invoke('llm_chat_stream', {
-          args: {
-            sessionId,
-            baseUrl: params.baseURL.replace(/\/$/, ''),
-            apiKey: params.apiKey,
-            model: params.model,
-            messages: params.messages,
-            temperature: params.temperature,
-            tools: params.tools && params.tools.length > 0 ? params.tools : undefined,
-          },
-        });
+        const streamArgs: Record<string, unknown> = {
+          sessionId,
+          model: params.model,
+          messages: params.messages,
+          temperature: params.temperature,
+          tools: params.tools && params.tools.length > 0 ? params.tools : undefined,
+        };
+
+        if (params.providerId) {
+          streamArgs.providerId = params.providerId;
+        } else if (params.baseURL) {
+          streamArgs.baseUrl = params.baseURL.replace(/\/$/, '');
+          streamArgs.apiKey = params.apiKey ?? '';
+        } else {
+          throw new Error('llmChatReadableStream: providerId or baseURL required');
+        }
+
+        await invoke('llm_chat_stream', { args: streamArgs });
       } catch (e) {
         closeOnce();
         throw e;

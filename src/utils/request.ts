@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { llmChatReadableStream, llmChatComplete } from '@/utils/llmClient';
+import { resolveLlmCredentials } from '@/utils/resolveLlmCredentials';
 import { defaultGroups as staticGroups } from '@/config/groups';
 import { generateAICharacters, cliAgents, modelConfigs } from '@/config/aiCharacters';
 import { builtinAIMembers, type AIMember } from '@/config/aiMembers';
@@ -28,29 +29,24 @@ async function clientScheduleAI(message: string, history: any[], availableAIs: a
 
   // Use the scheduler character configuration
   const schedulerAI = generateAICharacters(message, Array.from(allTags).join(','))[0];
-  const modelConfig = modelConfigs.find(config => config.model === schedulerAI.model);
-  const apiKey = getLocalApiKey(modelConfig?.apiKey || '');
 
-  if (apiKey && modelConfig) {
-    try {
-      const prompt = schedulerAI.custom_prompt;
-      const text = await llmChatComplete({
-        baseURL: modelConfig.baseURL,
-        apiKey,
-        model: schedulerAI.model,
-        messages: [
-          { role: 'system', content: prompt },
-          ...history.slice(-10).map(h => ({ role: h.role === 'user' ? 'user' : 'assistant', content: h.content })),
-          { role: 'user', content: message },
-        ],
-      });
-      text.split(',').forEach((tag: string) => {
-        const trimmed = tag.trim();
-        if (trimmed) matchedTags.push(trimmed);
-      });
-    } catch (e) {
-      console.error('Failed client-side AI analysis for scheduling:', e);
-    }
+  try {
+    const creds = await resolveLlmCredentials(schedulerAI.model);
+    const prompt = schedulerAI.custom_prompt;
+    const text = await llmChatComplete({
+      ...creds,
+      messages: [
+        { role: 'system', content: prompt },
+        ...history.slice(-10).map(h => ({ role: h.role === 'user' ? 'user' : 'assistant', content: h.content })),
+        { role: 'user', content: message },
+      ],
+    });
+    text.split(',').forEach((tag: string) => {
+      const trimmed = tag.trim();
+      if (trimmed) matchedTags.push(trimmed);
+    });
+  } catch (e) {
+    console.error('Failed client-side AI analysis for scheduling:', e);
   }
 
   // If matched "文字游戏", all AIs respond
@@ -848,27 +844,7 @@ export async function request(url: string, options: RequestInit = {}) {
       const body = JSON.parse(options.body as string);
       const { message, custom_prompt, history, aiName, index, model = "qwen-plus" } = body;
 
-      const modelConfig = modelConfigs.find(config => config.model === model);
-      if (!modelConfig) {
-        throw new Error('不支持的模型类型');
-      }
-
-      // Try local storage for custom key, fallback to local env if compiled
-      const apiKey = getLocalApiKey(modelConfig.apiKey);
-      let baseURL: string = modelConfig.baseURL;
-      const apiKeyName: string = modelConfig.apiKey;
-
-      // Special handling for Ollama or Local Endpoint
-      if (apiKeyName === 'OLLAMA_API_KEY' || localStorage.getItem('API_KEY_OLLAMA_URL')) {
-        const customOllamaUrl = localStorage.getItem('API_KEY_OLLAMA_URL');
-        if (customOllamaUrl) {
-          baseURL = customOllamaUrl;
-        }
-      }
-
-      if (!apiKey && apiKeyName !== 'OLLAMA_API_KEY') {
-        throw new Error(`${model} 的API密钥未配置，请点击左下角头像配置 API Key`);
-      }
+      const creds = await resolveLlmCredentials(model);
 
       // Build message payload
       const systemPrompt = `${custom_prompt}\n 注意重要：1、你在群里叫${aiName}认准自己的身份； 2、你的输出内容不要加${aiName}：这种多余前缀；3、如果用户提出玩游戏，比如成语接龙等，严格按照游戏规则，不要说一大堆，要简短精炼; 4、保持群聊风格字数严格控制在50字以内，越简短越好（新闻总结类除外）`;
@@ -889,9 +865,7 @@ export async function request(url: string, options: RequestInit = {}) {
       }
 
       const readable = await llmChatReadableStream({
-        baseURL,
-        apiKey,
-        model,
+        ...creds,
         messages: baseMessages,
         emitDoneMarker: false,
       });
