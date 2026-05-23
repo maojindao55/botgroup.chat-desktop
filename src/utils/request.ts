@@ -33,30 +33,20 @@ async function clientScheduleAI(message: string, history: any[], availableAIs: a
   if (apiKey && modelConfig) {
     try {
       const prompt = schedulerAI.custom_prompt;
-      const res = await fetch(`${modelConfig.baseURL}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: schedulerAI.model,
-          messages: [
-            { role: 'system', content: prompt },
-            ...history.slice(-10).map(h => ({ role: h.role === 'user' ? 'user' : 'assistant', content: h.content })),
-            { role: 'user', content: message }
-          ]
-        })
+      const text = await llmChatComplete({
+        baseURL: modelConfig.baseURL,
+        apiKey,
+        model: schedulerAI.model,
+        messages: [
+          { role: 'system', content: prompt },
+          ...history.slice(-10).map(h => ({ role: h.role === 'user' ? 'user' : 'assistant', content: h.content })),
+          { role: 'user', content: message },
+        ],
       });
-
-      if (res.ok) {
-        const data = await res.json();
-        const content = data.choices?.[0]?.message?.content || '';
-        content.split(',').forEach((tag: string) => {
-          const trimmed = tag.trim();
-          if (trimmed) matchedTags.push(trimmed);
-        });
-      }
+      text.split(',').forEach((tag: string) => {
+        const trimmed = tag.trim();
+        if (trimmed) matchedTags.push(trimmed);
+      });
     } catch (e) {
       console.error('Failed client-side AI analysis for scheduling:', e);
     }
