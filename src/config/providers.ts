@@ -95,7 +95,7 @@ export function mapProviderToRust(p: Provider) {
   return {
     id: p.id,
     name: p.name,
-    baseURL: p.baseURL,
+    baseUrl: p.baseURL,
     apiKeyRef: p.apiKeyRef,
     models: p.models,
     source: p.source,

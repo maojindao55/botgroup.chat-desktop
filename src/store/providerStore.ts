@@ -2,10 +2,11 @@ import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { builtinProviders, readLegacyApiKey, type Provider } from '@/config/providers';
 
+/** Rust serde camelCase: base_url → baseUrl (not baseURL) */
 interface RustProvider {
   id: string;
   name: string;
-  baseURL: string;
+  baseUrl: string;
   apiKeyRef: string;
   models: string[];
   source: string;
@@ -20,7 +21,7 @@ export function mapFromRust(r: RustProvider): Provider {
   return {
     id: r.id,
     name: r.name,
-    baseURL: r.baseURL,
+    baseURL: r.baseUrl,
     apiKeyRef: r.apiKeyRef,
     models: r.models,
     source: r.source as 'builtin' | 'user',
@@ -34,7 +35,7 @@ export function mapToRust(p: Provider): RustProvider {
   return {
     id: p.id,
     name: p.name,
-    baseURL: p.baseURL,
+    baseUrl: p.baseURL,
     apiKeyRef: p.apiKeyRef,
     models: p.models,
     source: p.source,
@@ -88,17 +89,7 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
         let rustProviders = await invoke<RustProvider[]>('list_providers');
         if (rustProviders.length === 0) {
           await invoke('seed_builtin_providers', {
-            providers: builtinProviders.map((p) => ({
-              id: p.id,
-              name: p.name,
-              baseURL: p.baseURL,
-              apiKeyRef: p.apiKeyRef,
-              models: p.models,
-              source: p.source,
-              iconUrl: p.iconUrl ?? null,
-              description: p.description ?? null,
-              enabled: p.enabled !== false,
-            })),
+            providers: builtinProviders.map(mapToRust),
           });
           rustProviders = await invoke<RustProvider[]>('list_providers');
         }
