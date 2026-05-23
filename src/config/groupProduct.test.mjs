@@ -102,3 +102,10 @@ for (const symbol of ['aiSpeechModes', 'applyAISpeechMode', 'resolveAISpeechMode
 }
 assert.doesNotMatch(aiSettings, /全员讨论模式/);
 assert.doesNotMatch(aiSettings, /调度策略/);
+
+const agentSettings = await readFile(new URL('../pages/chat/components/AgentGroupSettings.tsx', import.meta.url), 'utf8');
+
+assert.match(agentSettings, /专家群配置/);
+assert.match(agentSettings, /群内协作方式/);
+assert.match(agentSettings, /agentWorkflowTemplates/);
+assert.match(agentSettings, /高级策略/);
