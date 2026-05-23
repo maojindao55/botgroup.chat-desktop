@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection, Result};
+use rusqlite::{params, Connection, OptionalExtension, Result};
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 use uuid::Uuid;
@@ -448,6 +448,22 @@ pub fn upsert_ai_member(app: AppHandle, member: AIMember) -> Result<(), String> 
     let db_path = get_db_path(&app);
     let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
 
+    let existing_source: Option<String> = conn
+        .query_row(
+            "SELECT source FROM ai_members WHERE id = ?1",
+            params![member.id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+
+    if existing_source.as_deref() == Some("builtin") {
+        return Err("Cannot modify builtin member. Clone it first.".into());
+    }
+    if existing_source.is_none() && member.source == "builtin" {
+        return Err("Cannot upsert builtin-source member from UI path.".into());
+    }
+
     conn.execute(
         "INSERT INTO ai_members (id, kind, name, avatar, description, tags, source, config, enabled, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, CURRENT_TIMESTAMP)
@@ -551,6 +567,20 @@ pub fn secret_has(app: AppHandle, name: String) -> std::result::Result<bool, Str
     let db_path = get_db_path(&app);
     let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
     vault::has(&conn, &name).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn secret_copy(app: AppHandle, from_name: String, to_name: String) -> std::result::Result<bool, String> {
+    let db_path = get_db_path(&app);
+    let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
+    let master = vault::load_master_key(&app)?;
+    match vault::get(&conn, &master, &from_name).map_err(|e| e.to_string())? {
+        Some(value) => {
+            vault::set(&conn, &master, &to_name, &value).map_err(|e| e.to_string())?;
+            Ok(true)
+        }
+        None => Ok(false),
+    }
 }
 
 #[tauri::command]

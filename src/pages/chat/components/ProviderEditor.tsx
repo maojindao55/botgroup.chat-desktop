@@ -41,7 +41,7 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
   onCloneEdit,
 }) => {
   const [form] = Form.useForm();
-  const { get, upsert, hasSecret, ensureSecret, testConnection } = useProviderStore();
+  const { get, upsert, hasSecret, ensureSecret, testConnection, clone } = useProviderStore();
   const [secretConfigured, setSecretConfigured] = useState<boolean | null>(null);
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -190,24 +190,16 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
   };
 
   const handleClone = async () => {
-    if (!provider) return;
+    if (!providerId) return;
 
     setCloning(true);
     try {
-      const newId = `user-${provider.id}-copy-${Date.now()}`;
-      const clone: Provider = {
-        ...provider,
-        id: newId,
-        name: `${provider.name} (副本)`,
-        source: 'user',
-        apiKeyRef: `provider:${newId}`,
-      };
-      await upsert(clone);
+      const copied = await clone(providerId);
       message.success('已创建副本，可继续编辑');
-      onCloneEdit?.(newId);
+      onCloneEdit?.(copied.id);
       onSave?.();
-    } catch {
-      message.error('克隆失败，请重试');
+    } catch (e) {
+      message.error(formatInvokeError(e) || '克隆失败，请重试');
     } finally {
       setCloning(false);
     }

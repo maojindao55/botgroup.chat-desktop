@@ -1,9 +1,13 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Drawer, Form, Input, Select, Radio, Checkbox, InputNumber, Button, Space, Divider, Switch, Tooltip } from 'antd';
 import { useAIMemberStore } from '@/store/aiMemberStore';
 import { useProviderStore } from '@/store/providerStore';
 import type { AIMember, LLMMember, AgentMember_v2, CLIMember } from '@/config/aiMembers';
+import { AvatarPicker } from './AvatarPicker';
+import { TagPicker } from './TagPicker';
+import { DryRunModal, type DryRunParams } from './DryRunModal';
 import { Plus, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 const AVAILABLE_TOOLS = [
   { name: 'web_search', description: '联网搜索获取实时信息' },
@@ -34,6 +38,12 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
   const { providers: providersRecord, load: loadProviders } = useProviderStore();
   const kind = Form.useWatch('kind', form) || defaultKind;
   const providerId = Form.useWatch('providerId', form);
+  const model = Form.useWatch('model', form);
+  const name = Form.useWatch('name', form);
+  const customPrompt = Form.useWatch('customPrompt', form);
+  const systemPrompt = Form.useWatch('systemPrompt', form);
+  const temperature = Form.useWatch('temperature', form);
+  const [dryRunOpen, setDryRunOpen] = useState(false);
 
   const providers = useMemo(
     () => Object.values(providersRecord).filter((p) => p.enabled !== false),
@@ -176,10 +186,26 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
       } as CLIMember;
     }
 
-    await upsert(updatedMember);
-    onClose();
-    onSave?.();
+    try {
+      await upsert(updatedMember);
+      onClose();
+      onSave?.();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : '保存失败');
+    }
   };
+
+  const dryRunParams: DryRunParams | null =
+    kind === 'llm' || kind === 'agent'
+      ? {
+          kind,
+          name: name || '试运行',
+          providerId: providerId || '',
+          model: model || '',
+          systemPrompt: (kind === 'llm' ? customPrompt : systemPrompt) || '',
+          temperature: temperature ?? 0.7,
+        }
+      : null;
 
   const providerSelect = (
     <>
@@ -245,7 +271,7 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
         </Form.Item>
 
         <Form.Item label="头像" name="avatar">
-          <Input placeholder="头像链接或内置图片名（例：/img/ds.svg）" />
+          <AvatarPicker />
         </Form.Item>
 
         <Form.Item label="描述" name="description">
@@ -253,7 +279,7 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
         </Form.Item>
 
         <Form.Item label="标签" name="tags">
-          <Select mode="tags" placeholder="添加描述标签" tokenSeparators={[',', ' ']} />
+          <TagPicker />
         </Form.Item>
 
         <Divider style={{ margin: '16px 0' }} />
@@ -399,7 +425,13 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
             </Form.Item>
           </>
         )}
+        {(kind === 'llm' || kind === 'agent') && (
+          <Button block style={{ marginTop: 8 }} onClick={() => setDryRunOpen(true)}>
+            试运行一句
+          </Button>
+        )}
       </Form>
+      <DryRunModal open={dryRunOpen} onClose={() => setDryRunOpen(false)} params={dryRunParams} />
     </Drawer>
   );
 };

@@ -273,7 +273,7 @@ export async function request(url: string, options: RequestInit = {}) {
 
           let dbMembers: any[] = await invoke('list_ai_members', { kind: null });
           if (dbMembers.length === 0) {
-            const toSeed = builtinAIMembers.map(m => {
+            const toSeed = builtinAIMembers.map((m) => {
               let configObj: any = {};
               if (m.kind === 'llm') {
                 configObj = {
@@ -305,11 +305,53 @@ export async function request(url: string, options: RequestInit = {}) {
                 tags: JSON.stringify(m.tags || []),
                 source: m.source,
                 config: JSON.stringify(configObj),
-                enabled: 1
+                enabled: 1,
               };
             });
             await invoke('seed_builtin_ai_members', { members: toSeed });
             dbMembers = await invoke('list_ai_members', { kind: null });
+          } else {
+            const existingIds = new Set(dbMembers.map((m: { id: string }) => m.id));
+            const missing = builtinAIMembers.filter((b) => !existingIds.has(b.id));
+            if (missing.length > 0) {
+              const toSeed = missing.map((m) => {
+                let configObj: any = {};
+                if (m.kind === 'llm') {
+                  configObj = {
+                    providerId: m.providerId,
+                    model: m.model,
+                    schedulerTag: m.schedulerTag,
+                    customPrompt: m.customPrompt,
+                    stages: m.stages,
+                  };
+                } else if (m.kind === 'agent') {
+                  configObj = {
+                    role: m.role,
+                    systemPrompt: m.systemPrompt,
+                    providerId: m.providerId,
+                    model: m.model,
+                    tools: m.tools,
+                    maxTurns: m.maxTurns,
+                    temperature: m.temperature,
+                  };
+                } else {
+                  configObj = { cli: m.cli };
+                }
+                return {
+                  id: m.id,
+                  kind: m.kind,
+                  name: m.name,
+                  avatar: m.avatar || null,
+                  description: m.description || null,
+                  tags: JSON.stringify(m.tags || []),
+                  source: m.source,
+                  config: JSON.stringify(configObj),
+                  enabled: 1,
+                };
+              });
+              await invoke('seed_builtin_ai_members', { members: toSeed });
+              dbMembers = await invoke('list_ai_members', { kind: null });
+            }
           }
 
           const dbProviders: { id: string }[] = await invoke('list_providers');

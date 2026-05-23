@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 use tauri::AppHandle;
@@ -360,6 +360,23 @@ pub fn get_provider(app: AppHandle, id: String) -> Result<Option<Provider>, Stri
 pub fn upsert_provider(app: AppHandle, provider: Provider) -> Result<(), String> {
     let db_path = get_db_path(&app);
     let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
+
+    let existing_source: Option<String> = conn
+        .query_row(
+            "SELECT source FROM providers WHERE id = ?1",
+            params![provider.id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+
+    if existing_source.as_deref() == Some("builtin") {
+        return Err("Cannot modify builtin provider. Clone it first.".into());
+    }
+    if existing_source.is_none() && provider.source == "builtin" {
+        return Err("Cannot upsert builtin-source provider from UI path.".into());
+    }
+
     db::upsert_provider(&conn, &provider)
 }
 

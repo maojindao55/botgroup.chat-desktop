@@ -60,6 +60,7 @@ interface ProviderStore {
   get: (id: string) => Provider | undefined;
   upsert: (p: Provider) => Promise<void>;
   remove: (id: string) => Promise<void>;
+  clone: (id: string) => Promise<Provider>;
   testConnection: (params: {
     id?: string;
     baseURL: string;
@@ -122,22 +123,33 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
   },
 
   upsert: async (p: Provider) => {
+    const existing = get().providers[p.id];
+    if (existing?.source === 'builtin') {
+      throw new Error('无法修改内置 Provider，请使用「克隆并编辑」。');
+    }
+    if (!existing && p.source === 'builtin') {
+      throw new Error('不能从界面创建 builtin Provider。');
+    }
+
+    const updated: Provider = {
+      ...p,
+      source: 'user',
+    };
+
     if (isTauri) {
-      await invoke('upsert_provider', { provider: mapToRust(p) });
+      await invoke('upsert_provider', { provider: mapToRust(updated) });
     } else {
       const localStr = localStorage.getItem('custom_providers') || '[]';
       let customProviders = JSON.parse(localStr) as Provider[];
-      customProviders = customProviders.filter((item) => item.id !== p.id);
-      if (p.source !== 'builtin') {
-        customProviders.push(p);
-      }
+      customProviders = customProviders.filter((item) => item.id !== updated.id);
+      customProviders.push(updated);
       localStorage.setItem('custom_providers', JSON.stringify(customProviders));
     }
 
     set((state) => ({
       providers: {
         ...state.providers,
-        [p.id]: p,
+        [updated.id]: updated,
       },
     }));
   },
@@ -157,6 +169,35 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
       delete copy[id];
       return { providers: copy };
     });
+  },
+
+  clone: async (id: string) => {
+    const orig = get().providers[id];
+    if (!orig) throw new Error('Provider 不存在');
+    const ts = Date.now();
+    const newId = `user-${orig.id}-copy-${ts}`;
+    const apiKeyRef = `provider:${newId}`;
+    const cloned: Provider = {
+      ...JSON.parse(JSON.stringify(orig)),
+      id: newId,
+      source: 'user',
+      name: `${orig.name} (副本)`,
+      apiKeyRef,
+    };
+    await get().upsert(cloned);
+
+    if (isTauri) {
+      try {
+        await invoke<boolean>('secret_copy', {
+          fromName: orig.apiKeyRef,
+          toName: apiKeyRef,
+        });
+      } catch (e) {
+        console.warn('[providerStore.clone] secret_copy failed:', e);
+      }
+    }
+
+    return cloned;
   },
 
   testConnection: async (params) => {

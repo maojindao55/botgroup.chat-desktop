@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { AIMember, AIMemberKind, builtinAIMembers } from '../config/aiMembers';
 import { lookupProviderByEnvName, lookupProviderByModel } from '../config/providers';
-import { Group } from '../config/groups';
+import { normalizeTags } from '../config/tagTaxonomy';
 
 interface RustAIMember {
   id: string;
@@ -149,10 +149,24 @@ interface AIMemberStore {
   loading: boolean;
   load: (kind?: AIMemberKind) => Promise<void>;
   upsert: (member: AIMember) => Promise<void>;
+  clone: (id: string) => Promise<AIMember>;
   remove: (id: string) => Promise<void>;
   list: (kind?: AIMemberKind) => AIMember[];
   get: (id: string) => AIMember | undefined;
   findReferencingGroups: (id: string, allGroups: Group[]) => Group[];
+}
+
+async function seedMissingBuiltins(): Promise<void> {
+  const all = await invoke<RustAIMember[]>('list_ai_members', { kind: null });
+  if (all.length === 0) {
+    await invoke('seed_builtin_ai_members', { members: builtinAIMembers.map(mapToRust) });
+    return;
+  }
+  const existingIds = new Set(all.map((m) => m.id));
+  const missing = builtinAIMembers.filter((b) => !existingIds.has(b.id));
+  if (missing.length > 0) {
+    await invoke('seed_builtin_ai_members', { members: missing.map(mapToRust) });
+  }
 }
 
 const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
@@ -165,21 +179,13 @@ export const useAIMemberStore = create<AIMemberStore>((set, get) => ({
     set({ loading: true });
     try {
       if (isTauri) {
+        await seedMissingBuiltins();
         const rustMembers = await invoke<RustAIMember[]>('list_ai_members', { kind });
         const record: Record<string, AIMember> = {};
 
-        if (rustMembers.length === 0) {
-          const toSeed = builtinAIMembers.map(mapToRust);
-          await invoke('seed_builtin_ai_members', { members: toSeed });
-          const reloaded = await invoke<RustAIMember[]>('list_ai_members', { kind });
-          reloaded.forEach((r) => {
-            record[r.id] = mapFromRust(r);
-          });
-        } else {
-          rustMembers.forEach((r) => {
-            record[r.id] = mapFromRust(r);
-          });
-        }
+        rustMembers.forEach((r) => {
+          record[r.id] = mapFromRust(r);
+        });
 
         set({ members: { ...get().members, ...record } });
       } else {
@@ -204,8 +210,18 @@ export const useAIMemberStore = create<AIMemberStore>((set, get) => ({
   },
 
   upsert: async (member: AIMember) => {
-    const updated = {
+    const existing = get().members[member.id];
+    if (existing?.source === 'builtin') {
+      throw new Error('无法修改内置成员，请使用「克隆并编辑」。');
+    }
+    if (!existing && member.source === 'builtin') {
+      throw new Error('不能从界面创建 builtin 成员。');
+    }
+
+    const updated: AIMember = {
       ...member,
+      source: 'user',
+      tags: normalizeTags(member.tags || []),
       updatedAt: Date.now(),
       createdAt: member.createdAt || Date.now(),
     };
@@ -217,18 +233,32 @@ export const useAIMemberStore = create<AIMemberStore>((set, get) => ({
       const localStr = localStorage.getItem('custom_ai_members') || '[]';
       let customMembers = JSON.parse(localStr) as AIMember[];
       customMembers = customMembers.filter((m) => m.id !== member.id);
-      if (member.source !== 'builtin') {
-        customMembers.push(updated);
-      }
+      customMembers.push(updated);
       localStorage.setItem('custom_ai_members', JSON.stringify(customMembers));
     }
 
     set((state) => ({
       members: {
         ...state.members,
-        [member.id]: updated,
+        [updated.id]: updated,
       },
     }));
+  },
+
+  clone: async (id: string) => {
+    const orig = get().members[id];
+    if (!orig) {
+      throw new Error('成员不存在');
+    }
+    const ts = Date.now();
+    const cloned = JSON.parse(JSON.stringify(orig)) as AIMember;
+    cloned.id = `${orig.id}-copy-${ts}`;
+    cloned.source = 'user';
+    cloned.name = `${orig.name} (副本)`;
+    cloned.createdAt = ts;
+    cloned.updatedAt = ts;
+    await get().upsert(cloned);
+    return cloned;
   },
 
   remove: async (id: string) => {
