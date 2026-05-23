@@ -12,6 +12,7 @@ import { ActionIcon, Avatar as LobeAvatar } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 import { request } from '@/utils/request';
 import { executeCLIStrategy } from '@/engine/cliEngine';
+import { isCodeChangeIntent } from '@/engine/cliIntent';
 import type { AICharacter, CLIAgent } from "@/config/aiCharacters";
 import { mapAIMemberToLegacy } from "@/config/aiCharacters";
 import { ChatMarkdown } from '@/components/Markdown';
@@ -807,6 +808,19 @@ const ChatUI = () => {
         id: `sys-${Date.now()}`,
         sender: { id: 'sys', name: '系统提示' },
         content: '群聊中没有启用的开发群友。请在右侧设置面板中添加或开启成员。',
+        isAI: true,
+        isError: true,
+      };
+      setMessages(prev => [...prev, systemMsg]);
+      setIsLoading(false);
+      return;
+    }
+
+    if (cliStrategy === 'discussion' && isCodeChangeIntent(promptText)) {
+      const systemMsg = {
+        id: `sys-${Date.now()}`,
+        sender: { id: 'sys', name: '系统提示' },
+        content: '当前群规是“群内讨论”，会在临时只读副本中运行，不会修改你设置的 workspace。要写文件或改代码，请先切换到“写完再审”或“快速响应”。',
         isAI: true,
         isError: true,
       };
