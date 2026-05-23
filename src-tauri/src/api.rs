@@ -1,7 +1,6 @@
 use rusqlite::{params, Connection, Result};
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
-use tauri::Manager;
 use uuid::Uuid;
 use crate::db::get_db_path;
 use crate::vault;
@@ -539,21 +538,11 @@ pub fn seed_builtin_ai_members(app: AppHandle, members: Vec<AIMember>) -> Result
 // See `vault.rs` for design notes. Intentionally there is NO `secret_get`
 // command — plaintext values never cross the Tauri boundary.
 
-fn vault_load_master(app: &AppHandle) -> std::result::Result<[u8; vault::KEY_LEN], String> {
-    let mut path = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("vault: cannot resolve app_data_dir: {}", e))?;
-    std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
-    path.push(vault::MASTER_KEY_FILENAME);
-    vault::load_or_create_master_key(&path).map_err(|e| e.to_string())
-}
-
 #[tauri::command]
 pub fn secret_set(app: AppHandle, name: String, value: String) -> std::result::Result<(), String> {
     let db_path = get_db_path(&app);
     let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
-    let master = vault_load_master(&app)?;
+    let master = vault::load_master_key(&app)?;
     vault::set(&conn, &master, &name, &value).map_err(|e| e.to_string())
 }
 

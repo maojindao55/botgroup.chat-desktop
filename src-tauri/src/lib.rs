@@ -2,6 +2,7 @@ mod db;
 mod api;
 mod cli;
 mod llm_proxy;
+mod provider;
 mod vault;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -37,6 +38,13 @@ pub fn run() {
             api::secret_delete,
             api::secret_list_names,
             llm_proxy::llm_chat_stream,
+            provider::list_providers,
+            provider::get_provider,
+            provider::upsert_provider,
+            provider::delete_provider,
+            provider::seed_builtin_providers,
+            provider::provider_test,
+            provider::provider_ping,
             cli::cli_run,
             cli::cli_kill,
             cli::cli_check,

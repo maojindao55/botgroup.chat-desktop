@@ -1,20 +1,17 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { llmChatReadableStream, llmChatComplete } from '@/utils/llmClient';
+import { resolveLlmCredentials } from '@/utils/resolveLlmCredentials';
 import { defaultGroups as staticGroups } from '@/config/groups';
 import { generateAICharacters, cliAgents, modelConfigs } from '@/config/aiCharacters';
 import { builtinAIMembers, type AIMember } from '@/config/aiMembers';
+import { builtinProviders, mapProviderToRust } from '@/config/providers';
 
 const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
 if (isTauri) {
   localStorage.setItem('token', 'local_desktop_token_placeholder');
 }
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
-
-// Helper to get local API Key
-function getLocalApiKey(keyName: string): string {
-  return localStorage.getItem(`API_KEY_${keyName}`) || '';
-}
 
 // Client-side implementation of AI response scheduling
 async function clientScheduleAI(message: string, history: any[], availableAIs: any[]): Promise<string[]> {
@@ -27,29 +24,24 @@ async function clientScheduleAI(message: string, history: any[], availableAIs: a
 
   // Use the scheduler character configuration
   const schedulerAI = generateAICharacters(message, Array.from(allTags).join(','))[0];
-  const modelConfig = modelConfigs.find(config => config.model === schedulerAI.model);
-  const apiKey = getLocalApiKey(modelConfig?.apiKey || '');
 
-  if (apiKey && modelConfig) {
-    try {
-      const prompt = schedulerAI.custom_prompt;
-      const text = await llmChatComplete({
-        baseURL: modelConfig.baseURL,
-        apiKey,
-        model: schedulerAI.model,
-        messages: [
-          { role: 'system', content: prompt },
-          ...history.slice(-10).map(h => ({ role: h.role === 'user' ? 'user' : 'assistant', content: h.content })),
-          { role: 'user', content: message },
-        ],
-      });
-      text.split(',').forEach((tag: string) => {
-        const trimmed = tag.trim();
-        if (trimmed) matchedTags.push(trimmed);
-      });
-    } catch (e) {
-      console.error('Failed client-side AI analysis for scheduling:', e);
-    }
+  try {
+    const creds = await resolveLlmCredentials(schedulerAI.model);
+    const prompt = schedulerAI.custom_prompt;
+    const text = await llmChatComplete({
+      ...creds,
+      messages: [
+        { role: 'system', content: prompt },
+        ...history.slice(-10).map(h => ({ role: h.role === 'user' ? 'user' : 'assistant', content: h.content })),
+        { role: 'user', content: message },
+      ],
+    });
+    text.split(',').forEach((tag: string) => {
+      const trimmed = tag.trim();
+      if (trimmed) matchedTags.push(trimmed);
+    });
+  } catch (e) {
+    console.error('Failed client-side AI analysis for scheduling:', e);
   }
 
   // If matched "文字游戏", all AIs respond
@@ -296,6 +288,15 @@ export async function request(url: string, options: RequestInit = {}) {
             });
             await invoke('seed_builtin_ai_members', { members: toSeed });
             dbMembers = await invoke('list_ai_members', { kind: null });
+          }
+
+          const dbProviders: { id: string }[] = await invoke('list_providers');
+          const existingProviderIds = new Set(dbProviders.map(p => p.id));
+          const missingProviders = builtinProviders.filter(p => !existingProviderIds.has(p.id));
+          if (missingProviders.length > 0) {
+            await invoke('seed_builtin_providers', {
+              providers: missingProviders.map(mapProviderToRust),
+            });
           }
 
           characters = dbMembers.map((r: any) => {
@@ -838,27 +839,7 @@ export async function request(url: string, options: RequestInit = {}) {
       const body = JSON.parse(options.body as string);
       const { message, custom_prompt, history, aiName, index, model = "qwen-plus" } = body;
 
-      const modelConfig = modelConfigs.find(config => config.model === model);
-      if (!modelConfig) {
-        throw new Error('不支持的模型类型');
-      }
-
-      // Try local storage for custom key, fallback to local env if compiled
-      const apiKey = getLocalApiKey(modelConfig.apiKey);
-      let baseURL: string = modelConfig.baseURL;
-      const apiKeyName: string = modelConfig.apiKey;
-
-      // Special handling for Ollama or Local Endpoint
-      if (apiKeyName === 'OLLAMA_API_KEY' || localStorage.getItem('API_KEY_OLLAMA_URL')) {
-        const customOllamaUrl = localStorage.getItem('API_KEY_OLLAMA_URL');
-        if (customOllamaUrl) {
-          baseURL = customOllamaUrl;
-        }
-      }
-
-      if (!apiKey && apiKeyName !== 'OLLAMA_API_KEY') {
-        throw new Error(`${model} 的API密钥未配置，请点击左下角头像配置 API Key`);
-      }
+      const creds = await resolveLlmCredentials(model);
 
       // Build message payload
       const systemPrompt = `${custom_prompt}\n 注意重要：1、你在群里叫${aiName}认准自己的身份； 2、你的输出内容不要加${aiName}：这种多余前缀；3、如果用户提出玩游戏，比如成语接龙等，严格按照游戏规则，不要说一大堆，要简短精炼; 4、保持群聊风格字数严格控制在50字以内，越简短越好（新闻总结类除外）`;
@@ -879,9 +860,7 @@ export async function request(url: string, options: RequestInit = {}) {
       }
 
       const readable = await llmChatReadableStream({
-        baseURL,
-        apiKey,
-        model,
+        ...creds,
         messages: baseMessages,
         emitDoneMarker: false,
       });
@@ -898,17 +877,10 @@ export async function request(url: string, options: RequestInit = {}) {
     // 12. Agent Chat API (Stream proxy for custom agents)
     if (cleanUrl === '/api/agent/chat') {
       const body = JSON.parse(options.body as string);
-      let apiKey = body.apiKey || '';
-      // Resolve env variable key reference if needed
-      if (apiKey.startsWith('API_KEY_') || apiKey.includes('KEY')) {
-        const localVal = getLocalApiKey(apiKey);
-        if (localVal) apiKey = localVal;
-      }
+      const creds = await resolveLlmCredentials(body.model);
 
       const readable = await llmChatReadableStream({
-        baseURL: body.baseURL,
-        apiKey,
-        model: body.model,
+        ...creds,
         messages: body.messages,
         temperature: body.temperature,
         tools: body.tools && body.tools.length > 0 ? body.tools : undefined,

@@ -6,6 +6,10 @@ import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
 import { AIMember, AIMemberKind } from '@/config/aiMembers';
 import { Group } from '@/config/groups';
 import { AIMemberEditor } from './AIMemberEditor';
+import { ProviderLibrary } from './ProviderLibrary';
+import { ProviderEditor } from './ProviderEditor';
+import { useProviderStore } from '@/store/providerStore';
+import type { Provider } from '@/config/providers';
 import { Search, Plus, Edit2, Trash2, ShieldAlert, Cpu, Terminal, Users, Sparkles, X } from 'lucide-react';
 import { createStyles } from 'antd-style';
 
@@ -186,6 +190,7 @@ interface AIMemberLibraryProps {
 export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose, groups, inline }) => {
   const { styles } = useStyles();
   const { list, load, remove, findReferencingGroups } = useAIMemberStore();
+  const { load: loadProviders } = useProviderStore();
   const [activeTab, setActiveTab] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   
@@ -194,11 +199,21 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
   const [editingId, setEditingId] = useState<string | undefined>(undefined);
   const [editorKind, setEditorKind] = useState<'llm' | 'agent' | 'cli'>('llm');
 
+  // Provider editor state
+  const [providerEditorOpen, setProviderEditorOpen] = useState(false);
+  const [editingProviderId, setEditingProviderId] = useState<string | undefined>(undefined);
+
   useEffect(() => {
     if (open) {
       load();
     }
   }, [open]);
+
+  useEffect(() => {
+    if (open && activeTab === 'providers') {
+      loadProviders();
+    }
+  }, [open, activeTab, loadProviders]);
 
   const handleCreate = (kind: 'llm' | 'agent' | 'cli') => {
     setEditingId(undefined);
@@ -210,6 +225,16 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
     setEditingId(member.id);
     setEditorKind(member.kind);
     setEditorOpen(true);
+  };
+
+  const handleCreateProvider = () => {
+    setEditingProviderId(undefined);
+    setProviderEditorOpen(true);
+  };
+
+  const handleEditProvider = (provider: Provider) => {
+    setEditingProviderId(provider.id);
+    setProviderEditorOpen(true);
   };
 
   const handleDelete = (member: AIMember) => {
@@ -418,27 +443,29 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
 
   const body = (
     <div className={styles.drawerBody}>
-      <div className={styles.searchBar}>
-        <Input
-          placeholder="搜索成员名称、描述或标签..."
-          prefix={<Search size={16} style={{ opacity: 0.45 }} />}
-          value={searchQuery}
-          onChange={e => setSearchQuery(e.target.value)}
-          style={{ flex: 1, borderRadius: 8 }}
-          allowClear
-        />
-        <Space>
-          <Button type="primary" icon={<Plus size={16} />} onClick={() => handleCreate('llm')}>
-            新增 LLM 角色
-          </Button>
-          <Button icon={<Plus size={16} />} onClick={() => handleCreate('agent')}>
-            新增 Agent
-          </Button>
-          <Button icon={<Plus size={16} />} onClick={() => handleCreate('cli')}>
-            新增 CLI Agent
-          </Button>
-        </Space>
-      </div>
+      {activeTab !== 'providers' && (
+        <div className={styles.searchBar}>
+          <Input
+            placeholder="搜索成员名称、描述或标签..."
+            prefix={<Search size={16} style={{ opacity: 0.45 }} />}
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            style={{ flex: 1, borderRadius: 8 }}
+            allowClear
+          />
+          <Space>
+            <Button type="primary" icon={<Plus size={16} />} onClick={() => handleCreate('llm')}>
+              新增 LLM 角色
+            </Button>
+            <Button icon={<Plus size={16} />} onClick={() => handleCreate('agent')}>
+              新增 Agent
+            </Button>
+            <Button icon={<Plus size={16} />} onClick={() => handleCreate('cli')}>
+              新增 CLI Agent
+            </Button>
+          </Space>
+        </div>
+      )}
 
       <div className={styles.tabContainer}>
         <Tabs activeKey={activeTab} onChange={setActiveTab}>
@@ -454,21 +481,38 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
           <Tabs.TabPane tab="CLI Agent" key="cli">
             {renderTabContent('cli')}
           </Tabs.TabPane>
+          <Tabs.TabPane tab="模型服务" key="providers">
+            <ProviderLibrary onCreate={handleCreateProvider} onEdit={handleEditProvider} />
+          </Tabs.TabPane>
         </Tabs>
       </div>
     </div>
   );
 
   const editor = (
-    <AIMemberEditor
-      open={editorOpen}
-      memberId={editingId}
-      defaultKind={editorKind}
-      onClose={() => setEditorOpen(false)}
-      onSave={() => {
-        load();
-      }}
-    />
+    <>
+      <AIMemberEditor
+        open={editorOpen}
+        memberId={editingId}
+        defaultKind={editorKind}
+        onClose={() => setEditorOpen(false)}
+        onSave={() => {
+          load();
+        }}
+      />
+      <ProviderEditor
+        open={providerEditorOpen}
+        providerId={editingProviderId}
+        onClose={() => setProviderEditorOpen(false)}
+        onSave={() => {
+          loadProviders();
+        }}
+        onCloneEdit={(newId) => {
+          setEditingProviderId(newId);
+          setProviderEditorOpen(true);
+        }}
+      />
+    </>
   );
 
   // 桌面端：与 CLI/AI/Agent 群设置一致的右侧推入式面板
