@@ -4,6 +4,7 @@ import { llmChatReadableStream, llmChatComplete } from '@/utils/llmClient';
 import { defaultGroups as staticGroups } from '@/config/groups';
 import { generateAICharacters, cliAgents, modelConfigs } from '@/config/aiCharacters';
 import { builtinAIMembers, type AIMember } from '@/config/aiMembers';
+import { builtinProviders, mapProviderToRust } from '@/config/providers';
 
 const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
 if (isTauri) {
@@ -296,6 +297,15 @@ export async function request(url: string, options: RequestInit = {}) {
             });
             await invoke('seed_builtin_ai_members', { members: toSeed });
             dbMembers = await invoke('list_ai_members', { kind: null });
+          }
+
+          const dbProviders: { id: string }[] = await invoke('list_providers');
+          const existingProviderIds = new Set(dbProviders.map(p => p.id));
+          const missingProviders = builtinProviders.filter(p => !existingProviderIds.has(p.id));
+          if (missingProviders.length > 0) {
+            await invoke('seed_builtin_providers', {
+              providers: missingProviders.map(mapProviderToRust),
+            });
           }
 
           characters = dbMembers.map((r: any) => {
