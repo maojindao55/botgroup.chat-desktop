@@ -13,11 +13,6 @@ if (isTauri) {
 }
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
-// Helper to get local API Key
-function getLocalApiKey(keyName: string): string {
-  return localStorage.getItem(`API_KEY_${keyName}`) || '';
-}
-
 // Client-side implementation of AI response scheduling
 async function clientScheduleAI(message: string, history: any[], availableAIs: any[]): Promise<string[]> {
   const allTags = new Set<string>();
@@ -882,17 +877,10 @@ export async function request(url: string, options: RequestInit = {}) {
     // 12. Agent Chat API (Stream proxy for custom agents)
     if (cleanUrl === '/api/agent/chat') {
       const body = JSON.parse(options.body as string);
-      let apiKey = body.apiKey || '';
-      // Resolve env variable key reference if needed
-      if (apiKey.startsWith('API_KEY_') || apiKey.includes('KEY')) {
-        const localVal = getLocalApiKey(apiKey);
-        if (localVal) apiKey = localVal;
-      }
+      const creds = await resolveLlmCredentials(body.model);
 
       const readable = await llmChatReadableStream({
-        baseURL: body.baseURL,
-        apiKey,
-        model: body.model,
+        ...creds,
         messages: body.messages,
         temperature: body.temperature,
         tools: body.tools && body.tools.length > 0 ? body.tools : undefined,

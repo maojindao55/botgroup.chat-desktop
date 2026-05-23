@@ -67,7 +67,7 @@ export async function resolveLlmCredentials(model: string): Promise<ResolvedLlmC
 
   if (!apiKey && modelConfig.apiKey !== 'OLLAMA_API_KEY') {
     throw new Error(
-      `${model} 的 API 密钥未配置。请在「群员库 → 模型服务」中为对应 Provider 配置密钥（推荐），或使用左下角头像配置 legacy Key。`,
+      `${model} 的 API 密钥未配置。请在「群员库 → 模型服务」中为对应 Provider 配置密钥。`,
     );
   }
 
