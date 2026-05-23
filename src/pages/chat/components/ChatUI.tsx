@@ -13,6 +13,7 @@ import { createStyles } from 'antd-style';
 import { request } from '@/utils/request';
 import { executeCLIStrategy } from '@/engine/cliEngine';
 import { isCodeChangeIntent } from '@/engine/cliIntent';
+import { buildCliUserPrompt } from '@/engine/cliPrompt';
 import type { AICharacter, CLIAgent } from "@/config/aiCharacters";
 import { mapAIMemberToLegacy } from "@/config/aiCharacters";
 import { ChatMarkdown } from '@/components/Markdown';
@@ -789,13 +790,7 @@ const ChatUI = () => {
   };
 
   const handleSendCLIMessage = async (promptText: string) => {
-    let messageHistory = messages.map(msg => ({
-      role: 'user',
-      content: msg.sender.name === userStore.userInfo.nickname ? 'user：' + msg.content : msg.sender.name + '：' + msg.content,
-      name: msg.sender.name,
-    }));
-    const cleanHistory = messageHistory.slice(-6).map((m: any) => m.content).join('\n');
-    const finalPrompt = cleanHistory ? `${cleanHistory}\nuser: ${promptText}` : promptText;
+    const taskPrompt = buildCliUserPrompt(promptText, workspacePath);
 
     const memberIds = (group as CLIGroup).memberIds || (group as CLIGroup).members || [];
     const activeAgents = memberIds
@@ -851,7 +846,7 @@ const ChatUI = () => {
       await executeCLIStrategy(
         customGroup,
         activeAgents,
-        finalPrompt,
+        taskPrompt,
         workspacePath,
         {
           onAgentStart: (taskId, agentId, agentName, meta) => {
@@ -865,7 +860,7 @@ const ChatUI = () => {
               isAI: true,
               taskId: taskId,
               status: 'running',
-              prompt: finalPrompt,
+              prompt: taskPrompt,
               stageLabel: meta?.stageLabel,
               cliCwd: meta?.cwd,
               cliBranch: meta?.branch,
