@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { llmChatReadableStream, llmChatComplete } from '@/utils/llmClient';
 import { defaultGroups as staticGroups } from '@/config/groups';
 import { generateAICharacters, cliAgents, modelConfigs } from '@/config/aiCharacters';
 import { builtinAIMembers, type AIMember } from '@/config/aiMembers';
@@ -887,70 +888,12 @@ export async function request(url: string, options: RequestInit = {}) {
         baseMessages.splice(baseMessages.length - index, 0, userMessage);
       }
 
-      // Call LLM endpoint directly
-      const response = await fetch(`${baseURL}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-          model: model,
-          messages: baseMessages,
-          stream: true
-        })
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`LLM Error: ${response.status} - ${errText}`);
-      }
-
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-
-      // Convert LLM stream into the format expected by ChatUI
-      const readable = new ReadableStream({
-        async start(controller) {
-          let buffer = '';
-          try {
-            while (true) {
-              const { done, value } = await reader!.read();
-              if (done) {
-                controller.close();
-                break;
-              }
-
-              buffer += decoder.decode(value, { stream: true });
-              let lines = buffer.split('\n');
-              buffer = lines.pop() || ''; // keep the last partial line in buffer
-
-              for (const line of lines) {
-                const cleanLine = line.trim();
-                if (!cleanLine) continue;
-
-                if (cleanLine.startsWith('data: ')) {
-                  const dataStr = cleanLine.slice(6);
-                  if (dataStr === '[DONE]') continue;
-
-                  try {
-                    const parsed = JSON.parse(dataStr);
-                    const content = parsed.choices?.[0]?.delta?.content || '';
-                    if (content) {
-                      controller.enqueue(
-                        new TextEncoder().encode(`data: ${JSON.stringify({ content })}\n\n`)
-                      );
-                    }
-                  } catch (e) {
-                    // Ignore JSON parse errors for non-standard lines
-                  }
-                }
-              }
-            }
-          } catch (e: any) {
-            controller.error(e);
-          }
-        }
+      const readable = await llmChatReadableStream({
+        baseURL,
+        apiKey,
+        model,
+        messages: baseMessages,
+        emitDoneMarker: false,
       });
 
       return new Response(readable, {
