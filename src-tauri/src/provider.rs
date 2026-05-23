@@ -233,6 +233,19 @@ pub(crate) async fn ping_provider(
     api_key: &str,
     models: &[String],
 ) -> ProviderTestResult {
+    if api_key.is_empty() {
+        return ProviderTestResult {
+            ok: false,
+            latency_ms: 0,
+            model_echo: None,
+            error_class: Some("auth".into()),
+            message: Some(
+                "未配置 API 密钥（vault 中无对应 secret）。请在 Provider 编辑器输入密钥，或从左下角导入后重试。"
+                    .into(),
+            ),
+        };
+    }
+
     let model = models
         .first()
         .cloned()

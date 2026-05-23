@@ -31,7 +31,7 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
   onCloneEdit,
 }) => {
   const [form] = Form.useForm();
-  const { get, upsert, setSecret, hasSecret, testConnection } = useProviderStore();
+  const { get, upsert, hasSecret, ensureSecret, testConnection } = useProviderStore();
   const [secretConfigured, setSecretConfigured] = useState<boolean | null>(null);
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -87,7 +87,7 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
 
     const apiKey = (values.apiKey as string)?.trim();
     if (apiKey) {
-      await setSecret(id, apiKey);
+      await ensureSecret(id, apiKey);
       setSecretConfigured(true);
     }
 
@@ -119,6 +119,16 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
       const id = providerId || `user-${Date.now()}`;
       if (!readOnly) {
         await persistProvider({ ...form.getFieldsValue(), ...values }, id);
+      }
+
+      const inlineKey = (form.getFieldValue('apiKey') as string)?.trim();
+      const hasKey = await ensureSecret(id, inlineKey || undefined);
+      if (!hasKey) {
+        message.warning('未配置 API 密钥：请在下方输入，或先在左下角头像处配置后重试');
+        return;
+      }
+      if (inlineKey) {
+        setSecretConfigured(true);
       }
 
       const result = await testConnection(id);
@@ -232,10 +242,13 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
           )}
         </Divider>
 
-        <Form.Item label="API Key" name="apiKey">
+        <Form.Item
+          label="API Key"
+          name="apiKey"
+          extra={readOnly ? '系统预设服务的密钥可在此单独配置（不会修改预设的地址和模型列表）' : undefined}
+        >
           <Input.Password
             placeholder={secretConfigured ? '留空则保留现有密钥' : '输入 API Key'}
-            disabled={readOnly}
           />
         </Form.Item>
 

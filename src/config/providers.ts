@@ -68,6 +68,29 @@ export const builtinProviders: Provider[] = [
   },
 ];
 
+/** 旧版左下角全局 API Key 弹窗使用的 localStorage 键（PR4 前兼容） */
+export const LEGACY_API_KEY_STORAGE: Record<string, string[]> = {
+  qwen: ['API_KEY_DASHSCOPE_API_KEY'],
+  volcengine: ['API_KEY_ARK_API_KEY', 'API_KEY_ARK_API_KEY1'],
+  hunyuan: ['API_KEY_HUNYUAN_API_KEY', 'API_KEY_HUNYUAN_API_KEY1'],
+  glm: ['API_KEY_GLM_API_KEY'],
+  deepseek: ['API_KEY_DEEPSEEK_API_KEY'],
+  kimi: ['API_KEY_KIMI_API_KEY'],
+  baidu: ['API_KEY_BAIDU_API_KEY'],
+  ollama: ['API_KEY_OLLAMA_URL'],
+};
+
+export function readLegacyApiKey(providerId: string): string | null {
+  if (typeof localStorage === 'undefined') return null;
+  const keys = LEGACY_API_KEY_STORAGE[providerId];
+  if (!keys) return null;
+  for (const storageKey of keys) {
+    const val = localStorage.getItem(storageKey)?.trim();
+    if (val) return val;
+  }
+  return null;
+}
+
 export function mapProviderToRust(p: Provider) {
   return {
     id: p.id,

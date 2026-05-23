@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
-import { builtinProviders, type Provider } from '@/config/providers';
+import { builtinProviders, readLegacyApiKey, type Provider } from '@/config/providers';
 
 interface RustProvider {
   id: string;
@@ -62,6 +62,8 @@ interface ProviderStore {
   testConnection: (id: string) => Promise<ProviderTestResult>;
   setSecret: (providerId: string, value: string) => Promise<void>;
   hasSecret: (providerId: string) => Promise<boolean>;
+  /** 若 vault 无密钥，尝试从左下角 legacy localStorage 导入 */
+  ensureSecret: (providerId: string, inlineKey?: string) => Promise<boolean>;
 }
 
 const isTauri =
@@ -157,5 +159,25 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
   hasSecret: async (providerId: string) => {
     const name = secretNameForProvider(providerId, get().providers);
     return invoke<boolean>('secret_has', { name });
+  },
+
+  ensureSecret: async (providerId: string, inlineKey?: string) => {
+    const trimmed = inlineKey?.trim();
+    if (trimmed) {
+      await get().setSecret(providerId, trimmed);
+      return true;
+    }
+
+    if (await get().hasSecret(providerId)) {
+      return true;
+    }
+
+    const legacy = readLegacyApiKey(providerId);
+    if (legacy) {
+      await get().setSecret(providerId, legacy);
+      return true;
+    }
+
+    return false;
   },
 }));
