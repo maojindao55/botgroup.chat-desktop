@@ -1,6 +1,11 @@
 //! OpenAI-compatible chat/completions proxy with SSE streaming.
 //!
 //! Events emit on `llm://{session_id}`. See design doc §2.4.
+//!
+//! ## PR4 follow-up
+//! - Replace inline `apiKey` with `vault::get(conn, master, provider.api_key_ref)`
+//! - Implement `provider_id` resolution via `providers` table
+//! - Remove plaintext key crossing IPC boundary
 
 use serde::{Deserialize, Serialize};
 
