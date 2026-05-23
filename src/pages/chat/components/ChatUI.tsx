@@ -603,7 +603,11 @@ const ChatUI = () => {
       localStorage.setItem(`cliStrategy:${nextGroup.id}`, patch.strategy);
     }
     if (patch.executionPlan) {
-      localStorage.setItem(`cliExecutionPlan:${nextGroup.id}`, JSON.stringify(patch.executionPlan));
+      if (Object.keys(patch.executionPlan).length > 0) {
+        localStorage.setItem(`cliExecutionPlan:${nextGroup.id}`, JSON.stringify(patch.executionPlan));
+      } else {
+        localStorage.removeItem(`cliExecutionPlan:${nextGroup.id}`);
+      }
     }
   };
 
@@ -612,8 +616,11 @@ const ChatUI = () => {
     patchCurrentCLIGroup({ strategy: nextStrategy });
   };
 
-  const handleCLIExecutionPlanChange = (patch: Partial<CLIExecutionPlan>) => {
-    const nextPlan = { ...cliExecutionPlan, ...patch };
+  const handleCLIExecutionPlanChange = (
+    patch: Partial<CLIExecutionPlan>,
+    options?: { replace?: boolean },
+  ) => {
+    const nextPlan = options?.replace ? patch : { ...cliExecutionPlan, ...patch };
     setCliExecutionPlan(nextPlan);
     patchCurrentCLIGroup({ executionPlan: nextPlan });
   };

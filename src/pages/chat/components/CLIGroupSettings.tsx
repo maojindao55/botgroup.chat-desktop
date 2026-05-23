@@ -73,7 +73,7 @@ interface CLIGroupSettingsProps {
   onShowStderrChange: (show: boolean) => void;
   strategy: CLIStrategy;
   onStrategyChange: (strategy: CLIStrategy) => void;
-  onExecutionPlanChange?: (patch: Partial<CLIExecutionPlan>) => void;
+  onExecutionPlanChange?: (patch: Partial<CLIExecutionPlan>, options?: { replace?: boolean }) => void;
   onRetryTask?: (agentId: string, prompt: string) => void;
   onMembersChange?: (memberIds: string[]) => void;
   inline?: boolean;
@@ -680,9 +680,7 @@ export const CLIGroupSettings = ({
                   onClick={() => {
                     setSelectedCliTemplateId(item.id);
                     onStrategyChange(item.strategy);
-                    if (item.executionPlan) {
-                      onExecutionPlanChange?.(item.executionPlan);
-                    }
+                    onExecutionPlanChange?.(item.executionPlan || {}, { replace: true });
                   }}
                   className={cx(
                     styles.strategyBtn,

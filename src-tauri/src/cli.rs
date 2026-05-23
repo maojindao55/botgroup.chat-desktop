@@ -866,6 +866,12 @@ fn build_command(args: &CliRunArgs) -> Result<Command, String> {
         // Non-interactive mode; final result on stdout, progress on stderr.
         "codex" => {
             cmd.arg("exec");
+            let has_skip_git_repo_check = args.extra_args.as_ref().map_or(false, |extra| {
+                extra.iter().any(|arg| arg == "--skip-git-repo-check")
+            });
+            if !has_skip_git_repo_check {
+                cmd.arg("--skip-git-repo-check");
+            }
             if let Some(extra) = &args.extra_args {
                 for a in extra {
                     cmd.arg(a);
@@ -987,7 +993,8 @@ fn build_command(args: &CliRunArgs) -> Result<Command, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::prompt_summary;
+    use super::{build_command, prompt_summary, CliRunArgs};
+    use std::collections::HashMap;
 
     #[test]
     fn prompt_summary_does_not_split_utf8() {
@@ -1003,6 +1010,32 @@ mod tests {
     fn prompt_summary_keeps_short_prompt() {
         let prompt = "写一个冒泡排序";
         assert_eq!(prompt_summary(prompt, 60), prompt);
+    }
+
+    #[test]
+    fn codex_exec_allows_user_selected_non_git_workspaces() {
+        let cmd = build_command(&CliRunArgs {
+            session_id: "session-1".to_string(),
+            group_id: "group-1".to_string(),
+            agent_id: "cli-codex".to_string(),
+            agent_name: "Codex".to_string(),
+            adapter: "codex".to_string(),
+            prompt: "写一个冒泡排序文件".to_string(),
+            cwd: Some("/tmp/not-a-git-repo".to_string()),
+            extra_args: None,
+            binary: None,
+            env: Some(HashMap::new()),
+            timeout_ms: Some(300000),
+            approval_mode: Some("auto".to_string()),
+            show_stderr: Some(true),
+        })
+        .expect("codex command should build");
+
+        let rendered = format!("{:?}", cmd);
+
+        assert!(rendered.contains("\"exec\""));
+        assert!(rendered.contains("\"--skip-git-repo-check\""));
+        assert!(rendered.contains("\"写一个冒泡排序文件\""));
     }
 }
 

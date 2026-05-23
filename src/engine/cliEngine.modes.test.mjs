@@ -276,6 +276,25 @@ function runBodies(calls) {
 {
   const harness = createHarness();
   const { executeCLIStrategy } = await loadEngine(harness.request);
+  await executeCLIStrategy(
+    baseGroup('review', { isolation: 'copyPerAgent' }),
+    agents,
+    'write a bubble sort file',
+    '/workspace/project',
+    harness.callbacks,
+  );
+
+  const bodies = runBodies(harness.calls);
+  assert.equal(
+    harness.calls.some(call => call.url === '/api/cli/tempcopy/prepare'),
+    false,
+  );
+  assert.deepEqual(bodies.map(b => b.cwd), ['/workspace/project', '/workspace/project', '/workspace/project']);
+}
+
+{
+  const harness = createHarness();
+  const { executeCLIStrategy } = await loadEngine(harness.request);
   const results = await executeCLIStrategy(
     baseGroup('discussion', { maxRounds: 2 }),
     agents.slice(0, 2),

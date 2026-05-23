@@ -183,10 +183,16 @@ export function resolveExecutionPlan(
         };
     }
   })();
+  const safeExecutionPlan = { ...(group.executionPlan || {}) };
+  delete safeExecutionPlan.selection;
+  delete safeExecutionPlan.collaboration;
+  delete safeExecutionPlan.schedule;
+  delete safeExecutionPlan.isolation;
+  delete safeExecutionPlan.preset;
 
   return {
     ...base,
-    ...(group.executionPlan || {}),
+    ...safeExecutionPlan,
     ...(overrides || {}),
     preset, // preset 不允许被覆盖，避免 UI 与内部状态错位
   };
