@@ -109,3 +109,10 @@ assert.match(agentSettings, /专家群配置/);
 assert.match(agentSettings, /群内协作方式/);
 assert.match(agentSettings, /agentWorkflowTemplates/);
 assert.match(agentSettings, /高级策略/);
+
+const cliSettings = await readFile(new URL('../pages/chat/components/CLIGroupSettings.tsx', import.meta.url), 'utf8');
+
+assert.match(cliSettings, /开发群配置/);
+assert.match(cliSettings, /群规/);
+assert.match(cliSettings, /cliWorkflowTemplates/);
+assert.match(cliSettings, /开发群友/);

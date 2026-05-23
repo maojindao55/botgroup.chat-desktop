@@ -14,15 +14,13 @@ const wizardCliConfigBlock = wizard.slice(
   wizard.indexOf('const renderAgentConfigStep'),
 );
 
-for (const label of ['快速处理', '模型对比', '接力开发', '隔离竞赛', '开发评审']) {
-  assert.match(settingsStrategyBlock, new RegExp(`label: '${label}'`));
-  assert.match(wizardCliConfigBlock, new RegExp(`label: '${label}'`));
-}
+assert.match(settingsStrategyBlock, /cliWorkflowTemplates/);
+assert.match(wizardCliConfigBlock, /cliWorkflowTemplates/);
 
-assert.doesNotMatch(settingsStrategyBlock, /label: '多模型对比'/);
-assert.doesNotMatch(settingsStrategyBlock, /label: '规划实现评审'/);
-assert.doesNotMatch(wizardCliConfigBlock, /label: '多模型对比'/);
-assert.doesNotMatch(wizardCliConfigBlock, /label: '规划实现评审'/);
+for (const oldLabel of ['快速处理', '模型对比', '接力开发', '开发评审', '多模型对比', '规划实现评审']) {
+  assert.doesNotMatch(settingsStrategyBlock, new RegExp(oldLabel));
+  assert.doesNotMatch(wizardCliConfigBlock, new RegExp(oldLabel));
+}
 
 for (const hiddenStrategy of ['discussion', 'debate', 'mapreduce']) {
   assert.doesNotMatch(settingsStrategyBlock, new RegExp(`value: '${hiddenStrategy}' as const, label:`));
@@ -36,4 +34,4 @@ assert.match(engine, /你负责规划阶段/);
 assert.match(engine, /你负责实现阶段/);
 assert.match(engine, /你负责评审阶段/);
 assert.match(engine, /你负责完整的规划、实现和自评闭环/);
-assert.match(settings, /建议至少选择 3 个 CLI Agent/);
+assert.match(settings, /建议至少选择 3 个开发群友/);

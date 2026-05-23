@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "test:cli": "node src/engine/cliEngine.modes.test.mjs",
+    "test:cli": "node src/engine/cliEngine.modes.test.mjs && node src/engine/cliWorkflowModes.test.mjs",
     "test:llm": "node src/utils/llmClient.test.mjs",
     "test:product": "node src/config/groupProduct.test.mjs",
     "preview": "vite preview",
