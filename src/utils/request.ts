@@ -2,10 +2,11 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { llmChatReadableStream, llmChatComplete } from '@/utils/llmClient';
 import { resolveLlmCredentials } from '@/utils/resolveLlmCredentials';
+import { collectLegacyApiKeys, clearLegacyApiKeys } from '@/utils/legacyApiKeys';
 import { defaultGroups as staticGroups } from '@/config/groups';
 import { generateAICharacters, cliAgents, modelConfigs } from '@/config/aiCharacters';
 import { builtinAIMembers, type AIMember } from '@/config/aiMembers';
-import { builtinProviders, mapProviderToRust } from '@/config/providers';
+import { builtinProviders, lookupProviderByEnvName, mapProviderToRust } from '@/config/providers';
 
 const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
 if (isTauri) {
@@ -182,6 +183,7 @@ export async function request(url: string, options: RequestInit = {}) {
               const agentId = agent.id || `agent-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
               newGroup.memberIds.push(agentId);
               
+              const agentLlm = agent.llm || { baseURL: '', apiKey: '', model: '' };
               const mappedMember = {
                 id: agentId,
                 kind: 'agent' as const,
@@ -193,7 +195,8 @@ export async function request(url: string, options: RequestInit = {}) {
                 enabled: true,
                 role: agent.role || '',
                 systemPrompt: agent.systemPrompt || '',
-                llm: agent.llm || { baseURL: '', apiKey: '', model: '' },
+                providerId: agent.providerId || lookupProviderByEnvName(agentLlm.apiKey || 'DEEPSEEK_API_KEY'),
+                model: agent.model || agentLlm.model || 'deepseek-chat',
                 tools: agent.tools || [],
                 maxTurns: agent.maxTurns || 5,
                 temperature: agent.temperature || 0.7
@@ -212,10 +215,11 @@ export async function request(url: string, options: RequestInit = {}) {
                     config: JSON.stringify({
                       role: mappedMember.role,
                       systemPrompt: mappedMember.systemPrompt,
-                      llm: mappedMember.llm,
+                      providerId: mappedMember.providerId,
+                      model: mappedMember.model,
                       tools: mappedMember.tools,
                       maxTurns: mappedMember.maxTurns,
-                      temperature: mappedMember.temperature
+                      temperature: mappedMember.temperature,
                     }),
                     enabled: 1
                   }
@@ -251,14 +255,31 @@ export async function request(url: string, options: RequestInit = {}) {
       let characters: any[] = [];
       if (isTauri) {
         try {
+          // PR4: one-shot migration (localStorage → vault, member config → providerId)
+          try {
+            const alreadyDone = await invoke<boolean>('migration_status');
+            if (!alreadyDone) {
+              const migrationResult = await invoke<{ migrated: boolean }>('migrate_a_complete', {
+                input: { localStorageKeys: collectLegacyApiKeys() },
+              });
+              if (migrationResult.migrated) {
+                clearLegacyApiKeys();
+                console.info('[init] PR4 data migration completed');
+              }
+            }
+          } catch (migrationErr) {
+            console.error('[init] PR4 migration failed:', migrationErr);
+          }
+
           let dbMembers: any[] = await invoke('list_ai_members', { kind: null });
           if (dbMembers.length === 0) {
             const toSeed = builtinAIMembers.map(m => {
               let configObj: any = {};
               if (m.kind === 'llm') {
                 configObj = {
-                  personality: m.personality,
+                  providerId: m.providerId,
                   model: m.model,
+                  schedulerTag: m.schedulerTag,
                   customPrompt: m.customPrompt,
                   stages: m.stages,
                 };
@@ -266,7 +287,8 @@ export async function request(url: string, options: RequestInit = {}) {
                 configObj = {
                   role: m.role,
                   systemPrompt: m.systemPrompt,
-                  llm: m.llm,
+                  providerId: m.providerId,
+                  model: m.model,
                   tools: m.tools,
                   maxTurns: m.maxTurns,
                   temperature: m.temperature,
@@ -312,7 +334,8 @@ export async function request(url: string, options: RequestInit = {}) {
               return {
                 id: r.id,
                 name: r.name,
-                personality: config.personality || '',
+                personality: config.schedulerTag || config.personality || '',
+                providerId: config.providerId,
                 model: config.model || modelConfigs[0].model,
                 avatar: r.avatar || '',
                 custom_prompt: config.customPrompt || '',
@@ -337,7 +360,8 @@ export async function request(url: string, options: RequestInit = {}) {
                 id: r.id,
                 name: r.name,
                 personality: 'agent',
-                model: modelConfigs[0].model,
+                providerId: config.providerId,
+                model: config.model || modelConfigs[0].model,
                 avatar: r.avatar || '',
                 custom_prompt: config.systemPrompt || '',
                 tags
@@ -359,7 +383,8 @@ export async function request(url: string, options: RequestInit = {}) {
             return {
               id: m.id,
               name: m.name,
-              personality: m.personality,
+              personality: m.schedulerTag || '',
+              providerId: m.providerId,
               model: m.model,
               avatar: m.avatar || '',
               custom_prompt: m.customPrompt || '',
@@ -384,7 +409,8 @@ export async function request(url: string, options: RequestInit = {}) {
               id: m.id,
               name: m.name,
               personality: 'agent',
-              model: modelConfigs[0].model,
+              providerId: m.providerId,
+              model: m.model,
               avatar: m.avatar || '',
               custom_prompt: m.systemPrompt || '',
               tags: m.tags
@@ -837,9 +863,9 @@ export async function request(url: string, options: RequestInit = {}) {
     // 11. Chat API (Direct LLM streaming from client side)
     if (cleanUrl === '/api/chat') {
       const body = JSON.parse(options.body as string);
-      const { message, custom_prompt, history, aiName, index, model = "qwen-plus" } = body;
+      const { message, custom_prompt, history, aiName, index, model = "qwen-plus", providerId } = body;
 
-      const creds = await resolveLlmCredentials(model);
+      const creds = await resolveLlmCredentials(model, providerId);
 
       // Build message payload
       const systemPrompt = `${custom_prompt}\n 注意重要：1、你在群里叫${aiName}认准自己的身份； 2、你的输出内容不要加${aiName}：这种多余前缀；3、如果用户提出玩游戏，比如成语接龙等，严格按照游戏规则，不要说一大堆，要简短精炼; 4、保持群聊风格字数严格控制在50字以内，越简短越好（新闻总结类除外）`;
@@ -877,7 +903,7 @@ export async function request(url: string, options: RequestInit = {}) {
     // 12. Agent Chat API (Stream proxy for custom agents)
     if (cleanUrl === '/api/agent/chat') {
       const body = JSON.parse(options.body as string);
-      const creds = await resolveLlmCredentials(body.model);
+      const creds = await resolveLlmCredentials(body.model, body.providerId);
 
       const readable = await llmChatReadableStream({
         ...creds,

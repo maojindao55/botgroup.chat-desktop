@@ -458,7 +458,7 @@ const ChatUI = () => {
     if (group.type === 'ai' || !group.type) {
       const resolvedMembers = memberIds
         .map(mid => aiMembers[mid])
-        .filter(m => m && m.enabled !== false && !(m.kind === 'llm' && m.personality === 'scheduler'));
+        .filter(m => m && m.enabled !== false && !(m.kind === 'llm' && m.schedulerTag === 'scheduler'));
       const resolvedCharacters = resolvedMembers.map(m => mapAIMemberToLegacy(m, group.name) as AICharacter);
 
       setGroupAiCharacters(resolvedCharacters);
@@ -949,6 +949,7 @@ const ChatUI = () => {
       let uri = "/api/chat";
       let requestBody = {
         model: char.model,
+        providerId: char.providerId,
         message: promptText,
         query: promptText,
         personality: char.personality,

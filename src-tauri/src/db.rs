@@ -340,6 +340,14 @@ pub fn init_db_schemas(conn: &Connection) -> Result<()> {
     conn.execute("CREATE INDEX IF NOT EXISTS idx_cli_tasks_agent ON cli_tasks(agent_id, created_at DESC);", [])?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_members_kind ON ai_members(kind);", [])?;
 
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS app_meta (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );",
+        [],
+    )?;
+
     Ok(())
 }
 

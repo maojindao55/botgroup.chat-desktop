@@ -348,10 +348,13 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
               <>
                 <div className={styles.metaItem}>
                   <strong>模型:</strong> {member.model}
+                  {member.providerId?.startsWith('unmapped-') && (
+                    <span style={{ color: '#ef4444', marginLeft: 6 }}>⚠️ 未绑定 Provider</span>
+                  )}
                 </div>
-                {member.personality && (
+                {member.schedulerTag && (
                   <div className={styles.metaItem}>
-                    <strong>标识:</strong> {member.personality}
+                    <strong>调度标签:</strong> {member.schedulerTag}
                   </div>
                 )}
               </>
@@ -362,7 +365,10 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
                   <strong>角色:</strong> {member.role || '无'}
                 </div>
                 <div className={styles.metaItem}>
-                  <strong>模型:</strong> {member.llm?.model || '无'}
+                  <strong>模型:</strong> {member.model}
+                  {member.providerId?.startsWith('unmapped-') && (
+                    <span style={{ color: '#ef4444', marginLeft: 6 }}>⚠️ 未绑定 Provider</span>
+                  )}
                 </div>
                 <div className={styles.metaItem}>
                   <strong>工具:</strong> {member.tools?.filter(t => t.enabled).length || 0} 个已启用

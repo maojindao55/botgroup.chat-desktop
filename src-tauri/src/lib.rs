@@ -2,6 +2,7 @@ mod db;
 mod api;
 mod cli;
 mod llm_proxy;
+mod migrate;
 mod provider;
 mod vault;
 
@@ -45,6 +46,8 @@ pub fn run() {
             provider::seed_builtin_providers,
             provider::provider_test,
             provider::provider_ping,
+            migrate::migrate_a_complete,
+            migrate::migration_status,
             cli::cli_run,
             cli::cli_kill,
             cli::cli_check,

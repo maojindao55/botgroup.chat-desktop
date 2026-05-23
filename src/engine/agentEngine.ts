@@ -6,6 +6,7 @@
  * 每个 Agent 独立配置 LLM API，支持工具调用循环
  */
 import type { AgentGroup, AgentMember } from '@/config/groups';
+import { lookupProviderByEnvName } from '@/config/providers';
 import { request } from '@/utils/request';
 import { useAIMemberStore } from '@/store/aiMemberStore';
 
@@ -13,13 +14,25 @@ export function getGroupAgents(group: AgentGroup): AgentMember[] {
   const membersState = useAIMemberStore.getState().members;
   const dbAgents = (group.memberIds || [])
     .map(id => membersState[id])
-    .filter(m => m && m.kind === 'agent') as any[];
+    .filter(m => m && m.kind === 'agent')
+    .map(normalizeAgentMember);
   
   if (dbAgents.length > 0) {
     return dbAgents;
   }
-  // fallback to legacy agents
-  return group.agents || [];
+  return (group.agents || []).map(normalizeAgentMember);
+}
+
+function normalizeAgentMember(agent: any): AgentMember {
+  if (agent.providerId && agent.model) {
+    return agent as AgentMember;
+  }
+  const llm = agent.llm;
+  return {
+    ...agent,
+    providerId: agent.providerId || lookupProviderByEnvName(llm?.apiKey || 'DEEPSEEK_API_KEY'),
+    model: agent.model || llm?.model || 'deepseek-chat',
+  };
 }
 
 // ============ 类型定义 ============
@@ -61,9 +74,8 @@ export async function callAgentLLM(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      baseURL: agent.llm.baseURL,
-      apiKey: agent.llm.apiKey,
-      model: agent.llm.model,
+      providerId: agent.providerId,
+      model: agent.model,
       temperature: agent.temperature,
       messages,
       tools: agent.tools.filter(t => t.enabled).map(t => ({

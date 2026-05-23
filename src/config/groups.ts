@@ -194,31 +194,33 @@ export function resolveExecutionPlan(
 
 // ============ Agent 群聊 ============
 
-/** 每个 Agent 的 LLM 连接配置 */
+/** 每个 Agent 的 LLM 连接配置（PR4：密钥统一在 Provider 管理页） */
 export interface AgentLLMConfig {
-  baseURL: string;                  // API 地址，如 https://api.deepseek.com/v1
-  apiKey: string;                   // API Key（环境变量名或直接值）
-  model: string;                    // 模型名，如 deepseek-chat
+  providerId: string;
+  model: string;
 }
 
 /** Agent 可用的内置工具 */
 export interface AgentTool {
-  name: string;                     // 工具标识：web_search / code_interpreter / http_request / memory
-  description: string;              // 工具描述（用于 function calling）
-  enabled: boolean;                 // 是否启用
+  name: string;
+  description: string;
+  enabled: boolean;
 }
 
 /** Agent 群的单个成员 */
 export interface AgentMember {
-  id: string;                       // 唯一标识
-  name: string;                     // Agent 名称，如 "产品经理"
-  avatar?: string;                  // 头像 URL
-  role: string;                     // 角色定位简述
-  systemPrompt: string;             // 完整系统提示词
-  llm: AgentLLMConfig;              // LLM 配置
-  tools: AgentTool[];               // 可用工具列表
-  maxTurns: number;                 // 单次最大思考轮数（防止循环），默认 5
-  temperature: number;              // 温度，默认 0.7
+  id: string;
+  name: string;
+  avatar?: string;
+  role: string;
+  systemPrompt: string;
+  providerId: string;
+  model: string;
+  /** @deprecated 仅兼容旧数据，新代码勿用 */
+  llm?: AgentLLMConfig & { baseURL?: string; apiKey?: string };
+  tools: AgentTool[];
+  maxTurns: number;
+  temperature: number;
 }
 
 /** Agent 群的执行策略 */
