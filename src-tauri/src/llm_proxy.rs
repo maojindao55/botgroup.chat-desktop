@@ -45,6 +45,168 @@ pub fn extract_delta_content(data_json: &str) -> Option<String> {
     content.map(|s| s.to_string())
 }
 
+use std::time::Duration;
+
+use futures_util::StreamExt;
+use reqwest::Client;
+use tauri::{AppHandle, Emitter};
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatMessage {
+    pub role: String,
+    pub content: String,
+    #[serde(default)]
+    pub name: Option<String>,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct LlmChatStreamArgs {
+    pub session_id: String,
+    pub model: String,
+    pub messages: Vec<ChatMessage>,
+    pub temperature: Option<f64>,
+    pub tools: Option<serde_json::Value>,
+    /// Legacy path (PR2): frontend passes plaintext key from localStorage
+    pub base_url: Option<String>,
+    pub api_key: Option<String>,
+    /// Reserved for PR4 — reject in PR2 if sole source
+    pub provider_id: Option<String>,
+}
+
+#[derive(Debug)]
+pub enum LlmProxyError {
+    BadRequest(String),
+    Http { status: u16, body: String },
+    Network(String),
+}
+
+impl std::fmt::Display for LlmProxyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LlmProxyError::BadRequest(s) => write!(f, "{}", s),
+            LlmProxyError::Http { status, body } => write!(f, "HTTP {}: {}", status, body),
+            LlmProxyError::Network(s) => write!(f, "network: {}", s),
+        }
+    }
+}
+
+/// Resolve endpoint credentials. PR2: inline baseURL+apiKey only.
+pub fn resolve_endpoint(args: &LlmChatStreamArgs) -> Result<(String, String), LlmProxyError> {
+    if let Some(pid) = &args.provider_id {
+        if args.base_url.is_none() && args.api_key.is_none() {
+            return Err(LlmProxyError::BadRequest(format!(
+                "providerId '{}' resolution is not implemented until PR3/PR4; pass baseUrl+apiKey",
+                pid
+            )));
+        }
+    }
+    let base_url = args
+        .base_url
+        .as_ref()
+        .map(|s| s.trim_end_matches('/').to_string())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| LlmProxyError::BadRequest("baseUrl is required".into()))?;
+    let api_key = args.api_key.clone().unwrap_or_default();
+    Ok((base_url, api_key))
+}
+
+pub fn build_chat_body(args: &LlmChatStreamArgs) -> serde_json::Value {
+    let mut body = serde_json::json!({
+        "model": args.model,
+        "messages": args.messages,
+        "stream": true,
+    });
+    if let Some(t) = args.temperature {
+        body["temperature"] = serde_json::json!(t);
+    }
+    if let Some(tools) = &args.tools {
+        if !tools.is_null() {
+            body["tools"] = tools.clone();
+        }
+    }
+    body
+}
+
+const STREAM_TIMEOUT: Duration = Duration::from_secs(120);
+
+pub async fn stream_chat_completions(
+    app: AppHandle,
+    args: LlmChatStreamArgs,
+) -> Result<(), LlmProxyError> {
+    let event_name = format!("llm://{}", args.session_id);
+    let (base_url, api_key) = resolve_endpoint(&args)?;
+    let url = format!("{}/chat/completions", base_url);
+    let body = build_chat_body(&args);
+
+    let client = Client::builder()
+        .timeout(STREAM_TIMEOUT)
+        .build()
+        .map_err(|e| LlmProxyError::Network(e.to_string()))?;
+
+    let mut req = client
+        .post(&url)
+        .header("Content-Type", "application/json")
+        .json(&body);
+
+    // Ollama may use empty bearer; others need Authorization when key present
+    if !api_key.is_empty() {
+        req = req.header("Authorization", format!("Bearer {}", api_key));
+    }
+
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| LlmProxyError::Network(e.to_string()))?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let body_text = resp.text().await.unwrap_or_default();
+        let _ = app.emit(
+            &event_name,
+            LlmEvent::Error {
+                message: body_text.clone(),
+                status: Some(status.as_u16()),
+            },
+        );
+        let _ = app.emit(&event_name, LlmEvent::Done);
+        return Err(LlmProxyError::Http {
+            status: status.as_u16(),
+            body: body_text,
+        });
+    }
+
+    let mut byte_stream = resp.bytes_stream();
+    let mut buffer = String::new();
+
+    while let Some(chunk) = byte_stream.next().await {
+        let chunk = chunk.map_err(|e| LlmProxyError::Network(e.to_string()))?;
+        buffer.push_str(&String::from_utf8_lossy(&chunk));
+
+        while let Some(pos) = buffer.find('\n') {
+            let line = buffer[..pos].to_string();
+            buffer = buffer[pos + 1..].to_string();
+
+            match parse_sse_line(&line) {
+                SseItem::Ignore => {}
+                SseItem::Done => {
+                    let _ = app.emit(&event_name, LlmEvent::Done);
+                    return Ok(());
+                }
+                SseItem::Data(json) => {
+                    if let Some(content) = extract_delta_content(&json) {
+                        let _ = app.emit(&event_name, LlmEvent::Token { content });
+                    }
+                }
+            }
+        }
+    }
+
+    let _ = app.emit(&event_name, LlmEvent::Done);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -66,5 +228,59 @@ mod tests {
         assert_eq!(extract_delta_content(json), Some("你好".into()));
         assert_eq!(extract_delta_content(r#"{"choices":[{"delta":{}}]}"#), None);
         assert_eq!(extract_delta_content("not-json"), None);
+    }
+
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[test]
+    fn resolve_endpoint_rejects_provider_only() {
+        let args = LlmChatStreamArgs {
+            session_id: "s".into(),
+            model: "m".into(),
+            messages: vec![],
+            temperature: None,
+            tools: None,
+            base_url: None,
+            api_key: None,
+            provider_id: Some("qwen".into()),
+        };
+        assert!(resolve_endpoint(&args).is_err());
+    }
+
+    #[tokio::test]
+    async fn stream_chat_completions_http_layer() {
+        let server = MockServer::start().await;
+        let sse = "data: {\"choices\":[{\"delta\":{\"content\":\"Hi\"}}}]}\n\n\
+                   data: [DONE]\n\n";
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_raw(sse, "text/event-stream"),
+            )
+            .mount(&server)
+            .await;
+
+        let session_id = "test-session".to_string();
+        let args = LlmChatStreamArgs {
+            session_id: session_id.clone(),
+            model: "gpt-test".into(),
+            messages: vec![ChatMessage {
+                role: "user".into(),
+                content: "hi".into(),
+                name: None,
+            }],
+            temperature: None,
+            tools: None,
+            base_url: Some(server.uri()),
+            api_key: Some("sk-test".into()),
+            provider_id: None,
+        };
+
+        let (base, key) = resolve_endpoint(&args).unwrap();
+        assert_eq!(base, server.uri());
+        assert_eq!(key, "sk-test");
+        let body = build_chat_body(&args);
+        assert_eq!(body["stream"], true);
     }
 }
