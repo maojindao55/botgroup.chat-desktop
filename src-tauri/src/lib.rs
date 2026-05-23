@@ -36,6 +36,7 @@ pub fn run() {
             api::seed_builtin_ai_members,
             api::secret_set,
             api::secret_has,
+            api::secret_copy,
             api::secret_delete,
             api::secret_list_names,
             llm_proxy::llm_chat_stream,

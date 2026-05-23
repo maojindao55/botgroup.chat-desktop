@@ -570,6 +570,20 @@ pub fn secret_has(app: AppHandle, name: String) -> std::result::Result<bool, Str
 }
 
 #[tauri::command]
+pub fn secret_copy(app: AppHandle, from_name: String, to_name: String) -> std::result::Result<bool, String> {
+    let db_path = get_db_path(&app);
+    let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
+    let master = vault::load_master_key(&app)?;
+    match vault::get(&conn, &master, &from_name).map_err(|e| e.to_string())? {
+        Some(value) => {
+            vault::set(&conn, &master, &to_name, &value).map_err(|e| e.to_string())?;
+            Ok(true)
+        }
+        None => Ok(false),
+    }
+}
+
+#[tauri::command]
 pub fn secret_delete(app: AppHandle, name: String) -> std::result::Result<(), String> {
     let db_path = get_db_path(&app);
     let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
