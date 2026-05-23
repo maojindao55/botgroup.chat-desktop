@@ -107,7 +107,8 @@ export function mapAIMemberToLegacy(m: AIMember, groupName?: string): Character 
     return {
       id: m.id,
       name: m.name,
-      personality: m.personality,
+      personality: m.schedulerTag || m.name,
+      providerId: m.providerId,
       model: m.model,
       avatar: m.avatar,
       custom_prompt: applyGroupNamePlaceholder(m.customPrompt, groupName),
@@ -135,7 +136,8 @@ export function mapAIMemberToLegacy(m: AIMember, groupName?: string): Character 
       id: m.id,
       name: m.name,
       personality: 'agent',
-      model: modelConfigs[0].model,
+      providerId: m.providerId,
+      model: m.model,
       avatar: m.avatar,
       custom_prompt: applyGroupNamePlaceholder(m.systemPrompt, groupName),
       tags: m.tags

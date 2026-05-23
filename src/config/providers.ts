@@ -68,7 +68,49 @@ export const builtinProviders: Provider[] = [
   },
 ];
 
-/** 旧版左下角全局 API Key 弹窗使用的 localStorage 键（PR4 前兼容） */
+/** 通过 model 反查 builtin Provider（多命中时取 builtin 字母序最小 id） */
+export function lookupProviderByModel(
+  model: string,
+  providers: Provider[] = builtinProviders,
+): string {
+  const candidates = providers
+    .filter((p) => p.enabled !== false && (p.models || []).includes(model))
+    .sort((a, b) => {
+      if (a.source === 'builtin' && b.source !== 'builtin') return -1;
+      if (b.source === 'builtin' && a.source !== 'builtin') return 1;
+      return a.id.localeCompare(b.id);
+    });
+  return candidates[0]?.id ?? `unmapped-${model}`;
+}
+
+/** 环境变量名 → Provider id（未命中返回 unmapped-* placeholder） */
+export function lookupProviderByEnvName(envName: string): string {
+  let s = envName.trim();
+  if (s.startsWith('API_KEY_')) s = s.slice('API_KEY_'.length);
+  for (const suffix of ['_API_KEY1', '_API_KEY']) {
+    if (s.endsWith(suffix)) {
+      s = s.slice(0, -suffix.length);
+      break;
+    }
+  }
+  const lower = s.toLowerCase();
+  const map: Record<string, string> = {
+    dashscope: 'qwen',
+    ark: 'volcengine',
+    hunyuan: 'hunyuan',
+    glm: 'glm',
+    deepseek: 'deepseek',
+    kimi: 'kimi',
+    baidu: 'baidu',
+    ollama_url: 'ollama',
+    ollama: 'ollama',
+  };
+  return map[lower] ?? `unmapped-${envName}`;
+}
+
+export const LEGACY_API_KEY_PREFIX = 'API_KEY_';
+
+/** legacy localStorage 键映射（迁移后清除；迁移前只读 fallback） */
 export const LEGACY_API_KEY_STORAGE: Record<string, string[]> = {
   qwen: ['API_KEY_DASHSCOPE_API_KEY'],
   volcengine: ['API_KEY_ARK_API_KEY', 'API_KEY_ARK_API_KEY1'],

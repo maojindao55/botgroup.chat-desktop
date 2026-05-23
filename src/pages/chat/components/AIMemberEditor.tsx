@@ -1,7 +1,7 @@
-import React, { useEffect } from 'react';
-import { Drawer, Form, Input, Select, Radio, Checkbox, InputNumber, Button, Space, Divider, Switch } from 'antd';
+import React, { useEffect, useMemo } from 'react';
+import { Drawer, Form, Input, Select, Radio, Checkbox, InputNumber, Button, Space, Divider, Switch, Tooltip } from 'antd';
 import { useAIMemberStore } from '@/store/aiMemberStore';
-import { modelConfigs } from '@/config/aiCharacters';
+import { useProviderStore } from '@/store/providerStore';
 import type { AIMember, LLMMember, AgentMember_v2, CLIMember } from '@/config/aiMembers';
 import { Plus, Trash2 } from 'lucide-react';
 
@@ -12,9 +12,11 @@ const AVAILABLE_TOOLS = [
   { name: 'memory', description: '存储和召回上下文信息' },
 ];
 
+const PROMPT_PLACEHOLDER_HINT = '可用占位符：{{groupName}} {{aiName}} {{date}} {{time}} {{userName}}';
+
 interface AIMemberEditorProps {
   open: boolean;
-  memberId?: string; // If present, edit mode
+  memberId?: string;
   defaultKind?: 'llm' | 'agent' | 'cli';
   onClose: () => void;
   onSave?: () => void;
@@ -29,30 +31,74 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
 }) => {
   const [form] = Form.useForm();
   const { get, upsert } = useAIMemberStore();
+  const { providers: providersRecord, load: loadProviders } = useProviderStore();
   const kind = Form.useWatch('kind', form) || defaultKind;
+  const providerId = Form.useWatch('providerId', form);
+
+  const providers = useMemo(
+    () => Object.values(providersRecord).filter((p) => p.enabled !== false),
+    [providersRecord],
+  );
+  const selectedProvider = providers.find((p) => p.id === providerId);
+  const modelOptions = selectedProvider?.models ?? [];
+
+  useEffect(() => {
+    if (open) loadProviders();
+  }, [open, loadProviders]);
 
   useEffect(() => {
     if (open) {
       if (memberId) {
         const member = get(memberId);
         if (member) {
-          form.setFieldsValue({
-            ...member,
-            tools: member.kind === 'agent' ? member.tools?.filter(t => t.enabled).map(t => t.name) || [] : [],
-            cliAdapter: member.kind === 'cli' ? member.cli?.adapter : 'codex',
-            cliBinary: member.kind === 'cli' ? member.cli?.binary : '',
-            cliExtraArgs: member.kind === 'cli' ? member.cli?.extraArgs : [],
-            cliApprovalMode: member.kind === 'cli' ? member.cli?.approvalMode : 'ask',
-            cliShowStderr: member.kind === 'cli' ? member.cli?.showStderr !== false : true,
-          });
+          const base: Record<string, unknown> = {
+            kind: member.kind,
+            name: member.name,
+            avatar: member.avatar,
+            description: member.description,
+            tags: member.tags,
+            enabled: member.enabled !== false,
+          };
+          if (member.kind === 'llm') {
+            form.setFieldsValue({
+              ...base,
+              providerId: member.providerId,
+              model: member.model,
+              schedulerTag: member.schedulerTag,
+              customPrompt: member.customPrompt,
+              stages: member.stages,
+            });
+          } else if (member.kind === 'agent') {
+            form.setFieldsValue({
+              ...base,
+              role: member.role,
+              systemPrompt: member.systemPrompt,
+              providerId: member.providerId,
+              model: member.model,
+              temperature: member.temperature,
+              maxTurns: member.maxTurns,
+              tools: member.tools?.filter((t) => t.enabled).map((t) => t.name) || [],
+            });
+          } else {
+            form.setFieldsValue({
+              ...base,
+              cliAdapter: member.cli?.adapter ?? 'codex',
+              cliBinary: member.cli?.binary ?? '',
+              cliExtraArgs: member.cli?.extraArgs ?? [],
+              cliApprovalMode: member.cli?.approvalMode ?? 'ask',
+              cliShowStderr: member.cli?.showStderr !== false,
+            });
+          }
         }
       } else {
         form.resetFields();
+        const defaultProvider = providers[0];
         form.setFieldsValue({
           kind: defaultKind,
           source: 'user',
           enabled: true,
-          model: modelConfigs[0].model,
+          providerId: defaultProvider?.id,
+          model: defaultProvider?.models?.[0],
           temperature: 0.7,
           maxTurns: 5,
           tools: [],
@@ -62,35 +108,44 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
         });
       }
     }
-  }, [open, memberId, defaultKind]);
+  }, [open, memberId, defaultKind, form, get, providers]);
 
-  const handleFinish = async (values: any) => {
+  const handleProviderChange = (nextProviderId: string) => {
+    const provider = providers.find((p) => p.id === nextProviderId);
+    const currentModel = form.getFieldValue('model');
+    if (provider && (!currentModel || !provider.models.includes(currentModel))) {
+      form.setFieldValue('model', provider.models[0] ?? undefined);
+    }
+  };
+
+  const handleFinish = async (values: Record<string, unknown>) => {
     const id = memberId || `${values.kind}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    
-    let updatedMember: AIMember;
 
     const baseData = {
       id,
-      name: values.name,
-      avatar: values.avatar || '',
-      description: values.description || '',
-      tags: values.tags || [],
+      name: values.name as string,
+      avatar: (values.avatar as string) || '',
+      description: (values.description as string) || '',
+      tags: (values.tags as string[]) || [],
       source: (memberId ? get(memberId)?.source : 'user') || 'user',
       enabled: values.enabled !== false,
     };
+
+    let updatedMember: AIMember;
 
     if (values.kind === 'llm') {
       updatedMember = {
         ...baseData,
         kind: 'llm',
-        personality: values.personality || values.name,
-        model: values.model,
-        customPrompt: values.customPrompt || '',
-        stages: values.stages || [],
+        providerId: values.providerId as string,
+        model: values.model as string,
+        schedulerTag: (values.schedulerTag as string) || undefined,
+        customPrompt: (values.customPrompt as string) || '',
+        stages: (values.stages as LLMMember['stages']) || [],
       } as LLMMember;
     } else if (values.kind === 'agent') {
-      const selectedTools = values.tools || [];
-      const toolConfigs = AVAILABLE_TOOLS.map(t => ({
+      const selectedTools = (values.tools as string[]) || [];
+      const toolConfigs = AVAILABLE_TOOLS.map((t) => ({
         name: t.name,
         description: t.description,
         enabled: selectedTools.includes(t.name),
@@ -99,26 +154,23 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
       updatedMember = {
         ...baseData,
         kind: 'agent',
-        role: values.role || '',
-        systemPrompt: values.systemPrompt || '',
-        llm: {
-          baseURL: values.llmBaseURL || 'https://api.deepseek.com/v1',
-          apiKey: values.llmApiKey || '',
-          model: values.llmModel || 'deepseek-chat',
-        },
+        role: (values.role as string) || '',
+        systemPrompt: (values.systemPrompt as string) || '',
+        providerId: values.providerId as string,
+        model: values.model as string,
         tools: toolConfigs,
-        maxTurns: values.maxTurns || 5,
-        temperature: values.temperature || 0.7,
+        maxTurns: (values.maxTurns as number) || 5,
+        temperature: (values.temperature as number) || 0.7,
       } as AgentMember_v2;
     } else {
       updatedMember = {
         ...baseData,
         kind: 'cli',
         cli: {
-          adapter: values.cliAdapter || 'codex',
-          binary: values.cliBinary || undefined,
-          extraArgs: values.cliExtraArgs || [],
-          approvalMode: values.cliApprovalMode || 'ask',
+          adapter: (values.cliAdapter as CLIMember['cli']['adapter']) || 'codex',
+          binary: (values.cliBinary as string) || undefined,
+          extraArgs: (values.cliExtraArgs as string[]) || [],
+          approvalMode: (values.cliApprovalMode as 'auto' | 'ask') || 'ask',
           showStderr: values.cliShowStderr !== false,
         },
       } as CLIMember;
@@ -126,8 +178,42 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
 
     await upsert(updatedMember);
     onClose();
-    if (onSave) onSave();
+    onSave?.();
   };
+
+  const providerSelect = (
+    <>
+      <Form.Item
+        label="模型服务 (Provider)"
+        name="providerId"
+        rules={[{ required: true, message: '请选择 Provider' }]}
+        extra={providerId?.startsWith('unmapped-') ? '⚠️ 未绑定 Provider，请重新选择' : undefined}
+      >
+        <Select placeholder="选择模型服务" onChange={handleProviderChange}>
+          {providers.map((p) => (
+            <Select.Option key={p.id} value={p.id}>
+              {p.name}
+              {p.source === 'builtin' ? ' (内置)' : ''}
+            </Select.Option>
+          ))}
+        </Select>
+      </Form.Item>
+
+      <Form.Item
+        label="模型 (Model)"
+        name="model"
+        rules={[{ required: true, message: '请选择模型' }]}
+      >
+        <Select placeholder="选择模型" disabled={!providerId}>
+          {modelOptions.map((m) => (
+            <Select.Option key={m} value={m}>
+              {m}
+            </Select.Option>
+          ))}
+        </Select>
+      </Form.Item>
+    </>
+  );
 
   return (
     <Drawer
@@ -145,15 +231,7 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
         </Space>
       }
     >
-      <Form
-        form={form}
-        layout="vertical"
-        onFinish={handleFinish}
-        initialValues={{
-          kind: defaultKind,
-          model: modelConfigs[0].model,
-        }}
-      >
+      <Form form={form} layout="vertical" onFinish={handleFinish}>
         <Form.Item label="群员类型" name="kind">
           <Radio.Group disabled={!!memberId}>
             <Radio.Button value="llm">LLM 角色</Radio.Button>
@@ -162,11 +240,7 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
           </Radio.Group>
         </Form.Item>
 
-        <Form.Item
-          label="群员名称"
-          name="name"
-          rules={[{ required: true, message: '请输入群员名称' }]}
-        >
+        <Form.Item label="群员名称" name="name" rules={[{ required: true, message: '请输入群员名称' }]}>
           <Input placeholder="名称" />
         </Form.Item>
 
@@ -184,32 +258,27 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
 
         <Divider style={{ margin: '16px 0' }} />
 
-        {/* Kind-specific panels */}
         {kind === 'llm' && (
           <>
+            {providerSelect}
+
             <Form.Item
-              label="大模型型号"
-              name="model"
-              rules={[{ required: true, message: '请选择模型' }]}
+              label={
+                <Tooltip title="仅供消息调度分类，不影响运行；可留空">
+                  <span>调度标签（高级）</span>
+                </Tooltip>
+              }
+              name="schedulerTag"
             >
-              <Select placeholder="选择对话模型">
-                {modelConfigs.map((cfg) => (
-                  <Select.Option key={cfg.model} value={cfg.model}>
-                    {cfg.model}
-                  </Select.Option>
-                ))}
-              </Select>
+              <Input placeholder="例如：SpyMaster, qianwen（可选）" />
             </Form.Item>
 
-            <Form.Item label="性格设定/角色标识" name="personality">
-              <Input placeholder="例如：SpyMaster, qianwen" />
-            </Form.Item>
-
-            <Form.Item label="自定义提示词 (System Prompt)" name="customPrompt">
-              <Input.TextArea
-                autoSize={{ minRows: 3, maxRows: 10 }}
-                placeholder="定义该角色的 System Prompt，支持 #groupName# 占位符"
-              />
+            <Form.Item
+              label="自定义提示词 (System Prompt)"
+              name="customPrompt"
+              extra={<span style={{ fontSize: 11, opacity: 0.6 }}>{PROMPT_PLACEHOLDER_HINT}</span>}
+            >
+              <Input.TextArea autoSize={{ minRows: 3, maxRows: 10 }} placeholder="定义该角色的 System Prompt" />
             </Form.Item>
 
             <Form.Item label="游戏阶段提示词 (可选)" style={{ marginBottom: 0 }}>
@@ -234,12 +303,7 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
                         >
                           <Input.TextArea autoSize placeholder="该阶段下的 prompt" style={{ width: 240 }} />
                         </Form.Item>
-                        <Button
-                          type="text"
-                          danger
-                          icon={<Trash2 size={16} />}
-                          onClick={() => remove(name)}
-                        />
+                        <Button type="text" danger icon={<Trash2 size={16} />} onClick={() => remove(name)} />
                       </Space>
                     ))}
                     <Form.Item>
@@ -260,30 +324,21 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
               <Input placeholder="例如：负责需求分析、方案评审、用户体验把控" />
             </Form.Item>
 
-            <Form.Item label="系统设定 (System Prompt)" name="systemPrompt">
-              <Input.TextArea
-                autoSize={{ minRows: 4 }}
-                placeholder="详细定义 Agent 的人格、知识背景和输出风格"
-              />
+            <Form.Item
+              label="系统设定 (System Prompt)"
+              name="systemPrompt"
+              extra={<span style={{ fontSize: 11, opacity: 0.6 }}>{PROMPT_PLACEHOLDER_HINT}</span>}
+            >
+              <Input.TextArea autoSize={{ minRows: 4 }} placeholder="详细定义 Agent 的人格、知识背景和输出风格" />
             </Form.Item>
 
-            <Divider orientation={"left" as any} style={{ fontSize: 13, margin: '12px 0' }}>
-              大模型连接配置
+            <Divider orientation={'left' as const} style={{ fontSize: 13, margin: '12px 0' }}>
+              大模型配置
             </Divider>
 
-            <Form.Item label="API 地址 (Base URL)" name="llmBaseURL">
-              <Input placeholder="例如：https://api.deepseek.com/v1" />
-            </Form.Item>
+            {providerSelect}
 
-            <Form.Item label="模型名称 (Model)" name="llmModel">
-              <Input placeholder="例如：deepseek-chat" />
-            </Form.Item>
-
-            <Form.Item label="API 密钥 (API Key)" name="llmApiKey">
-              <Input.Password placeholder="API Key 字符串或本地环境变量名" />
-            </Form.Item>
-
-            <Divider orientation={"left" as any} style={{ fontSize: 13, margin: '12px 0' }}>
+            <Divider orientation={'left' as const} style={{ fontSize: 13, margin: '12px 0' }}>
               参数与工具
             </Divider>
 
@@ -313,11 +368,7 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
 
         {kind === 'cli' && (
           <>
-            <Form.Item
-              label="CLI 适配器类型 (Adapter)"
-              name="cliAdapter"
-              rules={[{ required: true, message: '请选择适配器' }]}
-            >
+            <Form.Item label="CLI 适配器类型 (Adapter)" name="cliAdapter" rules={[{ required: true, message: '请选择适配器' }]}>
               <Select placeholder="选择适配器">
                 <Select.Option value="codex">Codex (自研编码 Agent)</Select.Option>
                 <Select.Option value="claude">ClaudeCode (Claude 官方 CLI)</Select.Option>
