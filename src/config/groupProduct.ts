@@ -1,0 +1,187 @@
+import type { AgentStrategy, CLIExecutionPlan, CLIStrategy, GroupType } from './groups';
+
+export type AISpeechMode = 'smart' | 'round_robin' | 'all';
+
+export interface ProductGroupType {
+  type: GroupType;
+  label: string;
+  shortLabel: string;
+  description: string;
+}
+
+export interface AISpeechModeOption {
+  value: AISpeechMode;
+  label: string;
+  description: string;
+}
+
+export interface AgentWorkflowTemplate {
+  id: 'expert_consult' | 'proposal' | 'decision_review' | 'relay_edit' | 'auto_delegate';
+  label: string;
+  description: string;
+  strategy: AgentStrategy;
+  maxRounds: number;
+  coordinatorPrompt?: string;
+}
+
+export interface CLIWorkflowTemplate {
+  id: 'quick_response' | 'implement_review' | 'review_fix' | 'multi_solution' | 'isolated_race' | 'discussion';
+  label: string;
+  description: string;
+  strategy: CLIStrategy;
+  executionPlan?: Partial<CLIExecutionPlan>;
+  defaultStages: string[];
+}
+
+export const productGroupTypes: ProductGroupType[] = [
+  {
+    type: 'ai',
+    label: '角色群',
+    shortLabel: '角色',
+    description: '邀请不同角色和模型一起聊天、脑暴、做观点碰撞。',
+  },
+  {
+    type: 'agent',
+    label: '专家群',
+    shortLabel: '专家',
+    description: '邀请具备职责分工的专家群友协作，产出方案、评审和结论。',
+  },
+  {
+    type: 'cli',
+    label: '开发群',
+    shortLabel: '开发',
+    description: '邀请 Codex、Claude Code、OpenCode、KimiCode、PI 等开发群友协作改代码。',
+  },
+];
+
+export const aiSpeechModes: AISpeechModeOption[] = [
+  {
+    value: 'smart',
+    label: '智能点名',
+    description: '根据消息内容选择最相关的角色发言，适合日常聊天。',
+  },
+  {
+    value: 'round_robin',
+    label: '轮流发言',
+    description: '群友按顺序轮流回复，适合长期陪伴式对话。',
+  },
+  {
+    value: 'all',
+    label: '全员圆桌',
+    description: '每轮所有角色都发言，适合脑暴和多模型观点对比。',
+  },
+];
+
+export const agentWorkflowTemplates: AgentWorkflowTemplate[] = [
+  {
+    id: 'expert_consult',
+    label: '专家会诊',
+    description: '多位专家群友独立分析同一问题，再形成综合意见。',
+    strategy: 'discussion',
+    maxRounds: 2,
+    coordinatorPrompt: '请组织专家群友围绕用户问题分别给出判断、风险和建议，最后汇总成清晰结论。',
+  },
+  {
+    id: 'proposal',
+    label: '方案产出',
+    description: '按调研、起草、审查、定稿的方式协作产出方案。',
+    strategy: 'pipeline',
+    maxRounds: 3,
+  },
+  {
+    id: 'decision_review',
+    label: '评审决策',
+    description: '从多角色视角提出收益、风险、约束和最终建议。',
+    strategy: 'debate',
+    maxRounds: 3,
+    coordinatorPrompt: '请让不同专家群友先提出独立意见，再互相指出风险，最后给出可执行建议。',
+  },
+  {
+    id: 'relay_edit',
+    label: '接力修改',
+    description: '一个专家起草，一个专家审核，一个专家修订。',
+    strategy: 'pipeline',
+    maxRounds: 3,
+  },
+  {
+    id: 'auto_delegate',
+    label: '自动处理',
+    description: '由协调者多轮分派任务，适合目标明确但步骤未定的问题。',
+    strategy: 'react',
+    maxRounds: 4,
+    coordinatorPrompt: '请作为群内协调者，根据用户目标分派下一位专家群友处理，并在任务完成时给出总结。',
+  },
+];
+
+export const cliWorkflowTemplates: CLIWorkflowTemplate[] = [
+  {
+    id: 'quick_response',
+    label: '快速响应',
+    description: '自动选择一位开发群友处理当前代码任务。',
+    strategy: 'router',
+    defaultStages: ['分派', '执行'],
+  },
+  {
+    id: 'implement_review',
+    label: '写完再审',
+    description: '实现者先写代码，审核者再 review，必要时回到实现者修正。',
+    strategy: 'review',
+    defaultStages: ['实现', '审核', '修正', '验证'],
+  },
+  {
+    id: 'review_fix',
+    label: '审核修正',
+    description: '先审查现有改动，再让开发群友按意见修正。',
+    strategy: 'review',
+    defaultStages: ['审核', '修正', '验证'],
+  },
+  {
+    id: 'multi_solution',
+    label: '多人出方案',
+    description: '多个开发群友分别处理同一任务，结果在群里并列展示。',
+    strategy: 'sequential',
+    defaultStages: ['方案 A', '方案 B', '对比'],
+  },
+  {
+    id: 'isolated_race',
+    label: '隔离竞赛',
+    description: '多个开发群友在独立 worktree 中并行实现，用户选择采纳。',
+    strategy: 'race',
+    defaultStages: ['并行实现', '结果对比', '用户采纳'],
+  },
+  {
+    id: 'discussion',
+    label: '群内讨论',
+    description: '只分析代码方案和风险，不要求开发群友修改文件。',
+    strategy: 'discussion',
+    defaultStages: ['分析', '补充', '结论'],
+    executionPlan: { isolation: 'copyPerAgent' },
+  },
+];
+
+export function resolveAISpeechMode(group: {
+  isGroupDiscussionMode?: boolean;
+  schedulerStrategy?: 'tag' | 'round_robin' | 'all';
+}): AISpeechMode {
+  if (group.isGroupDiscussionMode) return 'all';
+  if (group.schedulerStrategy === 'round_robin') return 'round_robin';
+  if (group.schedulerStrategy === 'all') return 'all';
+  return 'smart';
+}
+
+export function applyAISpeechMode(mode: AISpeechMode): {
+  isGroupDiscussionMode: boolean;
+  schedulerStrategy: 'tag' | 'round_robin' | 'all';
+} {
+  if (mode === 'all') {
+    return { isGroupDiscussionMode: true, schedulerStrategy: 'all' };
+  }
+  if (mode === 'round_robin') {
+    return { isGroupDiscussionMode: false, schedulerStrategy: 'round_robin' };
+  }
+  return { isGroupDiscussionMode: false, schedulerStrategy: 'tag' };
+}
+
+export function getProductGroupType(type: GroupType): ProductGroupType {
+  return productGroupTypes.find((item) => item.type === type) || productGroupTypes[0];
+}
