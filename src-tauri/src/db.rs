@@ -316,6 +316,24 @@ pub fn init_db_schemas(conn: &Connection) -> Result<()> {
         [],
     )?;
 
+    // Create providers table for LLM provider configurations
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS providers (
+            id          TEXT PRIMARY KEY,
+            name        TEXT NOT NULL,
+            base_url    TEXT NOT NULL,
+            api_key_ref TEXT NOT NULL,
+            models      TEXT NOT NULL,
+            source      TEXT NOT NULL DEFAULT 'user',
+            icon_url    TEXT,
+            description TEXT,
+            enabled     INTEGER NOT NULL DEFAULT 1,
+            created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );",
+        [],
+    )?;
+
     // Create indices
     conn.execute("CREATE INDEX IF NOT EXISTS idx_cli_tasks_group_created ON cli_tasks(group_id, created_at DESC);", [])?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_cli_tasks_status ON cli_tasks(status);", [])?;
@@ -353,6 +371,7 @@ mod tests {
         assert!(tables.contains(&"cli_agent_skill_packs".to_string()));
         assert!(tables.contains(&"ai_members".to_string()));
         assert!(tables.contains(&"secrets".to_string()));
+        assert!(tables.contains(&"providers".to_string()));
 
         // Verify we can insert a CLI task and retrieve it
         let task_id = "test-task-123";
