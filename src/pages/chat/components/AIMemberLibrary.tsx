@@ -10,7 +10,8 @@ import { ProviderLibrary } from './ProviderLibrary';
 import { ProviderEditor } from './ProviderEditor';
 import { useProviderStore } from '@/store/providerStore';
 import type { Provider } from '@/config/providers';
-import { Search, Plus, Edit2, Trash2, ShieldAlert, Cpu, Terminal, Users, Sparkles, X } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, ShieldAlert, Cpu, Terminal, Users, Sparkles, X, Copy } from 'lucide-react';
+import { toast } from 'sonner';
 import { createStyles } from 'antd-style';
 
 /** 桌面端 inline 面板的宽度（用于 ChatUI 窗口宽度联动） */
@@ -189,7 +190,7 @@ interface AIMemberLibraryProps {
 
 export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose, groups, inline }) => {
   const { styles } = useStyles();
-  const { list, load, remove, findReferencingGroups } = useAIMemberStore();
+  const { list, load, remove, clone, findReferencingGroups } = useAIMemberStore();
   const { load: loadProviders } = useProviderStore();
   const [activeTab, setActiveTab] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -225,6 +226,18 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
     setEditingId(member.id);
     setEditorKind(member.kind);
     setEditorOpen(true);
+  };
+
+  const handleClone = async (member: AIMember) => {
+    try {
+      const copied = await clone(member.id);
+      setEditingId(copied.id);
+      setEditorKind(copied.kind);
+      setEditorOpen(true);
+      toast.success(`已克隆为「${copied.name}」`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : '克隆失败');
+    }
   };
 
   const handleCreateProvider = () => {
@@ -394,14 +407,25 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
         </div>
 
         <div className={styles.actionColumn}>
-          <Button 
-            type="text" 
-            icon={<Edit2 size={14} />} 
-            onClick={() => handleEdit(member)}
-            style={{ padding: '4px 8px', height: 'auto' }}
-          >
-            编辑
-          </Button>
+          {member.source === 'builtin' ? (
+            <Button
+              type="text"
+              icon={<Copy size={14} />}
+              onClick={() => handleClone(member)}
+              style={{ padding: '4px 8px', height: 'auto' }}
+            >
+              克隆并编辑
+            </Button>
+          ) : (
+            <Button
+              type="text"
+              icon={<Edit2 size={14} />}
+              onClick={() => handleEdit(member)}
+              style={{ padding: '4px 8px', height: 'auto' }}
+            >
+              编辑
+            </Button>
+          )}
           {member.source !== 'builtin' ? (
             <Button 
               type="text" 

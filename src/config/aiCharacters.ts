@@ -1,4 +1,5 @@
 import { builtinAIMembers, AIMember } from './aiMembers';
+import { applyPromptTemplate } from '@/utils/prompt';
 
 // ============ 模型配置 ============
 export const modelConfigs = [
@@ -92,10 +93,10 @@ export interface CLIAgent {
 // 联合类型（兼容旧代码中 `AICharacter` 的使用）
 export type Character = AICharacter | CLIAgent;
 
-/** 替换 prompt 中的 `#groupName#` 占位符，未传 groupName 时原样返回 */
-function applyGroupNamePlaceholder(text: string | undefined, groupName?: string): string | undefined {
-  if (!text || !groupName) return text;
-  return text.split('#groupName#').join(groupName);
+/** 替换 prompt 中的占位符，未传 groupName 时仍处理 {{aiName}} 等 */
+function applyGroupNamePlaceholder(text: string | undefined, groupName?: string, aiName?: string): string | undefined {
+  if (!text) return text;
+  return applyPromptTemplate(text, { groupName, aiName });
 }
 
 /**
@@ -109,12 +110,15 @@ export function mapAIMemberToLegacy(m: AIMember, groupName?: string): Character 
       name: m.name,
       personality: m.schedulerTag || m.name,
       providerId: m.providerId,
-      model: m.model,
+      model: m.model as ModelType,
       avatar: m.avatar,
-      custom_prompt: applyGroupNamePlaceholder(m.customPrompt, groupName),
+      custom_prompt: applyGroupNamePlaceholder(m.customPrompt, groupName, m.name),
       tags: m.tags,
       stages: groupName && m.stages
-        ? m.stages.map(s => ({ name: s.name, prompt: applyGroupNamePlaceholder(s.prompt, groupName) || s.prompt }))
+        ? m.stages.map((s) => ({
+            name: s.name,
+            prompt: applyGroupNamePlaceholder(s.prompt, groupName, m.name) || s.prompt,
+          }))
         : m.stages,
       runtime: 'llm'
     };
@@ -139,7 +143,7 @@ export function mapAIMemberToLegacy(m: AIMember, groupName?: string): Character 
       providerId: m.providerId,
       model: m.model,
       avatar: m.avatar,
-      custom_prompt: applyGroupNamePlaceholder(m.systemPrompt, groupName),
+      custom_prompt: applyGroupNamePlaceholder(m.systemPrompt, groupName, m.name),
       tags: m.tags
     };
   }

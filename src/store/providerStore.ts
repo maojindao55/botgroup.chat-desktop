@@ -60,6 +60,7 @@ interface ProviderStore {
   get: (id: string) => Provider | undefined;
   upsert: (p: Provider) => Promise<void>;
   remove: (id: string) => Promise<void>;
+  clone: (id: string) => Promise<Provider>;
   testConnection: (params: {
     id?: string;
     baseURL: string;
@@ -157,6 +158,20 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
       delete copy[id];
       return { providers: copy };
     });
+  },
+
+  clone: async (id: string) => {
+    const orig = get().providers[id];
+    if (!orig) throw new Error('Provider 不存在');
+    const ts = Date.now();
+    const cloned: Provider = {
+      ...JSON.parse(JSON.stringify(orig)),
+      id: `user-${orig.id}-copy-${ts}`,
+      source: 'user',
+      name: `${orig.name} (副本)`,
+    };
+    await get().upsert(cloned);
+    return cloned;
   },
 
   testConnection: async (params) => {

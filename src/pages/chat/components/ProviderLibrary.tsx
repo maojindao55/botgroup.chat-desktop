@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Button, Tag, Tooltip, Modal, Empty } from 'antd';
 import { useProviderStore } from '@/store/providerStore';
 import type { Provider } from '@/config/providers';
-import { Plus, Edit2, Trash2, Server, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Plus, Edit2, Trash2, Server, CheckCircle2, AlertTriangle, Copy } from 'lucide-react';
+import { toast } from 'sonner';
 import { createStyles } from 'antd-style';
 
 const useStyles = createStyles(({ token, css }) => ({
@@ -129,7 +130,7 @@ function truncateUrl(url: string, max = 48): string {
 
 export const ProviderLibrary: React.FC<ProviderLibraryProps> = ({ onCreate, onEdit }) => {
   const { styles } = useStyles();
-  const { providers, remove, hasSecret } = useProviderStore();
+  const { providers, remove, clone, hasSecret } = useProviderStore();
   const [secretStatus, setSecretStatus] = useState<Record<string, boolean>>({});
 
   const providerList = useMemo(() => {
@@ -234,14 +235,33 @@ export const ProviderLibrary: React.FC<ProviderLibraryProps> = ({ onCreate, onEd
         </div>
 
         <div className={styles.actionColumn}>
-          <Button
-            type="text"
-            icon={<Edit2 size={14} />}
-            onClick={() => onEdit(provider)}
-            style={{ padding: '4px 8px', height: 'auto' }}
-          >
-            编辑
-          </Button>
+          {provider.source === 'builtin' ? (
+            <Button
+              type="text"
+              icon={<Copy size={14} />}
+              onClick={async () => {
+                try {
+                  const copied = await clone(provider.id);
+                  onEdit(copied);
+                  toast.success(`已克隆为「${copied.name}」`);
+                } catch (e) {
+                  toast.error(e instanceof Error ? e.message : '克隆失败');
+                }
+              }}
+              style={{ padding: '4px 8px', height: 'auto' }}
+            >
+              克隆并编辑
+            </Button>
+          ) : (
+            <Button
+              type="text"
+              icon={<Edit2 size={14} />}
+              onClick={() => onEdit(provider)}
+              style={{ padding: '4px 8px', height: 'auto' }}
+            >
+              编辑
+            </Button>
+          )}
           {provider.source !== 'builtin' ? (
             <Button
               type="text"
