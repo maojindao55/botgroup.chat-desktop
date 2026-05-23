@@ -54,6 +54,16 @@ export async function llmChatReadableStream(params: LlmStreamParams): Promise<Re
           /* already closed */
         }
       };
+      const failOnce = (message: string) => {
+        if (closed) return;
+        closed = true;
+        if (unlisten) { unlisten(); unlisten = null; }
+        try {
+          controller.error(new Error(message));
+        } catch {
+          /* already closed/errored */
+        }
+      };
       const closeOnce = () => {
         if (closed) return;
         closed = true;
@@ -62,14 +72,16 @@ export async function llmChatReadableStream(params: LlmStreamParams): Promise<Re
       };
 
       unlisten = await listen(eventName, (ev) => {
-        const payload = ev.payload as { type?: string; content?: string; message?: string };
+        const payload = ev.payload as { type?: string; content?: string; message?: string; status?: number };
         switch (payload?.type) {
           case 'token':
             if (payload.content) enqueue(formatSseContentLine(payload.content));
             break;
-          case 'error':
-            closeOnce();
+          case 'error': {
+            const statusPrefix = payload.status ? `HTTP ${payload.status}: ` : '';
+            failOnce(`${statusPrefix}${payload.message || 'LLM stream error'}`);
             break;
+          }
           case 'done':
             if (params.emitDoneMarker) enqueue(formatSseDoneLine());
             closeOnce();

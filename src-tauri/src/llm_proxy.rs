@@ -169,14 +169,6 @@ pub async fn stream_chat_completions(
     let status = resp.status();
     if !status.is_success() {
         let body_text = resp.text().await.unwrap_or_default();
-        let _ = app.emit(
-            &event_name,
-            LlmEvent::Error {
-                message: body_text.clone(),
-                status: Some(status.as_u16()),
-            },
-        );
-        let _ = app.emit(&event_name, LlmEvent::Done);
         return Err(LlmProxyError::Http {
             status: status.as_u16(),
             body: body_text,
@@ -184,15 +176,24 @@ pub async fn stream_chat_completions(
     }
 
     let mut byte_stream = resp.bytes_stream();
-    let mut buffer = String::new();
+    let mut byte_buffer: Vec<u8> = Vec::new();
 
     while let Some(chunk) = byte_stream.next().await {
         let chunk = chunk.map_err(|e| LlmProxyError::Network(e.to_string()))?;
-        buffer.push_str(&String::from_utf8_lossy(&chunk));
+        byte_buffer.extend_from_slice(&chunk);
 
-        while let Some(pos) = buffer.find('\n') {
-            let line = buffer[..pos].to_string();
-            buffer = buffer[pos + 1..].to_string();
+        while let Some(newline_pos) = byte_buffer.iter().position(|&b| b == b'\n') {
+            let mut line_bytes: Vec<u8> = byte_buffer.drain(..=newline_pos).collect();
+            if line_bytes.last() == Some(&b'\n') {
+                line_bytes.pop();
+            }
+            if line_bytes.ends_with(&[b'\r']) {
+                line_bytes.pop();
+            }
+            let line = match std::str::from_utf8(&line_bytes) {
+                Ok(s) => s.to_string(),
+                Err(_) => continue,
+            };
 
             match parse_sse_line(&line) {
                 SseItem::Ignore => {}
@@ -235,15 +236,15 @@ pub async fn llm_chat_stream(app: AppHandle, args: LlmChatStreamArgs) -> Result<
         match result {
             Ok(Ok(())) => {}
             Ok(Err(e)) => {
+                let (message, status) = match &e {
+                    LlmProxyError::Http { status, body } => {
+                        (body.clone(), Some(*status))
+                    }
+                    other => (other.to_string(), None),
+                };
                 let _ = app_bg.emit(
                     &event_name,
-                    LlmEvent::Error {
-                        message: e.to_string(),
-                        status: match &e {
-                            LlmProxyError::Http { status, .. } => Some(*status),
-                            _ => None,
-                        },
-                    },
+                    LlmEvent::Error { message, status },
                 );
                 let _ = app_bg.emit(&event_name, LlmEvent::Done);
             }
@@ -284,6 +285,29 @@ mod tests {
         assert_eq!(extract_delta_content(json), Some("你好".into()));
         assert_eq!(extract_delta_content(r#"{"choices":[{"delta":{}}]}"#), None);
         assert_eq!(extract_delta_content("not-json"), None);
+    }
+
+    #[test]
+    fn utf8_multibyte_line_decodes_from_byte_chunks() {
+        let line = "data: {\"choices\":[{\"delta\":{\"content\":\"你好\"}}]}";
+        let full: Vec<u8> = line.as_bytes().to_vec();
+        let split_at = full.iter().position(|&b| b > 0x7f).unwrap();
+
+        let mut byte_buffer = full[..split_at].to_vec();
+        byte_buffer.extend_from_slice(&full[split_at..]);
+        byte_buffer.push(b'\n');
+
+        let newline_pos = byte_buffer.iter().position(|&b| b == b'\n').unwrap();
+        let mut line_bytes: Vec<u8> = byte_buffer.drain(..=newline_pos).collect();
+        if line_bytes.last() == Some(&b'\n') {
+            line_bytes.pop();
+        }
+        let decoded = std::str::from_utf8(&line_bytes).unwrap();
+        let json = match parse_sse_line(decoded) {
+            SseItem::Data(json) => json,
+            other => panic!("expected Data, got {:?}", other),
+        };
+        assert_eq!(extract_delta_content(&json), Some("你好".into()));
     }
 
     use wiremock::matchers::{method, path};
