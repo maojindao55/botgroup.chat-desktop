@@ -16,6 +16,8 @@ import type { StreamCallback } from '@/engine/agentEngine';
 import AgentGroupSettings from './AgentGroupSettings';
 import Sidebar from './Sidebar';
 import type { AgentGroup, Group } from '@/config/groups';
+import { useAIMemberStore } from '@/store/aiMemberStore';
+import { AIMemberLibrary, AI_MEMBER_LIBRARY_INLINE_WIDTH } from './AIMemberLibrary';
 
 
 interface ChatMessage {
@@ -214,6 +216,26 @@ const AgentChatUI = ({
   const userStore = useUserStore();
   const isMobile = useIsMobile();
   const { styles } = useStyles();
+  const members = useAIMemberStore(s => s.members);
+  const membersLoading = useAIMemberStore(s => s.loading);
+  const loadMembers = useAIMemberStore(s => s.load);
+
+  useEffect(() => {
+    loadMembers();
+  }, [loadMembers]);
+
+  const currentMemberIds = group.memberIds || group.agents?.map(a => a.id) || [];
+  const dbAgents = currentMemberIds
+    .map(id => members[id])
+    .filter(m => m && m.kind === 'agent');
+  // 优先 store 数据；store 未 ready 时回落到群里的内联 agents（兼容旧数据）
+  const currentAgents = dbAgents.length > 0 ? dbAgents : (group.agents || []);
+  // store 已加载完成但成员仍解析不出来（id 引用失效 / 成员被删）
+  const hasUnresolvedMembers =
+    !membersLoading && currentMemberIds.length > 0 && currentAgents.length === 0;
+  // store 仍在首次加载中且暂时拿不到成员
+  const isResolvingMembers =
+    membersLoading && currentMemberIds.length > 0 && currentAgents.length === 0;
 
   // 策略中文标签映射
   const strategyLabels: Record<string, string> = {
@@ -231,40 +253,49 @@ const AgentChatUI = ({
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showLibrary, setShowLibrary] = useState(false);
+
+  const AGENT_SETTINGS_WIDTH = 440;
+
+  /** 桌面端打开右侧 inline 面板时同步扩展 Tauri 窗口宽度（移动端跳过） */
+  const adjustWindowWidthForPanel = (deltaPx: number) => {
+    if (isMobile) return;
+    if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return;
+    (async () => {
+      try {
+        const { getCurrentWindow, LogicalSize } = await import('@tauri-apps/api/window');
+        const appWindow = getCurrentWindow();
+        const isMax = await appWindow.isMaximized();
+        const isFull = await appWindow.isFullscreen();
+        if (isMax || isFull) return;
+        const scaleFactor = await appWindow.scaleFactor();
+        const physicalSize = await appWindow.innerSize();
+        const logicalSize = physicalSize.toLogical(scaleFactor);
+        await appWindow.setSize(new LogicalSize(logicalSize.width + deltaPx, logicalSize.height));
+      } catch (e) {
+        console.error('Failed to resize window:', e);
+      }
+    })();
+  };
 
   const handleToggleSettings = (nextOpen: boolean) => {
     if (nextOpen === showSettings) return;
-    setShowSettings(nextOpen);
-
-    if (isMobile) return;
-
-    if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
-      (async () => {
-        try {
-          const { getCurrentWindow, LogicalSize } = await import('@tauri-apps/api/window');
-          const appWindow = getCurrentWindow();
-          const isMax = await appWindow.isMaximized();
-          const isFull = await appWindow.isFullscreen();
-          if (!isMax && !isFull) {
-            const scaleFactor = await appWindow.scaleFactor();
-            const physicalSize = await appWindow.innerSize();
-            const logicalSize = physicalSize.toLogical(scaleFactor);
-            const settingsWidth = 440;
-
-            let newWidth = logicalSize.width;
-            if (nextOpen) {
-              newWidth += settingsWidth;
-            } else {
-              newWidth -= settingsWidth;
-            }
-
-            await appWindow.setSize(new LogicalSize(newWidth, logicalSize.height));
-          }
-        } catch (e) {
-          console.error('Failed to resize window:', e);
-        }
-      })();
+    if (nextOpen && showLibrary) {
+      setShowLibrary(false);
+      adjustWindowWidthForPanel(-AI_MEMBER_LIBRARY_INLINE_WIDTH);
     }
+    setShowSettings(nextOpen);
+    adjustWindowWidthForPanel(nextOpen ? AGENT_SETTINGS_WIDTH : -AGENT_SETTINGS_WIDTH);
+  };
+
+  const handleToggleLibrary = (nextOpen: boolean) => {
+    if (nextOpen === showLibrary) return;
+    if (nextOpen && showSettings) {
+      setShowSettings(false);
+      adjustWindowWidthForPanel(-AGENT_SETTINGS_WIDTH);
+    }
+    setShowLibrary(nextOpen);
+    adjustWindowWidthForPanel(nextOpen ? AI_MEMBER_LIBRARY_INLINE_WIDTH : -AI_MEMBER_LIBRARY_INLINE_WIDTH);
   };
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -382,6 +413,7 @@ const AgentChatUI = ({
             onSelectGroup={onSelectGroup}
             groups={groups}
             onCreateGroup={onCreateGroup}
+            onOpenLibrary={() => handleToggleLibrary(true)}
           />
 
           <div className={styles.rightCol}>
@@ -398,13 +430,13 @@ const AgentChatUI = ({
                       {group.name}
                     </h1>
                     <span style={{ fontSize: 12, opacity: 0.6 }}>
-                      ({group.agents.length} agents)
+                      ({currentAgents.length} agents)
                     </span>
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <div className={styles.avatarStack}>
-                    {group.agents.slice(0, 4).map(agent => {
+                    {currentAgents.slice(0, 4).map(agent => {
                       const a = getAvatarData(agent.name);
                       const url = resolveAvatarByName(agent.name, agent.avatar, 32);
                       return (
@@ -420,8 +452,8 @@ const AgentChatUI = ({
                         </Tooltip>
                       );
                     })}
-                    {group.agents.length > 4 && (
-                      <div className={styles.avatarMore}>+{group.agents.length - 4}</div>
+                    {currentAgents.length > 4 && (
+                      <div className={styles.avatarMore}>+{currentAgents.length - 4}</div>
                     )}
                   </div>
                   <span className={styles.agentTagPurple}>
@@ -447,10 +479,21 @@ const AgentChatUI = ({
                   <p style={{ fontSize: 14, marginTop: 8, textAlign: 'center', maxWidth: 480 }}>
                     {group.description}
                   </p>
+                  {isResolvingMembers && (
+                    <p style={{ fontSize: 13, marginTop: 12, opacity: 0.6 }}>
+                      正在加载 AI 群员库...
+                    </p>
+                  )}
+                  {hasUnresolvedMembers && (
+                    <p style={{ fontSize: 13, marginTop: 12, color: '#ef4444' }}>
+                      该群引用了 {currentMemberIds.length} 位 Agent，但当前 AI 群员库中找不到。<br />
+                      请到「AI 群员库」检查或重新添加成员。
+                    </p>
+                  )}
                   <div style={{ marginTop: 16, display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
-                    {group.agents.map(a => (
+                    {currentAgents.map(a => (
                       <span key={a.id} className={styles.emptyAgentTag}>
-                        {a.name}: {a.role}
+                        {a.name}: {('role' in a ? a.role : '')}
                       </span>
                     ))}
                   </div>
@@ -559,12 +602,31 @@ const AgentChatUI = ({
               onUpdateGroup={(updates) => onUpdateGroup?.(updates)}
             />
           )}
+
+          {/* AI 群员库（Desktop Inline） */}
+          {!isMobile && (
+            <AIMemberLibrary
+              inline
+              open={showLibrary}
+              onClose={() => handleToggleLibrary(false)}
+              groups={groups}
+            />
+          )}
         </div>
       </div>
 
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div className={styles.mobileOverlay} onClick={toggleSidebar} />
+      )}
+
+      {/* AI 群员库（Mobile Drawer） */}
+      {isMobile && (
+        <AIMemberLibrary
+          open={showLibrary}
+          onClose={() => handleToggleLibrary(false)}
+          groups={groups}
+        />
       )}
     </>
   );

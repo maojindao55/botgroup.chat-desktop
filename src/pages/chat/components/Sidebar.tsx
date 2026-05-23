@@ -12,6 +12,7 @@ import {
   Sun,
   Terminal,
   X,
+  Users as UsersIcon,
 } from 'lucide-react';
 import { Input, Tooltip } from 'antd';
 import { ActionIcon, Segmented } from '@lobehub/ui';
@@ -230,6 +231,7 @@ interface SidebarProps {
   onSelectGroup?: (index: number) => void;
   groups: Group[];
   onCreateGroup?: (group: Group) => void;
+  onOpenLibrary?: () => void;
 }
 
 const Sidebar = ({
@@ -239,6 +241,7 @@ const Sidebar = ({
   onSelectGroup,
   groups,
   onCreateGroup,
+  onOpenLibrary,
 }: SidebarProps) => {
   const { styles, cx } = useStyles();
   const [showCreateWizard, setShowCreateWizard] = useState(false);
@@ -434,6 +437,53 @@ const Sidebar = ({
               </Tooltip>
             ) : (
               btn
+            );
+          })()}
+
+          {(() => {
+            const libraryBtn = (
+              <a
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault();
+                  onOpenLibrary?.();
+                }}
+                className={cx(
+                  styles.navItem,
+                  !isOpen && styles.navItemCollapsed,
+                )}
+                style={{ marginTop: 8 }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    minWidth: 0,
+                    flex: 1,
+                    justifyContent: isOpen ? 'flex-start' : 'center',
+                  }}
+                >
+                  <UsersIcon
+                    size={16}
+                    style={{ color: '#ff6600', flexShrink: 0 }}
+                  />
+                  {isOpen && (
+                    <span className={styles.navItemLabel}>AI 群员库</span>
+                  )}
+                </div>
+              </a>
+            );
+            return !isOpen ? (
+              <Tooltip
+                title="AI 群员库"
+                placement="right"
+                mouseEnterDelay={0.15}
+              >
+                {libraryBtn}
+              </Tooltip>
+            ) : (
+              libraryBtn
             );
           })()}
         </nav>

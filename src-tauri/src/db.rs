@@ -286,9 +286,29 @@ pub fn init_db_schemas(conn: &Connection) -> Result<()> {
         [],
     )?;
 
+    // Create AI members table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS ai_members (
+            id          TEXT PRIMARY KEY,
+            kind        TEXT NOT NULL CHECK (kind IN ('llm','agent','cli')),
+            name        TEXT NOT NULL,
+            avatar      TEXT,
+            description TEXT,
+            tags        TEXT,                              -- JSON array
+            source      TEXT NOT NULL DEFAULT 'user',      -- builtin | user
+            config      TEXT NOT NULL,                     -- JSON config
+            enabled     INTEGER NOT NULL DEFAULT 1,
+            created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );",
+        [],
+    )?;
+
+    // Create indices
     conn.execute("CREATE INDEX IF NOT EXISTS idx_cli_tasks_group_created ON cli_tasks(group_id, created_at DESC);", [])?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_cli_tasks_status ON cli_tasks(status);", [])?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_cli_tasks_agent ON cli_tasks(agent_id, created_at DESC);", [])?;
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_members_kind ON ai_members(kind);", [])?;
 
     Ok(())
 }
@@ -319,6 +339,7 @@ mod tests {
         assert!(tables.contains(&"cli_agent_profiles".to_string()));
         assert!(tables.contains(&"cli_skill_packs".to_string()));
         assert!(tables.contains(&"cli_agent_skill_packs".to_string()));
+        assert!(tables.contains(&"ai_members".to_string()));
 
         // Verify we can insert a CLI task and retrieve it
         let task_id = "test-task-123";

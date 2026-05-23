@@ -7,10 +7,11 @@ import { Drawer, Switch, Button, Tooltip } from 'antd';
 import { Avatar as LobeAvatar, ActionIcon } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 import { UserPlus, Mic, MicOff, Check, X } from 'lucide-react';
-import { getAvailableAICharacters } from '@/config/aiCharacters';
 import type { AICharacter } from '@/config/aiCharacters';
 import type { AIGroup } from '@/config/groups';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
+import { MemberPicker } from './MemberPicker';
+import { useAIMemberStore } from '@/store/aiMemberStore';
 
 interface User {
   id: number | string;
@@ -29,8 +30,13 @@ interface AIGroupSettingsProps {
   onToggleGroupDiscussion: () => void;
   schedulerStrategy: 'tag' | 'round_robin' | 'all';
   onStrategyChange: (strategy: 'tag' | 'round_robin' | 'all') => void;
+  /** 新接口：批量替换成员（来自 AI 群员库 MemberPicker） */
+  onMembersChange?: (memberIds: string[]) => void;
+  /** 旧接口：单个添加 */
   onAddMember?: (memberId: string) => void;
+  /** 旧接口：单个移除 */
   onRemoveMember?: (memberId: string) => void;
+  /** 桌面端使用内联面板，移动端使用 Drawer */
   inline?: boolean;
 }
 
@@ -159,7 +165,7 @@ const useStyles = createStyles(({ token, css }) => ({
 export const AIGroupSettings = ({
   open,
   onOpenChange,
-  group: _group,
+  group,
   users,
   mutedUsers,
   onToggleMute,
@@ -167,15 +173,40 @@ export const AIGroupSettings = ({
   onToggleGroupDiscussion,
   schedulerStrategy,
   onStrategyChange,
+  onMembersChange,
   onAddMember,
   onRemoveMember,
   inline,
 }: AIGroupSettingsProps) => {
   const { styles, cx } = useStyles();
   const [showAddMember, setShowAddMember] = useState(false);
-  const allCharacters = getAvailableAICharacters();
-  const currentMemberIds = users.filter((u) => 'personality' in u).map((u) => u.id as string);
-  const availableToAdd = allCharacters.filter((c) => !currentMemberIds.includes(c.id));
+  const allMembers = useAIMemberStore((s) => s.members);
+
+  // 优先使用 group.memberIds（id 引用模型）；fallback 到 users 里推断
+  const currentMemberIds = group.memberIds
+    || group.members
+    || users.filter((u) => 'personality' in u).map((u) => u.id as string);
+
+  // 从 AI 群员库取 LLM 类成员，作为可添加候选
+  const availableToAdd = Object.values(allMembers)
+    .filter((m) => m && m.kind === 'llm' && m.enabled !== false)
+    .filter((m) => !currentMemberIds.includes(m.id));
+
+  // 兼容两种 props 风格：优先新 onMembersChange，否则用旧 add/remove
+  const handleAdd = (id: string) => {
+    if (onMembersChange) {
+      onMembersChange([...currentMemberIds, id]);
+    } else {
+      onAddMember?.(id);
+    }
+  };
+  const handleRemove = (id: string) => {
+    if (onMembersChange) {
+      onMembersChange(currentMemberIds.filter((x) => x !== id));
+    } else {
+      onRemoveMember?.(id);
+    }
+  };
 
   const settingsContent = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -219,8 +250,20 @@ export const AIGroupSettings = ({
         </div>
       )}
 
-      {/* 成员管理 */}
+      {/* 成员管理：MemberPicker（批量）+ 旧版「添加成员」面板（单个） */}
       <div>
+        {onMembersChange && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+            <span style={{ fontSize: 14, fontWeight: 500 }}>从群员库选择</span>
+            <MemberPicker
+              kind="llm"
+              value={currentMemberIds}
+              onChange={(newIds) => onMembersChange(newIds)}
+              placeholder="选择 AI 成员加入群聊..."
+            />
+          </div>
+        )}
+
         <div
           style={{
             display: 'flex',
@@ -230,16 +273,18 @@ export const AIGroupSettings = ({
           }}
         >
           <span style={{ fontSize: 14, fontWeight: 500 }}>群成员（{users.length}）</span>
-          <Button
-            size="small"
-            icon={<UserPlus size={14} />}
-            onClick={() => setShowAddMember(!showAddMember)}
-          >
-            添加成员
-          </Button>
+          {availableToAdd.length > 0 && (
+            <Button
+              size="small"
+              icon={<UserPlus size={14} />}
+              onClick={() => setShowAddMember(!showAddMember)}
+            >
+              快速添加
+            </Button>
+          )}
         </div>
 
-        {/* 添加成员面板 */}
+        {/* 快速添加面板 */}
         {showAddMember && availableToAdd.length > 0 && (
           <div className={styles.addMemberBox}>
             <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 8 }}>点击添加到群聊</div>
@@ -250,7 +295,7 @@ export const AIGroupSettings = ({
                 return (
                   <button
                     key={char.id}
-                    onClick={() => onAddMember?.(char.id)}
+                    onClick={() => handleAdd(char.id)}
                     className={styles.addMemberItem}
                   >
                     <LobeAvatar
@@ -307,7 +352,7 @@ export const AIGroupSettings = ({
                         <ActionIcon
                           icon={X}
                           size="small"
-                          onClick={() => onRemoveMember?.(user.id as string)}
+                          onClick={() => handleRemove(user.id as string)}
                           title=""
                         />
                       </Tooltip>

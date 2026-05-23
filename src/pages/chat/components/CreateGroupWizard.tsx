@@ -1,28 +1,17 @@
 import { useState } from 'react';
 import {
-  Modal, Steps, Button, Input, InputNumber, Switch, Checkbox,
+  Modal, Steps, Button, Input, InputNumber, Switch,
 } from 'antd';
-import { Avatar as LobeAvatar, ActionIcon } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 import {
   Bot, Terminal, Puzzle,
-  Plus, Trash2, Check, FolderOpen,
+  Check, FolderOpen,
 } from 'lucide-react';
-import { getAvailableAICharacters, getAvailableCLIAgents } from '@/config/aiCharacters';
 import type {
-  Group, AIGroup, CLIGroup, CLIStrategy, AgentGroup, AgentMember, AgentStrategy, AgentTool,
+  Group, AIGroup, CLIGroup, CLIStrategy, AgentGroup, AgentStrategy,
 } from '@/config/groups';
-import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
+import { MemberPicker } from './MemberPicker';
 import { invoke } from '@tauri-apps/api/core';
-
-
-// 内置工具定义
-const AVAILABLE_TOOLS: AgentTool[] = [
-  { name: 'web_search', description: '联网搜索获取实时信息', enabled: false },
-  { name: 'code_interpreter', description: '执行代码片段并返回结果', enabled: false },
-  { name: 'http_request', description: '发起 HTTP 请求调用外部 API', enabled: false },
-  { name: 'memory', description: '存储和召回上下文信息', enabled: false },
-];
 
 interface CreateGroupWizardProps {
   open: boolean;
@@ -33,19 +22,7 @@ interface CreateGroupWizardProps {
 type GroupTypeChoice = 'ai' | 'cli' | 'agent';
 type WizardStep = 'type' | 'basic' | 'members' | 'config' | 'confirm';
 
-// 默认空 Agent 成员
-function createEmptyAgent(): AgentMember {
-  return {
-    id: `agent-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    name: '',
-    role: '',
-    systemPrompt: '',
-    llm: { baseURL: '', apiKey: '', model: '' },
-    tools: AVAILABLE_TOOLS.map(t => ({ ...t })),
-    maxTurns: 5,
-    temperature: 0.7,
-  };
-}
+
 
 const useStyles = createStyles(({ token, css }) => ({
   card: css`
@@ -145,7 +122,7 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
   const [cliStrategy, setCliStrategy] = useState<CLIStrategy>('sequential');
 
   // Agent group
-  const [agents, setAgents] = useState<AgentMember[]>([createEmptyAgent()]);
+  const [selectedAgentMembers, setSelectedAgentMembers] = useState<string[]>([]);
   const [strategy, setStrategy] = useState<AgentStrategy>('sequential');
   const [coordinatorPrompt, setCoordinatorPrompt] = useState('');
   const [maxRounds, setMaxRounds] = useState(3);
@@ -163,7 +140,7 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
     setApprovalMode('auto');
     setTimeout_(300000);
     setCliStrategy('sequential');
-    setAgents([createEmptyAgent()]);
+    setSelectedAgentMembers([]);
     setStrategy('sequential');
     setCoordinatorPrompt('');
     setMaxRounds(3);
@@ -177,6 +154,7 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
     if (groupType === 'ai') {
       group = {
         id, type: 'ai', name, description,
+        memberIds: selectedAIMembers,
         members: selectedAIMembers,
         isGroupDiscussionMode: isDiscussionMode,
         schedulerStrategy,
@@ -184,6 +162,7 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
     } else if (groupType === 'cli') {
       group = {
         id, type: 'cli', name, description,
+        memberIds: selectedCLIMembers,
         members: selectedCLIMembers,
         workspacePath,
         approvalMode,
@@ -194,7 +173,7 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
     } else {
       group = {
         id, type: 'agent', name, description,
-        agents: agents.filter(a => a.name && a.llm.baseURL),
+        memberIds: selectedAgentMembers,
         strategy,
         coordinatorPrompt: coordinatorPrompt || undefined,
         maxRounds,
@@ -213,7 +192,7 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
       case 'members':
         if (groupType === 'ai') return selectedAIMembers.length > 0;
         if (groupType === 'cli') return selectedCLIMembers.length > 0;
-        if (groupType === 'agent') return agents.some(a => a.name && a.llm.baseURL && a.llm.model);
+        if (groupType === 'agent') return selectedAgentMembers.length > 0;
         return false;
       case 'config': return groupType !== 'cli' || workspacePath.trim().length > 0;
       default: return true;
@@ -267,131 +246,50 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
       </div>
       <div>
         <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 6 }}>群描述</label>
-        <Input.TextArea autoSize={{ minRows: 3, maxRows: 6 }} maxLength={200}
-          placeholder="简单描述群聊的用途和规则"
-          value={description} onChange={e => setDescription(e.target.value)} />
+        <Input.TextArea placeholder="用一两句话描述这个群聊..." value={description} maxLength={100}
+          onChange={e => setDescription(e.target.value)} />
       </div>
     </div>
   );
-
-  const renderAIMembersStep = () => {
-    const characters = getAvailableAICharacters();
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <p style={{ fontSize: 14, color: 'rgba(0,0,0,0.45)' }}>选择 AI 成员加入群聊</p>
-        <div className={styles.scrollMembers}>
-          {characters.map(char => {
-            const selected = selectedAIMembers.includes(char.id);
-            const a = getAvatarData(char.name);
-            const url = resolveAvatarByName(char.name, char.avatar, 32);
-            return (
-              <button key={char.id}
-                onClick={() => setSelectedAIMembers(prev => selected ? prev.filter(id => id !== char.id) : [...prev, char.id])}
-                className={cx(styles.memberBtn, selected && styles.memberBtnActive)}>
-                <LobeAvatar shape="circle" avatar={url || a.text} background={a.backgroundColor} size={32} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{char.name}</div>
-                  <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 4 }}>{char.tags?.join(', ')}</div>
-                </div>
-                {selected && <Check size={16} style={{ color: '#ff6600', flexShrink: 0 }} />}
-              </button>
-            );
-          })}
-        </div>
-        <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>已选 {selectedAIMembers.length} 个成员</div>
-      </div>
-    );
-  };
-
-
-  const renderCLIMembersStep = () => {
-    const cliList = getAvailableCLIAgents();
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <p style={{ fontSize: 14, color: 'rgba(0,0,0,0.45)' }}>选择 CLI Agent 加入群聊</p>
-        <div>
-          {cliList.map(agent => {
-            const selected = selectedCLIMembers.includes(agent.id);
-            const a = getAvatarData(agent.name);
-            const url = resolveAvatarByName(agent.name, agent.avatar, 32);
-            return (
-              <button key={agent.id}
-                onClick={() => setSelectedCLIMembers(prev => selected ? prev.filter(id => id !== agent.id) : [...prev, agent.id])}
-                className={cx(styles.memberBtn, selected && styles.memberBtnActive)}>
-                <LobeAvatar shape="circle" avatar={url || a.text} background={a.backgroundColor} size={32} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 500 }}>{agent.name}</div>
-                  <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginTop: 4 }}>adapter: {agent.cli.adapter}</div>
-                </div>
-                {selected && <Check size={16} style={{ color: '#ff6600', flexShrink: 0 }} />}
-              </button>
-            );
-          })}
-        </div>
-        <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>已选 {selectedCLIMembers.length} 个 Agent</div>
-      </div>
-    );
-  };
-
-
-  const renderAgentMembersStep = () => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <p style={{ fontSize: 14, color: 'rgba(0,0,0,0.45)' }}>配置 Agent 成员（每个 Agent 需配置独立 LLM API）</p>
-      <div style={{ maxHeight: 320, overflow: 'auto', paddingRight: 6 }}>
-        {agents.map((agent, idx) => (
-          <div key={agent.id} className={styles.agentBox}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>Agent #{idx + 1}</span>
-              {agents.length > 1 && (
-                <ActionIcon icon={Trash2} size="small" onClick={() => setAgents(prev => prev.filter((_, i) => i !== idx))}
-                  style={{ color: '#ef4444' }} title="" />
-              )}
-            </div>
-            <Input placeholder="Agent 名称（如：产品经理）" value={agent.name}
-              onChange={e => { const u = [...agents]; u[idx] = { ...u[idx], name: e.target.value }; setAgents(u); }} />
-            <Input placeholder="角色定位（如：负责需求分析）" value={agent.role}
-              onChange={e => { const u = [...agents]; u[idx] = { ...u[idx], role: e.target.value }; setAgents(u); }} />
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <Input placeholder="API 地址" value={agent.llm.baseURL}
-                onChange={e => { const u = [...agents]; u[idx] = { ...u[idx], llm: { ...u[idx].llm, baseURL: e.target.value } }; setAgents(u); }} />
-              <Input placeholder="模型名" value={agent.llm.model}
-                onChange={e => { const u = [...agents]; u[idx] = { ...u[idx], llm: { ...u[idx].llm, model: e.target.value } }; setAgents(u); }} />
-            </div>
-            <Input.Password placeholder="API Key" value={agent.llm.apiKey}
-              onChange={e => { const u = [...agents]; u[idx] = { ...u[idx], llm: { ...u[idx].llm, apiKey: e.target.value } }; setAgents(u); }} />
-            <Input.TextArea autoSize={{ minRows: 2, maxRows: 5 }}
-              placeholder="System Prompt（定义角色人设和能力）"
-              value={agent.systemPrompt}
-              onChange={e => { const u = [...agents]; u[idx] = { ...u[idx], systemPrompt: e.target.value }; setAgents(u); }} />
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-              {agent.tools.map((tool, tIdx) => (
-                <Checkbox
-                  key={tool.name}
-                  checked={tool.enabled}
-                  onChange={e => {
-                    const u = [...agents];
-                    const newTools = [...u[idx].tools];
-                    newTools[tIdx] = { ...newTools[tIdx], enabled: e.target.checked };
-                    u[idx] = { ...u[idx], tools: newTools };
-                    setAgents(u);
-                  }}
-                >{tool.name}</Checkbox>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-      <Button icon={<Plus size={14} />} onClick={() => setAgents(prev => [...prev, createEmptyAgent()])}>
-        添加 Agent
-      </Button>
-    </div>
-  );
-
 
   const renderMembersStep = () => {
-    if (groupType === 'ai') return renderAIMembersStep();
-    if (groupType === 'cli') return renderCLIMembersStep();
-    return renderAgentMembersStep();
+    if (groupType === 'ai') {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <p style={{ fontSize: 14, color: 'rgba(0,0,0,0.45)' }}>选择 AI 成员加入群聊</p>
+          <MemberPicker
+            kind="llm"
+            value={selectedAIMembers}
+            onChange={setSelectedAIMembers}
+            placeholder="选择大模型角色群员..."
+          />
+        </div>
+      );
+    }
+    if (groupType === 'cli') {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <p style={{ fontSize: 14, color: 'rgba(0,0,0,0.45)' }}>选择 CLI Agent 加入群聊</p>
+          <MemberPicker
+            kind="cli"
+            value={selectedCLIMembers}
+            onChange={setSelectedCLIMembers}
+            placeholder="选择 CLI Agent 群员..."
+          />
+        </div>
+      );
+    }
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <p style={{ fontSize: 14, color: 'rgba(0,0,0,0.45)' }}>选择 Agent 成员加入群聊</p>
+        <MemberPicker
+          kind="agent"
+          value={selectedAgentMembers}
+          onChange={setSelectedAgentMembers}
+          placeholder="选择 Agent 群员..."
+        />
+      </div>
+    );
   };
 
   const renderAIConfigStep = () => (
@@ -534,7 +432,7 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
   const stepTitles: Record<WizardStep, string> = {
     type: '选择群聊类型',
     basic: '基础信息',
-    members: groupType === 'agent' ? '配置 Agent 成员' : '选择群成员',
+    members: '选择群成员',
     config: '群聊设置',
     confirm: '',
   };

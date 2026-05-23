@@ -351,3 +351,186 @@ pub fn select_directory() -> Result<Option<String>, String> {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct AIMember {
+    pub id: String,
+    pub kind: String,
+    pub name: String,
+    pub avatar: Option<String>,
+    pub description: Option<String>,
+    pub tags: Option<String>, // JSON Array string
+    pub source: String,
+    pub config: String, // JSON config string
+    pub enabled: i32,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+#[tauri::command]
+pub fn list_ai_members(app: AppHandle, kind: Option<String>) -> Result<Vec<AIMember>, String> {
+    let db_path = get_db_path(&app);
+    let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
+
+    let mut query = "SELECT id, kind, name, avatar, description, tags, source, config, enabled, created_at, updated_at FROM ai_members".to_string();
+    let mut params_vec: Vec<rusqlite::types::Value> = Vec::new();
+
+    if let Some(ref k) = kind {
+        query.push_str(" WHERE kind = ?1");
+        params_vec.push(rusqlite::types::Value::Text(k.clone()));
+    }
+
+    query.push_str(" ORDER BY created_at ASC");
+
+    let mut stmt = conn.prepare(&query).map_err(|e| e.to_string())?;
+    let members_iter = stmt
+        .query_map(rusqlite::params_from_iter(params_vec), |row| {
+            Ok(AIMember {
+                id: row.get(0)?,
+                kind: row.get(1)?,
+                name: row.get(2)?,
+                avatar: row.get(3)?,
+                description: row.get(4)?,
+                tags: row.get(5)?,
+                source: row.get(6)?,
+                config: row.get(7)?,
+                enabled: row.get(8)?,
+                created_at: row.get(9)?,
+                updated_at: row.get(10)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut members = Vec::new();
+    for member in members_iter {
+        members.push(member.map_err(|e| e.to_string())?);
+    }
+    Ok(members)
+}
+
+#[tauri::command]
+pub fn get_ai_member(app: AppHandle, id: String) -> Result<Option<AIMember>, String> {
+    let db_path = get_db_path(&app);
+    let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
+
+    let mut stmt = conn
+        .prepare("SELECT id, kind, name, avatar, description, tags, source, config, enabled, created_at, updated_at FROM ai_members WHERE id = ?1")
+        .map_err(|e| e.to_string())?;
+
+    let mut iter = stmt
+        .query_map(params![id], |row| {
+            Ok(AIMember {
+                id: row.get(0)?,
+                kind: row.get(1)?,
+                name: row.get(2)?,
+                avatar: row.get(3)?,
+                description: row.get(4)?,
+                tags: row.get(5)?,
+                source: row.get(6)?,
+                config: row.get(7)?,
+                enabled: row.get(8)?,
+                created_at: row.get(9)?,
+                updated_at: row.get(10)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    if let Some(res) = iter.next() {
+        let m = res.map_err(|e| e.to_string())?;
+        Ok(Some(m))
+    } else {
+        Ok(None)
+    }
+}
+
+#[tauri::command]
+pub fn upsert_ai_member(app: AppHandle, member: AIMember) -> Result<(), String> {
+    let db_path = get_db_path(&app);
+    let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "INSERT INTO ai_members (id, kind, name, avatar, description, tags, source, config, enabled, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, CURRENT_TIMESTAMP)
+         ON CONFLICT(id) DO UPDATE SET
+            kind = excluded.kind,
+            name = excluded.name,
+            avatar = excluded.avatar,
+            description = excluded.description,
+            tags = excluded.tags,
+            source = excluded.source,
+            config = excluded.config,
+            enabled = excluded.enabled,
+            updated_at = CURRENT_TIMESTAMP",
+        params![
+            member.id,
+            member.kind,
+            member.name,
+            member.avatar,
+            member.description,
+            member.tags,
+            member.source,
+            member.config,
+            member.enabled
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_ai_member(app: AppHandle, id: String) -> Result<(), String> {
+    let db_path = get_db_path(&app);
+    let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
+
+    // 后端兜底：禁止删除内置预设成员（前端 UI 也会拦截，这里防绕过）
+    let source: Option<String> = conn
+        .query_row(
+            "SELECT source FROM ai_members WHERE id = ?1",
+            params![id],
+            |row| row.get(0),
+        )
+        .ok();
+
+    match source.as_deref() {
+        Some("builtin") => Err(format!(
+            "内置预设成员不允许删除 (id={}), 请先 fork 为自建副本再修改",
+            id
+        )),
+        _ => {
+            conn.execute("DELETE FROM ai_members WHERE id = ?1", params![id])
+                .map_err(|e| e.to_string())?;
+            Ok(())
+        }
+    }
+}
+
+#[tauri::command]
+pub fn seed_builtin_ai_members(app: AppHandle, members: Vec<AIMember>) -> Result<(), String> {
+    let db_path = get_db_path(&app);
+    let mut conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
+    
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    for member in members {
+        tx.execute(
+            "INSERT OR IGNORE INTO ai_members (id, kind, name, avatar, description, tags, source, config, enabled)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            params![
+                member.id,
+                member.kind,
+                member.name,
+                member.avatar,
+                member.description,
+                member.tags,
+                member.source,
+                member.config,
+                member.enabled
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    tx.commit().map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+
