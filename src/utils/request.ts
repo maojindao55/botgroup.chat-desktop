@@ -915,74 +915,14 @@ export async function request(url: string, options: RequestInit = {}) {
         if (localVal) apiKey = localVal;
       }
 
-      const response = await fetch(`${body.baseURL}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-          model: body.model,
-          messages: body.messages,
-          temperature: body.temperature,
-          tools: body.tools && body.tools.length > 0 ? body.tools : undefined,
-          stream: true
-        })
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`Agent LLM Error: ${response.status} - ${errText}`);
-      }
-
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-
-      const readable = new ReadableStream({
-        async start(controller) {
-          let buffer = '';
-          try {
-            while (true) {
-              const { done, value } = await reader!.read();
-              if (done) {
-                controller.close();
-                break;
-              }
-
-              buffer += decoder.decode(value, { stream: true });
-              let lines = buffer.split('\n');
-              buffer = lines.pop() || ''; // keep the last partial line in buffer
-
-              for (const line of lines) {
-                const cleanLine = line.trim();
-                if (!cleanLine) continue;
-
-                if (cleanLine.startsWith('data: ')) {
-                  const dataStr = cleanLine.slice(6);
-                  if (dataStr === '[DONE]') {
-                    controller.enqueue(new TextEncoder().encode(`data: [DONE]\n\n`));
-                    continue;
-                  }
-
-                  try {
-                    const parsed = JSON.parse(dataStr);
-                    // Pass along content or delta content
-                    const content = parsed.choices?.[0]?.delta?.content || parsed.content || '';
-                    if (content) {
-                      controller.enqueue(
-                        new TextEncoder().encode(`data: ${JSON.stringify({ content })}\n\n`)
-                      );
-                    }
-                  } catch (e) {
-                    // Ignore JSON parse errors for non-standard lines
-                  }
-                }
-              }
-            }
-          } catch (e: any) {
-            controller.error(e);
-          }
-        }
+      const readable = await llmChatReadableStream({
+        baseURL: body.baseURL,
+        apiKey,
+        model: body.model,
+        messages: body.messages,
+        temperature: body.temperature,
+        tools: body.tools && body.tools.length > 0 ? body.tools : undefined,
+        emitDoneMarker: true,
       });
 
       return new Response(readable, {
