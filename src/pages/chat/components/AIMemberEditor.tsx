@@ -31,11 +31,14 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
 }) => {
   const [form] = Form.useForm();
   const { get, upsert } = useAIMemberStore();
-  const { list: listProviders, load: loadProviders } = useProviderStore();
+  const { providers: providersRecord, load: loadProviders } = useProviderStore();
   const kind = Form.useWatch('kind', form) || defaultKind;
   const providerId = Form.useWatch('providerId', form);
 
-  const providers = useMemo(() => listProviders().filter((p) => p.enabled !== false), [listProviders, open]);
+  const providers = useMemo(
+    () => Object.values(providersRecord).filter((p) => p.enabled !== false),
+    [providersRecord],
+  );
   const selectedProvider = providers.find((p) => p.id === providerId);
   const modelOptions = selectedProvider?.models ?? [];
 
