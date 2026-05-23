@@ -1,5 +1,8 @@
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
+use tauri::AppHandle;
+
+use crate::db::get_db_path;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -17,10 +20,13 @@ pub struct Provider {
     pub updated_at: Option<String>,
 }
 
-const SELECT_COLS: &str =
-    "id, name, base_url, api_key_ref, models, source, icon_url, description, enabled, created_at, updated_at";
+mod db {
+    use super::*;
 
-fn row_to_provider(row: &rusqlite::Row<'_>) -> rusqlite::Result<Provider> {
+    const SELECT_COLS: &str =
+        "id, name, base_url, api_key_ref, models, source, icon_url, description, enabled, created_at, updated_at";
+
+    fn row_to_provider(row: &rusqlite::Row<'_>) -> rusqlite::Result<Provider> {
     let models_json: String = row.get(4)?;
     let models: Vec<String> = serde_json::from_str(&models_json).map_err(|e| {
         rusqlite::Error::FromSqlConversionFailure(
@@ -43,9 +49,9 @@ fn row_to_provider(row: &rusqlite::Row<'_>) -> rusqlite::Result<Provider> {
         created_at: row.get(9)?,
         updated_at: row.get(10)?,
     })
-}
+    }
 
-pub fn list_providers(conn: &Connection) -> Result<Vec<Provider>, String> {
+    pub fn list_providers(conn: &Connection) -> Result<Vec<Provider>, String> {
     let mut stmt = conn
         .prepare(&format!(
             "SELECT {SELECT_COLS} FROM providers ORDER BY created_at ASC"
@@ -59,9 +65,9 @@ pub fn list_providers(conn: &Connection) -> Result<Vec<Provider>, String> {
         .map_err(|e| e.to_string())?;
 
     Ok(providers)
-}
+    }
 
-pub fn get_provider(conn: &Connection, id: &str) -> Result<Option<Provider>, String> {
+    pub fn get_provider(conn: &Connection, id: &str) -> Result<Option<Provider>, String> {
     let mut stmt = conn
         .prepare(&format!(
             "SELECT {SELECT_COLS} FROM providers WHERE id = ?1"
@@ -76,9 +82,9 @@ pub fn get_provider(conn: &Connection, id: &str) -> Result<Option<Provider>, Str
         Some(row) => Ok(Some(row.map_err(|e| e.to_string())?)),
         None => Ok(None),
     }
-}
+    }
 
-pub fn upsert_provider(conn: &Connection, p: &Provider) -> Result<(), String> {
+    pub fn upsert_provider(conn: &Connection, p: &Provider) -> Result<(), String> {
     let models_json = serde_json::to_string(&p.models).map_err(|e| e.to_string())?;
     let enabled_int: i32 = if p.enabled { 1 } else { 0 };
 
@@ -110,9 +116,9 @@ pub fn upsert_provider(conn: &Connection, p: &Provider) -> Result<(), String> {
     .map_err(|e| e.to_string())?;
 
     Ok(())
-}
+    }
 
-fn config_references_provider(config: &str, provider_id: &str) -> bool {
+    fn config_references_provider(config: &str, provider_id: &str) -> bool {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(config) else {
         return false;
     };
@@ -120,9 +126,9 @@ fn config_references_provider(config: &str, provider_id: &str) -> bool {
         .get("providerId")
         .and_then(|v| v.as_str())
         .is_some_and(|pid| pid == provider_id)
-}
+    }
 
-pub fn delete_provider(conn: &Connection, id: &str) -> Result<(), String> {
+    pub fn delete_provider(conn: &Connection, id: &str) -> Result<(), String> {
     let mut stmt = conn
         .prepare("SELECT name, config FROM ai_members")
         .map_err(|e| e.to_string())?;
@@ -144,10 +150,77 @@ pub fn delete_provider(conn: &Connection, id: &str) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
 
     Ok(())
+    }
+
+    pub fn seed_builtin_providers(
+        conn: &mut Connection,
+        providers: Vec<Provider>,
+    ) -> Result<(), String> {
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        for p in providers {
+            let models_json = serde_json::to_string(&p.models).map_err(|e| e.to_string())?;
+            let enabled_int: i32 = if p.enabled { 1 } else { 0 };
+            tx.execute(
+                "INSERT OR IGNORE INTO providers (id, name, base_url, api_key_ref, models, source, icon_url, description, enabled)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                params![
+                    p.id,
+                    p.name,
+                    p.base_url,
+                    p.api_key_ref,
+                    models_json,
+                    p.source,
+                    p.icon_url,
+                    p.description,
+                    enabled_int,
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+
+        Ok(())
+    }
+}
+
+#[tauri::command]
+pub fn list_providers(app: AppHandle) -> Result<Vec<Provider>, String> {
+    let db_path = get_db_path(&app);
+    let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
+    db::list_providers(&conn)
+}
+
+#[tauri::command]
+pub fn get_provider(app: AppHandle, id: String) -> Result<Option<Provider>, String> {
+    let db_path = get_db_path(&app);
+    let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
+    db::get_provider(&conn, &id)
+}
+
+#[tauri::command]
+pub fn upsert_provider(app: AppHandle, provider: Provider) -> Result<(), String> {
+    let db_path = get_db_path(&app);
+    let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
+    db::upsert_provider(&conn, &provider)
+}
+
+#[tauri::command]
+pub fn delete_provider(app: AppHandle, id: String) -> Result<(), String> {
+    let db_path = get_db_path(&app);
+    let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
+    db::delete_provider(&conn, &id)
+}
+
+#[tauri::command]
+pub fn seed_builtin_providers(app: AppHandle, providers: Vec<Provider>) -> Result<(), String> {
+    let db_path = get_db_path(&app);
+    let mut conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
+    db::seed_builtin_providers(&mut conn, providers)
 }
 
 #[cfg(test)]
 mod tests {
+    use super::db::{delete_provider, get_provider, list_providers, upsert_provider};
     use super::*;
     use crate::db::init_db_schemas;
     use rusqlite::Connection;
