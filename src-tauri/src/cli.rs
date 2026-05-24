@@ -114,6 +114,8 @@ pub struct CliRunArgs {
     pub prompt: String,
     pub cwd: Option<String>,
     pub extra_args: Option<Vec<String>>,
+    #[serde(rename = "toolSessionId")]
+    pub tool_session_id: Option<String>,
     /// Optional binary override (default: looked up from adapter)
     pub binary: Option<String>,
     /// Extra env vars to set on the spawned process
@@ -877,6 +879,18 @@ fn build_command(args: &CliRunArgs) -> Result<Command, String> {
                     cmd.arg(a);
                 }
             }
+            let has_session = args.extra_args.as_ref().map_or(false, |extra| {
+                extra
+                    .iter()
+                    .any(|arg| arg == "resume" || arg == "--last")
+            });
+            if !has_session {
+                if let Some(tool_session_id) = &args.tool_session_id {
+                    if !tool_session_id.is_empty() {
+                        cmd.arg("resume").arg(tool_session_id);
+                    }
+                }
+            }
             cmd.arg(&args.prompt);
         }
 
@@ -893,6 +907,22 @@ fn build_command(args: &CliRunArgs) -> Result<Command, String> {
             if let Some(extra) = &args.extra_args {
                 for a in extra {
                     cmd.arg(a);
+                }
+            }
+            let has_session = args.extra_args.as_ref().map_or(false, |extra| {
+                extra.iter().any(|arg| {
+                    arg == "--session"
+                        || arg.starts_with("--session=")
+                        || arg == "-s"
+                        || arg == "--continue"
+                        || arg == "-c"
+                })
+            });
+            if !has_session {
+                if let Some(tool_session_id) = &args.tool_session_id {
+                    if !tool_session_id.is_empty() {
+                        cmd.arg("--session").arg(tool_session_id);
+                    }
                 }
             }
             cmd.arg(&args.prompt);
@@ -1029,6 +1059,7 @@ mod tests {
             prompt: "写一个冒泡排序文件".to_string(),
             cwd: Some("/tmp/not-a-git-repo".to_string()),
             extra_args: None,
+            tool_session_id: None,
             binary: None,
             env: Some(HashMap::new()),
             timeout_ms: Some(300000),
@@ -1045,6 +1076,64 @@ mod tests {
     }
 
     #[test]
+    fn codex_exec_resumes_tool_session_when_available() {
+        let cmd = build_command(&CliRunArgs {
+            session_id: "session-1".to_string(),
+            group_id: "group-1".to_string(),
+            agent_id: "cli-codex".to_string(),
+            agent_name: "Codex".to_string(),
+            adapter: "codex".to_string(),
+            prompt: "继续刚才的任务".to_string(),
+            cwd: Some("/tmp/not-a-git-repo".to_string()),
+            extra_args: Some(vec![
+                "--json".to_string(),
+                "--sandbox".to_string(),
+                "workspace-write".to_string(),
+            ]),
+            tool_session_id: Some("019e1234-abcd".to_string()),
+            binary: None,
+            env: Some(HashMap::new()),
+            timeout_ms: Some(300000),
+            approval_mode: Some("auto".to_string()),
+            show_stderr: Some(true),
+        })
+        .expect("codex resume command should build");
+
+        let rendered = format!("{:?}", cmd);
+
+        assert!(rendered.contains("\"exec\""));
+        assert!(rendered.contains("\"resume\""));
+        assert!(rendered.contains("\"019e1234-abcd\""));
+        assert!(rendered.contains("\"继续刚才的任务\""));
+    }
+
+    #[test]
+    fn codex_exec_respects_explicit_resume_arg() {
+        let cmd = build_command(&CliRunArgs {
+            session_id: "session-1".to_string(),
+            group_id: "group-1".to_string(),
+            agent_id: "cli-codex".to_string(),
+            agent_name: "Codex".to_string(),
+            adapter: "codex".to_string(),
+            prompt: "继续刚才的任务".to_string(),
+            cwd: Some("/tmp/not-a-git-repo".to_string()),
+            extra_args: Some(vec!["resume".to_string(), "manual-session".to_string()]),
+            tool_session_id: Some("stored-session".to_string()),
+            binary: None,
+            env: Some(HashMap::new()),
+            timeout_ms: Some(300000),
+            approval_mode: Some("auto".to_string()),
+            show_stderr: Some(true),
+        })
+        .expect("codex command should build");
+
+        let rendered = format!("{:?}", cmd);
+
+        assert!(rendered.contains("\"manual-session\""));
+        assert!(!rendered.contains("\"stored-session\""));
+    }
+
+    #[test]
     fn opencode_run_defaults_to_json_format() {
         let cmd = build_command(&CliRunArgs {
             session_id: "session-1".to_string(),
@@ -1055,6 +1144,7 @@ mod tests {
             prompt: "继续刚才的任务".to_string(),
             cwd: Some("/tmp/project".to_string()),
             extra_args: Some(vec!["--pure".to_string()]),
+            tool_session_id: None,
             binary: None,
             env: Some(HashMap::new()),
             timeout_ms: Some(300000),
@@ -1083,6 +1173,7 @@ mod tests {
             prompt: "继续刚才的任务".to_string(),
             cwd: Some("/tmp/project".to_string()),
             extra_args: Some(vec!["--format".to_string(), "default".to_string()]),
+            tool_session_id: None,
             binary: None,
             env: Some(HashMap::new()),
             timeout_ms: Some(300000),
@@ -1108,6 +1199,7 @@ mod tests {
             prompt: "继续刚才的任务".to_string(),
             cwd: Some("/tmp/project".to_string()),
             extra_args: Some(vec!["--format=default".to_string()]),
+            tool_session_id: None,
             binary: None,
             env: Some(HashMap::new()),
             timeout_ms: Some(300000),

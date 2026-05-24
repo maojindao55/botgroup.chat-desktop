@@ -152,6 +152,7 @@ async function callCLIAgent(
     cwd: ctx.cwd || null,
     binary: cliCfg.binary || null,
     extraArgs: cliCfg.extraArgs || null,
+    toolSessionId: cliCfg.toolSessionId || null,
     env: cliCfg.env || null,
     timeoutMs: options.timeoutMs,
     approvalMode: options.approvalMode ?? cliCfg.approvalMode ?? 'auto',

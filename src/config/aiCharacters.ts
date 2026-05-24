@@ -84,6 +84,7 @@ export interface CLIAgent {
     adapter: 'codex' | 'opencode' | 'claude' | 'aider' | 'gemini' | 'generic';
     binary?: string;
     extraArgs?: string[];
+    toolSessionId?: string;
     env?: Record<string, string>;
     approvalMode?: 'auto' | 'ask';
     showStderr?: boolean;
@@ -181,4 +182,3 @@ export function getAvailableAICharacters(): AICharacter[] {
 export function getAvailableCLIAgents(): CLIAgent[] {
   return cliAgents;
 }
-

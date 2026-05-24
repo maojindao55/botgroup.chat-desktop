@@ -5,7 +5,7 @@ export function cliToolSessionKey(groupId: string, agentId: string, workspacePat
 }
 
 export function withCliToolSession(agent: CLIAgent, sessionId: string | null | undefined): CLIAgent {
-  if (agent.cli?.adapter !== 'opencode') return agent;
+  if (agent.cli?.adapter !== 'opencode' && agent.cli?.adapter !== 'codex') return agent;
   if (!sessionId) return agent;
 
   const extraArgs = agent.cli.extraArgs || [];
@@ -14,7 +14,9 @@ export function withCliToolSession(agent: CLIAgent, sessionId: string | null | u
     arg.startsWith('--session=') ||
     arg === '-s' ||
     arg === '--continue' ||
-    arg === '-c'
+    arg === '-c' ||
+    arg === 'resume' ||
+    arg === '--last'
   );
   if (hasExplicitSession) return agent;
 
@@ -22,7 +24,7 @@ export function withCliToolSession(agent: CLIAgent, sessionId: string | null | u
     ...agent,
     cli: {
       ...agent.cli,
-      extraArgs: [...extraArgs, '--session', sessionId],
+      toolSessionId: sessionId,
     },
   };
 }

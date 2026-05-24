@@ -39,6 +39,7 @@ export interface CLIMember extends AIMemberBase {
     adapter: 'codex' | 'claude' | 'opencode' | 'aider' | 'gemini' | 'generic';
     binary?: string;
     extraArgs?: string[];
+    toolSessionId?: string;
     env?: Record<string, string>;
     approvalMode?: 'auto' | 'ask';
     showStderr?: boolean;

@@ -32,7 +32,8 @@ assert.equal(
   const next = withCliToolSession(agent, 'ses_abc123');
 
   assert.notEqual(next, agent);
-  assert.deepEqual(next.cli.extraArgs, ['--pure', '--session', 'ses_abc123']);
+  assert.deepEqual(next.cli.extraArgs, ['--pure']);
+  assert.equal(next.cli.toolSessionId, 'ses_abc123');
 }
 
 {
@@ -46,6 +47,7 @@ assert.equal(
   const next = withCliToolSession(agent, 'ses_new');
 
   assert.deepEqual(next.cli.extraArgs, ['--session', 'ses_old']);
+  assert.equal(next.cli.toolSessionId, undefined);
 }
 
 {
@@ -59,6 +61,7 @@ assert.equal(
   const next = withCliToolSession(agent, 'ses_new');
 
   assert.deepEqual(next.cli.extraArgs, ['--session=ses_old']);
+  assert.equal(next.cli.toolSessionId, undefined);
 }
 
 {
@@ -69,7 +72,23 @@ assert.equal(
     cli: { adapter: 'codex', extraArgs: [] },
   };
 
-  assert.equal(withCliToolSession(agent, 'ses_abc123'), agent);
+  const next = withCliToolSession(agent, '019e1234-abcd');
+
+  assert.notEqual(next, agent);
+  assert.equal(next.cli.toolSessionId, '019e1234-abcd');
+}
+
+{
+  const agent = {
+    id: 'cli-codex',
+    name: 'Codex',
+    tags: [],
+    cli: { adapter: 'codex', extraArgs: ['resume', 'manual-session'] },
+  };
+
+  const next = withCliToolSession(agent, '019e1234-abcd');
+
+  assert.equal(next, agent);
 }
 
 console.log('cliToolSessions.test.mjs: ok');

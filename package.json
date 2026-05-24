@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "test:cli": "node src/engine/cliEngine.modes.test.mjs && node src/engine/cliWorkflowModes.test.mjs && node src/engine/cliIntent.test.mjs && node src/engine/cliPrompt.test.mjs && node src/engine/cliToolSessions.test.mjs",
-    "test:llm": "node src/utils/llmClient.test.mjs && node src/utils/cliOutput.test.mjs && node src/utils/opencodeStream.test.mjs",
+    "test:llm": "node src/utils/llmClient.test.mjs && node src/utils/cliOutput.test.mjs && node src/utils/opencodeStream.test.mjs && node src/utils/codexStream.test.mjs",
     "test:product": "node src/config/groupProduct.test.mjs",
     "preview": "vite preview",
     "tauri": "tauri"

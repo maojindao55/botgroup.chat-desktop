@@ -8,6 +8,7 @@ import { generateAICharacters, cliAgents, modelConfigs } from '@/config/aiCharac
 import { builtinAIMembers, type AIMember } from '@/config/aiMembers';
 import { builtinProviders, lookupProviderByEnvName, mapProviderToRust } from '@/config/providers';
 import { cleanCliOutputLine, shouldSuppressCliOutputLine } from '@/utils/cliOutput';
+import { parseCodexJsonLine } from '@/utils/codexStream';
 import { parseOpenCodeJsonLine } from '@/utils/opencodeStream';
 
 const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
@@ -524,6 +525,7 @@ export async function request(url: string, options: RequestInit = {}) {
         cwd,
         binary,
         extraArgs,
+        toolSessionId,
         env,
         timeoutMs,
         approvalMode = 'auto',
@@ -577,6 +579,7 @@ export async function request(url: string, options: RequestInit = {}) {
           // Thinking & commands use a subdued visual style so the final reply stands out.
           // For non-JSON adapters we still stream raw stdout directly.
           let isJsonMode = adapter === 'codex';
+          let codexSessionId: string | null = null;
           let opencodeSessionId: string | null = null;
           // Track whether we're inside an "intermediate" phase so we can
           // open/close a <details> wrapper around thinking+commands.
@@ -637,40 +640,27 @@ export async function request(url: string, options: RequestInit = {}) {
                   // Codex --json mode: parse structured events, stream everything
                   if (isJsonMode && stdoutLine.startsWith('{') && stdoutLine.includes('"type"')) {
                     try {
-                      const jsonEvt = JSON.parse(stdoutLine);
-
-                      // Agent reply — close details block first, then stream reply text
-                      if (jsonEvt.type === 'item.completed' && jsonEvt.item?.type === 'agent_message' && jsonEvt.item?.text) {
-                        closeDetails();
-                        enqueueChunk(jsonEvt.item.text + '\n');
+                      const parsed = parseCodexJsonLine(stdoutLine);
+                      if (parsed?.sessionId && parsed.sessionId !== codexSessionId) {
+                        codexSessionId = parsed.sessionId;
+                        enqueueEvent({
+                          type: 'tool_session',
+                          adapter: 'codex',
+                          sessionId: parsed.sessionId,
+                        });
                       }
-                      // Thinking / reasoning — stream inside details block
-                      else if (jsonEvt.type === 'item.completed' && jsonEvt.item?.type === 'reasoning' && jsonEvt.item?.text) {
-                        ensureDetailsOpen();
-                        enqueueChunk(`💭 **思考中**\n\n> ${jsonEvt.item.text.replace(/\n/g, '\n> ')}\n\n`);
-                      }
-                      // Command started — stream immediately
-                      else if (jsonEvt.type === 'item.started' && jsonEvt.item?.type === 'command_execution') {
-                        stepCount++;
-                        ensureDetailsOpen();
-                        const cmd = jsonEvt.item.command || '(unknown)';
-                        const cmdShort = cmd.length > 120 ? cmd.slice(0, 117) + '...' : cmd;
-                        enqueueChunk(`\n---\n\n▶ **Step ${stepCount}** — \`${cmdShort}\`\n\n`);
-                      }
-                      // Command completed — stream result
-                      else if (jsonEvt.type === 'item.completed' && jsonEvt.item?.type === 'command_execution') {
-                        ensureDetailsOpen();
-                        const exitCode = jsonEvt.item.exit_code ?? 0;
-                        const status = exitCode === 0 ? '✅ 成功' : `❌ 失败 (exit ${exitCode})`;
-                        enqueueChunk(`${status}\n`);
-                        if (jsonEvt.item.output) {
-                          const outShort = jsonEvt.item.output.length > 500
-                            ? jsonEvt.item.output.slice(0, 497) + '...'
-                            : jsonEvt.item.output;
-                          enqueueChunk(`\n\`\`\`\n${outShort}\n\`\`\`\n\n`);
+                      if (parsed?.error) {
+                        enqueueEvent({
+                          type: 'error',
+                          content: `\n**[Codex error]** ${parsed.error}\n`,
+                          error: parsed.error,
+                        });
+                      } else if (parsed?.content) {
+                        if (parsed.content.includes('<summary>') && parsed.content.includes('▶ ')) {
+                          stepCount++;
                         }
+                        enqueueChunk(parsed.content);
                       }
-                      // Skip turn.started, turn.completed, thread.started silently
                     } catch {
                       // Not valid JSON, show as-is
                       enqueueChunk(stdoutLine + '\n');
@@ -756,6 +746,7 @@ export async function request(url: string, options: RequestInit = {}) {
                 binary: binary || null,
                 extraArgs: extraArgs || null,
                 env: env || null,
+                toolSessionId: toolSessionId || null,
                 timeoutMs: timeoutMs || null,
                 approvalMode,
                 showStderr: showStderr ?? true,
