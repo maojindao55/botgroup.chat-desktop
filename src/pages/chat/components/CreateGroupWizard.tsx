@@ -355,7 +355,7 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
         <p style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginTop: 6 }}>开发群友将在此目录读写代码，支持选择或输入绝对路径</p>
       </div>
       <div>
-        <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 8 }}>群规</label>
+        <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 8 }}>协作方式</label>
         {cliWorkflowTemplates.map(item => (
           <button key={item.id}
             onClick={() => {

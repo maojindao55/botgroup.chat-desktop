@@ -831,7 +831,7 @@ const ChatUI = () => {
       const systemMsg = {
         id: `sys-${Date.now()}`,
         sender: { id: 'sys', name: '系统提示' },
-        content: '当前群规是“群内讨论”，会在临时只读副本中运行，不会修改你设置的 workspace。要写文件或改代码，请先切换到“写完再审”或“快速响应”。',
+        content: '当前协作方式是“只读讨论”，会在临时只读副本中运行，不会修改你设置的 workspace。要写文件或改代码，请先切换到“写完再审”或“快速响应”。',
         isAI: true,
         isError: true,
       };

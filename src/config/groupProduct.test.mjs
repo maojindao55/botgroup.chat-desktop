@@ -33,7 +33,7 @@ assert.deepEqual(
 
 assert.deepEqual(
   mod.cliWorkflowTemplates.map((item) => item.label),
-  ['快速响应', '写完再审', '审核修正', '多人出方案', '隔离竞赛', '群内讨论'],
+  ['快速响应', '写完再审', '审核修正', '多人出方案', '隔离竞赛', '只读讨论'],
 );
 
 assert.equal(
@@ -113,7 +113,9 @@ assert.match(agentSettings, /高级策略/);
 const cliSettings = await readFile(new URL('../pages/chat/components/CLIGroupSettings.tsx', import.meta.url), 'utf8');
 
 assert.match(cliSettings, /开发群配置/);
-assert.match(cliSettings, /群规/);
+assert.match(cliSettings, /协作方式/);
+assert.match(cliSettings, /执行细节/);
+assert.doesNotMatch(cliSettings, /群规/);
 assert.match(cliSettings, /cliWorkflowTemplates/);
 assert.match(cliSettings, /开发群友/);
 
@@ -154,7 +156,9 @@ const chatUI = await readFile(new URL('../pages/chat/components/ChatUI.tsx', imp
 
 assert.match(chatUI, /群聊中没有启用的开发群友/);
 assert.match(chatUI, /开发群友将在 workspace 中协作执行/);
+assert.match(chatUI, /当前协作方式是“只读讨论”/);
 assert.match(chatUI, /资源库/);
+assert.doesNotMatch(chatUI, /当前群规是/);
 assert.doesNotMatch(chatUI, /CLI Agent 将在 workspace 中执行/);
 assert.doesNotMatch(chatUI, /AI 群员库（/);
 

@@ -151,7 +151,7 @@ export const cliWorkflowTemplates: CLIWorkflowTemplate[] = [
   },
   {
     id: 'discussion',
-    label: '群内讨论',
+    label: '只读讨论',
     description: '只分析代码方案和风险，不要求开发群友修改文件。',
     strategy: 'discussion',
     defaultStages: ['分析', '补充', '结论'],

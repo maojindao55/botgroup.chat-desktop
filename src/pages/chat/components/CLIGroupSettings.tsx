@@ -672,7 +672,7 @@ export const CLIGroupSettings = ({
 
           {/* strategy */}
           <div className={styles.panel}>
-            <div style={{ fontSize: 14, fontWeight: 500 }}>群规</div>
+            <div style={{ fontSize: 14, fontWeight: 500 }}>协作方式</div>
             <div className={styles.strategyGrid}>
               {cliWorkflowTemplates.map((item) => (
                 <button
@@ -719,12 +719,12 @@ export const CLIGroupSettings = ({
           {/* Advanced Execution Plan Config (V3) */}
           <details style={{ marginTop: 0 }}>
             <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 500, color: 'rgba(0,0,0,0.65)', padding: '8px 0' }}>
-              高级配置
+              执行细节
             </summary>
             <div className={styles.panel} style={{ marginTop: 8 }}>
               <div className={styles.rowBetween}>
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 500 }}>失败策略</div>
+                  <div style={{ fontSize: 13, fontWeight: 500 }}>失败处理</div>
                   <div className={styles.panelDesc} style={{ marginTop: 2 }}>开发群友失败后是否继续执行后续阶段</div>
                 </div>
                 <select
@@ -744,7 +744,7 @@ export const CLIGroupSettings = ({
               {strategy === 'discussion' && (
                 <div className={styles.rowBetween} style={{ marginTop: 8 }}>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 500 }}>讨论轮数</div>
+                    <div style={{ fontSize: 13, fontWeight: 500 }}>协作轮数</div>
                     <div className={styles.panelDesc} style={{ marginTop: 2 }}>staged 调度的最大轮次数</div>
                   </div>
                   <InputNumber
@@ -764,7 +764,7 @@ export const CLIGroupSettings = ({
               {strategy === 'race' && (
                 <div className={styles.rowBetween} style={{ marginTop: 8 }}>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 500 }}>结果策略</div>
+                    <div style={{ fontSize: 13, fontWeight: 500 }}>结果处理</div>
                     <div className={styles.panelDesc} style={{ marginTop: 2 }}>多结果时如何取舍（当前仅展示全部）</div>
                   </div>
                   <select
@@ -784,7 +784,7 @@ export const CLIGroupSettings = ({
                 </div>
               )}
               <p className={styles.panelDesc} style={{ marginTop: 8 }}>
-                高级配置会覆盖预设模式的默认值。老数据不需要配置即可正常运行。
+                执行细节会覆盖协作方式的默认值。老数据不需要配置即可正常运行。
               </p>
             </div>
           </details>
