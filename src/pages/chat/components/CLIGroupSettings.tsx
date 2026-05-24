@@ -45,17 +45,6 @@ interface CliTaskLogEntry {
   content: string;
 }
 
-interface CliRuntime {
-  adapter: string;
-  installed: boolean;
-  binaryPath?: string;
-  version?: string;
-  lastCheckAt?: string;
-  lastRunAt?: string;
-  lastError?: string;
-  updatedAt: string;
-}
-
 interface CLIGroupSettingsProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -231,7 +220,7 @@ const useStyles = createStyles(({ token, css }) => ({
     height: 24px;
     border-radius: 4px;
   `,
-  runtimePath: css`
+  pathText: css`
     font-family: var(--ant-font-family-code);
     font-size: 11px;
     color: ${token.colorTextSecondary};
@@ -366,8 +355,6 @@ export const CLIGroupSettings = ({
   const [tasks, setTasks] = useState<CliTask[]>([]);
   const [loadingTasks, setLoadingTasks] = useState(false);
   const [hasMore, setHasMore] = useState(false);
-  const [runtimes, setRuntimes] = useState<CliRuntime[]>([]);
-  const [loadingRuntimes, setLoadingRuntimes] = useState(false);
   const [selectedCliTemplateId, setSelectedCliTemplateId] = useState<string | null>(null);
 
   // Log viewer states
@@ -542,36 +529,6 @@ export const CLIGroupSettings = ({
         return <Tag>{status}</Tag>;
     }
   };
-
-  const knownAdapters = ['codex', 'claude', 'opencode', 'aider', 'gemini'];
-
-  const fetchRuntimes = async () => {
-    if (loadingRuntimes) return;
-    setLoadingRuntimes(true);
-    try {
-      await Promise.all(knownAdapters.map(adapter =>
-        request('/api/cli/check', {
-          method: 'POST',
-          body: JSON.stringify({ adapter }),
-        }).catch(() => null)
-      ));
-      const res = await request('/api/cli/runtimes/list');
-      const json = await res.json();
-      if (json.success && Array.isArray(json.data)) {
-        setRuntimes(json.data);
-      }
-    } catch (e) {
-      console.error('Failed to fetch runtimes:', e);
-    } finally {
-      setLoadingRuntimes(false);
-    }
-  };
-
-  useEffect(() => {
-    if (open && activeTab === 'runtime') {
-      fetchRuntimes();
-    }
-  }, [open, activeTab]);
 
   const strategyDescriptions: Record<CLIStrategy, string> = {
     router: '自动选择最合适的开发群友处理当前任务，适合大多数一次性请求。',
@@ -901,60 +858,6 @@ export const CLIGroupSettings = ({
       )
     },
     {
-      key: 'runtime',
-      label: 'Runtime',
-      children: (
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <span style={{ fontSize: 13, opacity: 0.8 }}>本机 CLI Runtime 状态</span>
-            <Button
-              type="text"
-              size="small"
-              icon={<RefreshCw size={14} />}
-              onClick={fetchRuntimes}
-              loading={loadingRuntimes}
-            />
-          </div>
-
-          {loadingRuntimes && runtimes.length === 0 ? (
-            <div style={{ padding: '40px 0', textAlign: 'center' }}>
-              <Spin />
-            </div>
-          ) : (
-            <div style={{ maxHeight: 'calc(100vh - 220px)', overflowY: 'auto', paddingRight: 4 }}>
-              {knownAdapters.map(adapter => {
-                const runtime = runtimes.find(r => r.adapter === adapter);
-                const installed = runtime?.installed;
-                return (
-                  <div key={adapter} className={styles.taskItem}>
-                    <div className={styles.taskHeader}>
-                      <span className={styles.taskAgent}>{adapter}</span>
-                      {installed ? <Tag color="success">已安装</Tag> : <Tag color="error">未安装</Tag>}
-                    </div>
-                    {runtime?.version && (
-                      <div className={styles.taskMeta}>版本：{runtime.version}</div>
-                    )}
-                    {runtime?.binaryPath && (
-                      <div className={styles.runtimePath}>{runtime.binaryPath}</div>
-                    )}
-                    <div className={styles.taskMeta}>
-                      {runtime?.lastCheckAt && <span>检测：{formatDateTime(runtime.lastCheckAt)}</span>}
-                      {runtime?.lastRunAt && <span>最近运行：{formatDateTime(runtime.lastRunAt)}</span>}
-                    </div>
-                    {runtime?.lastError && (
-                      <div style={{ fontSize: 11, color: '#ff4d4f', wordBreak: 'break-all' }}>
-                        {runtime.lastError}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )
-    },
-    {
       key: 'history',
       label: '任务历史',
       children: (
@@ -1099,7 +1002,7 @@ export const CLIGroupSettings = ({
                       <span>{formatDateTime(task.createdAt)}</span>
                       {task.exitCode !== undefined && <span>exit {task.exitCode}</span>}
                     </div>
-                    <div className={styles.runtimePath}>{task.cwd}</div>
+                    <div className={styles.pathText}>{task.cwd}</div>
                     <div className={styles.taskActions}>
                       <Button
                         size="small"

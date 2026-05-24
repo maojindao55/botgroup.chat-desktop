@@ -116,6 +116,8 @@ assert.match(cliSettings, /开发群配置/);
 assert.match(cliSettings, /协作方式/);
 assert.match(cliSettings, /执行细节/);
 assert.doesNotMatch(cliSettings, /群规/);
+assert.doesNotMatch(cliSettings, /Runtime/);
+assert.doesNotMatch(cliSettings, /本机 CLI Runtime 状态/);
 assert.match(cliSettings, /cliWorkflowTemplates/);
 assert.match(cliSettings, /开发群友/);
 
