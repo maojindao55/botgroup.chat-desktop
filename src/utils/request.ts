@@ -22,7 +22,12 @@ import {
   renderCodexCommandGroupStart,
   renderCodexCommandStarted,
 } from '@/utils/codexStream';
-import { parseOpenCodeJsonLine } from '@/utils/opencodeStream';
+import {
+  parseOpenCodeJsonLine,
+  renderOpenCodeCommand,
+  renderOpenCodeCommandGroupEnd,
+  renderOpenCodeCommandGroupStart,
+} from '@/utils/opencodeStream';
 
 const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
 if (isTauri) {
@@ -599,6 +604,8 @@ export async function request(url: string, options: RequestInit = {}) {
           let codexCommandIndex = 0;
           let claudeCommandGroupOpen = false;
           let claudeCommandIndex = 0;
+          let opencodeCommandGroupOpen = false;
+          let opencodeCommandIndex = 0;
           // Track whether we're inside an "intermediate" phase so we can
           // open/close a <details> wrapper around thinking+commands.
           let detailsOpen = false;
@@ -651,6 +658,21 @@ export async function request(url: string, options: RequestInit = {}) {
             }
           };
 
+          const ensureOpenCodeCommandGroupOpen = () => {
+            if (!opencodeCommandGroupOpen) {
+              opencodeCommandGroupOpen = true;
+              opencodeCommandIndex = 0;
+              enqueueChunk(renderOpenCodeCommandGroupStart());
+            }
+          };
+
+          const closeOpenCodeCommandGroup = () => {
+            if (opencodeCommandGroupOpen) {
+              opencodeCommandGroupOpen = false;
+              enqueueChunk(renderOpenCodeCommandGroupEnd());
+            }
+          };
+
           unlistenFn = await listen<any>(eventName, (evt) => {
             const payload = evt.payload || {};
             switch (payload.type) {
@@ -672,14 +694,21 @@ export async function request(url: string, options: RequestInit = {}) {
                       });
                     }
                     if (parsed?.error) {
+                      closeOpenCodeCommandGroup();
                       enqueueEvent({
                         type: 'error',
                         content: `\n**[OpenCode error]** ${parsed.error}\n`,
                         error: parsed.error,
                       });
+                    } else if (parsed?.command) {
+                      ensureOpenCodeCommandGroupOpen();
+                      opencodeCommandIndex++;
+                      enqueueChunk(renderOpenCodeCommand(parsed.command, opencodeCommandIndex));
                     } else if (parsed?.content) {
+                      closeOpenCodeCommandGroup();
                       enqueueChunk(parsed.content);
                     } else if (!stdoutLine.startsWith('{')) {
+                      closeOpenCodeCommandGroup();
                       enqueueChunk(stdoutLine + '\n');
                     }
                     break;
@@ -761,6 +790,7 @@ export async function request(url: string, options: RequestInit = {}) {
                   } else {
                     closeCodexCommandGroup();
                     closeClaudeCommandGroup();
+                    closeOpenCodeCommandGroup();
                     // Non-JSON stdout (opencode, claude, etc.) — show as-is
                     enqueueChunk(stdoutLine + '\n');
                   }
@@ -777,6 +807,7 @@ export async function request(url: string, options: RequestInit = {}) {
                 // Detect auth/token errors — show ONE friendly message then mute
                 if (/401|token.?invalid|unauthorized|session.?ended|auth.?error|app_session_terminated|please.*(log\s*in|sign\s*in)/i.test(line)) {
                   authErrorDetected = true;
+                  closeOpenCodeCommandGroup();
                   enqueueEvent({
                     type: 'error',
                     content: `\n**登录已过期，请在终端重新登录：**\n\`\`\`\ncodex login    # Codex\nclaude login   # Claude Code\n\`\`\`\n`,
@@ -795,6 +826,7 @@ export async function request(url: string, options: RequestInit = {}) {
                     enqueueChunk(`> 📝 _${line.trim().replace(/_/g, '\\_')}_\n\n`);
                   }
                 } else {
+                  closeOpenCodeCommandGroup();
                   enqueueChunk('> _' + line.replace(/_/g, '\\_') + '_\n');
                 }
                 break;
@@ -802,6 +834,7 @@ export async function request(url: string, options: RequestInit = {}) {
                 if (typeof payload.message === 'string') {
                   closeCodexCommandGroup();
                   closeClaudeCommandGroup();
+                  closeOpenCodeCommandGroup();
                   enqueueEvent({
                     type: 'error',
                     content: `\n**[CLI error]** ${payload.message}\n`,
@@ -813,6 +846,7 @@ export async function request(url: string, options: RequestInit = {}) {
                 const code = typeof payload.exit_code === 'number' ? payload.exit_code : -1;
                 closeCodexCommandGroup();
                 closeClaudeCommandGroup();
+                closeOpenCodeCommandGroup();
                 closeDetails();
                 const status =
                   code === -2 ? 'cancelled'

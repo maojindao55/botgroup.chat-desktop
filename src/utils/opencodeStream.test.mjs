@@ -14,7 +14,12 @@ async function importTsModule(url) {
   return import(moduleUrl);
 }
 
-const { parseOpenCodeJsonLine } = await importTsModule(new URL('./opencodeStream.ts', import.meta.url));
+const {
+  parseOpenCodeJsonLine,
+  renderOpenCodeCommandGroupStart,
+  renderOpenCodeCommand,
+  renderOpenCodeCommandGroupEnd,
+} = await importTsModule(new URL('./opencodeStream.ts', import.meta.url));
 
 {
   const parsed = parseOpenCodeJsonLine(JSON.stringify({
@@ -51,10 +56,31 @@ const { parseOpenCodeJsonLine } = await importTsModule(new URL('./opencodeStream
   }));
 
   assert.equal(parsed.sessionId, 'ses_abc123');
-  assert.match(parsed.content, /<details open><summary>→ Read package\.json<\/summary>/);
-  assert.match(parsed.content, /```json\n\{\n  "filePath": "package\.json"\n\}\n```/);
-  assert.match(parsed.content, /```\n\{ "name": "demo" \}\n```/);
-  assert.match(parsed.content, /<\/details>/);
+  assert.deepEqual(parsed.command, {
+    title: 'Read package.json',
+    input: { filePath: 'package.json' },
+    output: '{ "name": "demo" }',
+  });
+}
+
+{
+  const content = [
+    renderOpenCodeCommandGroupStart(),
+    renderOpenCodeCommand({
+      title: '/bin/zsh -lc "nl -ba sort-algorithm.test.js"',
+      input: { cwd: '/tmp/demo' },
+      output: '1\tassert.equal(true, true)',
+    }, 1),
+    renderOpenCodeCommandGroupEnd(),
+  ].join('');
+
+  assert.match(content, /<details open data-cli-command-group="opencode">/);
+  assert.match(content, /<summary>⚙️ 执行命令<\/summary>/);
+  assert.match(content, /<p><small>1\. <code>\/bin\/zsh -lc "nl -ba sort-algorithm\.test\.js"<\/code><\/small><\/p>/);
+  assert.doesNotMatch(content, /####/);
+  assert.match(content, /\*\*Input\*\*\n\n```json\n\{\n  "cwd": "\/tmp\/demo"\n\}\n```/);
+  assert.match(content, /\*\*Output\*\*\n\n```\n1\tassert\.equal\(true, true\)\n```/);
+  assert.match(content, /<\/details>/);
 }
 
 {

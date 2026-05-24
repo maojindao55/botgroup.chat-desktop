@@ -2,6 +2,31 @@ export interface OpenCodeJsonParseResult {
   sessionId?: string;
   content?: string;
   error?: string;
+  command?: OpenCodeCommandEvent;
+}
+
+export interface OpenCodeCommandEvent {
+  title: string;
+  input?: unknown;
+  output?: unknown;
+}
+
+export function renderOpenCodeCommandGroupStart(): string {
+  return `\n<details open data-cli-command-group="opencode"><summary>⚙️ 执行命令</summary>\n\n`;
+}
+
+export function renderOpenCodeCommandGroupEnd(): string {
+  return `\n</details>\n\n`;
+}
+
+export function renderOpenCodeCommand(command: OpenCodeCommandEvent, index: number): string {
+  const title = command.title.length > 120 ? `${command.title.slice(0, 117)}...` : command.title;
+  const sections = [
+    command.input === undefined ? '' : `**Input**\n\n${fence(command.input, 'json')}`,
+    command.output === undefined ? '' : `**Output**\n\n${fence(command.output)}`,
+  ].filter(Boolean);
+  const body = sections.length ? `${sections.join('\n\n')}\n\n` : '';
+  return `<p><small>${index}. <code>${escapeHtml(title)}</code></small></p>\n\n${body}`;
 }
 
 function escapeHtml(input: string): string {
@@ -27,18 +52,18 @@ function details(summary: string, body: string, open = false): string {
   return `<details${openAttr}><summary>${escapeHtml(summary)}</summary>\n\n${body}\n\n</details>\n\n`;
 }
 
-function toolUseContent(part: any): string | undefined {
+function toolUseCommand(part: any): OpenCodeCommandEvent | undefined {
   const title = typeof part?.state?.title === 'string' && part.state.title.trim()
     ? part.state.title.trim()
     : typeof part?.tool === 'string' && part.tool.trim()
       ? part.tool.trim()
       : 'Tool use';
-  const sections = [
-    part?.state?.input === undefined ? '' : `**Input**\n\n${fence(part.state.input, 'json')}`,
-    part?.state?.output === undefined ? '' : `**Output**\n\n${fence(part.state.output)}`,
-  ].filter(Boolean);
 
-  return details(`→ ${title}`, sections.join('\n\n') || '_No details_', true);
+  return {
+    title,
+    input: part?.state?.input,
+    output: part?.state?.output,
+  };
 }
 
 function reasoningContent(part: any): string | undefined {
@@ -83,8 +108,8 @@ export function parseOpenCodeJsonLine(line: string): OpenCodeJsonParseResult | n
   if (event.type === 'text' && typeof event.part?.text === 'string') {
     result.content = event.part.text;
   } else if (event.type === 'tool_use') {
-    const content = toolUseContent(event.part);
-    if (content) result.content = content;
+    const command = toolUseCommand(event.part);
+    if (command) result.command = command;
   } else if (event.type === 'reasoning') {
     const content = reasoningContent(event.part);
     if (content) result.content = content;
