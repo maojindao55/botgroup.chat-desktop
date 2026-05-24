@@ -66,6 +66,7 @@ interface CLIGroupSettingsProps {
   onRetryTask?: (agentId: string, prompt: string) => void;
   onMembersChange?: (memberIds: string[]) => void;
   inline?: boolean;
+  mode?: 'group' | 'template';
 }
 
 const useStyles = createStyles(({ token, css }) => ({
@@ -346,8 +347,20 @@ export const CLIGroupSettings = ({
   onRetryTask,
   onMembersChange,
   inline,
+  mode = 'group',
 }: CLIGroupSettingsProps) => {
   const { styles, cx } = useStyles();
+  const isTemplateMode = mode === 'template';
+  const panelTitle = isTemplateMode ? '团队模板设置' : '开发群配置';
+  const workspaceTitle = isTemplateMode ? '默认 Workspace' : '本地 Workspace';
+  const workspaceDesc = isTemplateMode
+    ? '新任务将默认使用此目录；已有任务不受影响'
+    : '开发群友将在此目录下读写代码，支持选择或输入绝对路径';
+  const membersManageLabel = isTemplateMode ? '模板成员' : '添加/管理开发群友';
+  const membersListLabel = isTemplateMode ? '模板成员' : '开发群友';
+  const memberPickerPlaceholder = isTemplateMode
+    ? '选择模板成员...'
+    : '选择开发群友加入群聊...';
   const [cliStatus, setCliStatus] = useState<Record<string, CliStatus | 'loading'>>({});
 
   // History tab states
@@ -554,14 +567,20 @@ export const CLIGroupSettings = ({
       label: '基本设置',
       children: (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {isTemplateMode && (
+            <div className={styles.panelDesc} style={{ padding: '0 4px', lineHeight: 1.6 }}>
+              修改后只影响之后创建的新任务，不会改变已有任务。
+            </div>
+          )}
+
           {/* workspace */}
           <div className={styles.panel}>
             <div className={styles.panelHeader}>
               <FolderOpen size={16} />
-              <span>本地 Workspace</span>
+              <span>{workspaceTitle}</span>
             </div>
             <div className={styles.panelDesc}>
-              开发群友将在此目录下读写代码，支持选择或输入绝对路径
+              {workspaceDesc}
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <Input
@@ -749,12 +768,12 @@ export const CLIGroupSettings = ({
           {/* members */}
           <div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-              <span style={{ fontSize: 14, fontWeight: 500 }}>添加/管理开发群友</span>
+              <span style={{ fontSize: 14, fontWeight: 500 }}>{membersManageLabel}</span>
               <MemberPicker
                 kind="cli"
                 value={group.memberIds || group.members || []}
                 onChange={(newIds) => onMembersChange?.(newIds)}
-                placeholder="选择开发群友加入群聊..."
+                placeholder={memberPickerPlaceholder}
               />
             </div>
             <div
@@ -765,7 +784,7 @@ export const CLIGroupSettings = ({
                 marginBottom: 12,
               }}
             >
-              <span style={{ fontSize: 14, fontWeight: 500 }}>开发群友（{members.length}）</span>
+              <span style={{ fontSize: 14, fontWeight: 500 }}>{membersListLabel}（{members.length}）</span>
             </div>
             <div className={styles.scrollList}>
               {members.map((agent) => {
@@ -1085,7 +1104,7 @@ export const CLIGroupSettings = ({
       <>
         <div className={styles.inlinePanel}>
           <div className={styles.inlineHeader}>
-            <span className={styles.inlineTitle}>开发群配置</span>
+            <span className={styles.inlineTitle}>{panelTitle}</span>
             <button className={styles.inlineCloseBtn} onClick={() => onOpenChange(false)}>
               <X size={16} />
             </button>
@@ -1211,7 +1230,7 @@ export const CLIGroupSettings = ({
   return (
     <>
       <Drawer
-        title="开发群配置"
+        title={panelTitle}
         placement="right"
         open={open}
         onClose={() => onOpenChange(false)}
