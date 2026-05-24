@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Tauri-v2-blue?logo=tauri" alt="Tauri v2" />
-  <img src="https://img.shields.io/badge/React-18-61DAFB?logo=react" alt="React 18" />
+  <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react" alt="React 19" />
   <img src="https://img.shields.io/badge/Rust-2021-orange?logo=rust" alt="Rust" />
   <img src="https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript" alt="TypeScript" />
   <img src="https://img.shields.io/badge/SQLite-Local-003B57?logo=sqlite" alt="SQLite" />
@@ -14,8 +14,10 @@
 
 - 🖥️ **原生桌面体验** — Tauri v2 构建，轻量高性能，内存占用远低于 Electron
 - 💾 **完全本地化** — SQLite 本地存储，数据不依赖云端，隐私安全
-- 🤖 **AI 群聊** — 支持多个 AI 角色同时参与群聊讨论
-- 🦞 **OpenClaw 协议** — 支持接入 OpenClaw 龙虾实例进行去中心化聊天
+- 🤖 **角色群** — 邀请不同角色和模型一起聊天、脑暴、做观点碰撞
+- 🧠 **专家群** — 让具备职责分工的专家群友协作产出方案、评审和结论
+- 💻 **开发群** — 让 Codex、Claude Code、OpenCode、KimiCode、PI 等开发群友在本地 workspace 协作改代码
+- 📚 **资源库** — 统一管理角色、专家、开发群友和模型服务
 - 🎨 **现代 UI** — 毛玻璃质感、渐变气泡、流畅动画
 - 🌙 **深色模式** — 支持亮色/暗色/跟随系统三种主题
 
@@ -24,7 +26,7 @@
 | 层级 | 技术 |
 |------|------|
 | **桌面框架** | Tauri v2 |
-| **前端** | React 18 + TypeScript + Vite |
+| **前端** | React 19 + TypeScript + Vite |
 | **样式** | TailwindCSS + shadcn/ui |
 | **状态管理** | Zustand |
 | **本地存储** | SQLite (rusqlite) |
@@ -62,7 +64,7 @@ npm run tauri build
 botgroup.chat-desktop/
 ├── src/                    # 前端源码 (React + TypeScript)
 │   ├── components/         # 通用 UI 组件 (shadcn/ui)
-│   ├── config/             # 群组配置
+│   ├── config/             # 群聊与资源配置
 │   ├── hooks/              # 自定义 Hooks
 │   ├── layouts/            # 布局组件
 │   ├── pages/

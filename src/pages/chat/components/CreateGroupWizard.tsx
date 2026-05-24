@@ -10,6 +10,14 @@ import {
 import type {
   Group, AIGroup, CLIGroup, CLIStrategy, AgentGroup, AgentStrategy,
 } from '@/config/groups';
+import {
+  aiSpeechModes,
+  agentWorkflowTemplates,
+  applyAISpeechMode,
+  cliWorkflowTemplates,
+  productGroupTypes,
+  type AISpeechMode,
+} from '@/config/groupProduct';
 import { MemberPicker } from './MemberPicker';
 import { invoke } from '@tauri-apps/api/core';
 
@@ -22,7 +30,15 @@ interface CreateGroupWizardProps {
 type GroupTypeChoice = 'ai' | 'cli' | 'agent';
 type WizardStep = 'type' | 'basic' | 'members' | 'config' | 'confirm';
 
+const groupTypeIcons = {
+  ai: Bot,
+  cli: Terminal,
+  agent: Puzzle,
+};
 
+const defaultAgentTemplate = agentWorkflowTemplates[0];
+const defaultCliWorkflowTemplate =
+  cliWorkflowTemplates.find((item) => item.id === 'implement_review') || cliWorkflowTemplates[0];
 
 const useStyles = createStyles(({ token, css }) => ({
   card: css`
@@ -111,21 +127,22 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
 
   // AI group
   const [selectedAIMembers, setSelectedAIMembers] = useState<string[]>([]);
-  const [schedulerStrategy, setSchedulerStrategy] = useState<'tag' | 'round_robin' | 'all'>('tag');
-  const [isDiscussionMode, setIsDiscussionMode] = useState(false);
+  const [aiSpeechMode, setAISpeechMode] = useState<AISpeechMode>('smart');
 
   // CLI group
   const [selectedCLIMembers, setSelectedCLIMembers] = useState<string[]>([]);
   const [workspacePath, setWorkspacePath] = useState('');
   const [approvalMode, setApprovalMode] = useState<'auto' | 'ask'>('auto');
   const [timeout, setTimeout_] = useState(300000);
-  const [cliStrategy, setCliStrategy] = useState<CLIStrategy>('sequential');
+  const [cliStrategy, setCliStrategy] = useState<CLIStrategy>(defaultCliWorkflowTemplate.strategy);
+  const [cliTemplateId, setCliTemplateId] = useState(defaultCliWorkflowTemplate.id);
 
   // Agent group
   const [selectedAgentMembers, setSelectedAgentMembers] = useState<string[]>([]);
-  const [strategy, setStrategy] = useState<AgentStrategy>('sequential');
-  const [coordinatorPrompt, setCoordinatorPrompt] = useState('');
-  const [maxRounds, setMaxRounds] = useState(3);
+  const [strategy, setStrategy] = useState<AgentStrategy>(defaultAgentTemplate.strategy);
+  const [coordinatorPrompt, setCoordinatorPrompt] = useState(defaultAgentTemplate.coordinatorPrompt || '');
+  const [maxRounds, setMaxRounds] = useState(defaultAgentTemplate.maxRounds);
+  const [agentTemplateId, setAgentTemplateId] = useState(defaultAgentTemplate.id);
 
   const reset = () => {
     setStep('type');
@@ -133,17 +150,18 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
     setName('');
     setDescription('');
     setSelectedAIMembers([]);
-    setSchedulerStrategy('tag');
-    setIsDiscussionMode(false);
+    setAISpeechMode('smart');
     setSelectedCLIMembers([]);
     setWorkspacePath('');
     setApprovalMode('auto');
     setTimeout_(300000);
-    setCliStrategy('sequential');
+    setCliStrategy(defaultCliWorkflowTemplate.strategy);
+    setCliTemplateId(defaultCliWorkflowTemplate.id);
     setSelectedAgentMembers([]);
-    setStrategy('sequential');
-    setCoordinatorPrompt('');
-    setMaxRounds(3);
+    setStrategy(defaultAgentTemplate.strategy);
+    setCoordinatorPrompt(defaultAgentTemplate.coordinatorPrompt || '');
+    setMaxRounds(defaultAgentTemplate.maxRounds);
+    setAgentTemplateId(defaultAgentTemplate.id);
   };
 
 
@@ -152,14 +170,16 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
     let group: Group;
 
     if (groupType === 'ai') {
+      const aiMode = applyAISpeechMode(aiSpeechMode);
       group = {
         id, type: 'ai', name, description,
         memberIds: selectedAIMembers,
         members: selectedAIMembers,
-        isGroupDiscussionMode: isDiscussionMode,
-        schedulerStrategy,
+        isGroupDiscussionMode: aiMode.isGroupDiscussionMode,
+        schedulerStrategy: aiMode.schedulerStrategy,
       } as AIGroup;
     } else if (groupType === 'cli') {
+      const selectedTemplate = cliWorkflowTemplates.find((item) => item.id === cliTemplateId);
       group = {
         id, type: 'cli', name, description,
         memberIds: selectedCLIMembers,
@@ -169,6 +189,7 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
         timeout,
         showStderr: true,
         strategy: cliStrategy,
+        executionPlan: selectedTemplate?.executionPlan,
       } as CLIGroup;
     } else {
       group = {
@@ -216,23 +237,24 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
 
   const renderTypeStep = () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <p style={{ fontSize: 14, color: 'rgba(0,0,0,0.45)', marginBottom: 4 }}>选择你要创建的群聊类型</p>
-      {[
-        { type: 'ai' as const,    icon: Bot,      title: 'AI 群聊',     desc: '多个 LLM 角色闲聊讨论、头脑风暴' },
-        { type: 'cli' as const,   icon: Terminal, title: 'CLI Agent 群', desc: 'Codex/Claude/OpenCode 本地执行代码' },
-        { type: 'agent' as const, icon: Puzzle,   title: 'Agent 群聊',   desc: '自定义 LLM Agent 协作，配置API+策略' },
-      ].map(item => (
+      <p style={{ fontSize: 14, color: 'rgba(0,0,0,0.45)', marginBottom: 4 }}>
+        选择一个群聊场景，把合适的 AI 群友拉进来。
+      </p>
+      {productGroupTypes.map(item => {
+        const Icon = groupTypeIcons[item.type];
+        return (
         <button key={item.type}
           onClick={() => setGroupType(item.type)}
           className={cx(styles.card, groupType === item.type && styles.cardActive)}>
-          <item.icon size={20} style={{ marginTop: 2, color: groupType === item.type ? '#ff6600' : 'rgba(0,0,0,0.55)' }} />
+          <Icon size={20} style={{ marginTop: 2, color: groupType === item.type ? '#ff6600' : 'rgba(0,0,0,0.55)' }} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.2, marginBottom: 4 }}>{item.title}</div>
-            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>{item.desc}</div>
+            <div style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.2, marginBottom: 4 }}>{item.label}</div>
+            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>{item.description}</div>
           </div>
           {groupType === item.type && <Check size={16} style={{ marginTop: 2, color: '#ff6600' }} />}
         </button>
-      ))}
+        );
+      })}
     </div>
   );
 
@@ -256,12 +278,12 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
     if (groupType === 'ai') {
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <p style={{ fontSize: 14, color: 'rgba(0,0,0,0.45)' }}>选择 AI 成员加入群聊</p>
+          <p style={{ fontSize: 14, color: 'rgba(0,0,0,0.45)' }}>选择角色群友加入群聊</p>
           <MemberPicker
             kind="llm"
             value={selectedAIMembers}
             onChange={setSelectedAIMembers}
-            placeholder="选择大模型角色群员..."
+            placeholder="选择角色群友..."
           />
         </div>
       );
@@ -269,24 +291,24 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
     if (groupType === 'cli') {
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <p style={{ fontSize: 14, color: 'rgba(0,0,0,0.45)' }}>选择 CLI Agent 加入群聊</p>
+          <p style={{ fontSize: 14, color: 'rgba(0,0,0,0.45)' }}>选择开发群友加入群聊</p>
           <MemberPicker
             kind="cli"
             value={selectedCLIMembers}
             onChange={setSelectedCLIMembers}
-            placeholder="选择 CLI Agent 群员..."
+            placeholder="选择开发群友..."
           />
         </div>
       );
     }
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <p style={{ fontSize: 14, color: 'rgba(0,0,0,0.45)' }}>选择 Agent 成员加入群聊</p>
+        <p style={{ fontSize: 14, color: 'rgba(0,0,0,0.45)' }}>选择专家群友加入群聊</p>
         <MemberPicker
           kind="agent"
           value={selectedAgentMembers}
           onChange={setSelectedAgentMembers}
-          placeholder="选择 Agent 群员..."
+          placeholder="选择专家群友..."
         />
       </div>
     );
@@ -294,35 +316,20 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
 
   const renderAIConfigStep = () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ padding: 12, background: 'rgba(0,0,0,0.04)', borderRadius: 8 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 500 }}>全员讨论模式</div>
-            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>开启后所有成员每轮都回复</div>
-          </div>
-          <Switch checked={isDiscussionMode} onChange={setIsDiscussionMode} />
-        </div>
+      <div>
+        <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 8 }}>发言方式</label>
+        {aiSpeechModes.map(item => (
+          <button key={item.value}
+            onClick={() => setAISpeechMode(item.value)}
+            className={cx(styles.strategyBtn, aiSpeechMode === item.value && styles.strategyBtnActive)}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 14, fontWeight: 500 }}>{item.label}</div>
+              <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>{item.description}</div>
+            </div>
+            {aiSpeechMode === item.value && <Check size={16} style={{ color: '#ff6600' }} />}
+          </button>
+        ))}
       </div>
-      {!isDiscussionMode && (
-        <div>
-          <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 8 }}>调度策略</label>
-          {[
-            { value: 'tag' as const, label: '标签匹配', desc: '根据消息内容智能匹配相关 AI' },
-            { value: 'round_robin' as const, label: '轮询', desc: '按顺序轮流回复' },
-            { value: 'all' as const, label: '全员', desc: '每条消息所有人回复' },
-          ].map(item => (
-            <button key={item.value}
-              onClick={() => setSchedulerStrategy(item.value)}
-              className={cx(styles.strategyBtn, schedulerStrategy === item.value && styles.strategyBtnActive)}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 14, fontWeight: 500 }}>{item.label}</div>
-                <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>{item.desc}</div>
-              </div>
-              {schedulerStrategy === item.value && <Check size={16} style={{ color: '#ff6600' }} />}
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   );
 
@@ -345,25 +352,22 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
               } catch (e) { console.error('Failed to select directory:', e); }
             }}>选择</Button>
         </div>
-        <p style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginTop: 6 }}>CLI Agent 将在此目录执行，支持选择或输入绝对路径</p>
+        <p style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginTop: 6 }}>开发群友将在此目录读写代码，支持选择或输入绝对路径</p>
       </div>
       <div>
-        <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 8 }}>执行策略</label>
-        {[
-          { value: 'router'     as const, label: '快速处理', desc: '自动选择最合适的 CLI Agent 处理当前任务' },
-          { value: 'sequential' as const, label: '模型对比', desc: '多个 CLI Agent 独立处理同一任务，结果并列展示' },
-          { value: 'pipeline'   as const, label: '接力开发', desc: '按成员顺序接力处理，后续 Agent 会看到上一阶段输出' },
-          { value: 'race'       as const, label: '隔离竞赛', desc: '每个 Agent 使用独立 worktree 并行完成同一任务' },
-          { value: 'review'     as const, label: '开发评审', desc: '规划 → 实现 → 评审，适合完整开发闭环' },
-        ].map(item => (
-          <button key={item.value}
-            onClick={() => setCliStrategy(item.value)}
-            className={cx(styles.strategyBtn, cliStrategy === item.value && styles.strategyBtnActive)}>
+        <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 8 }}>协作方式</label>
+        {cliWorkflowTemplates.map(item => (
+          <button key={item.id}
+            onClick={() => {
+              setCliStrategy(item.strategy);
+              setCliTemplateId(item.id);
+            }}
+            className={cx(styles.strategyBtn, cliTemplateId === item.id && styles.strategyBtnActive)}>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 14, fontWeight: 500 }}>{item.label}</div>
-              <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>{item.desc}</div>
+              <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>{item.description}</div>
             </div>
-            {cliStrategy === item.value && <Check size={16} style={{ color: '#ff6600' }} />}
+            {cliTemplateId === item.id && <Check size={16} style={{ color: '#ff6600' }} />}
           </button>
         ))}
       </div>
@@ -371,7 +375,7 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <div style={{ fontSize: 14, fontWeight: 500 }}>自动审批模式</div>
-            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginTop: 4 }}>开启后 Agent 自动执行，无需确认</div>
+            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginTop: 4 }}>开启后开发群友自动执行，无需确认</div>
           </div>
           <Switch checked={approvalMode === 'auto'} onChange={v => setApprovalMode(v ? 'auto' : 'ask')} />
         </div>
@@ -388,21 +392,21 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
   const renderAgentConfigStep = () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div>
-        <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 8 }}>执行策略</label>
-        {[
-          { value: 'sequential' as const, label: '顺序执行', desc: 'Agent 按顺序依次回复，后者看到前者输出' },
-          { value: 'router'     as const, label: '意图路由', desc: '协调者分析意图，选择相关 Agent 响应' },
-          { value: 'discussion' as const, label: '全员讨论', desc: '所有 Agent 并行回复后汇总' },
-          { value: 'react'      as const, label: 'ReAct',    desc: '协调者分析→分派→执行→判断→循环' },
-        ].map(item => (
-          <button key={item.value}
-            onClick={() => setStrategy(item.value)}
-            className={cx(styles.strategyBtn, strategy === item.value && styles.strategyBtnActive)}>
+        <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 8 }}>群内协作方式</label>
+        {agentWorkflowTemplates.map(item => (
+          <button key={item.id}
+            onClick={() => {
+              setAgentTemplateId(item.id);
+              setStrategy(item.strategy);
+              setMaxRounds(item.maxRounds);
+              setCoordinatorPrompt(item.coordinatorPrompt || '');
+            }}
+            className={cx(styles.strategyBtn, agentTemplateId === item.id && styles.strategyBtnActive)}>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 14, fontWeight: 500 }}>{item.label}</div>
-              <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>{item.desc}</div>
+              <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>{item.description}</div>
             </div>
-            {strategy === item.value && <Check size={16} style={{ color: '#ff6600' }} />}
+            {agentTemplateId === item.id && <Check size={16} style={{ color: '#ff6600' }} />}
           </button>
         ))}
       </div>
@@ -430,9 +434,9 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
 
 
   const stepTitles: Record<WizardStep, string> = {
-    type: '选择群聊类型',
+    type: '选择群聊场景',
     basic: '基础信息',
-    members: '选择群成员',
+    members: '选择群友',
     config: '群聊设置',
     confirm: '',
   };

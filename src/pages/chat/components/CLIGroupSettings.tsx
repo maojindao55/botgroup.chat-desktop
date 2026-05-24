@@ -1,6 +1,6 @@
 /**
- * CLI Agent 群聊配置面板
- * 管理 CLI Agent 成员、workspacePath、审批模式、超时等
+ * 开发群配置面板
+ * 管理开发群友、workspacePath、审批模式、超时等
  */
 import { useState, useEffect } from 'react';
 import { Drawer, Switch, Button, Input, InputNumber, Tooltip, Tabs, Tag, Modal, Spin } from 'antd';
@@ -8,6 +8,7 @@ import { Avatar as LobeAvatar, ActionIcon } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 import { FolderOpen, Terminal, Mic, MicOff, CheckCircle2, XCircle, Play, FileText, RefreshCw, Clock, X } from 'lucide-react';
 import { MemberPicker } from './MemberPicker';
+import { cliWorkflowTemplates } from '@/config/groupProduct';
 import { request } from '@/utils/request';
 import type { CLIAgent } from '@/config/aiCharacters';
 import type { CLIExecutionPlan, CLIGroup, CLIStrategy } from '@/config/groups';
@@ -44,17 +45,6 @@ interface CliTaskLogEntry {
   content: string;
 }
 
-interface CliRuntime {
-  adapter: string;
-  installed: boolean;
-  binaryPath?: string;
-  version?: string;
-  lastCheckAt?: string;
-  lastRunAt?: string;
-  lastError?: string;
-  updatedAt: string;
-}
-
 interface CLIGroupSettingsProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -72,7 +62,7 @@ interface CLIGroupSettingsProps {
   onShowStderrChange: (show: boolean) => void;
   strategy: CLIStrategy;
   onStrategyChange: (strategy: CLIStrategy) => void;
-  onExecutionPlanChange?: (patch: Partial<CLIExecutionPlan>) => void;
+  onExecutionPlanChange?: (patch: Partial<CLIExecutionPlan>, options?: { replace?: boolean }) => void;
   onRetryTask?: (agentId: string, prompt: string) => void;
   onMembersChange?: (memberIds: string[]) => void;
   inline?: boolean;
@@ -105,7 +95,7 @@ const useStyles = createStyles(({ token, css }) => ({
   `,
   strategyGrid: css`
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;
   `,
   strategyBtn: css`
@@ -230,7 +220,7 @@ const useStyles = createStyles(({ token, css }) => ({
     height: 24px;
     border-radius: 4px;
   `,
-  runtimePath: css`
+  pathText: css`
     font-family: var(--ant-font-family-code);
     font-size: 11px;
     color: ${token.colorTextSecondary};
@@ -365,8 +355,7 @@ export const CLIGroupSettings = ({
   const [tasks, setTasks] = useState<CliTask[]>([]);
   const [loadingTasks, setLoadingTasks] = useState(false);
   const [hasMore, setHasMore] = useState(false);
-  const [runtimes, setRuntimes] = useState<CliRuntime[]>([]);
-  const [loadingRuntimes, setLoadingRuntimes] = useState(false);
+  const [selectedCliTemplateId, setSelectedCliTemplateId] = useState<string | null>(null);
 
   // Log viewer states
   const [logModalOpen, setLogModalOpen] = useState(false);
@@ -541,46 +530,20 @@ export const CLIGroupSettings = ({
     }
   };
 
-  const knownAdapters = ['codex', 'claude', 'opencode', 'aider', 'gemini'];
-
-  const fetchRuntimes = async () => {
-    if (loadingRuntimes) return;
-    setLoadingRuntimes(true);
-    try {
-      await Promise.all(knownAdapters.map(adapter =>
-        request('/api/cli/check', {
-          method: 'POST',
-          body: JSON.stringify({ adapter }),
-        }).catch(() => null)
-      ));
-      const res = await request('/api/cli/runtimes/list');
-      const json = await res.json();
-      if (json.success && Array.isArray(json.data)) {
-        setRuntimes(json.data);
-      }
-    } catch (e) {
-      console.error('Failed to fetch runtimes:', e);
-    } finally {
-      setLoadingRuntimes(false);
-    }
-  };
-
-  useEffect(() => {
-    if (open && activeTab === 'runtime') {
-      fetchRuntimes();
-    }
-  }, [open, activeTab]);
-
   const strategyDescriptions: Record<CLIStrategy, string> = {
-    router: '自动选择最合适的 CLI Agent 处理当前任务，适合大多数一次性请求。',
-    sequential: '多个 CLI Agent 独立处理同一任务，结果并列展示，适合比较不同模型方案。',
-    pipeline: '按成员顺序接力开发，后续 Agent 会看到上一阶段输出。',
-    race: '为每个 Agent 创建独立 worktree 并行完成同一任务，适合隔离对比代码结果。',
-    review: '规划 → 实现 → 评审：适合 Codex 规划、Claude Code 实现、OpenCode 评审这类开发闭环。',
-    discussion: '多 Agent 分轮讨论方案和风险，在临时只读副本中执行（共 2 轮）',
-    debate: '多 Agent 独立提案 → 互评 → 最终建议（3 轮辩论）',
+    router: '自动选择最合适的开发群友处理当前任务，适合大多数一次性请求。',
+    sequential: '多个开发群友独立处理同一任务，结果并列展示，适合比较不同方案。',
+    pipeline: '按成员顺序接力开发，后续开发群友会看到上一阶段输出。',
+    race: '为每位开发群友创建独立 worktree 并行完成同一任务，适合隔离对比代码结果。',
+    review: '实现、审核、修正形成闭环，适合 Codex 写代码、Claude Code 审核这类开发协作。',
+    discussion: '多位开发群友分轮讨论方案和风险，在临时只读副本中执行。',
+    debate: '多位开发群友独立提案、互评，再形成最终建议。',
     mapreduce: '并行执行同一任务，汇总所有结果对比查看',
   };
+  const selectedCliTemplate = cliWorkflowTemplates.find((item) => (
+    item.id === selectedCliTemplateId && item.strategy === strategy
+  ));
+  const activeCliTemplate = selectedCliTemplate || cliWorkflowTemplates.find((item) => item.strategy === strategy);
 
   const worktreeTasks = tasks.filter(task => task.cwd && task.cwd.includes('cli-worktrees'));
   const worktreePaths = [...new Set(worktreeTasks.map(task => task.cwd).filter((p): p is string => !!p))];
@@ -598,7 +561,7 @@ export const CLIGroupSettings = ({
               <span>本地 Workspace</span>
             </div>
             <div className={styles.panelDesc}>
-              CLI Agent 将在此目录下执行命令，支持选择或输入绝对路径
+              开发群友将在此目录下读写代码，支持选择或输入绝对路径
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <Input
@@ -629,7 +592,7 @@ export const CLIGroupSettings = ({
             <div className={styles.rowBetween}>
               <div>
                 <div style={{ fontSize: 14, fontWeight: 500 }}>自动审批</div>
-                <div className={styles.panelDesc} style={{ marginTop: 4 }}>开启后 Agent 自动执行，无需确认</div>
+                <div className={styles.panelDesc} style={{ marginTop: 4 }}>开启后开发群友自动执行，无需确认</div>
               </div>
               <Switch
                 checked={approvalMode === 'auto'}
@@ -666,21 +629,19 @@ export const CLIGroupSettings = ({
 
           {/* strategy */}
           <div className={styles.panel}>
-            <div style={{ fontSize: 14, fontWeight: 500 }}>执行策略</div>
+            <div style={{ fontSize: 14, fontWeight: 500 }}>协作方式</div>
             <div className={styles.strategyGrid}>
-              {[
-                { value: 'router' as const, label: '快速处理' },
-                { value: 'sequential' as const, label: '模型对比' },
-                { value: 'pipeline' as const, label: '接力开发' },
-                { value: 'race' as const, label: '隔离竞赛' },
-                { value: 'review' as const, label: '开发评审' },
-              ].map((item) => (
+              {cliWorkflowTemplates.map((item) => (
                 <button
-                  key={item.value}
-                  onClick={() => onStrategyChange(item.value)}
+                  key={item.id}
+                  onClick={() => {
+                    setSelectedCliTemplateId(item.id);
+                    onStrategyChange(item.strategy);
+                    onExecutionPlanChange?.(item.executionPlan || {}, { replace: true });
+                  }}
                   className={cx(
                     styles.strategyBtn,
-                    strategy === item.value && styles.strategyBtnActive,
+                    activeCliTemplate?.id === item.id && styles.strategyBtnActive,
                   )}
                 >
                   {item.label}
@@ -692,12 +653,12 @@ export const CLIGroupSettings = ({
             </p>
             {strategy === 'race' && (
               <p className={styles.panelDesc} style={{ marginTop: 4, color: '#ff9500' }}>
-                需要 git 仓库，且当前工作区不能有未提交改动；每个 Agent 在独立 worktree 中执行。
+                需要 git 仓库，且当前工作区不能有未提交改动；每位开发群友在独立 worktree 中执行。
               </p>
             )}
             {strategy === 'pipeline' && (
               <p className={styles.panelDesc} style={{ marginTop: 4 }}>
-                默认失败继续（让后续 Agent 诊断）；用户取消会停止后续阶段。
+                默认失败继续（让后续开发群友诊断）；用户取消会停止后续阶段。
               </p>
             )}
             {strategy === 'review' && (
@@ -707,7 +668,7 @@ export const CLIGroupSettings = ({
             )}
             {strategy === 'review' && members.length < 3 && (
               <p className={styles.panelDesc} style={{ marginTop: 4, color: '#ff9500' }}>
-                建议至少选择 3 个 CLI Agent。当前成员不足时会自动降级：2 个成员为“规划 / 实现+自检”，1 个成员为“规划实现自评”。
+                建议至少选择 3 个开发群友。当前成员不足时会自动降级：2 个成员为“规划 / 实现+自检”，1 个成员为“规划实现自评”。
               </p>
             )}
           </div>
@@ -715,13 +676,13 @@ export const CLIGroupSettings = ({
           {/* Advanced Execution Plan Config (V3) */}
           <details style={{ marginTop: 0 }}>
             <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 500, color: 'rgba(0,0,0,0.65)', padding: '8px 0' }}>
-              高级配置
+              执行细节
             </summary>
             <div className={styles.panel} style={{ marginTop: 8 }}>
               <div className={styles.rowBetween}>
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 500 }}>失败策略</div>
-                  <div className={styles.panelDesc} style={{ marginTop: 2 }}>Agent 失败后是否继续执行后续阶段</div>
+                  <div style={{ fontSize: 13, fontWeight: 500 }}>失败处理</div>
+                  <div className={styles.panelDesc} style={{ marginTop: 2 }}>开发群友失败后是否继续执行后续阶段</div>
                 </div>
                 <select
                   value={group.executionPlan?.failurePolicy || 'continue'}
@@ -740,7 +701,7 @@ export const CLIGroupSettings = ({
               {strategy === 'discussion' && (
                 <div className={styles.rowBetween} style={{ marginTop: 8 }}>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 500 }}>讨论轮数</div>
+                    <div style={{ fontSize: 13, fontWeight: 500 }}>协作轮数</div>
                     <div className={styles.panelDesc} style={{ marginTop: 2 }}>staged 调度的最大轮次数</div>
                   </div>
                   <InputNumber
@@ -760,7 +721,7 @@ export const CLIGroupSettings = ({
               {strategy === 'race' && (
                 <div className={styles.rowBetween} style={{ marginTop: 8 }}>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 500 }}>结果策略</div>
+                    <div style={{ fontSize: 13, fontWeight: 500 }}>结果处理</div>
                     <div className={styles.panelDesc} style={{ marginTop: 2 }}>多结果时如何取舍（当前仅展示全部）</div>
                   </div>
                   <select
@@ -780,7 +741,7 @@ export const CLIGroupSettings = ({
                 </div>
               )}
               <p className={styles.panelDesc} style={{ marginTop: 8 }}>
-                高级配置会覆盖预设模式的默认值。老数据不需要配置即可正常运行。
+                执行细节会覆盖协作方式的默认值。老数据不需要配置即可正常运行。
               </p>
             </div>
           </details>
@@ -788,12 +749,12 @@ export const CLIGroupSettings = ({
           {/* members */}
           <div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-              <span style={{ fontSize: 14, fontWeight: 500 }}>添加/管理 CLI Agent</span>
+              <span style={{ fontSize: 14, fontWeight: 500 }}>添加/管理开发群友</span>
               <MemberPicker
                 kind="cli"
                 value={group.memberIds || group.members || []}
                 onChange={(newIds) => onMembersChange?.(newIds)}
-                placeholder="选择 CLI Agent 加入群聊..."
+                placeholder="选择开发群友加入群聊..."
               />
             </div>
             <div
@@ -804,7 +765,7 @@ export const CLIGroupSettings = ({
                 marginBottom: 12,
               }}
             >
-              <span style={{ fontSize: 14, fontWeight: 500 }}>CLI Agents（{members.length}）</span>
+              <span style={{ fontSize: 14, fontWeight: 500 }}>开发群友（{members.length}）</span>
             </div>
             <div className={styles.scrollList}>
               {members.map((agent) => {
@@ -893,60 +854,6 @@ export const CLIGroupSettings = ({
               })}
             </div>
           </div>
-        </div>
-      )
-    },
-    {
-      key: 'runtime',
-      label: 'Runtime',
-      children: (
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <span style={{ fontSize: 13, opacity: 0.8 }}>本机 CLI Runtime 状态</span>
-            <Button
-              type="text"
-              size="small"
-              icon={<RefreshCw size={14} />}
-              onClick={fetchRuntimes}
-              loading={loadingRuntimes}
-            />
-          </div>
-
-          {loadingRuntimes && runtimes.length === 0 ? (
-            <div style={{ padding: '40px 0', textAlign: 'center' }}>
-              <Spin />
-            </div>
-          ) : (
-            <div style={{ maxHeight: 'calc(100vh - 220px)', overflowY: 'auto', paddingRight: 4 }}>
-              {knownAdapters.map(adapter => {
-                const runtime = runtimes.find(r => r.adapter === adapter);
-                const installed = runtime?.installed;
-                return (
-                  <div key={adapter} className={styles.taskItem}>
-                    <div className={styles.taskHeader}>
-                      <span className={styles.taskAgent}>{adapter}</span>
-                      {installed ? <Tag color="success">已安装</Tag> : <Tag color="error">未安装</Tag>}
-                    </div>
-                    {runtime?.version && (
-                      <div className={styles.taskMeta}>版本：{runtime.version}</div>
-                    )}
-                    {runtime?.binaryPath && (
-                      <div className={styles.runtimePath}>{runtime.binaryPath}</div>
-                    )}
-                    <div className={styles.taskMeta}>
-                      {runtime?.lastCheckAt && <span>检测：{formatDateTime(runtime.lastCheckAt)}</span>}
-                      {runtime?.lastRunAt && <span>最近运行：{formatDateTime(runtime.lastRunAt)}</span>}
-                    </div>
-                    {runtime?.lastError && (
-                      <div style={{ fontSize: 11, color: '#ff4d4f', wordBreak: 'break-all' }}>
-                        {runtime.lastError}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
         </div>
       )
     },
@@ -1070,7 +977,7 @@ export const CLIGroupSettings = ({
             </div>
             <div style={{ padding: 12, background: 'rgba(0,0,0,0.04)', borderRadius: 8, marginBottom: 12 }}>
               <p style={{ fontSize: 12, color: 'rgba(0,0,0,0.65)', margin: 0 }}>
-                竞争模式（race）会为每个 Agent 创建独立的 git worktree。
+                隔离竞赛会为每位开发群友创建独立的 git worktree。
                 执行完成后 worktree 默认保留，你可以在此处查看和清理。
               </p>
             </div>
@@ -1095,7 +1002,7 @@ export const CLIGroupSettings = ({
                       <span>{formatDateTime(task.createdAt)}</span>
                       {task.exitCode !== undefined && <span>exit {task.exitCode}</span>}
                     </div>
-                    <div className={styles.runtimePath}>{task.cwd}</div>
+                    <div className={styles.pathText}>{task.cwd}</div>
                     <div className={styles.taskActions}>
                       <Button
                         size="small"
@@ -1178,7 +1085,7 @@ export const CLIGroupSettings = ({
       <>
         <div className={styles.inlinePanel}>
           <div className={styles.inlineHeader}>
-            <span className={styles.inlineTitle}>CLI Agent 配置</span>
+            <span className={styles.inlineTitle}>开发群配置</span>
             <button className={styles.inlineCloseBtn} onClick={() => onOpenChange(false)}>
               <X size={16} />
             </button>
@@ -1304,7 +1211,7 @@ export const CLIGroupSettings = ({
   return (
     <>
       <Drawer
-        title="CLI Agent 配置"
+        title="开发群配置"
         placement="right"
         open={open}
         onClose={() => onOpenChange(false)}

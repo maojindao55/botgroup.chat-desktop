@@ -9,6 +9,7 @@
  */
 import { Markdown as LobeMarkdown } from '@lobehub/ui';
 import type { CSSProperties } from 'react';
+import { normalizeChatMarkdownContent } from '@/utils/markdownContent';
 
 export interface ChatMarkdownProps {
   content: string;
@@ -20,6 +21,7 @@ export function ChatMarkdown({ content, isUser, className }: ChatMarkdownProps) 
   const style: CSSProperties | undefined = isUser
     ? { color: '#fff' }
     : undefined;
+  const normalizedContent = normalizeChatMarkdownContent(content);
 
   return (
     <LobeMarkdown
@@ -32,7 +34,7 @@ export function ChatMarkdown({ content, isUser, className }: ChatMarkdownProps) 
       className={className}
       style={style}
     >
-      {content}
+      {normalizedContent}
     </LobeMarkdown>
   );
 }

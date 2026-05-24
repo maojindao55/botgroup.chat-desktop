@@ -1,9 +1,8 @@
 /**
- * AI 群聊配置面板 - 成员管理 + 调度策略配置
- * 用于 AI 群聊的 MembersManagement 替代组件
+ * 角色群设置面板 - 管理群友和发言方式
  */
 import { useState } from 'react';
-import { Drawer, Switch, Button, Tooltip } from 'antd';
+import { Drawer, Button, Tooltip } from 'antd';
 import { Avatar as LobeAvatar, ActionIcon } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 import { UserPlus, Mic, MicOff, Check, X } from 'lucide-react';
@@ -12,6 +11,7 @@ import type { AIGroup } from '@/config/groups';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
 import { MemberPicker } from './MemberPicker';
 import { useAIMemberStore } from '@/store/aiMemberStore';
+import { aiSpeechModes, applyAISpeechMode, resolveAISpeechMode } from '@/config/groupProduct';
 
 interface User {
   id: number | string;
@@ -30,7 +30,7 @@ interface AIGroupSettingsProps {
   onToggleGroupDiscussion: () => void;
   schedulerStrategy: 'tag' | 'round_robin' | 'all';
   onStrategyChange: (strategy: 'tag' | 'round_robin' | 'all') => void;
-  /** 新接口：批量替换成员（来自 AI 群员库 MemberPicker） */
+  /** 新接口：批量替换成员（来自资源库 MemberPicker） */
   onMembersChange?: (memberIds: string[]) => void;
   /** 旧接口：单个添加 */
   onAddMember?: (memberId: string) => void;
@@ -181,13 +181,17 @@ export const AIGroupSettings = ({
   const { styles, cx } = useStyles();
   const [showAddMember, setShowAddMember] = useState(false);
   const allMembers = useAIMemberStore((s) => s.members);
+  const speechMode = resolveAISpeechMode({
+    isGroupDiscussionMode,
+    schedulerStrategy,
+  });
 
   // 优先使用 group.memberIds（id 引用模型）；fallback 到 users 里推断
   const currentMemberIds = group.memberIds
     || group.members
     || users.filter((u) => 'personality' in u).map((u) => u.id as string);
 
-  // 从 AI 群员库取 LLM 类成员，作为可添加候选
+  // 从资源库取 LLM 类成员，作为可添加候选
   const availableToAdd = Object.values(allMembers)
     .filter((m) => m && m.kind === 'llm' && m.enabled !== false)
     .filter((m) => !currentMemberIds.includes(m.id));
@@ -210,56 +214,44 @@ export const AIGroupSettings = ({
 
   const settingsContent = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* 全员讨论模式 */}
-      <div className={styles.panel}>
-        <div className={styles.row}>
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 500 }}>全员讨论模式</div>
-            <div style={{ fontSize: 12, opacity: 0.6 }}>开启后全员每轮回复</div>
-          </div>
-          <Switch checked={isGroupDiscussionMode} onChange={onToggleGroupDiscussion} />
-        </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <label style={{ fontSize: 14, fontWeight: 500 }}>发言方式</label>
+        {aiSpeechModes.map((item) => (
+          <button
+            key={item.value}
+            onClick={() => {
+              const next = applyAISpeechMode(item.value);
+              if (next.isGroupDiscussionMode !== isGroupDiscussionMode) {
+                onToggleGroupDiscussion();
+              }
+              onStrategyChange(next.schedulerStrategy);
+            }}
+            className={cx(
+              styles.strategyBtn,
+              speechMode === item.value && styles.strategyBtnActive,
+            )}
+          >
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 12, fontWeight: 500 }}>{item.label}</div>
+              <div style={{ fontSize: 10, opacity: 0.6 }}>{item.description}</div>
+            </div>
+            {speechMode === item.value && (
+              <Check size={14} style={{ color: '#ff6600' }} />
+            )}
+          </button>
+        ))}
       </div>
-
-      {/* 调度策略 */}
-      {!isGroupDiscussionMode && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <label style={{ fontSize: 14, fontWeight: 500 }}>调度策略</label>
-          {[
-            { value: 'tag' as const, label: '标签匹配', desc: '根据消息智能匹配相关AI' },
-            { value: 'round_robin' as const, label: '轮询', desc: '按顺序轮流回复' },
-            { value: 'all' as const, label: '全员', desc: '所有成员都回复' },
-          ].map((item) => (
-            <button
-              key={item.value}
-              onClick={() => onStrategyChange(item.value)}
-              className={cx(
-                styles.strategyBtn,
-                schedulerStrategy === item.value && styles.strategyBtnActive,
-              )}
-            >
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 12, fontWeight: 500 }}>{item.label}</div>
-                <div style={{ fontSize: 10, opacity: 0.6 }}>{item.desc}</div>
-              </div>
-              {schedulerStrategy === item.value && (
-                <Check size={14} style={{ color: '#ff6600' }} />
-              )}
-            </button>
-          ))}
-        </div>
-      )}
 
       {/* 成员管理：MemberPicker（批量）+ 旧版「添加成员」面板（单个） */}
       <div>
         {onMembersChange && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-            <span style={{ fontSize: 14, fontWeight: 500 }}>从群员库选择</span>
+            <span style={{ fontSize: 14, fontWeight: 500 }}>选择角色</span>
             <MemberPicker
               kind="llm"
               value={currentMemberIds}
               onChange={(newIds) => onMembersChange(newIds)}
-              placeholder="选择 AI 成员加入群聊..."
+              placeholder="选择角色加入群聊..."
             />
           </div>
         )}
@@ -272,7 +264,7 @@ export const AIGroupSettings = ({
             marginBottom: 12,
           }}
         >
-          <span style={{ fontSize: 14, fontWeight: 500 }}>群成员（{users.length}）</span>
+          <span style={{ fontSize: 14, fontWeight: 500 }}>群友（{users.length}）</span>
           {availableToAdd.length > 0 && (
             <Button
               size="small"

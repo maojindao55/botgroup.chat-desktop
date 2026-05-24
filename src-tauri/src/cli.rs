@@ -114,6 +114,8 @@ pub struct CliRunArgs {
     pub prompt: String,
     pub cwd: Option<String>,
     pub extra_args: Option<Vec<String>>,
+    #[serde(rename = "toolSessionId")]
+    pub tool_session_id: Option<String>,
     /// Optional binary override (default: looked up from adapter)
     pub binary: Option<String>,
     /// Extra env vars to set on the spawned process
@@ -866,9 +868,27 @@ fn build_command(args: &CliRunArgs) -> Result<Command, String> {
         // Non-interactive mode; final result on stdout, progress on stderr.
         "codex" => {
             cmd.arg("exec");
+            let has_skip_git_repo_check = args.extra_args.as_ref().map_or(false, |extra| {
+                extra.iter().any(|arg| arg == "--skip-git-repo-check")
+            });
+            if !has_skip_git_repo_check {
+                cmd.arg("--skip-git-repo-check");
+            }
             if let Some(extra) = &args.extra_args {
                 for a in extra {
                     cmd.arg(a);
+                }
+            }
+            let has_session = args.extra_args.as_ref().map_or(false, |extra| {
+                extra
+                    .iter()
+                    .any(|arg| arg == "resume" || arg == "--last")
+            });
+            if !has_session {
+                if let Some(tool_session_id) = &args.tool_session_id {
+                    if !tool_session_id.is_empty() {
+                        cmd.arg("resume").arg(tool_session_id);
+                    }
                 }
             }
             cmd.arg(&args.prompt);
@@ -878,18 +898,54 @@ fn build_command(args: &CliRunArgs) -> Result<Command, String> {
         // Headless mode; positional prompt at the end, no stdin support.
         "opencode" => {
             cmd.arg("run");
+            let has_format = args.extra_args.as_ref().map_or(false, |extra| {
+                extra.iter().any(|arg| arg == "--format" || arg.starts_with("--format="))
+            });
+            if !has_format {
+                cmd.arg("--format").arg("json");
+            }
             if let Some(extra) = &args.extra_args {
                 for a in extra {
                     cmd.arg(a);
                 }
             }
+            let has_session = args.extra_args.as_ref().map_or(false, |extra| {
+                extra.iter().any(|arg| {
+                    arg == "--session"
+                        || arg.starts_with("--session=")
+                        || arg == "-s"
+                        || arg == "--continue"
+                        || arg == "-c"
+                })
+            });
+            if !has_session {
+                if let Some(tool_session_id) = &args.tool_session_id {
+                    if !tool_session_id.is_empty() {
+                        cmd.arg("--session").arg(tool_session_id);
+                    }
+                }
+            }
             cmd.arg(&args.prompt);
         }
 
-        // claude -p "<prompt>" [flags]
+        // claude -p [flags] "<prompt>"
         // Print mode (non-interactive). Streams answer to stdout.
         "claude" => {
-            cmd.arg("-p").arg(&args.prompt);
+            cmd.arg("-p");
+            let has_output_format = args.extra_args.as_ref().map_or(false, |extra| {
+                extra
+                    .iter()
+                    .any(|arg| arg == "--output-format" || arg.starts_with("--output-format="))
+            });
+            if !has_output_format {
+                cmd.arg("--output-format").arg("stream-json");
+            }
+            let has_partial_messages = args.extra_args.as_ref().map_or(false, |extra| {
+                extra.iter().any(|arg| arg == "--include-partial-messages")
+            });
+            if !has_partial_messages {
+                cmd.arg("--include-partial-messages");
+            }
             if args.approval_mode.as_deref() == Some("auto") {
                 cmd.arg("--dangerously-skip-permissions");
             }
@@ -898,6 +954,25 @@ fn build_command(args: &CliRunArgs) -> Result<Command, String> {
                     cmd.arg(a);
                 }
             }
+            let has_session = args.extra_args.as_ref().map_or(false, |extra| {
+                extra.iter().any(|arg| {
+                    arg == "--resume"
+                        || arg.starts_with("--resume=")
+                        || arg == "-r"
+                        || arg == "--continue"
+                        || arg == "-c"
+                        || arg == "--session-id"
+                        || arg.starts_with("--session-id=")
+                })
+            });
+            if !has_session {
+                if let Some(tool_session_id) = &args.tool_session_id {
+                    if !tool_session_id.is_empty() {
+                        cmd.arg("--resume").arg(tool_session_id);
+                    }
+                }
+            }
+            cmd.arg(&args.prompt);
         }
 
         // aider --message "<prompt>" --yes-always [flags]
@@ -987,7 +1062,8 @@ fn build_command(args: &CliRunArgs) -> Result<Command, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::prompt_summary;
+    use super::{build_command, prompt_summary, CliRunArgs};
+    use std::collections::HashMap;
 
     #[test]
     fn prompt_summary_does_not_split_utf8() {
@@ -1003,6 +1079,255 @@ mod tests {
     fn prompt_summary_keeps_short_prompt() {
         let prompt = "写一个冒泡排序";
         assert_eq!(prompt_summary(prompt, 60), prompt);
+    }
+
+    #[test]
+    fn codex_exec_allows_user_selected_non_git_workspaces() {
+        let cmd = build_command(&CliRunArgs {
+            session_id: "session-1".to_string(),
+            group_id: "group-1".to_string(),
+            agent_id: "cli-codex".to_string(),
+            agent_name: "Codex".to_string(),
+            adapter: "codex".to_string(),
+            prompt: "写一个冒泡排序文件".to_string(),
+            cwd: Some("/tmp/not-a-git-repo".to_string()),
+            extra_args: None,
+            tool_session_id: None,
+            binary: None,
+            env: Some(HashMap::new()),
+            timeout_ms: Some(300000),
+            approval_mode: Some("auto".to_string()),
+            show_stderr: Some(true),
+        })
+        .expect("codex command should build");
+
+        let rendered = format!("{:?}", cmd);
+
+        assert!(rendered.contains("\"exec\""));
+        assert!(rendered.contains("\"--skip-git-repo-check\""));
+        assert!(rendered.contains("\"写一个冒泡排序文件\""));
+    }
+
+    #[test]
+    fn codex_exec_resumes_tool_session_when_available() {
+        let cmd = build_command(&CliRunArgs {
+            session_id: "session-1".to_string(),
+            group_id: "group-1".to_string(),
+            agent_id: "cli-codex".to_string(),
+            agent_name: "Codex".to_string(),
+            adapter: "codex".to_string(),
+            prompt: "继续刚才的任务".to_string(),
+            cwd: Some("/tmp/not-a-git-repo".to_string()),
+            extra_args: Some(vec![
+                "--json".to_string(),
+                "--sandbox".to_string(),
+                "workspace-write".to_string(),
+            ]),
+            tool_session_id: Some("019e1234-abcd".to_string()),
+            binary: None,
+            env: Some(HashMap::new()),
+            timeout_ms: Some(300000),
+            approval_mode: Some("auto".to_string()),
+            show_stderr: Some(true),
+        })
+        .expect("codex resume command should build");
+
+        let rendered = format!("{:?}", cmd);
+
+        assert!(rendered.contains("\"exec\""));
+        assert!(rendered.contains("\"resume\""));
+        assert!(rendered.contains("\"019e1234-abcd\""));
+        assert!(rendered.contains("\"继续刚才的任务\""));
+    }
+
+    #[test]
+    fn codex_exec_respects_explicit_resume_arg() {
+        let cmd = build_command(&CliRunArgs {
+            session_id: "session-1".to_string(),
+            group_id: "group-1".to_string(),
+            agent_id: "cli-codex".to_string(),
+            agent_name: "Codex".to_string(),
+            adapter: "codex".to_string(),
+            prompt: "继续刚才的任务".to_string(),
+            cwd: Some("/tmp/not-a-git-repo".to_string()),
+            extra_args: Some(vec!["resume".to_string(), "manual-session".to_string()]),
+            tool_session_id: Some("stored-session".to_string()),
+            binary: None,
+            env: Some(HashMap::new()),
+            timeout_ms: Some(300000),
+            approval_mode: Some("auto".to_string()),
+            show_stderr: Some(true),
+        })
+        .expect("codex command should build");
+
+        let rendered = format!("{:?}", cmd);
+
+        assert!(rendered.contains("\"manual-session\""));
+        assert!(!rendered.contains("\"stored-session\""));
+    }
+
+    #[test]
+    fn claude_print_defaults_to_stream_json() {
+        let cmd = build_command(&CliRunArgs {
+            session_id: "session-1".to_string(),
+            group_id: "group-1".to_string(),
+            agent_id: "cli-claude-code".to_string(),
+            agent_name: "ClaudeCode".to_string(),
+            adapter: "claude".to_string(),
+            prompt: "审查代码".to_string(),
+            cwd: Some("/tmp/project".to_string()),
+            extra_args: None,
+            tool_session_id: None,
+            binary: None,
+            env: Some(HashMap::new()),
+            timeout_ms: Some(300000),
+            approval_mode: Some("auto".to_string()),
+            show_stderr: Some(false),
+        })
+        .expect("claude command should build");
+
+        let rendered = format!("{:?}", cmd);
+
+        assert!(rendered.contains("\"-p\""));
+        assert!(rendered.contains("\"--output-format\""));
+        assert!(rendered.contains("\"stream-json\""));
+        assert!(rendered.contains("\"--include-partial-messages\""));
+        assert!(rendered.contains("\"--dangerously-skip-permissions\""));
+        assert!(rendered.contains("\"审查代码\""));
+    }
+
+    #[test]
+    fn claude_print_resumes_tool_session_when_available() {
+        let cmd = build_command(&CliRunArgs {
+            session_id: "session-1".to_string(),
+            group_id: "group-1".to_string(),
+            agent_id: "cli-claude-code".to_string(),
+            agent_name: "ClaudeCode".to_string(),
+            adapter: "claude".to_string(),
+            prompt: "继续审查".to_string(),
+            cwd: Some("/tmp/project".to_string()),
+            extra_args: None,
+            tool_session_id: Some("7d9c0000-0000-4000-8000-000000000001".to_string()),
+            binary: None,
+            env: Some(HashMap::new()),
+            timeout_ms: Some(300000),
+            approval_mode: Some("auto".to_string()),
+            show_stderr: Some(false),
+        })
+        .expect("claude resume command should build");
+
+        let rendered = format!("{:?}", cmd);
+
+        assert!(rendered.contains("\"--resume\""));
+        assert!(rendered.contains("\"7d9c0000-0000-4000-8000-000000000001\""));
+        assert!(rendered.contains("\"继续审查\""));
+    }
+
+    #[test]
+    fn claude_print_respects_explicit_resume_arg() {
+        let cmd = build_command(&CliRunArgs {
+            session_id: "session-1".to_string(),
+            group_id: "group-1".to_string(),
+            agent_id: "cli-claude-code".to_string(),
+            agent_name: "ClaudeCode".to_string(),
+            adapter: "claude".to_string(),
+            prompt: "继续审查".to_string(),
+            cwd: Some("/tmp/project".to_string()),
+            extra_args: Some(vec!["--resume".to_string(), "manual-session".to_string()]),
+            tool_session_id: Some("stored-session".to_string()),
+            binary: None,
+            env: Some(HashMap::new()),
+            timeout_ms: Some(300000),
+            approval_mode: Some("auto".to_string()),
+            show_stderr: Some(false),
+        })
+        .expect("claude command should build");
+
+        let rendered = format!("{:?}", cmd);
+
+        assert!(rendered.contains("\"manual-session\""));
+        assert!(!rendered.contains("\"stored-session\""));
+    }
+
+    #[test]
+    fn opencode_run_defaults_to_json_format() {
+        let cmd = build_command(&CliRunArgs {
+            session_id: "session-1".to_string(),
+            group_id: "group-1".to_string(),
+            agent_id: "cli-opencode".to_string(),
+            agent_name: "OpenCode".to_string(),
+            adapter: "opencode".to_string(),
+            prompt: "继续刚才的任务".to_string(),
+            cwd: Some("/tmp/project".to_string()),
+            extra_args: Some(vec!["--pure".to_string()]),
+            tool_session_id: None,
+            binary: None,
+            env: Some(HashMap::new()),
+            timeout_ms: Some(300000),
+            approval_mode: Some("auto".to_string()),
+            show_stderr: Some(true),
+        })
+        .expect("opencode command should build");
+
+        let rendered = format!("{:?}", cmd);
+
+        assert!(rendered.contains("\"run\""));
+        assert!(rendered.contains("\"--format\""));
+        assert!(rendered.contains("\"json\""));
+        assert!(rendered.contains("\"--pure\""));
+        assert!(rendered.contains("\"继续刚才的任务\""));
+    }
+
+    #[test]
+    fn opencode_run_respects_explicit_format_arg() {
+        let cmd = build_command(&CliRunArgs {
+            session_id: "session-1".to_string(),
+            group_id: "group-1".to_string(),
+            agent_id: "cli-opencode".to_string(),
+            agent_name: "OpenCode".to_string(),
+            adapter: "opencode".to_string(),
+            prompt: "继续刚才的任务".to_string(),
+            cwd: Some("/tmp/project".to_string()),
+            extra_args: Some(vec!["--format".to_string(), "default".to_string()]),
+            tool_session_id: None,
+            binary: None,
+            env: Some(HashMap::new()),
+            timeout_ms: Some(300000),
+            approval_mode: Some("auto".to_string()),
+            show_stderr: Some(true),
+        })
+        .expect("opencode command should build");
+
+        let rendered = format!("{:?}", cmd);
+
+        assert!(rendered.contains("\"--format\" \"default\""));
+        assert!(!rendered.contains("\"--format\" \"json\""));
+    }
+
+    #[test]
+    fn opencode_run_respects_equals_format_arg() {
+        let cmd = build_command(&CliRunArgs {
+            session_id: "session-1".to_string(),
+            group_id: "group-1".to_string(),
+            agent_id: "cli-opencode".to_string(),
+            agent_name: "OpenCode".to_string(),
+            adapter: "opencode".to_string(),
+            prompt: "继续刚才的任务".to_string(),
+            cwd: Some("/tmp/project".to_string()),
+            extra_args: Some(vec!["--format=default".to_string()]),
+            tool_session_id: None,
+            binary: None,
+            env: Some(HashMap::new()),
+            timeout_ms: Some(300000),
+            approval_mode: Some("auto".to_string()),
+            show_stderr: Some(true),
+        })
+        .expect("opencode command should build");
+
+        let rendered = format!("{:?}", cmd);
+
+        assert!(rendered.contains("\"--format=default\""));
+        assert!(!rendered.contains("\"--format\" \"json\""));
     }
 }
 

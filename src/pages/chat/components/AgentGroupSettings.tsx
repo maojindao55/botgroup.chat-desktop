@@ -1,10 +1,8 @@
 /**
- * Agent 群聊配置面板
- * 管理自定义 Agent 成员、执行策略、工具等
+ * 专家群设置面板
+ * 管理专家群友、群内协作方式和高级策略。
  *
- * 注意：成员（含 LLM/Prompt/Tools）现在统一由「AI 群员库」管理，
- *      本面板只负责群级配置 + 引用成员 id。如需新建/编辑 Agent，
- *      请到群员库（Sidebar 入口）操作。
+ * 注意：成员（含 LLM/Prompt/Tools）统一由资源库管理。
  */
 import { Drawer, Input, InputNumber, Tooltip } from 'antd';
 import { Avatar as LobeAvatar, ActionIcon } from '@lobehub/ui';
@@ -14,6 +12,7 @@ import type { AgentGroup, AgentStrategy } from '@/config/groups';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
 import { MemberPicker } from './MemberPicker';
 import { useAIMemberStore } from '@/store/aiMemberStore';
+import { agentWorkflowTemplates } from '@/config/groupProduct';
 
 interface AgentGroupSettingsProps {
   open: boolean;
@@ -64,6 +63,28 @@ const useStyles = createStyles(({ token, css }) => ({
     font-size: 11px;
     color: ${token.colorTextTertiary};
     margin-top: 6px;
+  `,
+  templateBtn: css`
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid ${token.colorBorderSecondary};
+    background: transparent;
+    color: ${token.colorText};
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.15s;
+    &:hover {
+      background: ${token.colorFillTertiary};
+    }
+  `,
+  templateBtnActive: css`
+    border-color: #ff6600;
+    background: rgba(255, 102, 0, 0.08);
   `,
   supervisorBadge: css`
     font-size: 10px;
@@ -154,6 +175,11 @@ export const AgentGroupSettings = ({
   const currentAgents = currentMemberIds
     .map((id) => allMembers[id])
     .filter((m) => m && m.kind === 'agent');
+  const activeTemplate = agentWorkflowTemplates.find((item) =>
+    item.strategy === group.strategy &&
+    item.maxRounds === group.maxRounds &&
+    (item.coordinatorPrompt ? item.coordinatorPrompt === group.coordinatorPrompt : !group.coordinatorPrompt)
+  );
 
   const strategyOptions: { value: AgentStrategy; label: string }[] = [
     { value: 'sequential', label: '顺序执行' },
@@ -167,13 +193,13 @@ export const AgentGroupSettings = ({
   ];
 
   const strategyDescriptions: Record<AgentStrategy, string> = {
-    sequential: '按成员顺序依次执行，后者可看到前者的输出',
-    router: '智能分析用户意图，选择最相关的 Agent 回答',
-    discussion: '所有 Agent 并行回复同一消息',
+    sequential: '按专家群友顺序依次执行，后者可看到前者的输出',
+    router: '智能分析用户意图，选择最相关的专家群友回答',
+    discussion: '所有专家群友并行回复同一消息',
     react: '协调者分析→分派任务→执行→判断是否完成→循环',
     pipeline: '按角色分工形成流水线，每阶段产出作为下一阶段输入',
-    debate: '多 Agent 独立回答→互相评论→最终综合裁决',
-    mapreduce: '自动拆分任务→各 Agent 并行处理→汇总合并结果',
+    debate: '多位专家群友独立回答→互相评论→最终综合裁决',
+    mapreduce: '自动拆分任务→各专家群友并行处理→汇总合并结果',
     supervisor: '监督者分派任务→审查质量→反馈修改→直到满意',
   };
 
@@ -183,9 +209,32 @@ export const AgentGroupSettings = ({
 
   const settingsContent = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* 执行策略 */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <label style={{ fontSize: 14, fontWeight: 500 }}>执行策略</label>
+        <label style={{ fontSize: 14, fontWeight: 500 }}>群内协作方式</label>
+        {agentWorkflowTemplates.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => onUpdateGroup({
+              strategy: item.strategy,
+              maxRounds: item.maxRounds,
+              coordinatorPrompt: item.coordinatorPrompt || group.coordinatorPrompt,
+            })}
+            className={cx(
+              styles.templateBtn,
+              activeTemplate?.id === item.id && styles.templateBtnActive,
+            )}
+          >
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 500 }}>{item.label}</div>
+              <div style={{ fontSize: 11, opacity: 0.65, marginTop: 2 }}>{item.description}</div>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <label style={{ fontSize: 14, fontWeight: 500 }}>高级策略</label>
         <div className={styles.strategyGrid}>
           {strategyOptions.map((item) => (
             <button
@@ -229,23 +278,22 @@ export const AgentGroupSettings = ({
         />
       </div>
 
-      {/* Agent 成员管理：从 AI 群员库选择 */}
       <div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-          <span style={{ fontSize: 14, fontWeight: 500 }}>添加/管理 Agent 成员</span>
+          <span style={{ fontSize: 14, fontWeight: 500 }}>添加/管理专家群友</span>
           <MemberPicker
             kind="agent"
             value={currentMemberIds}
             onChange={(newIds) => onUpdateGroup({ memberIds: newIds })}
-            placeholder="选择 Agent 成员加入群聊..."
+            placeholder="选择专家群友加入群聊..."
           />
           <div style={{ fontSize: 11, color: 'rgba(0,0,0,0.45)', marginTop: -4 }}>
-            如需新建/编辑 Agent（LLM、Prompt、工具），请到「AI 群员库」操作
+            如需新建或编辑专家的模型、职责、工具，请到资源库操作。
           </div>
         </div>
 
         <div style={{ marginBottom: 12 }}>
-          <span style={{ fontSize: 14, fontWeight: 500 }}>群成员（{currentAgents.length}）</span>
+          <span style={{ fontSize: 14, fontWeight: 500 }}>专家群友（{currentAgents.length}）</span>
         </div>
 
         {/* 成员列表 */}
@@ -330,9 +378,9 @@ export const AgentGroupSettings = ({
   if (inline) {
     if (!open) return null;
     return (
-      <div className={styles.inlinePanel}>
+          <div className={styles.inlinePanel}>
         <div className={styles.inlineHeader}>
-          <span className={styles.inlineTitle}>Agent 群聊配置</span>
+          <span className={styles.inlineTitle}>专家群配置</span>
           <button className={styles.inlineCloseBtn} onClick={() => onOpenChange(false)}>
             <X size={16} />
           </button>
@@ -346,7 +394,7 @@ export const AgentGroupSettings = ({
 
   return (
     <Drawer
-      title="Agent 群聊配置"
+      title="专家群配置"
       placement="right"
       open={open}
       onClose={() => onOpenChange(false)}

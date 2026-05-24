@@ -76,7 +76,7 @@ export interface CLIGroup {
   showStderr: boolean;              // 是否展示 stderr 输出
   strategy: CLIStrategy;            // 执行策略，默认 sequential
   coordinatorPrompt?: string;       // 路由/评判提示词（router/race 模式用）
-  /** 高级配置：覆盖预设 plan 的部分字段；老数据可缺省 */
+  /** 执行细节：覆盖预设 plan 的部分字段；老数据可缺省 */
   executionPlan?: Partial<CLIExecutionPlan>;
 }
 
@@ -183,10 +183,16 @@ export function resolveExecutionPlan(
         };
     }
   })();
+  const safeExecutionPlan = { ...(group.executionPlan || {}) };
+  delete safeExecutionPlan.selection;
+  delete safeExecutionPlan.collaboration;
+  delete safeExecutionPlan.schedule;
+  delete safeExecutionPlan.isolation;
+  delete safeExecutionPlan.preset;
 
   return {
     ...base,
-    ...(group.executionPlan || {}),
+    ...safeExecutionPlan,
     ...(overrides || {}),
     preset, // preset 不允许被覆盖，避免 UI 与内部状态错位
   };

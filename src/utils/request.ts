@@ -7,6 +7,27 @@ import { defaultGroups as staticGroups } from '@/config/groups';
 import { generateAICharacters, cliAgents, modelConfigs } from '@/config/aiCharacters';
 import { builtinAIMembers, type AIMember } from '@/config/aiMembers';
 import { builtinProviders, lookupProviderByEnvName, mapProviderToRust } from '@/config/providers';
+import {
+  parseClaudeJsonLine,
+  renderClaudeCommandCompleted,
+  renderClaudeCommandGroupEnd,
+  renderClaudeCommandGroupStart,
+  renderClaudeCommandStarted,
+} from '@/utils/claudeStream';
+import { cleanCliOutputLine, shouldSuppressCliOutputLine } from '@/utils/cliOutput';
+import {
+  parseCodexJsonLine,
+  renderCodexCommandCompleted,
+  renderCodexCommandGroupEnd,
+  renderCodexCommandGroupStart,
+  renderCodexCommandStarted,
+} from '@/utils/codexStream';
+import {
+  parseOpenCodeJsonLine,
+  renderOpenCodeCommand,
+  renderOpenCodeCommandGroupEnd,
+  renderOpenCodeCommandGroupStart,
+} from '@/utils/opencodeStream';
 
 const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
 if (isTauri) {
@@ -522,6 +543,7 @@ export async function request(url: string, options: RequestInit = {}) {
         cwd,
         binary,
         extraArgs,
+        toolSessionId,
         env,
         timeoutMs,
         approvalMode = 'auto',
@@ -575,6 +597,15 @@ export async function request(url: string, options: RequestInit = {}) {
           // Thinking & commands use a subdued visual style so the final reply stands out.
           // For non-JSON adapters we still stream raw stdout directly.
           let isJsonMode = adapter === 'codex';
+          let codexSessionId: string | null = null;
+          let claudeSessionId: string | null = null;
+          let opencodeSessionId: string | null = null;
+          let codexCommandGroupOpen = false;
+          let codexCommandIndex = 0;
+          let claudeCommandGroupOpen = false;
+          let claudeCommandIndex = 0;
+          let opencodeCommandGroupOpen = false;
+          let opencodeCommandIndex = 0;
           // Track whether we're inside an "intermediate" phase so we can
           // open/close a <details> wrapper around thinking+commands.
           let detailsOpen = false;
@@ -597,6 +628,51 @@ export async function request(url: string, options: RequestInit = {}) {
             }
           };
 
+          const ensureCodexCommandGroupOpen = () => {
+            if (!codexCommandGroupOpen) {
+              codexCommandGroupOpen = true;
+              codexCommandIndex = 0;
+              enqueueChunk(renderCodexCommandGroupStart());
+            }
+          };
+
+          const closeCodexCommandGroup = () => {
+            if (codexCommandGroupOpen) {
+              codexCommandGroupOpen = false;
+              enqueueChunk(renderCodexCommandGroupEnd());
+            }
+          };
+
+          const ensureClaudeCommandGroupOpen = () => {
+            if (!claudeCommandGroupOpen) {
+              claudeCommandGroupOpen = true;
+              claudeCommandIndex = 0;
+              enqueueChunk(renderClaudeCommandGroupStart());
+            }
+          };
+
+          const closeClaudeCommandGroup = () => {
+            if (claudeCommandGroupOpen) {
+              claudeCommandGroupOpen = false;
+              enqueueChunk(renderClaudeCommandGroupEnd());
+            }
+          };
+
+          const ensureOpenCodeCommandGroupOpen = () => {
+            if (!opencodeCommandGroupOpen) {
+              opencodeCommandGroupOpen = true;
+              opencodeCommandIndex = 0;
+              enqueueChunk(renderOpenCodeCommandGroupStart());
+            }
+          };
+
+          const closeOpenCodeCommandGroup = () => {
+            if (opencodeCommandGroupOpen) {
+              opencodeCommandGroupOpen = false;
+              enqueueChunk(renderOpenCodeCommandGroupEnd());
+            }
+          };
+
           unlistenFn = await listen<any>(eventName, (evt) => {
             const payload = evt.payload || {};
             switch (payload.type) {
@@ -604,50 +680,117 @@ export async function request(url: string, options: RequestInit = {}) {
                 break;
               case 'stdout':
                 if (typeof payload.content === 'string' && !authErrorDetected) {
-                  const stdoutLine = payload.content;
+                  const stdoutLine = cleanCliOutputLine(payload.content);
+                  if (shouldSuppressCliOutputLine(stdoutLine)) break;
+
+                  if (adapter === 'opencode') {
+                    const parsed = parseOpenCodeJsonLine(stdoutLine);
+                    if (parsed?.sessionId && parsed.sessionId !== opencodeSessionId) {
+                      opencodeSessionId = parsed.sessionId;
+                      enqueueEvent({
+                        type: 'tool_session',
+                        adapter: 'opencode',
+                        sessionId: parsed.sessionId,
+                      });
+                    }
+                    if (parsed?.error) {
+                      closeOpenCodeCommandGroup();
+                      enqueueEvent({
+                        type: 'error',
+                        content: `\n**[OpenCode error]** ${parsed.error}\n`,
+                        error: parsed.error,
+                      });
+                    } else if (parsed?.command) {
+                      ensureOpenCodeCommandGroupOpen();
+                      opencodeCommandIndex++;
+                      enqueueChunk(renderOpenCodeCommand(parsed.command, opencodeCommandIndex));
+                    } else if (parsed?.content) {
+                      closeOpenCodeCommandGroup();
+                      enqueueChunk(parsed.content);
+                    } else if (!stdoutLine.startsWith('{')) {
+                      closeOpenCodeCommandGroup();
+                      enqueueChunk(stdoutLine + '\n');
+                    }
+                    break;
+                  }
+
+                  if (adapter === 'claude') {
+                    const parsed = parseClaudeJsonLine(stdoutLine);
+                    if (parsed?.sessionId && parsed.sessionId !== claudeSessionId) {
+                      claudeSessionId = parsed.sessionId;
+                      enqueueEvent({
+                        type: 'tool_session',
+                        adapter: 'claude',
+                        sessionId: parsed.sessionId,
+                      });
+                    }
+                    if (parsed?.error) {
+                      closeClaudeCommandGroup();
+                      enqueueEvent({
+                        type: 'error',
+                        content: `\n**[Claude Code error]** ${parsed.error}\n`,
+                        error: parsed.error,
+                      });
+                    }
+                    if (parsed?.content) {
+                      closeClaudeCommandGroup();
+                      enqueueChunk(parsed.content);
+                    }
+                    if (parsed?.command) {
+                      if (parsed.command.phase === 'started') {
+                        ensureClaudeCommandGroupOpen();
+                        claudeCommandIndex++;
+                        enqueueChunk(renderClaudeCommandStarted(parsed.command.command, claudeCommandIndex));
+                      } else if (claudeCommandGroupOpen) {
+                        enqueueChunk(renderClaudeCommandCompleted(parsed.command.output));
+                      }
+                    } else if (!parsed && !stdoutLine.startsWith('{')) {
+                      closeClaudeCommandGroup();
+                      enqueueChunk(stdoutLine + '\n');
+                    }
+                    break;
+                  }
 
                   // Codex --json mode: parse structured events, stream everything
                   if (isJsonMode && stdoutLine.startsWith('{') && stdoutLine.includes('"type"')) {
                     try {
-                      const jsonEvt = JSON.parse(stdoutLine);
-
-                      // Agent reply — close details block first, then stream reply text
-                      if (jsonEvt.type === 'item.completed' && jsonEvt.item?.type === 'agent_message' && jsonEvt.item?.text) {
-                        closeDetails();
-                        enqueueChunk(jsonEvt.item.text + '\n');
+                      const parsed = parseCodexJsonLine(stdoutLine);
+                      if (parsed?.sessionId && parsed.sessionId !== codexSessionId) {
+                        codexSessionId = parsed.sessionId;
+                        enqueueEvent({
+                          type: 'tool_session',
+                          adapter: 'codex',
+                          sessionId: parsed.sessionId,
+                        });
                       }
-                      // Thinking / reasoning — stream inside details block
-                      else if (jsonEvt.type === 'item.completed' && jsonEvt.item?.type === 'reasoning' && jsonEvt.item?.text) {
-                        ensureDetailsOpen();
-                        enqueueChunk(`💭 **思考中**\n\n> ${jsonEvt.item.text.replace(/\n/g, '\n> ')}\n\n`);
-                      }
-                      // Command started — stream immediately
-                      else if (jsonEvt.type === 'item.started' && jsonEvt.item?.type === 'command_execution') {
-                        stepCount++;
-                        ensureDetailsOpen();
-                        const cmd = jsonEvt.item.command || '(unknown)';
-                        const cmdShort = cmd.length > 120 ? cmd.slice(0, 117) + '...' : cmd;
-                        enqueueChunk(`\n---\n\n▶ **Step ${stepCount}** — \`${cmdShort}\`\n\n`);
-                      }
-                      // Command completed — stream result
-                      else if (jsonEvt.type === 'item.completed' && jsonEvt.item?.type === 'command_execution') {
-                        ensureDetailsOpen();
-                        const exitCode = jsonEvt.item.exit_code ?? 0;
-                        const status = exitCode === 0 ? '✅ 成功' : `❌ 失败 (exit ${exitCode})`;
-                        enqueueChunk(`${status}\n`);
-                        if (jsonEvt.item.output) {
-                          const outShort = jsonEvt.item.output.length > 500
-                            ? jsonEvt.item.output.slice(0, 497) + '...'
-                            : jsonEvt.item.output;
-                          enqueueChunk(`\n\`\`\`\n${outShort}\n\`\`\`\n\n`);
+                      if (parsed?.error) {
+                        closeCodexCommandGroup();
+                        enqueueEvent({
+                          type: 'error',
+                          content: `\n**[Codex error]** ${parsed.error}\n`,
+                          error: parsed.error,
+                        });
+                      } else if (parsed?.command) {
+                        ensureCodexCommandGroupOpen();
+                        if (parsed.command.phase === 'started') {
+                          codexCommandIndex++;
+                          enqueueChunk(renderCodexCommandStarted(parsed.command.command, codexCommandIndex));
+                        } else {
+                          enqueueChunk(renderCodexCommandCompleted(parsed.command.exitCode, parsed.command.output));
                         }
+                      } else if (parsed?.content) {
+                        closeCodexCommandGroup();
+                        enqueueChunk(parsed.content);
                       }
-                      // Skip turn.started, turn.completed, thread.started silently
                     } catch {
+                      closeCodexCommandGroup();
                       // Not valid JSON, show as-is
                       enqueueChunk(stdoutLine + '\n');
                     }
                   } else {
+                    closeCodexCommandGroup();
+                    closeClaudeCommandGroup();
+                    closeOpenCodeCommandGroup();
                     // Non-JSON stdout (opencode, claude, etc.) — show as-is
                     enqueueChunk(stdoutLine + '\n');
                   }
@@ -657,12 +800,14 @@ export async function request(url: string, options: RequestInit = {}) {
                 if (!showStderr || typeof payload.content !== 'string') break;
                 // Once auth error is detected, suppress ALL further output
                 if (authErrorDetected) break;
-                const line = payload.content;
+                const line = cleanCliOutputLine(payload.content);
+                if (shouldSuppressCliOutputLine(line)) break;
                 // Filter out noise lines that add no value
                 if (/^(Reading additional input|WARNING:|^\s*$)/.test(line)) break;
                 // Detect auth/token errors — show ONE friendly message then mute
                 if (/401|token.?invalid|unauthorized|session.?ended|auth.?error|app_session_terminated|please.*(log\s*in|sign\s*in)/i.test(line)) {
                   authErrorDetected = true;
+                  closeOpenCodeCommandGroup();
                   enqueueEvent({
                     type: 'error',
                     content: `\n**登录已过期，请在终端重新登录：**\n\`\`\`\ncodex login    # Codex\nclaude login   # Claude Code\n\`\`\`\n`,
@@ -674,14 +819,22 @@ export async function request(url: string, options: RequestInit = {}) {
                 if (/^(OpenAI Codex|-------|workdir:|model:|provider:|approval:|sandbox:|reasoning|session id:)/i.test(line.trim())) break;
                 // In JSON mode, stream stderr as thinking inside the details block
                 if (isJsonMode) {
-                  ensureDetailsOpen();
-                  enqueueChunk(`> 📝 _${line.trim().replace(/_/g, '\\_')}_\n\n`);
+                  if (codexCommandGroupOpen) {
+                    enqueueChunk(`> 📝 _${line.trim().replace(/_/g, '\\_')}_\n\n`);
+                  } else {
+                    ensureDetailsOpen();
+                    enqueueChunk(`> 📝 _${line.trim().replace(/_/g, '\\_')}_\n\n`);
+                  }
                 } else {
+                  closeOpenCodeCommandGroup();
                   enqueueChunk('> _' + line.replace(/_/g, '\\_') + '_\n');
                 }
                 break;
               case 'error':
                 if (typeof payload.message === 'string') {
+                  closeCodexCommandGroup();
+                  closeClaudeCommandGroup();
+                  closeOpenCodeCommandGroup();
                   enqueueEvent({
                     type: 'error',
                     content: `\n**[CLI error]** ${payload.message}\n`,
@@ -691,6 +844,9 @@ export async function request(url: string, options: RequestInit = {}) {
                 break;
               case 'done': {
                 const code = typeof payload.exit_code === 'number' ? payload.exit_code : -1;
+                closeCodexCommandGroup();
+                closeClaudeCommandGroup();
+                closeOpenCodeCommandGroup();
                 closeDetails();
                 const status =
                   code === -2 ? 'cancelled'
@@ -727,6 +883,7 @@ export async function request(url: string, options: RequestInit = {}) {
                 binary: binary || null,
                 extraArgs: extraArgs || null,
                 env: env || null,
+                toolSessionId: toolSessionId || null,
                 timeoutMs: timeoutMs || null,
                 approvalMode,
                 showStderr: showStderr ?? true,

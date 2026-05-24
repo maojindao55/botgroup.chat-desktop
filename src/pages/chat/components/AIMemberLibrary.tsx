@@ -184,7 +184,7 @@ interface AIMemberLibraryProps {
   open: boolean;
   onClose: () => void;
   groups: Group[];
-  /** 桌面端使用内联面板（与 CLI/AI/Agent 群设置一致），移动端走 Drawer */
+  /** 桌面端使用内联面板（与群设置一致），移动端走 Drawer */
   inline?: boolean;
 }
 
@@ -258,13 +258,13 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
         icon: <ShieldAlert style={{ color: '#ff4d4f' }} />,
         content: (
           <div>
-            <p>成员 <strong>{member.name}</strong> 正在被以下群聊使用：</p>
+            <p>资源 <strong>{member.name}</strong> 正在被以下群聊使用：</p>
             <ul>
               {referencing.map(g => (
                 <li key={g.id}>{g.name}</li>
               ))}
             </ul>
-            <p>请先在上述群设置中移除该成员后再进行删除。</p>
+            <p>请先在上述群设置中移除该资源后再进行删除。</p>
           </div>
         ),
         okText: '知道了',
@@ -274,8 +274,8 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
     }
 
     Modal.confirm({
-      title: '确认删除成员？',
-      content: `确定要删除成员「${member.name}」吗？此操作不可撤销。`,
+      title: '确认删除资源？',
+      content: `确定要删除资源「${member.name}」吗？此操作不可撤销。`,
       okText: '确认删除',
       okType: 'danger',
       cancelText: '取消',
@@ -288,11 +288,11 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
   const getKindLabel = (kind: AIMemberKind) => {
     switch (kind) {
       case 'llm':
-        return { label: 'LLM 角色', icon: Cpu, color: 'blue' };
+        return { label: '角色', icon: Cpu, color: 'blue' };
       case 'agent':
-        return { label: 'Agent协作', icon: Sparkles, color: 'purple' };
+        return { label: '专家', icon: Sparkles, color: 'purple' };
       case 'cli':
-        return { label: 'CLI Agent', icon: Terminal, color: 'green' };
+        return { label: '开发群友', icon: Terminal, color: 'green' };
     }
   };
 
@@ -437,7 +437,7 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
               删除
             </Button>
           ) : (
-            <Tooltip title="内置预设成员无法删除">
+            <Tooltip title="内置预设资源无法删除">
               <Button 
                 type="text" 
                 disabled 
@@ -459,7 +459,7 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
     if (listData.length === 0) {
       return (
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '300px' }}>
-          <Empty description={searchQuery ? '没有找到符合条件的成员' : '暂无群员'} />
+          <Empty description={searchQuery ? '没有找到符合条件的资源' : '暂无资源'} />
         </div>
       );
     }
@@ -476,7 +476,7 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
       {activeTab !== 'providers' && (
         <div className={styles.searchBar}>
           <Input
-            placeholder="搜索成员名称、描述或标签..."
+            placeholder="搜索资源名称、描述或标签..."
             prefix={<Search size={16} style={{ opacity: 0.45 }} />}
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
@@ -485,13 +485,13 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
           />
           <Space>
             <Button type="primary" icon={<Plus size={16} />} onClick={() => handleCreate('llm')}>
-              新增 LLM 角色
+              新增角色
             </Button>
             <Button icon={<Plus size={16} />} onClick={() => handleCreate('agent')}>
-              新增 Agent
+              新增专家
             </Button>
             <Button icon={<Plus size={16} />} onClick={() => handleCreate('cli')}>
-              新增 CLI Agent
+              新增开发群友
             </Button>
           </Space>
         </div>
@@ -499,16 +499,16 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
 
       <div className={styles.tabContainer}>
         <Tabs activeKey={activeTab} onChange={setActiveTab}>
-          <Tabs.TabPane tab="全部" key="all">
+          <Tabs.TabPane tab="全部资源" key="all">
             {renderTabContent()}
           </Tabs.TabPane>
-          <Tabs.TabPane tab="LLM 角色" key="llm">
+          <Tabs.TabPane tab="角色" key="llm">
             {renderTabContent('llm')}
           </Tabs.TabPane>
-          <Tabs.TabPane tab="Agent 协作" key="agent">
+          <Tabs.TabPane tab="专家" key="agent">
             {renderTabContent('agent')}
           </Tabs.TabPane>
-          <Tabs.TabPane tab="CLI Agent" key="cli">
+          <Tabs.TabPane tab="开发群友" key="cli">
             {renderTabContent('cli')}
           </Tabs.TabPane>
           <Tabs.TabPane tab="模型服务" key="providers">
@@ -545,7 +545,7 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
     </>
   );
 
-  // 桌面端：与 CLI/AI/Agent 群设置一致的右侧推入式面板
+  // 桌面端：与群设置一致的右侧推入式面板
   if (inline) {
     if (!open) return editor;
     return (
@@ -554,9 +554,9 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
           <div className={styles.inlineHeader}>
             <span className={styles.inlineTitleWrap}>
               <Users size={18} style={{ color: '#ff6600' }} />
-              AI 群员管理库
+              资源库
             </span>
-            <button className={styles.inlineCloseBtn} onClick={onClose} aria-label="关闭群员库">
+            <button className={styles.inlineCloseBtn} onClick={onClose} aria-label="关闭资源库">
               <X size={16} />
             </button>
           </div>
@@ -574,7 +574,7 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
         title={
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Users size={20} style={{ color: '#ff6600' }} />
-            <span>AI 群员管理库</span>
+            <span>资源库</span>
           </div>
         }
         width={AI_MEMBER_LIBRARY_INLINE_WIDTH}

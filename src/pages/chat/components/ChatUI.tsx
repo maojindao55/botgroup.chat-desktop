@@ -12,6 +12,9 @@ import { ActionIcon, Avatar as LobeAvatar } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 import { request } from '@/utils/request';
 import { executeCLIStrategy } from '@/engine/cliEngine';
+import { isCodeChangeIntent } from '@/engine/cliIntent';
+import { buildCliUserPrompt } from '@/engine/cliPrompt';
+import { cliToolSessionKey, withCliToolSession } from '@/engine/cliToolSessions';
 import type { AICharacter, CLIAgent } from "@/config/aiCharacters";
 import { mapAIMemberToLegacy } from "@/config/aiCharacters";
 import { ChatMarkdown } from '@/components/Markdown';
@@ -422,7 +425,7 @@ const ChatUI = () => {
 
   const handleToggleSettings = (nextOpen: boolean) => {
     if (nextOpen === showSettings) return;
-    // 与「AI 群员库」面板互斥（同一侧位置，避免重叠）
+    // 与「资源库」面板互斥（同一侧位置，避免重叠）
     if (nextOpen && showLibrary) {
       setShowLibrary(false);
       adjustWindowWidthForPanel(-AI_MEMBER_LIBRARY_INLINE_WIDTH);
@@ -603,7 +606,11 @@ const ChatUI = () => {
       localStorage.setItem(`cliStrategy:${nextGroup.id}`, patch.strategy);
     }
     if (patch.executionPlan) {
-      localStorage.setItem(`cliExecutionPlan:${nextGroup.id}`, JSON.stringify(patch.executionPlan));
+      if (Object.keys(patch.executionPlan).length > 0) {
+        localStorage.setItem(`cliExecutionPlan:${nextGroup.id}`, JSON.stringify(patch.executionPlan));
+      } else {
+        localStorage.removeItem(`cliExecutionPlan:${nextGroup.id}`);
+      }
     }
   };
 
@@ -612,8 +619,11 @@ const ChatUI = () => {
     patchCurrentCLIGroup({ strategy: nextStrategy });
   };
 
-  const handleCLIExecutionPlanChange = (patch: Partial<CLIExecutionPlan>) => {
-    const nextPlan = { ...cliExecutionPlan, ...patch };
+  const handleCLIExecutionPlanChange = (
+    patch: Partial<CLIExecutionPlan>,
+    options?: { replace?: boolean },
+  ) => {
+    const nextPlan = options?.replace ? patch : { ...cliExecutionPlan, ...patch };
     setCliExecutionPlan(nextPlan);
     patchCurrentCLIGroup({ executionPlan: nextPlan });
   };
@@ -689,8 +699,14 @@ const ChatUI = () => {
     setIsLoading(true);
     try {
       const m = aiMembers[msg.sender.id];
-      const agent = m && m.kind === 'cli' ? mapAIMemberToLegacy(m) as CLIAgent : undefined;
-      if (!agent) throw new Error('找不到该 Agent 成员');
+      const baseAgent = m && m.kind === 'cli' ? mapAIMemberToLegacy(m) as CLIAgent : undefined;
+      const agent = baseAgent
+        ? withCliToolSession(
+          baseAgent,
+          localStorage.getItem(cliToolSessionKey((group as CLIGroup).id, baseAgent.id, workspacePath)),
+        )
+        : undefined;
+      if (!agent) throw new Error('找不到该开发群友');
       if (approvalMode === 'ask') {
         const confirmed = window.confirm(`确认让 ${agent.name} 在 ${workspacePath || '默认目录'} 执行这次任务？`);
         if (!confirmed) return;
@@ -729,6 +745,11 @@ const ChatUI = () => {
               baseSha: meta?.baseSha,
             };
             setMessages(prev => [...prev, aiMessage]);
+          },
+          onToolSession: (_taskId, agentId, adapter, sessionId) => {
+            if (adapter === 'opencode' || adapter === 'codex' || adapter === 'claude') {
+              localStorage.setItem(cliToolSessionKey((group as CLIGroup).id, agentId, workspacePath), sessionId);
+            }
           },
           onToken: (taskId, token) => {
             setMessages(prev => prev.map(m =>
@@ -781,25 +802,36 @@ const ChatUI = () => {
   };
 
   const handleSendCLIMessage = async (promptText: string) => {
-    let messageHistory = messages.map(msg => ({
-      role: 'user',
-      content: msg.sender.name === userStore.userInfo.nickname ? 'user：' + msg.content : msg.sender.name + '：' + msg.content,
-      name: msg.sender.name,
-    }));
-    const cleanHistory = messageHistory.slice(-6).map((m: any) => m.content).join('\n');
-    const finalPrompt = cleanHistory ? `${cleanHistory}\nuser: ${promptText}` : promptText;
+    const taskPrompt = buildCliUserPrompt(promptText, workspacePath);
 
     const memberIds = (group as CLIGroup).memberIds || (group as CLIGroup).members || [];
     const activeAgents = memberIds
       .map(id => aiMembers[id])
       .filter(m => m && m.kind === 'cli' && !mutedUsers.includes(m.id))
-      .map(m => mapAIMemberToLegacy(m) as CLIAgent);
+      .map(m => mapAIMemberToLegacy(m) as CLIAgent)
+      .map(agent => withCliToolSession(
+        agent,
+        localStorage.getItem(cliToolSessionKey((group as CLIGroup).id, agent.id, workspacePath)),
+      ));
 
     if (activeAgents.length === 0) {
       const systemMsg = {
         id: `sys-${Date.now()}`,
         sender: { id: 'sys', name: '系统提示' },
-        content: '群聊中没有启用的 CLI Agent 成员。请在右侧设置面板中开启成员。',
+        content: '群聊中没有启用的开发群友。请在右侧设置面板中添加或开启成员。',
+        isAI: true,
+        isError: true,
+      };
+      setMessages(prev => [...prev, systemMsg]);
+      setIsLoading(false);
+      return;
+    }
+
+    if (cliStrategy === 'discussion' && isCodeChangeIntent(promptText)) {
+      const systemMsg = {
+        id: `sys-${Date.now()}`,
+        sender: { id: 'sys', name: '系统提示' },
+        content: '当前协作方式是“只读讨论”，会在临时只读副本中运行，不会修改你设置的 workspace。要写文件或改代码，请先切换到“写完再审”或“快速响应”。',
         isAI: true,
         isError: true,
       };
@@ -830,7 +862,7 @@ const ChatUI = () => {
       await executeCLIStrategy(
         customGroup,
         activeAgents,
-        finalPrompt,
+        taskPrompt,
         workspacePath,
         {
           onAgentStart: (taskId, agentId, agentName, meta) => {
@@ -844,13 +876,18 @@ const ChatUI = () => {
               isAI: true,
               taskId: taskId,
               status: 'running',
-              prompt: finalPrompt,
+              prompt: taskPrompt,
               stageLabel: meta?.stageLabel,
               cliCwd: meta?.cwd,
               cliBranch: meta?.branch,
               baseSha: meta?.baseSha,
             };
             setMessages(prev => [...prev, aiMessage]);
+          },
+          onToolSession: (_taskId, agentId, adapter, sessionId) => {
+            if (adapter === 'opencode' || adapter === 'codex' || adapter === 'claude') {
+              localStorage.setItem(cliToolSessionKey((group as CLIGroup).id, agentId, workspacePath), sessionId);
+            }
           },
           onToken: (taskId, token) => {
             setMessages(prev => prev.map(m =>
@@ -1422,7 +1459,7 @@ const ChatUI = () => {
                     }
                   }}
                   autoSize={{ minRows: 1, maxRows: 6 }}
-                  placeholder={isCLIGroup ? '输入指令，CLI Agent 将在 workspace 中执行...' : '输入消息...'}
+                  placeholder={isCLIGroup ? '输入代码任务，开发群友将在 workspace 中协作执行...' : '在角色群里输入消息...'}
                   style={{ flex: 1, borderRadius: 12 }}
                 />
                 <AntdButton
@@ -1500,7 +1537,7 @@ const ChatUI = () => {
             />
           )}
 
-          {/* AI 群员库（Desktop Inline） */}
+          {/* 资源库（Desktop Inline） */}
           {!isMobile && (
             <AIMemberLibrary
               inline
@@ -1516,7 +1553,7 @@ const ChatUI = () => {
         <div className={styles.mobileOverlay} onClick={toggleSidebar} />
       )}
 
-      {/* AI 群员库（Mobile Drawer） */}
+      {/* 资源库（Mobile Drawer） */}
       {isMobile && (
         <AIMemberLibrary
           open={showLibrary}
