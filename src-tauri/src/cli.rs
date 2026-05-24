@@ -928,10 +928,24 @@ fn build_command(args: &CliRunArgs) -> Result<Command, String> {
             cmd.arg(&args.prompt);
         }
 
-        // claude -p "<prompt>" [flags]
+        // claude -p [flags] "<prompt>"
         // Print mode (non-interactive). Streams answer to stdout.
         "claude" => {
-            cmd.arg("-p").arg(&args.prompt);
+            cmd.arg("-p");
+            let has_output_format = args.extra_args.as_ref().map_or(false, |extra| {
+                extra
+                    .iter()
+                    .any(|arg| arg == "--output-format" || arg.starts_with("--output-format="))
+            });
+            if !has_output_format {
+                cmd.arg("--output-format").arg("stream-json");
+            }
+            let has_partial_messages = args.extra_args.as_ref().map_or(false, |extra| {
+                extra.iter().any(|arg| arg == "--include-partial-messages")
+            });
+            if !has_partial_messages {
+                cmd.arg("--include-partial-messages");
+            }
             if args.approval_mode.as_deref() == Some("auto") {
                 cmd.arg("--dangerously-skip-permissions");
             }
@@ -940,6 +954,25 @@ fn build_command(args: &CliRunArgs) -> Result<Command, String> {
                     cmd.arg(a);
                 }
             }
+            let has_session = args.extra_args.as_ref().map_or(false, |extra| {
+                extra.iter().any(|arg| {
+                    arg == "--resume"
+                        || arg.starts_with("--resume=")
+                        || arg == "-r"
+                        || arg == "--continue"
+                        || arg == "-c"
+                        || arg == "--session-id"
+                        || arg.starts_with("--session-id=")
+                })
+            });
+            if !has_session {
+                if let Some(tool_session_id) = &args.tool_session_id {
+                    if !tool_session_id.is_empty() {
+                        cmd.arg("--resume").arg(tool_session_id);
+                    }
+                }
+            }
+            cmd.arg(&args.prompt);
         }
 
         // aider --message "<prompt>" --yes-always [flags]
@@ -1126,6 +1159,89 @@ mod tests {
             show_stderr: Some(true),
         })
         .expect("codex command should build");
+
+        let rendered = format!("{:?}", cmd);
+
+        assert!(rendered.contains("\"manual-session\""));
+        assert!(!rendered.contains("\"stored-session\""));
+    }
+
+    #[test]
+    fn claude_print_defaults_to_stream_json() {
+        let cmd = build_command(&CliRunArgs {
+            session_id: "session-1".to_string(),
+            group_id: "group-1".to_string(),
+            agent_id: "cli-claude-code".to_string(),
+            agent_name: "ClaudeCode".to_string(),
+            adapter: "claude".to_string(),
+            prompt: "审查代码".to_string(),
+            cwd: Some("/tmp/project".to_string()),
+            extra_args: None,
+            tool_session_id: None,
+            binary: None,
+            env: Some(HashMap::new()),
+            timeout_ms: Some(300000),
+            approval_mode: Some("auto".to_string()),
+            show_stderr: Some(false),
+        })
+        .expect("claude command should build");
+
+        let rendered = format!("{:?}", cmd);
+
+        assert!(rendered.contains("\"-p\""));
+        assert!(rendered.contains("\"--output-format\""));
+        assert!(rendered.contains("\"stream-json\""));
+        assert!(rendered.contains("\"--include-partial-messages\""));
+        assert!(rendered.contains("\"--dangerously-skip-permissions\""));
+        assert!(rendered.contains("\"审查代码\""));
+    }
+
+    #[test]
+    fn claude_print_resumes_tool_session_when_available() {
+        let cmd = build_command(&CliRunArgs {
+            session_id: "session-1".to_string(),
+            group_id: "group-1".to_string(),
+            agent_id: "cli-claude-code".to_string(),
+            agent_name: "ClaudeCode".to_string(),
+            adapter: "claude".to_string(),
+            prompt: "继续审查".to_string(),
+            cwd: Some("/tmp/project".to_string()),
+            extra_args: None,
+            tool_session_id: Some("7d9c0000-0000-4000-8000-000000000001".to_string()),
+            binary: None,
+            env: Some(HashMap::new()),
+            timeout_ms: Some(300000),
+            approval_mode: Some("auto".to_string()),
+            show_stderr: Some(false),
+        })
+        .expect("claude resume command should build");
+
+        let rendered = format!("{:?}", cmd);
+
+        assert!(rendered.contains("\"--resume\""));
+        assert!(rendered.contains("\"7d9c0000-0000-4000-8000-000000000001\""));
+        assert!(rendered.contains("\"继续审查\""));
+    }
+
+    #[test]
+    fn claude_print_respects_explicit_resume_arg() {
+        let cmd = build_command(&CliRunArgs {
+            session_id: "session-1".to_string(),
+            group_id: "group-1".to_string(),
+            agent_id: "cli-claude-code".to_string(),
+            agent_name: "ClaudeCode".to_string(),
+            adapter: "claude".to_string(),
+            prompt: "继续审查".to_string(),
+            cwd: Some("/tmp/project".to_string()),
+            extra_args: Some(vec!["--resume".to_string(), "manual-session".to_string()]),
+            tool_session_id: Some("stored-session".to_string()),
+            binary: None,
+            env: Some(HashMap::new()),
+            timeout_ms: Some(300000),
+            approval_mode: Some("auto".to_string()),
+            show_stderr: Some(false),
+        })
+        .expect("claude command should build");
 
         let rendered = format!("{:?}", cmd);
 

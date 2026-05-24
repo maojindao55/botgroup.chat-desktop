@@ -5,13 +5,18 @@ export function cliToolSessionKey(groupId: string, agentId: string, workspacePat
 }
 
 export function withCliToolSession(agent: CLIAgent, sessionId: string | null | undefined): CLIAgent {
-  if (agent.cli?.adapter !== 'opencode' && agent.cli?.adapter !== 'codex') return agent;
+  if (agent.cli?.adapter !== 'opencode' && agent.cli?.adapter !== 'codex' && agent.cli?.adapter !== 'claude') return agent;
   if (!sessionId) return agent;
 
   const extraArgs = agent.cli.extraArgs || [];
   const hasExplicitSession = extraArgs.some((arg) =>
     arg === '--session' ||
     arg.startsWith('--session=') ||
+    arg === '--session-id' ||
+    arg.startsWith('--session-id=') ||
+    arg === '--resume' ||
+    arg.startsWith('--resume=') ||
+    arg === '-r' ||
     arg === '-s' ||
     arg === '--continue' ||
     arg === '-c' ||

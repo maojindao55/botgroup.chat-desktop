@@ -91,4 +91,31 @@ assert.equal(
   assert.equal(next, agent);
 }
 
+{
+  const agent = {
+    id: 'cli-claude-code',
+    name: 'ClaudeCode',
+    tags: [],
+    cli: { adapter: 'claude', extraArgs: [] },
+  };
+
+  const next = withCliToolSession(agent, '7d9c0000-0000-4000-8000-000000000001');
+
+  assert.notEqual(next, agent);
+  assert.equal(next.cli.toolSessionId, '7d9c0000-0000-4000-8000-000000000001');
+}
+
+{
+  const agent = {
+    id: 'cli-claude-code',
+    name: 'ClaudeCode',
+    tags: [],
+    cli: { adapter: 'claude', extraArgs: ['--resume', 'manual-session'] },
+  };
+
+  const next = withCliToolSession(agent, '7d9c0000-0000-4000-8000-000000000001');
+
+  assert.equal(next, agent);
+}
+
 console.log('cliToolSessions.test.mjs: ok');

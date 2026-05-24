@@ -7,6 +7,13 @@ import { defaultGroups as staticGroups } from '@/config/groups';
 import { generateAICharacters, cliAgents, modelConfigs } from '@/config/aiCharacters';
 import { builtinAIMembers, type AIMember } from '@/config/aiMembers';
 import { builtinProviders, lookupProviderByEnvName, mapProviderToRust } from '@/config/providers';
+import {
+  parseClaudeJsonLine,
+  renderClaudeCommandCompleted,
+  renderClaudeCommandGroupEnd,
+  renderClaudeCommandGroupStart,
+  renderClaudeCommandStarted,
+} from '@/utils/claudeStream';
 import { cleanCliOutputLine, shouldSuppressCliOutputLine } from '@/utils/cliOutput';
 import {
   parseCodexJsonLine,
@@ -586,9 +593,12 @@ export async function request(url: string, options: RequestInit = {}) {
           // For non-JSON adapters we still stream raw stdout directly.
           let isJsonMode = adapter === 'codex';
           let codexSessionId: string | null = null;
+          let claudeSessionId: string | null = null;
           let opencodeSessionId: string | null = null;
           let codexCommandGroupOpen = false;
           let codexCommandIndex = 0;
+          let claudeCommandGroupOpen = false;
+          let claudeCommandIndex = 0;
           // Track whether we're inside an "intermediate" phase so we can
           // open/close a <details> wrapper around thinking+commands.
           let detailsOpen = false;
@@ -626,6 +636,21 @@ export async function request(url: string, options: RequestInit = {}) {
             }
           };
 
+          const ensureClaudeCommandGroupOpen = () => {
+            if (!claudeCommandGroupOpen) {
+              claudeCommandGroupOpen = true;
+              claudeCommandIndex = 0;
+              enqueueChunk(renderClaudeCommandGroupStart());
+            }
+          };
+
+          const closeClaudeCommandGroup = () => {
+            if (claudeCommandGroupOpen) {
+              claudeCommandGroupOpen = false;
+              enqueueChunk(renderClaudeCommandGroupEnd());
+            }
+          };
+
           unlistenFn = await listen<any>(eventName, (evt) => {
             const payload = evt.payload || {};
             switch (payload.type) {
@@ -655,6 +680,43 @@ export async function request(url: string, options: RequestInit = {}) {
                     } else if (parsed?.content) {
                       enqueueChunk(parsed.content);
                     } else if (!stdoutLine.startsWith('{')) {
+                      enqueueChunk(stdoutLine + '\n');
+                    }
+                    break;
+                  }
+
+                  if (adapter === 'claude') {
+                    const parsed = parseClaudeJsonLine(stdoutLine);
+                    if (parsed?.sessionId && parsed.sessionId !== claudeSessionId) {
+                      claudeSessionId = parsed.sessionId;
+                      enqueueEvent({
+                        type: 'tool_session',
+                        adapter: 'claude',
+                        sessionId: parsed.sessionId,
+                      });
+                    }
+                    if (parsed?.error) {
+                      closeClaudeCommandGroup();
+                      enqueueEvent({
+                        type: 'error',
+                        content: `\n**[Claude Code error]** ${parsed.error}\n`,
+                        error: parsed.error,
+                      });
+                    }
+                    if (parsed?.content) {
+                      closeClaudeCommandGroup();
+                      enqueueChunk(parsed.content);
+                    }
+                    if (parsed?.command) {
+                      if (parsed.command.phase === 'started') {
+                        ensureClaudeCommandGroupOpen();
+                        claudeCommandIndex++;
+                        enqueueChunk(renderClaudeCommandStarted(parsed.command.command, claudeCommandIndex));
+                      } else if (claudeCommandGroupOpen) {
+                        enqueueChunk(renderClaudeCommandCompleted(parsed.command.output));
+                      }
+                    } else if (!parsed && !stdoutLine.startsWith('{')) {
+                      closeClaudeCommandGroup();
                       enqueueChunk(stdoutLine + '\n');
                     }
                     break;
@@ -698,6 +760,7 @@ export async function request(url: string, options: RequestInit = {}) {
                     }
                   } else {
                     closeCodexCommandGroup();
+                    closeClaudeCommandGroup();
                     // Non-JSON stdout (opencode, claude, etc.) — show as-is
                     enqueueChunk(stdoutLine + '\n');
                   }
@@ -738,6 +801,7 @@ export async function request(url: string, options: RequestInit = {}) {
               case 'error':
                 if (typeof payload.message === 'string') {
                   closeCodexCommandGroup();
+                  closeClaudeCommandGroup();
                   enqueueEvent({
                     type: 'error',
                     content: `\n**[CLI error]** ${payload.message}\n`,
@@ -748,6 +812,7 @@ export async function request(url: string, options: RequestInit = {}) {
               case 'done': {
                 const code = typeof payload.exit_code === 'number' ? payload.exit_code : -1;
                 closeCodexCommandGroup();
+                closeClaudeCommandGroup();
                 closeDetails();
                 const status =
                   code === -2 ? 'cancelled'

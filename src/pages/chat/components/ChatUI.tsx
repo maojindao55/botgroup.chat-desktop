@@ -747,7 +747,7 @@ const ChatUI = () => {
             setMessages(prev => [...prev, aiMessage]);
           },
           onToolSession: (_taskId, agentId, adapter, sessionId) => {
-            if (adapter === 'opencode' || adapter === 'codex') {
+            if (adapter === 'opencode' || adapter === 'codex' || adapter === 'claude') {
               localStorage.setItem(cliToolSessionKey((group as CLIGroup).id, agentId, workspacePath), sessionId);
             }
           },
@@ -885,7 +885,7 @@ const ChatUI = () => {
             setMessages(prev => [...prev, aiMessage]);
           },
           onToolSession: (_taskId, agentId, adapter, sessionId) => {
-            if (adapter === 'opencode' || adapter === 'codex') {
+            if (adapter === 'opencode' || adapter === 'codex' || adapter === 'claude') {
               localStorage.setItem(cliToolSessionKey((group as CLIGroup).id, agentId, workspacePath), sessionId);
             }
           },

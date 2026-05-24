@@ -1,8 +1,8 @@
-const completeCodexCommandGroupPattern = /<details open data-cli-command-group="codex">([\s\S]*?)<\/details>/g;
+const completeCliCommandGroupPattern = /<details open data-cli-command-group="(codex|claude)">([\s\S]*?)<\/details>/g;
 
 export function normalizeChatMarkdownContent(content: string): string {
   return content.replace(
-    completeCodexCommandGroupPattern,
-    '<details data-cli-command-group="codex">$1</details>'
+    completeCliCommandGroupPattern,
+    '<details data-cli-command-group="$1">$2</details>'
   );
 }
