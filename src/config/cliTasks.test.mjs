@@ -103,3 +103,41 @@ assert.notEqual(task.messages[0].id, task2.messages[0].id);
   cloned[0].content = 'mutated';
   assert.notEqual(cloned[0].content, task.messages[0].content);
 }
+
+{
+  const archived = { ...task, status: 'archived' };
+  const active = { ...task2, status: 'completed' };
+  const filtered = mod.filterDevelopmentTasks([archived, active, task], {
+    showArchived: false,
+  });
+  assert.equal(filtered.length, 2);
+  assert.ok(!filtered.some(t => t.status === 'archived'));
+}
+
+{
+  const filtered = mod.filterDevelopmentTasks([task, task2], {
+    status: 'queued',
+    templateId: 'group-coding',
+  });
+  assert.equal(filtered.length, 2);
+}
+
+assert.equal(mod.canMutateTask({ ...task, status: 'running' }), false);
+assert.equal(mod.canMutateTask({ ...task, status: 'completed' }), true);
+assert.equal(
+  mod.canMutateTask({
+    ...task,
+    status: 'completed',
+    messages: [
+      ...task.messages,
+      {
+        id: 'msg-running',
+        taskId: task.id,
+        role: 'agent',
+        content: '',
+        status: 'running',
+      },
+    ],
+  }),
+  false,
+);

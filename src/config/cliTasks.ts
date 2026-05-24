@@ -151,3 +151,32 @@ export function deriveTaskStatus(messages: CLITaskMessage[]): CLITaskStatus {
 export function cloneTaskMessages(messages: CLITaskMessage[]): CLITaskMessage[] {
   return messages.map(m => ({ ...m }));
 }
+
+export type CLITaskListFilter = {
+  search?: string;
+  status?: CLITaskStatus | 'all';
+  templateId?: string;
+  showArchived?: boolean;
+};
+
+/** 侧栏任务列表筛选 */
+export function filterDevelopmentTasks(
+  tasks: CLIDevelopmentTask[],
+  filter: CLITaskListFilter,
+): CLIDevelopmentTask[] {
+  const search = filter.search?.trim().toLowerCase();
+  return tasks.filter(task => {
+    if (!filter.showArchived && task.status === 'archived') return false;
+    if (filter.status && filter.status !== 'all' && task.status !== filter.status) return false;
+    if (filter.templateId && task.templateId !== filter.templateId) return false;
+    if (search) {
+      const haystack = `${task.title}\n${task.prompt}`.toLowerCase();
+      if (!haystack.includes(search)) return false;
+    }
+    return true;
+  });
+}
+
+export function canMutateTask(task: CLIDevelopmentTask): boolean {
+  return task.status !== 'running' && !task.messages.some(message => message.status === 'running');
+}

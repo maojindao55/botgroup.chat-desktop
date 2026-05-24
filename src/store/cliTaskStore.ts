@@ -5,6 +5,7 @@ import {
   createDevelopmentTask,
   deriveTaskStatus,
   cliGroupToTeamTemplate,
+  canMutateTask,
 } from '@/config/cliTasks';
 import type { CLIGroup } from '@/config/groups';
 
@@ -21,6 +22,9 @@ interface CLITaskStore {
   updateMessage: (taskId: string, messageId: string, patch: Partial<CLITaskMessage>) => void;
   getTask: (taskId: string) => CLIDevelopmentTask | undefined;
   syncTaskStatus: (taskId: string) => void;
+  archiveTask: (taskId: string) => boolean;
+  restoreTask: (taskId: string) => boolean;
+  deleteTask: (taskId: string) => boolean;
 }
 
 export const useCLITaskStore = create<CLITaskStore>()(
@@ -87,6 +91,28 @@ export const useCLITaskStore = create<CLITaskStore>()(
         if (!task) return;
         const status = deriveTaskStatus(task.messages);
         get().updateTask(taskId, { status });
+      },
+
+      archiveTask: (taskId) => {
+        const task = get().getTask(taskId);
+        if (!task || !canMutateTask(task)) return false;
+        get().updateTask(taskId, { status: 'archived' });
+        return true;
+      },
+
+      restoreTask: (taskId) => {
+        const task = get().getTask(taskId);
+        if (!task || task.status !== 'archived') return false;
+        const status = deriveTaskStatus(task.messages);
+        get().updateTask(taskId, { status });
+        return true;
+      },
+
+      deleteTask: (taskId) => {
+        const task = get().getTask(taskId);
+        if (!task || !canMutateTask(task)) return false;
+        set(state => ({ tasks: state.tasks.filter(t => t.id !== taskId) }));
+        return true;
       },
     }),
     {

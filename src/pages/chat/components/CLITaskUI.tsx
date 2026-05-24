@@ -10,7 +10,7 @@ import {
   Share2,
   Info,
 } from 'lucide-react';
-import { Tooltip, Input as AntdInput, Button as AntdButton, Tag } from 'antd';
+import { Input as AntdInput, Button as AntdButton, Tag, Modal, Select } from 'antd';
 import { ActionIcon, Avatar as LobeAvatar } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 import { request } from '@/utils/request';
@@ -24,6 +24,7 @@ import { ChatMarkdown } from '@/components/Markdown';
 import { SharePoster } from '@/pages/chat/components/SharePoster';
 import CLIGroupSettings from './CLIGroupSettings';
 import CLITaskInfoPanel from './CLITaskInfoPanel';
+import CLITemplateListPanel from './CLITemplateListPanel';
 import CLITaskSidebar from './CLITaskSidebar';
 import Sidebar from './Sidebar';
 import { AdBanner, AdBannerMobile } from './AdSection';
@@ -268,6 +269,9 @@ const CLITaskUI = ({
   const updateTask = useCLITaskStore(s => s.updateTask);
   const appendMessage = useCLITaskStore(s => s.appendMessage);
   const updateMessage = useCLITaskStore(s => s.updateMessage);
+  const archiveTask = useCLITaskStore(s => s.archiveTask);
+  const restoreTask = useCLITaskStore(s => s.restoreTask);
+  const deleteTask = useCLITaskStore(s => s.deleteTask);
 
   const templates = useMemo(() => getTeamTemplatesFromGroups(cliGroups), [cliGroups]);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(initialTaskId || null);
@@ -280,7 +284,10 @@ const CLITaskUI = ({
   const [taskSidebarOpen, setTaskSidebarOpen] = useState(!isMobile);
   const [taskInfoOpen, setTaskInfoOpen] = useState(false);
   const [templateSettingsOpen, setTemplateSettingsOpen] = useState(false);
+  const [templateListOpen, setTemplateListOpen] = useState(false);
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
+  const [forkModalOpen, setForkModalOpen] = useState(false);
+  const [forkTemplateId, setForkTemplateId] = useState('');
   const [showLibrary, setShowLibrary] = useState(false);
   const [showPoster, setShowPoster] = useState(false);
   const [showAd, setShowAd] = useState(false);
@@ -313,6 +320,14 @@ const CLITaskUI = ({
     .map(id => aiMembers[id])
     .filter(m => m && m.kind === 'cli')
     .map(m => mapAIMemberToLegacy(m) as CLIAgent);
+
+  const taskCountByTemplate = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const task of tasks) {
+      counts[task.templateId] = (counts[task.templateId] || 0) + 1;
+    }
+    return counts;
+  }, [tasks]);
 
   useEffect(() => { loadAIMembers(); }, [loadAIMembers]);
   useEffect(() => { if (isMobile !== undefined) { setSidebarOpen(!isMobile); setTaskSidebarOpen(!isMobile); } }, [isMobile]);
@@ -594,23 +609,64 @@ const CLITaskUI = ({
     onUpdateCLIGroup({ ...editingCLIGroup, ...updates });
   };
 
-  const openTemplateSettings = (templateId?: string) => {
-    const id = templateId || selectedTemplateId || templates[0]?.id;
-    if (!id) return;
-    setEditingTemplateId(id);
+  const openTemplateSettings = (templateId: string) => {
+    setEditingTemplateId(templateId);
+    if (templateListOpen) {
+      handleToggleTemplateList(false);
+    }
     if (!templateSettingsOpen) {
       handleToggleTemplateSettings(true);
     }
   };
 
+  const openTemplateList = () => {
+    if (taskInfoOpen) handleToggleTaskInfo(false);
+    if (templateSettingsOpen) handleToggleTemplateSettings(false);
+    if (!templateListOpen) {
+      handleToggleTemplateList(true);
+    }
+  };
+
   const handleCreateTaskFromThis = () => {
     if (!selectedTask) return;
+    setForkTemplateId(selectedTask.templateId);
+    setForkModalOpen(true);
+  };
+
+  const confirmForkTask = () => {
+    if (!selectedTask) return;
+    const tmpl = templates.find(t => t.id === forkTemplateId);
+    if (!tmpl) return;
     setInputMessage(selectedTask.prompt);
-    setSelectedTemplateId(selectedTask.templateId);
+    setSelectedTemplateId(forkTemplateId);
     setIsDraftMode(true);
     setSelectedTaskId(null);
     setTaskInfoOpen(false);
     setShowNewTaskPanel(true);
+    setForkModalOpen(false);
+    navigateToList();
+  };
+
+  const handleArchiveTask = () => {
+    if (!selectedTask) return;
+    if (archiveTask(selectedTask.id)) {
+      handleToggleTaskInfo(false);
+    }
+  };
+
+  const handleRestoreTask = () => {
+    if (!selectedTask) return;
+    restoreTask(selectedTask.id);
+  };
+
+  const handleDeleteTask = () => {
+    if (!selectedTask) return;
+    const confirmed = window.confirm(`确定删除任务「${selectedTask.title}」？此操作不可恢复。`);
+    if (!confirmed) return;
+    if (!deleteTask(selectedTask.id)) return;
+    handleToggleTaskInfo(false);
+    setSelectedTaskId(null);
+    setIsDraftMode(true);
     navigateToList();
   };
 
@@ -622,6 +678,7 @@ const CLITaskUI = ({
       cancelled: { color: 'warning', label: '已取消' },
       timeout: { color: 'error', label: '超时' },
       queued: { color: 'default', label: '排队' },
+      archived: { color: 'default', label: '已归档' },
     };
     const info = map[status] || map.queued;
     return <Tag color={info.color}>{info.label}</Tag>;
@@ -632,6 +689,7 @@ const CLITaskUI = ({
   const closeSidePanels = () => {
     if (taskInfoOpen) handleToggleTaskInfo(false);
     if (templateSettingsOpen) handleToggleTemplateSettings(false);
+    if (templateListOpen) handleToggleTemplateList(false);
     if (showLibrary) handleToggleLibrary(false);
   };
 
@@ -657,9 +715,21 @@ const CLITaskUI = ({
     if (nextOpen === taskInfoOpen) return;
     if (nextOpen) {
       if (templateSettingsOpen) handleToggleTemplateSettings(false);
+      if (templateListOpen) handleToggleTemplateList(false);
       if (showLibrary) handleToggleLibrary(false);
     }
     setTaskInfoOpen(nextOpen);
+    adjustWindowWidthForPanel(nextOpen ? settingsPanelWidth : -settingsPanelWidth);
+  };
+
+  const handleToggleTemplateList = (nextOpen: boolean) => {
+    if (nextOpen === templateListOpen) return;
+    if (nextOpen) {
+      if (taskInfoOpen) handleToggleTaskInfo(false);
+      if (templateSettingsOpen) handleToggleTemplateSettings(false);
+      if (showLibrary) handleToggleLibrary(false);
+    }
+    setTemplateListOpen(nextOpen);
     adjustWindowWidthForPanel(nextOpen ? settingsPanelWidth : -settingsPanelWidth);
   };
 
@@ -667,6 +737,7 @@ const CLITaskUI = ({
     if (nextOpen === templateSettingsOpen) return;
     if (nextOpen) {
       if (taskInfoOpen) handleToggleTaskInfo(false);
+      if (templateListOpen) handleToggleTemplateList(false);
       if (showLibrary) handleToggleLibrary(false);
     }
     setTemplateSettingsOpen(nextOpen);
@@ -683,6 +754,25 @@ const CLITaskUI = ({
 
   return (
     <>
+      <Modal
+        title="从此任务创建新任务"
+        open={forkModalOpen}
+        onCancel={() => setForkModalOpen(false)}
+        onOk={confirmForkTask}
+        okText="创建新任务"
+        cancelText="取消"
+      >
+        <p style={{ fontSize: 13, marginBottom: 12, opacity: 0.75 }}>
+          将复制当前任务的需求描述，并使用所选团队模板创建一条隔离的新任务。
+        </p>
+        <Select
+          value={forkTemplateId || undefined}
+          onChange={setForkTemplateId}
+          style={{ width: '100%' }}
+          options={templates.map(t => ({ value: t.id, label: t.name }))}
+        />
+      </Modal>
+
       {showPoster && selectedTask && (
         <SharePoster
           messages={chatMessages}
@@ -697,6 +787,19 @@ const CLITaskUI = ({
           task={selectedTask}
           members={aiMembers}
           onCreateTaskFromThis={selectedTask ? handleCreateTaskFromThis : undefined}
+          onArchiveTask={handleArchiveTask}
+          onRestoreTask={handleRestoreTask}
+          onDeleteTask={handleDeleteTask}
+        />
+      )}
+
+      {isMobile && (
+        <CLITemplateListPanel
+          open={templateListOpen}
+          onOpenChange={handleToggleTemplateList}
+          templates={templates}
+          taskCountByTemplate={taskCountByTemplate}
+          onOpenTemplateSettings={openTemplateSettings}
         />
       )}
 
@@ -758,6 +861,7 @@ const CLITaskUI = ({
             showNewTaskPanel={showNewTaskPanel}
             onToggleNewTaskPanel={setShowNewTaskPanel}
             onManageTemplate={openTemplateSettings}
+            onOpenTemplateList={openTemplateList}
           />
 
           <div className={styles.rightCol}>
@@ -972,6 +1076,20 @@ const CLITaskUI = ({
               members={aiMembers}
               inline
               onCreateTaskFromThis={selectedTask ? handleCreateTaskFromThis : undefined}
+              onArchiveTask={handleArchiveTask}
+              onRestoreTask={handleRestoreTask}
+              onDeleteTask={handleDeleteTask}
+            />
+          )}
+
+          {!isMobile && templateListOpen && (
+            <CLITemplateListPanel
+              open
+              onOpenChange={handleToggleTemplateList}
+              templates={templates}
+              taskCountByTemplate={taskCountByTemplate}
+              onOpenTemplateSettings={openTemplateSettings}
+              inline
             />
           )}
 

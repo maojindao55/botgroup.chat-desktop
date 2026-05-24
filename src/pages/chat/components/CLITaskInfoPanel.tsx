@@ -1,11 +1,12 @@
 /**
  * 开发任务信息面板 — 只读展示任务元数据与创建时的 templateSnapshot
  */
-import { Drawer, Tag } from 'antd';
+import { Drawer, Tag, Button } from 'antd';
 import { X } from 'lucide-react';
 import { createStyles } from 'antd-style';
 import { cliWorkflowTemplates } from '@/config/groupProduct';
 import type { CLIDevelopmentTask, CLITaskStatus } from '@/config/cliTasks';
+import { canMutateTask } from '@/config/cliTasks';
 import type { AIMember } from '@/config/aiMembers';
 
 const statusLabels: Record<CLITaskStatus, { label: string; color: string }> = {
@@ -113,6 +114,19 @@ const useStyles = createStyles(({ token, css }) => ({
       color: #ff6600;
     }
   `,
+  actionRow: css`
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  `,
+  dangerBtn: css`
+    border-color: ${token.colorErrorBorder};
+    color: ${token.colorError};
+    &:hover {
+      border-color: ${token.colorError};
+      color: ${token.colorError};
+    }
+  `,
 }));
 
 interface CLITaskInfoPanelProps {
@@ -122,6 +136,9 @@ interface CLITaskInfoPanelProps {
   members: Record<string, AIMember>;
   inline?: boolean;
   onCreateTaskFromThis?: () => void;
+  onArchiveTask?: () => void;
+  onRestoreTask?: () => void;
+  onDeleteTask?: () => void;
 }
 
 function formatDateTime(iso: string) {
@@ -154,6 +171,9 @@ export const CLITaskInfoPanel = ({
   members,
   inline,
   onCreateTaskFromThis,
+  onArchiveTask,
+  onRestoreTask,
+  onDeleteTask,
 }: CLITaskInfoPanelProps) => {
   const { styles } = useStyles();
 
@@ -177,6 +197,7 @@ export const CLITaskInfoPanel = ({
   const snapshotMembers = snapshot.memberIds
     .map(id => members[id])
     .filter(Boolean);
+  const mutable = canMutateTask(task);
 
   const body = (
     <div className={styles.content}>
@@ -242,11 +263,31 @@ export const CLITaskInfoPanel = ({
         </div>
       </div>
 
-      {onCreateTaskFromThis && (
-        <button type="button" className={styles.actionBtn} onClick={onCreateTaskFromThis}>
-          从此任务创建新任务
-        </button>
-      )}
+      <div className={styles.actionRow}>
+        {onCreateTaskFromThis && (
+          <button type="button" className={styles.actionBtn} onClick={onCreateTaskFromThis}>
+            从此任务创建新任务
+          </button>
+        )}
+        {task.status === 'archived' && onRestoreTask && (
+          <Button block onClick={onRestoreTask}>
+            恢复任务
+          </Button>
+        )}
+        {task.status !== 'archived' && onArchiveTask && (
+          <Button block disabled={!mutable} onClick={onArchiveTask}>
+            归档任务
+          </Button>
+        )}
+        {onDeleteTask && (
+          <Button block danger disabled={!mutable} onClick={onDeleteTask}>
+            删除任务
+          </Button>
+        )}
+        {!mutable && (
+          <div className={styles.hint}>任务运行中，暂不可归档或删除。</div>
+        )}
+      </div>
     </div>
   );
 

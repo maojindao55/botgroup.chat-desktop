@@ -9,10 +9,11 @@ import {
   Settings2,
   Users,
 } from 'lucide-react';
-import { Input, Tag, Tooltip } from 'antd';
+import { Input, Tag, Tooltip, Select, Checkbox } from 'antd';
 import { ActionIcon } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 import type { CLIDevelopmentTask, CLITaskStatus, CLITeamTemplate } from '@/config/cliTasks';
+import { filterDevelopmentTasks } from '@/config/cliTasks';
 
 const statusLabels: Record<CLITaskStatus, { label: string; color: string }> = {
   queued: { label: '排队', color: 'default' },
@@ -158,6 +159,13 @@ const useStyles = createStyles(({ token, css }) => ({
       color: #ff6600;
     }
   `,
+  filterRow: css`
+    padding: 0 12px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: none;
+  `,
   footerActions: css`
     padding: 0 12px 12px;
     display: flex;
@@ -180,6 +188,7 @@ interface CLITaskSidebarProps {
   showNewTaskPanel: boolean;
   onToggleNewTaskPanel: (open: boolean) => void;
   onManageTemplate: (templateId?: string) => void;
+  onOpenTemplateList: () => void;
 }
 
 export const CLITaskSidebar = ({
@@ -195,14 +204,20 @@ export const CLITaskSidebar = ({
   showNewTaskPanel,
   onToggleNewTaskPanel,
   onManageTemplate,
+  onOpenTemplateList,
 }: CLITaskSidebarProps) => {
   const { styles, cx } = useStyles();
   const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<CLITaskStatus | 'all'>('all');
+  const [templateFilter, setTemplateFilter] = useState<string>('');
+  const [showArchived, setShowArchived] = useState(false);
 
-  const filteredTasks = tasks.filter(t =>
-    t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    t.prompt.toLowerCase().includes(searchQuery.toLowerCase()),
-  );
+  const filteredTasks = filterDevelopmentTasks(tasks, {
+    search: searchQuery,
+    status: statusFilter,
+    templateId: templateFilter || undefined,
+    showArchived,
+  });
 
   const formatTime = (iso: string) => {
     try {
@@ -252,10 +267,47 @@ export const CLITaskSidebar = ({
             </div>
           )}
 
+          <div className={styles.filterRow}>
+            <Select
+              size="small"
+              value={statusFilter}
+              onChange={setStatusFilter}
+              style={{ width: '100%' }}
+              options={[
+                { value: 'all', label: '全部状态' },
+                { value: 'running', label: '运行中' },
+                { value: 'queued', label: '排队' },
+                { value: 'completed', label: '已完成' },
+                { value: 'failed', label: '失败' },
+                { value: 'cancelled', label: '已取消' },
+                { value: 'timeout', label: '超时' },
+                { value: 'archived', label: '已归档' },
+              ]}
+            />
+            <Select
+              size="small"
+              value={templateFilter || undefined}
+              placeholder="全部模板"
+              allowClear
+              onChange={(v) => setTemplateFilter(v || '')}
+              style={{ width: '100%' }}
+              options={templates.map(t => ({ value: t.id, label: t.name }))}
+            />
+            <Checkbox
+              checked={showArchived}
+              onChange={(e) => setShowArchived(e.target.checked)}
+              style={{ fontSize: 11 }}
+            >
+              显示已归档
+            </Checkbox>
+          </div>
+
           <nav className={styles.navList}>
             {filteredTasks.length === 0 && (
               <div className={styles.empty}>
-                {searchQuery ? '未找到匹配任务' : '还没有开发任务\n点击下方创建第一个'}
+                {searchQuery || statusFilter !== 'all' || templateFilter
+                  ? '未找到匹配任务'
+                  : '还没有开发任务\n点击下方创建第一个'}
               </div>
             )}
             {filteredTasks.map(task => {
@@ -293,7 +345,7 @@ export const CLITaskSidebar = ({
 
             <button
               className={styles.createBtn}
-              onClick={() => onManageTemplate()}
+              onClick={onOpenTemplateList}
               style={{ margin: 0 }}
             >
               <Users size={14} />
