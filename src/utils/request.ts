@@ -7,6 +7,7 @@ import { defaultGroups as staticGroups } from '@/config/groups';
 import { generateAICharacters, cliAgents, modelConfigs } from '@/config/aiCharacters';
 import { builtinAIMembers, type AIMember } from '@/config/aiMembers';
 import { builtinProviders, lookupProviderByEnvName, mapProviderToRust } from '@/config/providers';
+import { cleanCliOutputLine, shouldSuppressCliOutputLine } from '@/utils/cliOutput';
 
 const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
 if (isTauri) {
@@ -604,7 +605,8 @@ export async function request(url: string, options: RequestInit = {}) {
                 break;
               case 'stdout':
                 if (typeof payload.content === 'string' && !authErrorDetected) {
-                  const stdoutLine = payload.content;
+                  const stdoutLine = cleanCliOutputLine(payload.content);
+                  if (shouldSuppressCliOutputLine(stdoutLine)) break;
 
                   // Codex --json mode: parse structured events, stream everything
                   if (isJsonMode && stdoutLine.startsWith('{') && stdoutLine.includes('"type"')) {
@@ -657,7 +659,8 @@ export async function request(url: string, options: RequestInit = {}) {
                 if (!showStderr || typeof payload.content !== 'string') break;
                 // Once auth error is detected, suppress ALL further output
                 if (authErrorDetected) break;
-                const line = payload.content;
+                const line = cleanCliOutputLine(payload.content);
+                if (shouldSuppressCliOutputLine(line)) break;
                 // Filter out noise lines that add no value
                 if (/^(Reading additional input|WARNING:|^\s*$)/.test(line)) break;
                 // Detect auth/token errors — show ONE friendly message then mute
