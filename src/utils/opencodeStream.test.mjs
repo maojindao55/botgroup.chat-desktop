@@ -40,10 +40,60 @@ const { parseOpenCodeJsonLine } = await importTsModule(new URL('./opencodeStream
   const parsed = parseOpenCodeJsonLine(JSON.stringify({
     type: 'tool_use',
     sessionID: 'ses_abc123',
-    part: { tool: 'read', state: { title: 'Read package.json' } },
+    part: {
+      tool: 'read',
+      state: {
+        title: 'Read package.json',
+        input: { filePath: 'package.json' },
+        output: '{ "name": "demo" }',
+      },
+    },
   }));
 
-  assert.deepEqual(parsed, { sessionId: 'ses_abc123', content: '→ Read package.json\n' });
+  assert.equal(parsed.sessionId, 'ses_abc123');
+  assert.match(parsed.content, /<details open><summary>→ Read package\.json<\/summary>/);
+  assert.match(parsed.content, /```json\n\{\n  "filePath": "package\.json"\n\}\n```/);
+  assert.match(parsed.content, /```\n\{ "name": "demo" \}\n```/);
+  assert.match(parsed.content, /<\/details>/);
+}
+
+{
+  const parsed = parseOpenCodeJsonLine(JSON.stringify({
+    type: 'reasoning',
+    sessionID: 'ses_abc123',
+    part: { type: 'reasoning', text: 'Need inspect files' },
+  }));
+
+  assert.equal(parsed.sessionId, 'ses_abc123');
+  assert.match(parsed.content, /<details open><summary>💭 思考<\/summary>/);
+  assert.match(parsed.content, /> Need inspect files/);
+}
+
+{
+  const parsed = parseOpenCodeJsonLine(JSON.stringify({
+    type: 'step_finish',
+    sessionID: 'ses_abc123',
+    part: {
+      reason: 'tool-calls',
+      cost: 0.001,
+      tokens: { input: 100, output: 20, reasoning: 3 },
+    },
+  }));
+
+  assert.equal(parsed.sessionId, 'ses_abc123');
+  assert.match(parsed.content, /<details><summary>✓ Step: tool-calls<\/summary>/);
+  assert.match(parsed.content, /cost: \$0\.001/);
+  assert.match(parsed.content, /tokens: input 100, output 20, reasoning 3/);
+}
+
+{
+  const parsed = parseOpenCodeJsonLine(JSON.stringify({
+    type: 'step_finish',
+    sessionID: 'ses_abc123',
+    part: { reason: 'stop' },
+  }));
+
+  assert.deepEqual(parsed, { sessionId: 'ses_abc123' });
 }
 
 {
