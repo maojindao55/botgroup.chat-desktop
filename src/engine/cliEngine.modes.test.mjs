@@ -51,9 +51,10 @@ function baseGroup(strategy, executionPlan = undefined) {
   };
 }
 
-function sseResponse(content, extraDone = {}) {
+function sseResponse(content, extraDone = {}, beforeContent = []) {
   const encoder = new TextEncoder();
   const payload = [
+    ...beforeContent.map(event => `data: ${JSON.stringify(event)}\n\n`),
     `data: ${JSON.stringify({ content })}\n\n`,
     `data: ${JSON.stringify({ type: 'done', exitCode: 0, status: 'completed', ...extraDone })}\n\n`,
     'data: [DONE]\n\n',
@@ -317,6 +318,40 @@ function runBodies(calls) {
   assert.match(bodies[0].prompt, /不要修改文件/);
   assert.match(bodies[2].prompt, /以下是上一轮讨论记录/);
   assert.ok(harness.calls.some(call => call.url === '/api/cli/tempcopy/cleanup'));
+}
+
+{
+  const harness = createHarness();
+  const toolSessions = [];
+  const request = async (url, init = {}) => {
+    harness.calls.push({ url, init });
+    if (url === '/api/cli/run') {
+      return sseResponse(
+        'opencode output',
+        {},
+        [{ type: 'tool_session', adapter: 'opencode', sessionId: 'ses_abc123' }],
+      );
+    }
+    return harness.request(url, init);
+  };
+  const { executeCLIStrategy } = await loadEngine(request);
+  const results = await executeCLIStrategy(
+    baseGroup('sequential'),
+    [agents[2]],
+    'continue the task',
+    '/workspace/project',
+    {
+      ...harness.callbacks,
+      onToolSession(taskId, agentId, adapter, sessionId) {
+        toolSessions.push({ taskId, agentId, adapter, sessionId });
+      },
+    },
+  );
+
+  assert.equal(results[0].toolSessionId, 'ses_abc123');
+  assert.deepEqual(toolSessions.map(s => [s.agentId, s.adapter, s.sessionId]), [
+    ['cli-opencode', 'opencode', 'ses_abc123'],
+  ]);
 }
 
 console.log('CLI engine mode tests passed');

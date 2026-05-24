@@ -39,6 +39,8 @@ export interface CLIRunResult {
   baseSha?: string;
   /** 用户是否标记采用此结果 */
   adopted?: boolean;
+  /** 底层 CLI 工具自己的会话 ID，例如 OpenCode sessionID */
+  toolSessionId?: string;
 }
 
 export interface CLIStreamCallback {
@@ -46,6 +48,7 @@ export interface CLIStreamCallback {
   onToken: (taskId: string, token: string) => void;
   onAgentEnd: (taskId: string, fullContent: string) => void;
   onError: (taskId: string, error: string) => void;
+  onToolSession?: (taskId: string, agentId: string, adapter: string, sessionId: string) => void;
 }
 
 export interface CLIAgentMeta {
@@ -160,6 +163,7 @@ async function callCLIAgent(
   let failed = false;
   let errorMessage = '';
   let status: CLIRunStatus | undefined;
+  let toolSessionId: string | undefined;
 
   try {
     const response = await request('/api/cli/run', {
@@ -201,6 +205,10 @@ async function callCLIAgent(
             if (data.type === 'error') {
               failed = true;
               errorMessage = data.error || data.content || 'CLI 执行出错';
+            }
+            if (data.type === 'tool_session' && typeof data.sessionId === 'string') {
+              toolSessionId = data.sessionId;
+              callbacks.onToolSession?.(sessionId, agent.id, data.adapter || cliCfg.adapter, data.sessionId);
             }
             if (data.type === 'done') {
               exitCode = typeof data.exitCode === 'number' ? data.exitCode : exitCode;
@@ -261,6 +269,7 @@ async function callCLIAgent(
     branch: ctx.branchName,
     stageLabel: meta.stageLabel,
     baseSha: ctx.baseSha,
+    toolSessionId,
   };
 }
 

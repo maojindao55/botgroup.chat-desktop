@@ -8,6 +8,7 @@ import { generateAICharacters, cliAgents, modelConfigs } from '@/config/aiCharac
 import { builtinAIMembers, type AIMember } from '@/config/aiMembers';
 import { builtinProviders, lookupProviderByEnvName, mapProviderToRust } from '@/config/providers';
 import { cleanCliOutputLine, shouldSuppressCliOutputLine } from '@/utils/cliOutput';
+import { parseOpenCodeJsonLine } from '@/utils/opencodeStream';
 
 const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
 if (isTauri) {
@@ -576,6 +577,7 @@ export async function request(url: string, options: RequestInit = {}) {
           // Thinking & commands use a subdued visual style so the final reply stands out.
           // For non-JSON adapters we still stream raw stdout directly.
           let isJsonMode = adapter === 'codex';
+          let opencodeSessionId: string | null = null;
           // Track whether we're inside an "intermediate" phase so we can
           // open/close a <details> wrapper around thinking+commands.
           let detailsOpen = false;
@@ -607,6 +609,30 @@ export async function request(url: string, options: RequestInit = {}) {
                 if (typeof payload.content === 'string' && !authErrorDetected) {
                   const stdoutLine = cleanCliOutputLine(payload.content);
                   if (shouldSuppressCliOutputLine(stdoutLine)) break;
+
+                  if (adapter === 'opencode') {
+                    const parsed = parseOpenCodeJsonLine(stdoutLine);
+                    if (parsed?.sessionId && parsed.sessionId !== opencodeSessionId) {
+                      opencodeSessionId = parsed.sessionId;
+                      enqueueEvent({
+                        type: 'tool_session',
+                        adapter: 'opencode',
+                        sessionId: parsed.sessionId,
+                      });
+                    }
+                    if (parsed?.error) {
+                      enqueueEvent({
+                        type: 'error',
+                        content: `\n**[OpenCode error]** ${parsed.error}\n`,
+                        error: parsed.error,
+                      });
+                    } else if (parsed?.content) {
+                      enqueueChunk(parsed.content);
+                    } else if (!stdoutLine.startsWith('{')) {
+                      enqueueChunk(stdoutLine + '\n');
+                    }
+                    break;
+                  }
 
                   // Codex --json mode: parse structured events, stream everything
                   if (isJsonMode && stdoutLine.startsWith('{') && stdoutLine.includes('"type"')) {

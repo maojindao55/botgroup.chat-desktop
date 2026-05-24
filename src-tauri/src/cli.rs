@@ -884,6 +884,12 @@ fn build_command(args: &CliRunArgs) -> Result<Command, String> {
         // Headless mode; positional prompt at the end, no stdin support.
         "opencode" => {
             cmd.arg("run");
+            let has_format = args.extra_args.as_ref().map_or(false, |extra| {
+                extra.iter().any(|arg| arg == "--format" || arg.starts_with("--format="))
+            });
+            if !has_format {
+                cmd.arg("--format").arg("json");
+            }
             if let Some(extra) = &args.extra_args {
                 for a in extra {
                     cmd.arg(a);
@@ -1036,6 +1042,84 @@ mod tests {
         assert!(rendered.contains("\"exec\""));
         assert!(rendered.contains("\"--skip-git-repo-check\""));
         assert!(rendered.contains("\"写一个冒泡排序文件\""));
+    }
+
+    #[test]
+    fn opencode_run_defaults_to_json_format() {
+        let cmd = build_command(&CliRunArgs {
+            session_id: "session-1".to_string(),
+            group_id: "group-1".to_string(),
+            agent_id: "cli-opencode".to_string(),
+            agent_name: "OpenCode".to_string(),
+            adapter: "opencode".to_string(),
+            prompt: "继续刚才的任务".to_string(),
+            cwd: Some("/tmp/project".to_string()),
+            extra_args: Some(vec!["--pure".to_string()]),
+            binary: None,
+            env: Some(HashMap::new()),
+            timeout_ms: Some(300000),
+            approval_mode: Some("auto".to_string()),
+            show_stderr: Some(true),
+        })
+        .expect("opencode command should build");
+
+        let rendered = format!("{:?}", cmd);
+
+        assert!(rendered.contains("\"run\""));
+        assert!(rendered.contains("\"--format\""));
+        assert!(rendered.contains("\"json\""));
+        assert!(rendered.contains("\"--pure\""));
+        assert!(rendered.contains("\"继续刚才的任务\""));
+    }
+
+    #[test]
+    fn opencode_run_respects_explicit_format_arg() {
+        let cmd = build_command(&CliRunArgs {
+            session_id: "session-1".to_string(),
+            group_id: "group-1".to_string(),
+            agent_id: "cli-opencode".to_string(),
+            agent_name: "OpenCode".to_string(),
+            adapter: "opencode".to_string(),
+            prompt: "继续刚才的任务".to_string(),
+            cwd: Some("/tmp/project".to_string()),
+            extra_args: Some(vec!["--format".to_string(), "default".to_string()]),
+            binary: None,
+            env: Some(HashMap::new()),
+            timeout_ms: Some(300000),
+            approval_mode: Some("auto".to_string()),
+            show_stderr: Some(true),
+        })
+        .expect("opencode command should build");
+
+        let rendered = format!("{:?}", cmd);
+
+        assert!(rendered.contains("\"--format\" \"default\""));
+        assert!(!rendered.contains("\"--format\" \"json\""));
+    }
+
+    #[test]
+    fn opencode_run_respects_equals_format_arg() {
+        let cmd = build_command(&CliRunArgs {
+            session_id: "session-1".to_string(),
+            group_id: "group-1".to_string(),
+            agent_id: "cli-opencode".to_string(),
+            agent_name: "OpenCode".to_string(),
+            adapter: "opencode".to_string(),
+            prompt: "继续刚才的任务".to_string(),
+            cwd: Some("/tmp/project".to_string()),
+            extra_args: Some(vec!["--format=default".to_string()]),
+            binary: None,
+            env: Some(HashMap::new()),
+            timeout_ms: Some(300000),
+            approval_mode: Some("auto".to_string()),
+            show_stderr: Some(true),
+        })
+        .expect("opencode command should build");
+
+        let rendered = format!("{:?}", cmd);
+
+        assert!(rendered.contains("\"--format=default\""));
+        assert!(!rendered.contains("\"--format\" \"json\""));
     }
 }
 

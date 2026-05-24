@@ -14,6 +14,7 @@ import { request } from '@/utils/request';
 import { executeCLIStrategy } from '@/engine/cliEngine';
 import { isCodeChangeIntent } from '@/engine/cliIntent';
 import { buildCliUserPrompt } from '@/engine/cliPrompt';
+import { cliToolSessionKey, withCliToolSession } from '@/engine/cliToolSessions';
 import type { AICharacter, CLIAgent } from "@/config/aiCharacters";
 import { mapAIMemberToLegacy } from "@/config/aiCharacters";
 import { ChatMarkdown } from '@/components/Markdown';
@@ -698,7 +699,13 @@ const ChatUI = () => {
     setIsLoading(true);
     try {
       const m = aiMembers[msg.sender.id];
-      const agent = m && m.kind === 'cli' ? mapAIMemberToLegacy(m) as CLIAgent : undefined;
+      const baseAgent = m && m.kind === 'cli' ? mapAIMemberToLegacy(m) as CLIAgent : undefined;
+      const agent = baseAgent
+        ? withCliToolSession(
+          baseAgent,
+          localStorage.getItem(cliToolSessionKey((group as CLIGroup).id, baseAgent.id, workspacePath)),
+        )
+        : undefined;
       if (!agent) throw new Error('找不到该开发群友');
       if (approvalMode === 'ask') {
         const confirmed = window.confirm(`确认让 ${agent.name} 在 ${workspacePath || '默认目录'} 执行这次任务？`);
@@ -738,6 +745,11 @@ const ChatUI = () => {
               baseSha: meta?.baseSha,
             };
             setMessages(prev => [...prev, aiMessage]);
+          },
+          onToolSession: (_taskId, agentId, adapter, sessionId) => {
+            if (adapter === 'opencode') {
+              localStorage.setItem(cliToolSessionKey((group as CLIGroup).id, agentId, workspacePath), sessionId);
+            }
           },
           onToken: (taskId, token) => {
             setMessages(prev => prev.map(m =>
@@ -796,7 +808,11 @@ const ChatUI = () => {
     const activeAgents = memberIds
       .map(id => aiMembers[id])
       .filter(m => m && m.kind === 'cli' && !mutedUsers.includes(m.id))
-      .map(m => mapAIMemberToLegacy(m) as CLIAgent);
+      .map(m => mapAIMemberToLegacy(m) as CLIAgent)
+      .map(agent => withCliToolSession(
+        agent,
+        localStorage.getItem(cliToolSessionKey((group as CLIGroup).id, agent.id, workspacePath)),
+      ));
 
     if (activeAgents.length === 0) {
       const systemMsg = {
@@ -867,6 +883,11 @@ const ChatUI = () => {
               baseSha: meta?.baseSha,
             };
             setMessages(prev => [...prev, aiMessage]);
+          },
+          onToolSession: (_taskId, agentId, adapter, sessionId) => {
+            if (adapter === 'opencode') {
+              localStorage.setItem(cliToolSessionKey((group as CLIGroup).id, agentId, workspacePath), sessionId);
+            }
           },
           onToken: (taskId, token) => {
             setMessages(prev => prev.map(m =>
