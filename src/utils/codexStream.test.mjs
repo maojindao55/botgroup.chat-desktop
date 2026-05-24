@@ -91,10 +91,11 @@ assert.equal(parseCodexJsonLine('not json'), null);
     renderCodexCommandGroupEnd(),
   ].join('');
 
-  assert.equal(content.match(/<details open>/g)?.length, 1);
+  assert.equal(content.match(/<details open data-cli-command-group="codex">/g)?.length, 1);
   assert.equal(content.match(/<\/details>/g)?.length, 1);
-  assert.match(content, /#### 1\. rg "foo"/);
-  assert.match(content, /#### 2\. npm test/);
+  assert.match(content, /<small>1\. <code>rg "foo"<\/code><\/small>/);
+  assert.match(content, /<small>2\. <code>npm test<\/code><\/small>/);
+  assert.doesNotMatch(content, /#### 1\./);
 }
 
 console.log('codexStream.test.mjs: ok');

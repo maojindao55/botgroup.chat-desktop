@@ -17,7 +17,7 @@ export type CodexCommandEvent =
     };
 
 export function renderCodexCommandGroupStart(): string {
-  return `\n<details open><summary>⚙️ 执行命令</summary>\n\n`;
+  return `\n<details open data-cli-command-group="codex"><summary>⚙️ 执行命令</summary>\n\n`;
 }
 
 export function renderCodexCommandGroupEnd(): string {
@@ -26,7 +26,7 @@ export function renderCodexCommandGroupEnd(): string {
 
 export function renderCodexCommandStarted(command: string, index: number): string {
   const title = command.length > 120 ? `${command.slice(0, 117)}...` : command;
-  return `#### ${index}. ${escapeHtml(title)}\n\n${fence(command)}\n\n`;
+  return `<p><small>${index}. <code>${escapeHtml(title)}</code></small></p>\n\n${fence(command)}\n\n`;
 }
 
 export function renderCodexCommandCompleted(exitCode: number, output?: string): string {
