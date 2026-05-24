@@ -85,6 +85,130 @@ A task stores runtime state:
 
 Template changes should not rewrite existing tasks. Existing tasks keep the template snapshot they were created with.
 
+## Type Model Draft
+
+The implementation can keep `CLIGroup` during migration, but new UI code should think in these names:
+
+```ts
+type CLITaskStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'timeout' | 'archived';
+
+interface CLITeamTemplate {
+  id: string;
+  name: string;
+  description: string;
+  memberIds: string[];
+  workspacePath?: string;
+  approvalMode: 'auto' | 'ask';
+  timeout: number;
+  showStderr: boolean;
+  strategy: CLIStrategy;
+  executionPlan?: Partial<CLIExecutionPlan>;
+  sessionPolicy: 'task' | 'workspace' | 'template';
+}
+
+interface CLIDevelopmentTask {
+  id: string;
+  title: string;
+  prompt: string;
+  status: CLITaskStatus;
+  templateId: string;
+  templateSnapshot: CLITeamTemplate;
+  workspacePath: string;
+  createdAt: string;
+  updatedAt: string;
+  agentTaskIds: string[];
+  messages: CLITaskMessage[];
+}
+
+interface CLITaskMessage {
+  id: string;
+  taskId: string;
+  role: 'user' | 'agent' | 'system';
+  agentId?: string;
+  agentName?: string;
+  content: string;
+  status?: CLITaskStatus;
+  cliCwd?: string;
+  cliBranch?: string;
+  baseSha?: string;
+  toolSessionId?: string;
+}
+```
+
+For the first implementation, these types can live in frontend code and adapt existing persisted CLI task records instead of requiring a full storage migration.
+
+## Session Policy
+
+Session reuse must be explicit because coding tasks need isolation by default.
+
+- `task`: default. Each development task owns its CLI tool sessions. Continuing the task reuses those sessions.
+- `workspace`: reuse sessions across tasks in the same workspace and agent. This is useful for users who expect CLI tools to keep long-running context.
+- `template`: reuse sessions across every task created from the same team template. This is powerful but riskier and should not be the default.
+
+The current `cliToolSessionKey(groupId, agentId, workspacePath)` should be replaced or wrapped by a policy-aware key. The default task key should include `developmentTaskId`.
+
+## First Implementation Scope
+
+Build this in phases. Do not rewrite the CLI execution engine first.
+
+Phase 1 should deliver the product shape:
+
+- Add a CLI task list as the primary sidebar experience for CLI mode.
+- Treat existing CLI groups as team templates.
+- Let the user create a new development task from a selected template.
+- Open each development task as its own temporary chat timeline.
+- Keep `executeCLIStrategy` and `/api/cli/run` as the execution path.
+- Store task messages in frontend state/local persistence if needed, while continuing to use existing CLI task logs for execution history.
+
+Phase 1 should not include:
+
+- hard migration of all old CLI group data
+- new backend tables unless unavoidable
+- global task search
+- sharing or collaboration permissions
+- deleting old group concepts from AI and Agent chat
+
+Phase 2 can refine persistence and management:
+
+- durable task message storage
+- task archive/delete
+- template management screen
+- task filters by status, workspace, template, and agent
+- policy-aware CLI session reuse
+
+Phase 3 can add advanced workflows:
+
+- create a new task from an existing task
+- compare tasks
+- adopt race results into the main workspace
+- global task inbox across all templates
+
+## UI Routing
+
+The current app routes groups by query index, for example `?id=...`. The task-first CLI UI should avoid forcing development tasks into the same group index model.
+
+Recommended transitional route model:
+
+```text
+?view=cli-tasks
+?view=cli-task&taskId=<task-id>
+?view=cli-template&templateId=<template-id>
+```
+
+If changing routing is too large for Phase 1, keep the current route and implement task selection inside the CLI area, but do not add temporary tasks to the primary group list.
+
+## Existing Code Mapping
+
+Current code can be adapted instead of replaced:
+
+- `CLIGroup` becomes the initial source for `CLITeamTemplate`.
+- `CLIGroupSettings` becomes template settings plus task history entry points.
+- `ChatUI.handleSendCLIMessage` becomes "create task and run selected template".
+- `messages` should be scoped to the selected development task for CLI mode.
+- `/api/cli/tasks/list` already returns execution task records and can back the task list.
+- `/api/cli/tasks/log` can remain the source for raw execution logs.
+- `executeCLIStrategy` can continue to schedule agents, prepare worktrees/copies, stream output, and report per-agent task IDs.
+
 ## UX Rules
 
 - Do not put temporary task chats in the primary group list.
@@ -93,6 +217,10 @@ Template changes should not rewrite existing tasks. Existing tasks keep the temp
 - Let users continue a completed task from its own task chat.
 - Let users create a new task from an old task when the next request should be isolated.
 - Use group-chat language inside a task: agents speak as participants, execution output appears as collapsible process blocks, and review/fix loops appear as stages.
+- Show task status prominently in the task list and task header.
+- Make "continue this task" different from "start a new task from this task".
+- A failed agent run should not hide the task. It should leave the task open with retry actions.
+- Template settings should be reachable, but not the main focus of the CLI area.
 
 ## Why Not Fixed Development Groups
 
@@ -126,6 +254,33 @@ The implementation should avoid a hard data migration at first. It can introduce
 - The current CLI group settings panel should eventually become template settings.
 - The current chat timeline should be scoped to a task, not the template.
 - Tool session reuse must be keyed by task and agent unless the selected template explicitly enables cross-task reuse.
+
+## Acceptance Tests
+
+The implementation is acceptable when these user flows work:
+
+1. A user opens the CLI area and sees development tasks, not fixed development groups.
+2. A user creates a new task from a default template, runs Codex/Claude/OpenCode, and sees a task chat timeline.
+3. A second task from the same template starts with isolated messages and isolated default tool sessions.
+4. A user can continue an existing task and reuse that task's CLI tool sessions.
+5. A user can retry a failed agent run inside the same task.
+6. A user can open template settings and change members/workflow for future tasks without rewriting old tasks.
+7. Old CLI group configuration still works as the initial team template source.
+
+Recommended verification commands:
+
+```bash
+npm run test:cli
+npm run test:llm
+npm run build
+```
+
+Add or update focused tests for:
+
+- converting a `CLIGroup` into a `CLITeamTemplate`
+- creating a development task with a template snapshot
+- session key generation for task-scoped reuse
+- keeping task messages isolated between two tasks
 
 ## Success Criteria
 
