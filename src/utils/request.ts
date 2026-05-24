@@ -8,7 +8,13 @@ import { generateAICharacters, cliAgents, modelConfigs } from '@/config/aiCharac
 import { builtinAIMembers, type AIMember } from '@/config/aiMembers';
 import { builtinProviders, lookupProviderByEnvName, mapProviderToRust } from '@/config/providers';
 import { cleanCliOutputLine, shouldSuppressCliOutputLine } from '@/utils/cliOutput';
-import { parseCodexJsonLine } from '@/utils/codexStream';
+import {
+  parseCodexJsonLine,
+  renderCodexCommandCompleted,
+  renderCodexCommandGroupEnd,
+  renderCodexCommandGroupStart,
+  renderCodexCommandStarted,
+} from '@/utils/codexStream';
 import { parseOpenCodeJsonLine } from '@/utils/opencodeStream';
 
 const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
@@ -581,6 +587,8 @@ export async function request(url: string, options: RequestInit = {}) {
           let isJsonMode = adapter === 'codex';
           let codexSessionId: string | null = null;
           let opencodeSessionId: string | null = null;
+          let codexCommandGroupOpen = false;
+          let codexCommandIndex = 0;
           // Track whether we're inside an "intermediate" phase so we can
           // open/close a <details> wrapper around thinking+commands.
           let detailsOpen = false;
@@ -600,6 +608,21 @@ export async function request(url: string, options: RequestInit = {}) {
               detailsOpen = false;
               void stepCount;
               enqueueChunk(`\n</details>\n\n`);
+            }
+          };
+
+          const ensureCodexCommandGroupOpen = () => {
+            if (!codexCommandGroupOpen) {
+              codexCommandGroupOpen = true;
+              codexCommandIndex = 0;
+              enqueueChunk(renderCodexCommandGroupStart());
+            }
+          };
+
+          const closeCodexCommandGroup = () => {
+            if (codexCommandGroupOpen) {
+              codexCommandGroupOpen = false;
+              enqueueChunk(renderCodexCommandGroupEnd());
             }
           };
 
@@ -650,22 +673,31 @@ export async function request(url: string, options: RequestInit = {}) {
                         });
                       }
                       if (parsed?.error) {
+                        closeCodexCommandGroup();
                         enqueueEvent({
                           type: 'error',
                           content: `\n**[Codex error]** ${parsed.error}\n`,
                           error: parsed.error,
                         });
-                      } else if (parsed?.content) {
-                        if (parsed.content.includes('<summary>') && parsed.content.includes('▶ ')) {
-                          stepCount++;
+                      } else if (parsed?.command) {
+                        ensureCodexCommandGroupOpen();
+                        if (parsed.command.phase === 'started') {
+                          codexCommandIndex++;
+                          enqueueChunk(renderCodexCommandStarted(parsed.command.command, codexCommandIndex));
+                        } else {
+                          enqueueChunk(renderCodexCommandCompleted(parsed.command.exitCode, parsed.command.output));
                         }
+                      } else if (parsed?.content) {
+                        closeCodexCommandGroup();
                         enqueueChunk(parsed.content);
                       }
                     } catch {
+                      closeCodexCommandGroup();
                       // Not valid JSON, show as-is
                       enqueueChunk(stdoutLine + '\n');
                     }
                   } else {
+                    closeCodexCommandGroup();
                     // Non-JSON stdout (opencode, claude, etc.) — show as-is
                     enqueueChunk(stdoutLine + '\n');
                   }
@@ -693,14 +725,19 @@ export async function request(url: string, options: RequestInit = {}) {
                 if (/^(OpenAI Codex|-------|workdir:|model:|provider:|approval:|sandbox:|reasoning|session id:)/i.test(line.trim())) break;
                 // In JSON mode, stream stderr as thinking inside the details block
                 if (isJsonMode) {
-                  ensureDetailsOpen();
-                  enqueueChunk(`> 📝 _${line.trim().replace(/_/g, '\\_')}_\n\n`);
+                  if (codexCommandGroupOpen) {
+                    enqueueChunk(`> 📝 _${line.trim().replace(/_/g, '\\_')}_\n\n`);
+                  } else {
+                    ensureDetailsOpen();
+                    enqueueChunk(`> 📝 _${line.trim().replace(/_/g, '\\_')}_\n\n`);
+                  }
                 } else {
                   enqueueChunk('> _' + line.replace(/_/g, '\\_') + '_\n');
                 }
                 break;
               case 'error':
                 if (typeof payload.message === 'string') {
+                  closeCodexCommandGroup();
                   enqueueEvent({
                     type: 'error',
                     content: `\n**[CLI error]** ${payload.message}\n`,
@@ -710,6 +747,7 @@ export async function request(url: string, options: RequestInit = {}) {
                 break;
               case 'done': {
                 const code = typeof payload.exit_code === 'number' ? payload.exit_code : -1;
+                closeCodexCommandGroup();
                 closeDetails();
                 const status =
                   code === -2 ? 'cancelled'

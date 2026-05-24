@@ -2,6 +2,39 @@ export interface CodexJsonParseResult {
   sessionId?: string;
   content?: string;
   error?: string;
+  command?: CodexCommandEvent;
+}
+
+export type CodexCommandEvent =
+  | {
+      phase: 'started';
+      command: string;
+    }
+  | {
+      phase: 'completed';
+      exitCode: number;
+      output?: string;
+    };
+
+export function renderCodexCommandGroupStart(): string {
+  return `\n<details open><summary>⚙️ 执行命令</summary>\n\n`;
+}
+
+export function renderCodexCommandGroupEnd(): string {
+  return `\n</details>\n\n`;
+}
+
+export function renderCodexCommandStarted(command: string, index: number): string {
+  const title = command.length > 120 ? `${command.slice(0, 117)}...` : command;
+  return `#### ${index}. ${escapeHtml(title)}\n\n${fence(command)}\n\n`;
+}
+
+export function renderCodexCommandCompleted(exitCode: number, output?: string): string {
+  const status = exitCode === 0 ? '完成' : '失败';
+  const parts = [`exit: ${exitCode} · ${status}`];
+  const outputBlock = fence(output);
+  if (outputBlock) parts.push(outputBlock);
+  return `${parts.join('\n\n')}\n\n`;
 }
 
 function escapeHtml(input: string): string {
@@ -58,13 +91,17 @@ export function parseCodexJsonLine(line: string): CodexJsonParseResult | null {
     const command = typeof event.item.command === 'string' && event.item.command.trim()
       ? event.item.command.trim()
       : '(unknown command)';
-    const summary = command.length > 120 ? `${command.slice(0, 117)}...` : command;
-    result.content = details(`▶ ${summary}`, fence(command), true);
+    result.command = {
+      phase: 'started',
+      command,
+    };
   } else if (event.type === 'item.completed' && event.item?.type === 'command_execution') {
     const exitCode = event.item.exit_code ?? 0;
-    const status = exitCode === 0 ? '✓ 命令完成' : `✗ 命令失败`;
-    const body = [`exit: ${exitCode}`, fence(event.item.output)].filter(Boolean).join('\n\n');
-    result.content = details(status, body);
+    result.command = {
+      phase: 'completed',
+      exitCode,
+      output: typeof event.item.output === 'string' ? event.item.output : undefined,
+    };
   } else if (event.type === 'error') {
     const message = event.message || event.error?.message || event.error;
     result.error = typeof message === 'string' && message.trim()

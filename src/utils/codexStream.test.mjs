@@ -14,7 +14,13 @@ async function importTsModule(url) {
   return import(moduleUrl);
 }
 
-const { parseCodexJsonLine } = await importTsModule(new URL('./codexStream.ts', import.meta.url));
+const {
+  parseCodexJsonLine,
+  renderCodexCommandCompleted,
+  renderCodexCommandGroupEnd,
+  renderCodexCommandGroupStart,
+  renderCodexCommandStarted,
+} = await importTsModule(new URL('./codexStream.ts', import.meta.url));
 
 {
   const parsed = parseCodexJsonLine(JSON.stringify({
@@ -50,7 +56,12 @@ const { parseCodexJsonLine } = await importTsModule(new URL('./codexStream.ts', 
     item: { type: 'command_execution', command: 'npm test' },
   }));
 
-  assert.match(parsed.content, /<details open><summary>▶ npm test<\/summary>/);
+  assert.deepEqual(parsed, {
+    command: {
+      phase: 'started',
+      command: 'npm test',
+    },
+  });
 }
 
 {
@@ -59,11 +70,31 @@ const { parseCodexJsonLine } = await importTsModule(new URL('./codexStream.ts', 
     item: { type: 'command_execution', exit_code: 0, output: 'ok' },
   }));
 
-  assert.match(parsed.content, /<details><summary>✓ 命令完成<\/summary>/);
-  assert.match(parsed.content, /exit: 0/);
-  assert.match(parsed.content, /```\nok\n```/);
+  assert.deepEqual(parsed, {
+    command: {
+      phase: 'completed',
+      exitCode: 0,
+      output: 'ok',
+    },
+  });
 }
 
 assert.equal(parseCodexJsonLine('not json'), null);
+
+{
+  const content = [
+    renderCodexCommandGroupStart(),
+    renderCodexCommandStarted('rg "foo"', 1),
+    renderCodexCommandCompleted(0, 'src/a.ts'),
+    renderCodexCommandStarted('npm test', 2),
+    renderCodexCommandCompleted(0, 'ok'),
+    renderCodexCommandGroupEnd(),
+  ].join('');
+
+  assert.equal(content.match(/<details open>/g)?.length, 1);
+  assert.equal(content.match(/<\/details>/g)?.length, 1);
+  assert.match(content, /#### 1\. rg "foo"/);
+  assert.match(content, /#### 2\. npm test/);
+}
 
 console.log('codexStream.test.mjs: ok');
