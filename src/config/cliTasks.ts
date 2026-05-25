@@ -1,4 +1,4 @@
-import type { CLIGroup, CLIStrategy, CLIExecutionPlan } from './groups';
+import type { CLIGroup, CLIStrategy, CLIExecutionPlan, CLISessionPolicy } from './groups';
 
 export type CLITaskStatus =
   | 'queued'
@@ -9,7 +9,33 @@ export type CLITaskStatus =
   | 'timeout'
   | 'archived';
 
-export type CLISessionPolicy = 'task' | 'workspace' | 'template';
+export type { CLISessionPolicy };
+
+export const cliSessionPolicyOptions: Array<{
+  value: CLISessionPolicy;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: 'task',
+    label: '按任务隔离',
+    description: '每个开发任务使用独立 CLI 会话；继续同一任务会复用该任务的会话。',
+  },
+  {
+    value: 'workspace',
+    label: '按 Workspace 共享',
+    description: '同一 Workspace 与开发群友下的所有任务共享 CLI 会话。',
+  },
+  {
+    value: 'template',
+    label: '按模板共享',
+    description: '使用同一团队模板创建的所有任务共享 CLI 会话，上下文隔离最弱。',
+  },
+];
+
+export function sessionPolicyLabel(policy: CLISessionPolicy): string {
+  return cliSessionPolicyOptions.find(item => item.value === policy)?.label ?? policy;
+}
 
 export interface CLITeamTemplate {
   id: string;
@@ -73,7 +99,7 @@ export function cliGroupToTeamTemplate(group: CLIGroup): CLITeamTemplate {
     showStderr: group.showStderr !== false,
     strategy: group.strategy || 'sequential',
     executionPlan: group.executionPlan,
-    sessionPolicy: DEFAULT_SESSION_POLICY,
+    sessionPolicy: group.sessionPolicy ?? DEFAULT_SESSION_POLICY,
   };
 }
 

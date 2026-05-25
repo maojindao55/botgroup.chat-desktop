@@ -8,7 +8,7 @@ import {
   Check, FolderOpen,
 } from 'lucide-react';
 import type {
-  Group, AIGroup, CLIGroup, CLIStrategy, AgentGroup, AgentStrategy,
+  Group, AIGroup, CLIGroup, CLIStrategy, CLISessionPolicy, AgentGroup, AgentStrategy,
 } from '@/config/groups';
 import {
   aiSpeechModes,
@@ -18,6 +18,7 @@ import {
   productGroupTypes,
   type AISpeechMode,
 } from '@/config/groupProduct';
+import { cliSessionPolicyOptions } from '@/config/cliTasks';
 import { MemberPicker } from './MemberPicker';
 import { invoke } from '@tauri-apps/api/core';
 
@@ -143,6 +144,7 @@ export const CreateGroupWizard = ({
   const [timeout, setTimeout_] = useState(300000);
   const [cliStrategy, setCliStrategy] = useState<CLIStrategy>(defaultCliWorkflowTemplate.strategy);
   const [cliTemplateId, setCliTemplateId] = useState(defaultCliWorkflowTemplate.id);
+  const [cliSessionPolicy, setCliSessionPolicy] = useState<CLISessionPolicy>('task');
 
   // Agent group
   const [selectedAgentMembers, setSelectedAgentMembers] = useState<string[]>([]);
@@ -164,6 +166,7 @@ export const CreateGroupWizard = ({
     setTimeout_(300000);
     setCliStrategy(defaultCliWorkflowTemplate.strategy);
     setCliTemplateId(defaultCliWorkflowTemplate.id);
+    setCliSessionPolicy('task');
     setSelectedAgentMembers([]);
     setStrategy(defaultAgentTemplate.strategy);
     setCoordinatorPrompt(defaultAgentTemplate.coordinatorPrompt || '');
@@ -196,6 +199,7 @@ export const CreateGroupWizard = ({
         timeout,
         showStderr: true,
         strategy: cliStrategy,
+        sessionPolicy: cliSessionPolicy,
         executionPlan: selectedTemplate?.executionPlan,
       } as CLIGroup;
     } else {
@@ -377,6 +381,23 @@ export const CreateGroupWizard = ({
               <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>{item.description}</div>
             </div>
             {cliTemplateId === item.id && <Check size={16} style={{ color: '#ff6600' }} />}
+          </button>
+        ))}
+      </div>
+      <div>
+        <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 8 }}>CLI 会话复用</label>
+        {cliSessionPolicyOptions.map(item => (
+          <button
+            key={item.value}
+            type="button"
+            onClick={() => setCliSessionPolicy(item.value)}
+            className={cx(styles.strategyBtn, cliSessionPolicy === item.value && styles.strategyBtnActive)}
+          >
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 14, fontWeight: 500 }}>{item.label}</div>
+              <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>{item.description}</div>
+            </div>
+            {cliSessionPolicy === item.value && <Check size={16} style={{ color: '#ff6600' }} />}
           </button>
         ))}
       </div>

@@ -6,7 +6,7 @@ import { X } from 'lucide-react';
 import { createStyles } from 'antd-style';
 import { cliWorkflowTemplates } from '@/config/groupProduct';
 import type { CLIDevelopmentTask, CLITaskStatus } from '@/config/cliTasks';
-import { canMutateTask } from '@/config/cliTasks';
+import { canMutateTask, sessionPolicyLabel } from '@/config/cliTasks';
 import type { AIMember } from '@/config/aiMembers';
 
 const statusLabels: Record<CLITaskStatus, { label: string; color: string }> = {
@@ -256,6 +256,10 @@ export const CLITaskInfoPanel = ({
         <div className={styles.row}>
           <span className={styles.label}>执行超时</span>
           <span className={styles.value}>{Math.round(snapshot.timeout / 1000)} 秒</span>
+        </div>
+        <div className={styles.row}>
+          <span className={styles.label}>CLI 会话复用</span>
+          <span className={styles.value}>{sessionPolicyLabel(snapshot.sessionPolicy)}</span>
         </div>
         <div className={styles.row}>
           <span className={styles.label}>stderr 展示</span>

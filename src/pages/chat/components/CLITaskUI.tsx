@@ -887,6 +887,8 @@ const CLITaskUI = ({
           onStrategyChange={(s) => handleUpdateEditingTemplate({ strategy: s })}
           onExecutionPlanChange={(p) => handleUpdateEditingTemplate({ executionPlan: p })}
           onMembersChange={(ids) => handleUpdateEditingTemplate({ memberIds: ids })}
+          sessionPolicy={editingCLIGroup.sessionPolicy || 'task'}
+          onSessionPolicyChange={(policy) => handleUpdateEditingTemplate({ sessionPolicy: policy })}
           onBack={templateSettingsReturnTo === 'template-list' ? closeTemplateSettings : undefined}
           backLabel="团队模板"
         />

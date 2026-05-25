@@ -11,7 +11,8 @@ import { MemberPicker } from './MemberPicker';
 import { cliWorkflowTemplates } from '@/config/groupProduct';
 import { request } from '@/utils/request';
 import type { CLIAgent } from '@/config/aiCharacters';
-import type { CLIExecutionPlan, CLIGroup, CLIStrategy } from '@/config/groups';
+import type { CLIExecutionPlan, CLIGroup, CLIStrategy, CLISessionPolicy } from '@/config/groups';
+import { cliSessionPolicyOptions } from '@/config/cliTasks';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
 import { invoke } from '@tauri-apps/api/core';
 import { openPath } from '@tauri-apps/plugin-opener';
@@ -65,6 +66,8 @@ interface CLIGroupSettingsProps {
   onExecutionPlanChange?: (patch: Partial<CLIExecutionPlan>, options?: { replace?: boolean }) => void;
   onRetryTask?: (agentId: string, prompt: string) => void;
   onMembersChange?: (memberIds: string[]) => void;
+  sessionPolicy: CLISessionPolicy;
+  onSessionPolicyChange: (policy: CLISessionPolicy) => void;
   inline?: boolean;
   mode?: 'group' | 'template';
   /** 从上级抽屉进入时显示返回按钮 */
@@ -349,6 +352,8 @@ export const CLIGroupSettings = ({
   onExecutionPlanChange,
   onRetryTask,
   onMembersChange,
+  sessionPolicy,
+  onSessionPolicyChange,
   inline,
   mode = 'group',
   onBack,
@@ -357,6 +362,10 @@ export const CLIGroupSettings = ({
   const { styles, cx } = useStyles();
   const isTemplateMode = mode === 'template';
   const panelTitle = isTemplateMode ? '团队模板设置' : '开发群配置';
+  const sessionPolicyTitle = isTemplateMode ? 'CLI 会话复用' : 'CLI 会话复用';
+  const sessionPolicyDesc = isTemplateMode
+    ? '新任务将按此策略决定 CLI tool session 是否跨任务共享；已有任务仍使用创建时的快照。'
+    : '决定开发群友 CLI tool session 的复用范围。';
   const drawerTitle = onBack ? (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
       <Button
@@ -644,6 +653,32 @@ export const CLIGroupSettings = ({
                 onChange={(v) => onApprovalModeChange(v ? 'auto' : 'ask')}
               />
             </div>
+          </div>
+
+          {/* session policy */}
+          <div className={styles.panel}>
+            <div style={{ fontSize: 14, fontWeight: 500 }}>{sessionPolicyTitle}</div>
+            <div className={styles.panelDesc} style={{ marginTop: 4, marginBottom: 8 }}>
+              {sessionPolicyDesc}
+            </div>
+            {cliSessionPolicyOptions.map((item) => (
+              <button
+                key={item.value}
+                type="button"
+                onClick={() => onSessionPolicyChange(item.value)}
+                className={cx(
+                  styles.strategyBtn,
+                  sessionPolicy === item.value && styles.strategyBtnActive,
+                )}
+              >
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 14, fontWeight: 500 }}>{item.label}</div>
+                  <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginTop: 2 }}>
+                    {item.description}
+                  </div>
+                </div>
+              </button>
+            ))}
           </div>
 
           {/* stderr */}
