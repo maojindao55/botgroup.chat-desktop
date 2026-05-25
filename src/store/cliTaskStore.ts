@@ -142,6 +142,7 @@ export function taskMessageToChatRow(
   cliCwd?: string;
   cliBranch?: string;
   baseSha?: string;
+  adopted?: boolean;
 } {
   if (msg.role === 'user') {
     return {
@@ -167,5 +168,6 @@ export function taskMessageToChatRow(
     cliCwd: msg.cliCwd,
     cliBranch: msg.cliBranch,
     baseSha: msg.baseSha,
+    adopted: msg.adopted,
   };
 }

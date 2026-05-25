@@ -167,6 +167,20 @@ assert.notEqual(task.messages[0].id, task2.messages[0].id);
   assert.equal(filtered[0].id, taskWithAgent.id);
 }
 
+{
+  const parsed = mod.parseAgentMention('@Codex fix login', ['cli-codex', 'cli-claude-code'], (id) => (
+    id === 'cli-codex' ? 'Codex' : 'Claude Code'
+  ));
+  assert.equal(parsed.agentId, 'cli-codex');
+  assert.equal(parsed.prompt, 'fix login');
+}
+
+{
+  const parsed = mod.parseAgentMention('fix login without mention', ['cli-codex'], () => 'Codex');
+  assert.equal(parsed.agentId, undefined);
+  assert.equal(parsed.prompt, 'fix login without mention');
+}
+
 assert.equal(mod.canMutateTask({ ...task, status: 'running' }), false);
 assert.equal(mod.canMutateTask({ ...task, status: 'completed' }), true);
 assert.equal(

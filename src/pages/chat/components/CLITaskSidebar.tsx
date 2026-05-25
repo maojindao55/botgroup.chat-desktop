@@ -8,6 +8,7 @@ import {
   Menu as MenuIcon,
   SlidersHorizontal,
   Users,
+  GitCompare,
 } from 'lucide-react';
 import { Input, Tag, Tooltip, Select, Checkbox, Button } from 'antd';
 import { ActionIcon } from '@lobehub/ui';
@@ -144,6 +145,7 @@ interface CLITaskSidebarProps {
   onSelectTask: (taskId: string) => void;
   onNewTask: () => void;
   onOpenTemplateList: () => void;
+  onOpenCompare?: () => void;
 }
 
 export const CLITaskSidebar = ({
@@ -154,6 +156,7 @@ export const CLITaskSidebar = ({
   onSelectTask,
   onNewTask,
   onOpenTemplateList,
+  onOpenCompare,
 }: CLITaskSidebarProps) => {
   const { styles, cx } = useStyles();
   const aiMembers = useAIMemberStore(s => s.members);
@@ -278,6 +281,12 @@ export const CLITaskSidebar = ({
               <Users size={12} />
               团队模板
             </button>
+            {onOpenCompare && tasks.length >= 2 && (
+              <button type="button" className={styles.linkBtn} onClick={onOpenCompare}>
+                <GitCompare size={12} />
+                对比
+              </button>
+            )}
           </div>
 
           {showFilters && (

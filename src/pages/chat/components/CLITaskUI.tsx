@@ -25,6 +25,7 @@ import { SharePoster } from '@/pages/chat/components/SharePoster';
 import CLIGroupSettings from './CLIGroupSettings';
 import CLITaskInfoPanel from './CLITaskInfoPanel';
 import CLITemplateListPanel from './CLITemplateListPanel';
+import CLITaskCompareModal from './CLITaskCompareModal';
 import CLITaskSidebar from './CLITaskSidebar';
 import CreateGroupWizard from './CreateGroupWizard';
 import Sidebar from './Sidebar';
@@ -37,6 +38,7 @@ import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
 import type { Group, CLIGroup } from '@/config/groups';
 import {
   templateSnapshotToCLIGroup,
+  parseAgentMention,
   type CLIDevelopmentTask,
 } from '@/config/cliTasks';
 import {
@@ -136,6 +138,58 @@ const useStyles = createStyles(({ token, css }) => ({
     font-size: 11px;
     color: ${token.colorTextTertiary};
     line-height: 1.4;
+  `,
+  agentChipRow: css`
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+  `,
+  agentChip: css`
+    border: 1px solid ${token.colorBorderSecondary};
+    background: ${token.colorFillTertiary};
+    border-radius: 999px;
+    padding: 2px 10px;
+    font-size: 11px;
+    cursor: pointer;
+    color: ${token.colorTextSecondary};
+    &:hover {
+      border-color: #ff6600;
+      color: #ff6600;
+    }
+  `,
+  cliWorktreeInfo: css`
+    margin-top: 8px;
+    padding: 8px 10px;
+    background: ${token.colorFillTertiary};
+    border-radius: 8px;
+    font-size: 11px;
+    color: ${token.colorTextSecondary};
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    word-break: break-all;
+  `,
+  cliWorktreePath: css`
+    font-family: var(--ant-font-family-code);
+    font-size: 11px;
+    color: ${token.colorTextSecondary};
+    word-break: break-all;
+  `,
+  cliWorktreeActionBtn: css`
+    align-self: flex-start;
+    padding: 0 8px;
+    height: 22px;
+    line-height: 22px;
+    font-size: 11px;
+    background: transparent;
+    border: 1px solid ${token.colorBorderSecondary};
+    border-radius: 6px;
+    cursor: pointer;
+    &:hover {
+      border-color: #ff6600;
+      color: #ff6600;
+    }
   `,
   bubbleUser: css`
     background: linear-gradient(to top right, #f97316, #f59e0b);
@@ -326,6 +380,7 @@ const CLITaskUI = ({
   const [forkModalOpen, setForkModalOpen] = useState(false);
   const [forkTemplateId, setForkTemplateId] = useState('');
   const [createTemplateOpen, setCreateTemplateOpen] = useState(false);
+  const [compareModalOpen, setCompareModalOpen] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
   const [showPoster, setShowPoster] = useState(false);
   const [showAd, setShowAd] = useState(false);
@@ -585,7 +640,12 @@ const CLITaskUI = ({
     const liveTemplate = draftTemplate;
     if (!liveTemplate && !selectedTask) return;
 
-    const prompt = inputMessage.trim();
+    const rawInput = inputMessage.trim();
+    const memberIds = selectedTask?.templateSnapshot.memberIds ?? liveTemplate?.memberIds ?? [];
+    const parsed = parseAgentMention(rawInput, memberIds, id => aiMembers[id]?.name);
+    const executionPrompt = parsed.prompt;
+    const targetAgentId = parsed.agentId;
+
     setInputMessage('');
     setIsLoading(true);
 
@@ -595,7 +655,7 @@ const CLITaskUI = ({
       if (!task) {
         if (!liveTemplate) return;
         task = createTask({
-          prompt,
+          prompt: rawInput,
           template: liveTemplate,
           workspacePath: liveTemplate.workspacePath,
         });
@@ -605,16 +665,34 @@ const CLITaskUI = ({
           id: `msg-${Date.now()}-user`,
           taskId: task.id,
           role: 'user',
-          content: prompt,
+          content: rawInput,
         });
-        updateTask(task.id, { prompt });
+        updateTask(task.id, { prompt: executionPrompt });
       }
 
-      await runExecution(task, prompt);
+      await runExecution(task, executionPrompt, targetAgentId);
     } finally {
       setIsLoading(false);
     }
   };
+
+  const handleAdoptRaceResult = (messageId: string) => {
+    if (!selectedTask) return;
+    updateMessage(selectedTask.id, messageId, { adopted: true });
+  };
+
+  const insertAgentMention = (agentName: string) => {
+    const mention = `@${agentName} `;
+    setInputMessage(prev => (prev.trim() ? `${mention}${prev}` : mention));
+    inputRef.current?.focus();
+  };
+
+  const continueTaskAgents = useMemo(() => {
+    if (!selectedTask) return [];
+    return selectedTask.templateSnapshot.memberIds
+      .map(id => aiMembers[id])
+      .filter(member => member && member.kind === 'cli');
+  }, [selectedTask, aiMembers]);
 
   const handleCancelTask = async (agentTaskId: string) => {
     try {
@@ -837,6 +915,13 @@ const CLITaskUI = ({
         fixedGroupType="cli"
       />
 
+      <CLITaskCompareModal
+        open={compareModalOpen}
+        onOpenChange={setCompareModalOpen}
+        tasks={tasks}
+        initialTaskId={selectedTaskId}
+      />
+
       {showPoster && selectedTask && (
         <SharePoster
           messages={chatMessages}
@@ -923,6 +1008,7 @@ const CLITaskUI = ({
             onSelectTask={navigateToTask}
             onNewTask={startNewTask}
             onOpenTemplateList={openTemplateList}
+            onOpenCompare={() => setCompareModalOpen(true)}
           />
 
           <div className={styles.rightCol}>
@@ -1077,13 +1163,45 @@ const CLITaskUI = ({
                               </div>
                             )}
                             {message.cliCwd && message.cliCwd !== workspacePath && (
-                              <div style={{ fontSize: 10, marginTop: 6, opacity: 0.7 }}>
-                                <button
-                                  className={styles.cliActionBtnRetry}
-                                  onClick={() => openPath(message.cliCwd!).catch(() => {})}
-                                >
-                                  打开 {message.cliCwd}
-                                </button>
+                              <div className={styles.cliWorktreeInfo}>
+                                <div style={{ fontWeight: 500 }}>隔离 worktree</div>
+                                <div className={styles.cliWorktreePath}>{message.cliCwd}</div>
+                                {message.cliBranch && (
+                                  <div>
+                                    <span style={{ fontWeight: 500 }}>分支：</span>
+                                    <span className={styles.cliWorktreePath}>{message.cliBranch}</span>
+                                  </div>
+                                )}
+                                {message.baseSha && (
+                                  <div>
+                                    <span style={{ fontWeight: 500 }}>基准：</span>
+                                    <span className={styles.cliWorktreePath}>{message.baseSha.slice(0, 8)}</span>
+                                  </div>
+                                )}
+                                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+                                  <button
+                                    type="button"
+                                    className={styles.cliWorktreeActionBtn}
+                                    onClick={() => openPath(message.cliCwd!).catch(() => {})}
+                                  >
+                                    打开路径
+                                  </button>
+                                  {message.status === 'completed' && !message.adopted && (
+                                    <button
+                                      type="button"
+                                      className={styles.cliWorktreeActionBtn}
+                                      style={{ color: '#52c41a', borderColor: '#b7eb8f' }}
+                                      onClick={() => handleAdoptRaceResult(message.id)}
+                                    >
+                                      标记采纳
+                                    </button>
+                                  )}
+                                  {message.adopted && (
+                                    <span style={{ fontSize: 11, color: '#52c41a', fontWeight: 600 }}>
+                                      ✓ 已采纳
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             )}
                           </div>
@@ -1111,7 +1229,7 @@ const CLITaskUI = ({
                   }}
                   placeholder={
                     selectedTask
-                      ? '继续这个任务，或指定新的代码需求...'
+                      ? '继续这个任务… 输入 @开发群友名 可指定执行者'
                       : '描述代码任务，开发群友会在 workspace 中协作执行...'
                   }
                   autoSize={{ minRows: 4, maxRows: 12 }}
@@ -1178,7 +1296,21 @@ const CLITaskUI = ({
               </div>
               {selectedTask && (
                 <div style={{ fontSize: 10, opacity: 0.5, marginTop: 6 }}>
-                  继续任务会复用此任务的 CLI 会话；如需隔离上下文，请新建任务。
+                  继续任务会复用此任务的 CLI 会话；输入 @开发群友名 可只让该成员执行。
+                </div>
+              )}
+              {selectedTask && continueTaskAgents.length > 0 && (
+                <div className={styles.agentChipRow}>
+                  {continueTaskAgents.map(member => (
+                    <button
+                      key={member.id}
+                      type="button"
+                      className={styles.agentChip}
+                      onClick={() => insertAgentMention(member.name)}
+                    >
+                      @{member.name}
+                    </button>
+                  ))}
                 </div>
               )}
             </div>

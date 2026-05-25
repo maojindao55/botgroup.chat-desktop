@@ -37,6 +37,33 @@ export function sessionPolicyLabel(policy: CLISessionPolicy): string {
   return cliSessionPolicyOptions.find(item => item.value === policy)?.label ?? policy;
 }
 
+/** 解析输入开头的 @开发群友，用于指定单个 agent 执行任务 */
+export function parseAgentMention(
+  input: string,
+  memberIds: string[],
+  resolveName: (agentId: string) => string | undefined,
+): { agentId?: string; prompt: string; raw: string } {
+  const raw = input.trim();
+  const match = raw.match(/^@([^\s@]+)(?:\s+([\s\S]*))?$/);
+  if (!match) return { prompt: raw, raw };
+
+  const token = match[1].toLowerCase();
+  const rest = (match[2] ?? '').trim();
+  if (!rest) return { prompt: raw, raw };
+
+  for (const id of memberIds) {
+    const name = resolveName(id) || '';
+    const candidates = [id, id.replace(/^cli-/, ''), name]
+      .filter(Boolean)
+      .map(value => value.toLowerCase());
+    if (candidates.some(candidate => candidate === token || candidate.startsWith(token))) {
+      return { agentId: id, prompt: rest, raw };
+    }
+  }
+
+  return { prompt: raw, raw };
+}
+
 export interface CLITeamTemplate {
   id: string;
   name: string;
@@ -68,6 +95,8 @@ export interface CLITaskMessage {
   prompt?: string;
   stageLabel?: string;
   isError?: boolean;
+  /** Race worktree 结果是否被用户标记采纳 */
+  adopted?: boolean;
 }
 
 export interface CLIDevelopmentTask {
