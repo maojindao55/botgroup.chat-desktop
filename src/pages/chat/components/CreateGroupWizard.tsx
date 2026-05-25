@@ -25,6 +25,8 @@ interface CreateGroupWizardProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreateGroup: (group: Group) => void;
+  /** 锁定群类型并跳过「选择场景」步骤，用于开发任务页新建团队模板 */
+  fixedGroupType?: GroupTypeChoice;
 }
 
 type GroupTypeChoice = 'ai' | 'cli' | 'agent';
@@ -115,11 +117,16 @@ const useStyles = createStyles(({ token, css }) => ({
 }));
 
 
-export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateGroupWizardProps) => {
+export const CreateGroupWizard = ({
+  open,
+  onOpenChange,
+  onCreateGroup,
+  fixedGroupType,
+}: CreateGroupWizardProps) => {
   const { styles, cx } = useStyles();
 
-  const [step, setStep] = useState<WizardStep>('type');
-  const [groupType, setGroupType] = useState<GroupTypeChoice>('ai');
+  const [step, setStep] = useState<WizardStep>(fixedGroupType ? 'basic' : 'type');
+  const [groupType, setGroupType] = useState<GroupTypeChoice>(fixedGroupType || 'ai');
 
   // Basic info
   const [name, setName] = useState('');
@@ -145,8 +152,8 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
   const [agentTemplateId, setAgentTemplateId] = useState(defaultAgentTemplate.id);
 
   const reset = () => {
-    setStep('type');
-    setGroupType('ai');
+    setStep(fixedGroupType ? 'basic' : 'type');
+    setGroupType(fixedGroupType || 'ai');
     setName('');
     setDescription('');
     setSelectedAIMembers([]);
@@ -221,16 +228,18 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
   };
 
 
+  const stepFlow: WizardStep[] = fixedGroupType
+    ? ['basic', 'members', 'config']
+    : ['type', 'basic', 'members', 'config'];
+
   const nextStep = () => {
-    const flow: WizardStep[] = ['type', 'basic', 'members', 'config'];
-    const idx = flow.indexOf(step);
-    if (idx < flow.length - 1) setStep(flow[idx + 1]);
+    const idx = stepFlow.indexOf(step);
+    if (idx < stepFlow.length - 1) setStep(stepFlow[idx + 1]);
   };
 
   const prevStep = () => {
-    const flow: WizardStep[] = ['type', 'basic', 'members', 'config'];
-    const idx = flow.indexOf(step);
-    if (idx > 0) setStep(flow[idx - 1]);
+    const idx = stepFlow.indexOf(step);
+    if (idx > 0) setStep(stepFlow[idx - 1]);
   };
 
   // ============ Render Steps ============
@@ -433,26 +442,42 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
   };
 
 
-  const stepTitles: Record<WizardStep, string> = {
-    type: '选择群聊场景',
-    basic: '基础信息',
-    members: '选择群友',
-    config: '群聊设置',
-    confirm: '',
-  };
-  const stepIndex: Record<WizardStep, number> = { type: 0, basic: 1, members: 2, config: 3, confirm: 4 };
+  const isTemplateMode = fixedGroupType === 'cli';
+
+  const stepTitles: Record<WizardStep, string> = isTemplateMode
+    ? {
+      type: '',
+      basic: '模板名称',
+      members: '选择开发群友',
+      config: '默认 Workspace 与执行策略',
+      confirm: '',
+    }
+    : {
+      type: '选择群聊场景',
+      basic: '基础信息',
+      members: '选择群友',
+      config: '群聊设置',
+      confirm: '',
+    };
+  const stepIndex: Record<WizardStep, number> = isTemplateMode
+    ? { type: -1, basic: 0, members: 1, config: 2, confirm: 3 }
+    : { type: 0, basic: 1, members: 2, config: 3, confirm: 4 };
+
+  const stepItems = isTemplateMode
+    ? [{ title: '基础' }, { title: '成员' }, { title: '配置' }]
+    : [{ title: '类型' }, { title: '基础' }, { title: '成员' }, { title: '配置' }];
 
   return (
     <Modal
       open={open}
       onCancel={() => { reset(); onOpenChange(false); }}
-      title={stepTitles[step]}
+      title={isTemplateMode ? `新建团队模板 · ${stepTitles[step]}` : stepTitles[step]}
       width={520}
       destroyOnClose
       footer={
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
           <div>
-            {step !== 'type' && (
+            {step !== stepFlow[0] && (
               <Button type="text" onClick={prevStep}>上一步</Button>
             )}
           </div>
@@ -460,7 +485,7 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
             {step === 'config' ? (
               <Button type="primary" disabled={!canProceed()} onClick={handleCreate}
                 style={{ background: '#ff6600', borderColor: '#ff6600' }}>
-                创建群聊
+                {isTemplateMode ? '创建模板' : '创建群聊'}
               </Button>
             ) : (
               <Button type="primary" disabled={!canProceed()} onClick={nextStep}
@@ -472,9 +497,7 @@ export const CreateGroupWizard = ({ open, onOpenChange, onCreateGroup }: CreateG
         </div>
       }
     >
-      <Steps current={stepIndex[step]} size="small" style={{ marginBottom: 20 }} items={[
-        { title: '类型' }, { title: '基础' }, { title: '成员' }, { title: '配置' },
-      ]} />
+      <Steps current={stepIndex[step]} size="small" style={{ marginBottom: 20 }} items={stepItems} />
       <div>
         {step === 'type' && renderTypeStep()}
         {step === 'basic' && renderBasicStep()}

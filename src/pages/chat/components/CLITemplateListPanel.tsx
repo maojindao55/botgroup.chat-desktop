@@ -1,8 +1,8 @@
 /**
  * 团队模板列表 — 管理所有 CLI 团队模板，修改仅影响未来新任务
  */
-import { Drawer } from 'antd';
-import { Settings2, X } from 'lucide-react';
+import { Button, Drawer } from 'antd';
+import { Plus, Settings2, X } from 'lucide-react';
 import { createStyles } from 'antd-style';
 import { cliWorkflowTemplates } from '@/config/groupProduct';
 import type { CLITeamTemplate } from '@/config/cliTasks';
@@ -102,6 +102,7 @@ interface CLITemplateListPanelProps {
   templates: CLITeamTemplate[];
   taskCountByTemplate: Record<string, number>;
   onOpenTemplateSettings: (templateId: string) => void;
+  onCreateTemplate?: () => void;
   inline?: boolean;
 }
 
@@ -115,6 +116,7 @@ export const CLITemplateListPanel = ({
   templates,
   taskCountByTemplate,
   onOpenTemplateSettings,
+  onCreateTemplate,
   inline,
 }: CLITemplateListPanelProps) => {
   const { styles } = useStyles();
@@ -130,7 +132,20 @@ export const CLITemplateListPanel = ({
         团队模板是新任务的默认配置来源。在此修改成员、群规或默认 Workspace 后，只影响之后创建的新任务，已有任务仍使用创建时的快照。
       </div>
       {templates.length === 0 && (
-        <div className={styles.hint}>暂无团队模板。请先在群聊设置中创建 CLI 开发群。</div>
+        <div className={styles.hint}>
+          还没有团队模板。创建后可作为新任务的默认配置（成员、Workspace、执行策略）。
+        </div>
+      )}
+      {onCreateTemplate && (
+        <Button
+          type="primary"
+          block
+          icon={<Plus size={14} />}
+          onClick={onCreateTemplate}
+          style={{ background: '#ff6600', borderColor: '#ff6600', height: 36, borderRadius: 10 }}
+        >
+          新建团队模板
+        </Button>
       )}
       {templates.map(template => (
         <div key={template.id} className={styles.card}>
@@ -165,9 +180,21 @@ export const CLITemplateListPanel = ({
       <div className={styles.inlinePanel} style={{ width: 360, flexShrink: 0 }}>
         <div className={styles.inlineHeader}>
           <span className={styles.inlineTitle}>团队模板</span>
-          <button type="button" className={styles.inlineCloseBtn} onClick={() => onOpenChange(false)}>
-            <X size={16} />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            {onCreateTemplate && (
+              <button
+                type="button"
+                className={styles.inlineCloseBtn}
+                onClick={onCreateTemplate}
+                title="新建团队模板"
+              >
+                <Plus size={16} />
+              </button>
+            )}
+            <button type="button" className={styles.inlineCloseBtn} onClick={() => onOpenChange(false)}>
+              <X size={16} />
+            </button>
+          </div>
         </div>
         {body}
       </div>
@@ -180,7 +207,7 @@ export const CLITemplateListPanel = ({
       placement="right"
       open={open}
       onClose={() => onOpenChange(false)}
-      width={360}
+      width={420}
     >
       {body}
     </Drawer>

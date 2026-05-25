@@ -26,11 +26,12 @@ import CLIGroupSettings from './CLIGroupSettings';
 import CLITaskInfoPanel from './CLITaskInfoPanel';
 import CLITemplateListPanel from './CLITemplateListPanel';
 import CLITaskSidebar from './CLITaskSidebar';
+import CreateGroupWizard from './CreateGroupWizard';
 import Sidebar from './Sidebar';
 import { AdBanner, AdBannerMobile } from './AdSection';
 import { useUserStore } from '@/store/userStore';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { AIMemberLibrary, AI_MEMBER_LIBRARY_INLINE_WIDTH } from './AIMemberLibrary';
+import { AIMemberLibrary } from './AIMemberLibrary';
 import { useAIMemberStore } from '@/store/aiMemberStore';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
 import type { Group, CLIGroup } from '@/config/groups';
@@ -97,7 +98,44 @@ const useStyles = createStyles(({ token, css }) => ({
   inputArea: css`
     background: ${token.colorBgContainer};
     border-top: 1px solid ${token.colorBorderSecondary};
-    padding: 12px 20px;
+    padding: 12px 20px 16px;
+  `,
+  composeBox: css`
+    border: 1px solid ${token.colorBorderSecondary};
+    border-radius: 12px;
+    background: ${token.colorBgContainer};
+    overflow: hidden;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    &:focus-within {
+      border-color: #ff6600;
+      box-shadow: 0 0 0 2px rgba(255, 102, 0, 0.12);
+    }
+  `,
+  composeTextarea: css`
+    textarea {
+      border: none !important;
+      box-shadow: none !important;
+      resize: none;
+      padding: 12px 14px 4px !important;
+      background: transparent !important;
+    }
+  `,
+  composeFooter: css`
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px 10px;
+    border-top: 1px solid ${token.colorBorderSecondary};
+    flex-wrap: wrap;
+  `,
+  composeFooterSpacer: css`
+    flex: 1;
+    min-width: 8px;
+  `,
+  composeHint: css`
+    font-size: 11px;
+    color: ${token.colorTextTertiary};
+    line-height: 1.4;
   `,
   bubbleUser: css`
     background: linear-gradient(to top right, #f97316, #f59e0b);
@@ -276,8 +314,6 @@ const CLITaskUI = ({
   const templates = useMemo(() => getTeamTemplatesFromGroups(cliGroups), [cliGroups]);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(initialTaskId || null);
   const [selectedTemplateId, setSelectedTemplateId] = useState(templates[0]?.id || '');
-  const [showNewTaskPanel, setShowNewTaskPanel] = useState(false);
-  const [isDraftMode, setIsDraftMode] = useState(!initialTaskId);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(!isMobile);
@@ -285,15 +321,18 @@ const CLITaskUI = ({
   const [taskInfoOpen, setTaskInfoOpen] = useState(false);
   const [templateSettingsOpen, setTemplateSettingsOpen] = useState(false);
   const [templateListOpen, setTemplateListOpen] = useState(false);
+  const [templateSettingsReturnTo, setTemplateSettingsReturnTo] = useState<'template-list' | null>(null);
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [forkModalOpen, setForkModalOpen] = useState(false);
   const [forkTemplateId, setForkTemplateId] = useState('');
+  const [createTemplateOpen, setCreateTemplateOpen] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
   const [showPoster, setShowPoster] = useState(false);
   const [showAd, setShowAd] = useState(false);
   const [mutedUsers, setMutedUsers] = useState<string[]>([]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const selectedTask = tasks.find(t => t.id === selectedTaskId) || null;
   const selectedTemplate = templates.find(t => t.id === selectedTemplateId) || templates[0];
@@ -336,7 +375,6 @@ const CLITaskUI = ({
   useEffect(() => {
     if (initialTaskId && tasks.some(t => t.id === initialTaskId)) {
       setSelectedTaskId(initialTaskId);
-      setIsDraftMode(false);
     }
   }, [initialTaskId, tasks]);
 
@@ -348,15 +386,18 @@ const CLITaskUI = ({
 
   const navigateToTask = (taskId: string) => {
     setSelectedTaskId(taskId);
-    setIsDraftMode(false);
-    setShowNewTaskPanel(false);
     window.history.replaceState({}, '', `?view=cli-task&taskId=${encodeURIComponent(taskId)}`);
   };
 
   const navigateToList = () => {
-    setSelectedTaskId(null);
-    setIsDraftMode(true);
     window.history.replaceState({}, '', '?view=cli-tasks');
+  };
+
+  const startNewTask = () => {
+    setSelectedTaskId(null);
+    setInputMessage('');
+    navigateToList();
+    window.setTimeout(() => inputRef.current?.focus(), 0);
   };
 
   const getSessionKey = useCallback((developmentTask: CLIDevelopmentTask, agentId: string) => {
@@ -551,7 +592,7 @@ const CLITaskUI = ({
     try {
       let task = selectedTask;
 
-      if (!task || isDraftMode) {
+      if (!task) {
         if (!liveTemplate) return;
         task = createTask({
           prompt,
@@ -559,7 +600,6 @@ const CLITaskUI = ({
           workspacePath: liveTemplate.workspacePath,
         });
         navigateToTask(task.id);
-        setIsDraftMode(false);
       } else {
         appendMessage(task.id, {
           id: `msg-${Date.now()}-user`,
@@ -609,21 +649,48 @@ const CLITaskUI = ({
     onUpdateCLIGroup({ ...editingCLIGroup, ...updates });
   };
 
-  const openTemplateSettings = (templateId: string) => {
-    setEditingTemplateId(templateId);
-    if (templateListOpen) {
-      handleToggleTemplateList(false);
-    }
-    if (!templateSettingsOpen) {
-      handleToggleTemplateSettings(true);
+  const closeTemplateSettings = () => {
+    const shouldReturnToList = templateSettingsReturnTo === 'template-list';
+    setTemplateSettingsOpen(false);
+    setEditingTemplateId(null);
+    setTemplateSettingsReturnTo(null);
+    if (shouldReturnToList) {
+      setTemplateListOpen(true);
     }
   };
 
+  const openTemplateSettings = (templateId: string) => {
+    setEditingTemplateId(templateId);
+    if (templateListOpen) {
+      setTemplateSettingsReturnTo('template-list');
+    } else {
+      setTaskInfoOpen(false);
+      setShowLibrary(false);
+      setTemplateListOpen(false);
+      setTemplateSettingsReturnTo(null);
+    }
+    setTemplateSettingsOpen(true);
+  };
+
   const openTemplateList = () => {
-    if (taskInfoOpen) handleToggleTaskInfo(false);
-    if (templateSettingsOpen) handleToggleTemplateSettings(false);
-    if (!templateListOpen) {
-      handleToggleTemplateList(true);
+    setTaskInfoOpen(false);
+    setShowLibrary(false);
+    if (templateSettingsOpen) {
+      setTemplateSettingsOpen(false);
+      setEditingTemplateId(null);
+      setTemplateSettingsReturnTo(null);
+    }
+    setTemplateListOpen(true);
+  };
+
+  const openCreateTemplate = () => {
+    setCreateTemplateOpen(true);
+  };
+
+  const handleCreateTemplateGroup = (group: Group) => {
+    onCreateGroup?.(group);
+    if (group.type === 'cli') {
+      setSelectedTemplateId(group.id);
     }
   };
 
@@ -639,12 +706,11 @@ const CLITaskUI = ({
     if (!tmpl) return;
     setInputMessage(selectedTask.prompt);
     setSelectedTemplateId(forkTemplateId);
-    setIsDraftMode(true);
     setSelectedTaskId(null);
     setTaskInfoOpen(false);
-    setShowNewTaskPanel(true);
     setForkModalOpen(false);
     navigateToList();
+    window.setTimeout(() => inputRef.current?.focus(), 0);
   };
 
   const handleArchiveTask = () => {
@@ -666,7 +732,6 @@ const CLITaskUI = ({
     if (!deleteTask(selectedTask.id)) return;
     handleToggleTaskInfo(false);
     setSelectedTaskId(null);
-    setIsDraftMode(true);
     navigateToList();
   };
 
@@ -684,72 +749,64 @@ const CLITaskUI = ({
     return <Tag color={info.color}>{info.label}</Tag>;
   };
 
-  const settingsPanelWidth = 400;
-
-  const closeSidePanels = () => {
-    if (taskInfoOpen) handleToggleTaskInfo(false);
-    if (templateSettingsOpen) handleToggleTemplateSettings(false);
-    if (templateListOpen) handleToggleTemplateList(false);
-    if (showLibrary) handleToggleLibrary(false);
-  };
-
-  const adjustWindowWidthForPanel = (deltaPx: number) => {
-    if (isMobile) return;
-    if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return;
-    (async () => {
-      try {
-        const { getCurrentWindow, LogicalSize } = await import('@tauri-apps/api/window');
-        const appWindow = getCurrentWindow();
-        const isMax = await appWindow.isMaximized();
-        const isFull = await appWindow.isFullscreen();
-        if (isMax || isFull) return;
-        const scaleFactor = await appWindow.scaleFactor();
-        const physicalSize = await appWindow.innerSize();
-        const logicalSize = physicalSize.toLogical(scaleFactor);
-        await appWindow.setSize(new LogicalSize(logicalSize.width + deltaPx, logicalSize.height));
-      } catch { /* ignore */ }
-    })();
+  const closeManagementPanels = () => {
+    setTaskInfoOpen(false);
+    setTemplateListOpen(false);
+    setTemplateSettingsOpen(false);
+    setEditingTemplateId(null);
+    setTemplateSettingsReturnTo(null);
+    setShowLibrary(false);
   };
 
   const handleToggleTaskInfo = (nextOpen: boolean) => {
-    if (nextOpen === taskInfoOpen) return;
-    if (nextOpen) {
-      if (templateSettingsOpen) handleToggleTemplateSettings(false);
-      if (templateListOpen) handleToggleTemplateList(false);
-      if (showLibrary) handleToggleLibrary(false);
+    if (!nextOpen) {
+      setTaskInfoOpen(false);
+      return;
     }
-    setTaskInfoOpen(nextOpen);
-    adjustWindowWidthForPanel(nextOpen ? settingsPanelWidth : -settingsPanelWidth);
+    setTemplateListOpen(false);
+    setTemplateSettingsOpen(false);
+    setEditingTemplateId(null);
+    setShowLibrary(false);
+    setTaskInfoOpen(true);
   };
 
   const handleToggleTemplateList = (nextOpen: boolean) => {
-    if (nextOpen === templateListOpen) return;
-    if (nextOpen) {
-      if (taskInfoOpen) handleToggleTaskInfo(false);
-      if (templateSettingsOpen) handleToggleTemplateSettings(false);
-      if (showLibrary) handleToggleLibrary(false);
+    if (!nextOpen) {
+      setTemplateListOpen(false);
+      if (templateSettingsOpen) {
+        setTemplateSettingsOpen(false);
+        setEditingTemplateId(null);
+        setTemplateSettingsReturnTo(null);
+      }
+      return;
     }
-    setTemplateListOpen(nextOpen);
-    adjustWindowWidthForPanel(nextOpen ? settingsPanelWidth : -settingsPanelWidth);
+    setTaskInfoOpen(false);
+    setTemplateSettingsOpen(false);
+    setEditingTemplateId(null);
+    setTemplateSettingsReturnTo(null);
+    setShowLibrary(false);
+    setTemplateListOpen(true);
   };
 
   const handleToggleTemplateSettings = (nextOpen: boolean) => {
-    if (nextOpen === templateSettingsOpen) return;
-    if (nextOpen) {
-      if (taskInfoOpen) handleToggleTaskInfo(false);
-      if (templateListOpen) handleToggleTemplateList(false);
-      if (showLibrary) handleToggleLibrary(false);
+    if (!nextOpen) {
+      closeTemplateSettings();
+      return;
     }
-    setTemplateSettingsOpen(nextOpen);
-    if (!nextOpen) setEditingTemplateId(null);
-    adjustWindowWidthForPanel(nextOpen ? settingsPanelWidth : -settingsPanelWidth);
+    setTaskInfoOpen(false);
+    setTemplateListOpen(false);
+    setShowLibrary(false);
+    setTemplateSettingsReturnTo(null);
+    setTemplateSettingsOpen(true);
   };
 
   const handleToggleLibrary = (nextOpen: boolean) => {
-    if (nextOpen === showLibrary) return;
-    if (nextOpen) closeSidePanels();
-    setShowLibrary(nextOpen);
-    adjustWindowWidthForPanel(nextOpen ? AI_MEMBER_LIBRARY_INLINE_WIDTH : -AI_MEMBER_LIBRARY_INLINE_WIDTH);
+    if (!nextOpen) {
+      setShowLibrary(false);
+      return;
+    }
+    closeManagementPanels();
+    setShowLibrary(true);
   };
 
   return (
@@ -773,6 +830,13 @@ const CLITaskUI = ({
         />
       </Modal>
 
+      <CreateGroupWizard
+        open={createTemplateOpen}
+        onOpenChange={setCreateTemplateOpen}
+        onCreateGroup={handleCreateTemplateGroup}
+        fixedGroupType="cli"
+      />
+
       {showPoster && selectedTask && (
         <SharePoster
           messages={chatMessages}
@@ -780,30 +844,27 @@ const CLITaskUI = ({
         />
       )}
 
-      {isMobile && (
-        <CLITaskInfoPanel
-          open={taskInfoOpen}
-          onOpenChange={handleToggleTaskInfo}
-          task={selectedTask}
-          members={aiMembers}
-          onCreateTaskFromThis={selectedTask ? handleCreateTaskFromThis : undefined}
-          onArchiveTask={handleArchiveTask}
-          onRestoreTask={handleRestoreTask}
-          onDeleteTask={handleDeleteTask}
-        />
-      )}
+      <CLITaskInfoPanel
+        open={taskInfoOpen}
+        onOpenChange={handleToggleTaskInfo}
+        task={selectedTask}
+        members={aiMembers}
+        onCreateTaskFromThis={selectedTask ? handleCreateTaskFromThis : undefined}
+        onArchiveTask={handleArchiveTask}
+        onRestoreTask={handleRestoreTask}
+        onDeleteTask={handleDeleteTask}
+      />
 
-      {isMobile && (
-        <CLITemplateListPanel
-          open={templateListOpen}
-          onOpenChange={handleToggleTemplateList}
-          templates={templates}
-          taskCountByTemplate={taskCountByTemplate}
-          onOpenTemplateSettings={openTemplateSettings}
-        />
-      )}
+      <CLITemplateListPanel
+        open={templateListOpen}
+        onOpenChange={handleToggleTemplateList}
+        templates={templates}
+        taskCountByTemplate={taskCountByTemplate}
+        onOpenTemplateSettings={openTemplateSettings}
+        onCreateTemplate={openCreateTemplate}
+      />
 
-      {isMobile && editingCLIGroup && (
+      {editingCLIGroup && (
         <CLIGroupSettings
           open={templateSettingsOpen}
           onOpenChange={handleToggleTemplateSettings}
@@ -826,8 +887,16 @@ const CLITaskUI = ({
           onStrategyChange={(s) => handleUpdateEditingTemplate({ strategy: s })}
           onExecutionPlanChange={(p) => handleUpdateEditingTemplate({ executionPlan: p })}
           onMembersChange={(ids) => handleUpdateEditingTemplate({ memberIds: ids })}
+          onBack={templateSettingsReturnTo === 'template-list' ? closeTemplateSettings : undefined}
+          backLabel="团队模板"
         />
       )}
+
+      <AIMemberLibrary
+        open={showLibrary}
+        onClose={() => handleToggleLibrary(false)}
+        groups={groups}
+      />
 
       <div className={styles.page}>
         <div className={styles.container}>
@@ -850,17 +919,7 @@ const CLITaskUI = ({
             tasks={tasks}
             selectedTaskId={selectedTaskId}
             onSelectTask={navigateToTask}
-            templates={templates}
-            selectedTemplateId={selectedTemplateId}
-            onSelectTemplate={setSelectedTemplateId}
-            onStartNewTask={() => {
-              setIsDraftMode(true);
-              setSelectedTaskId(null);
-              navigateToList();
-            }}
-            showNewTaskPanel={showNewTaskPanel}
-            onToggleNewTaskPanel={setShowNewTaskPanel}
-            onManageTemplate={openTemplateSettings}
+            onNewTask={startNewTask}
             onOpenTemplateList={openTemplateList}
           />
 
@@ -875,7 +934,7 @@ const CLITaskUI = ({
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <Terminal size={16} color="#ff6600" />
                       <h1 style={{ margin: 0, fontWeight: 600, fontSize: 14 }}>
-                        {selectedTask ? selectedTask.title : '新建开发任务'}
+                        {selectedTask ? selectedTask.title : '开发任务'}
                       </h1>
                       {selectedTask && statusTag(selectedTask.status)}
                     </div>
@@ -919,17 +978,21 @@ const CLITaskUI = ({
             </header>
 
             <div className={styles.chatArea}>
-              {!selectedTask && !isDraftMode && tasks.length === 0 && (
+              {!selectedTask && (
                 <div className={styles.emptyState}>
                   <Terminal size={48} style={{ opacity: 0.3 }} />
-                  <div style={{ fontSize: 16, fontWeight: 500 }}>开发任务</div>
-                  <div style={{ fontSize: 13, maxWidth: 320 }}>
-                    每个代码需求都会创建一个独立的任务聊天。选择团队模板，输入任务即可开始。
+                  <div style={{ fontSize: 16, fontWeight: 500 }}>
+                    {tasks.length === 0 ? '开始第一个开发任务' : '新建或继续任务'}
+                  </div>
+                  <div style={{ fontSize: 13, maxWidth: 360, lineHeight: 1.6 }}>
+                    {tasks.length === 0
+                      ? '先新建团队模板，再在下方输入代码需求即可开始。'
+                      : '在下方输入新需求将创建独立任务；点击左侧任务可继续已有对话。'}
                   </div>
                 </div>
               )}
 
-              {(selectedTask || isDraftMode) && (
+              {selectedTask && (
                 <div className={styles.messageList}>
                   {chatMessages.map((message, idx) => {
                     const isUser = !message.isAI;
@@ -1032,8 +1095,10 @@ const CLITaskUI = ({
             </div>
 
             <div className={styles.inputArea}>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+              <div className={styles.composeBox}>
                 <AntdInput.TextArea
+                  ref={inputRef}
+                  className={styles.composeTextarea}
                   value={inputMessage}
                   onChange={(e) => setInputMessage(e.target.value)}
                   onKeyDown={(e) => {
@@ -1047,18 +1112,67 @@ const CLITaskUI = ({
                       ? '继续这个任务，或指定新的代码需求...'
                       : '描述代码任务，开发群友会在 workspace 中协作执行...'
                   }
-                  autoSize={{ minRows: 1, maxRows: 6 }}
+                  autoSize={{ minRows: 4, maxRows: 12 }}
                   disabled={isLoading || (!selectedTask && !draftTemplate)}
-                  style={{ borderRadius: 12 }}
+                  variant="borderless"
                 />
-                <AntdButton
-                  type="primary"
-                  icon={<Send size={16} />}
-                  onClick={handleSendMessage}
-                  loading={isLoading}
-                  disabled={!inputMessage.trim() || (!selectedTask && !draftTemplate)}
-                  style={{ background: '#ff6600', borderColor: '#ff6600' }}
-                />
+                <div className={styles.composeFooter}>
+                  {!selectedTask ? (
+                    <>
+                      {templates.length > 0 && (
+                        <Select
+                          size="small"
+                          value={selectedTemplateId || undefined}
+                          onChange={setSelectedTemplateId}
+                          style={{ minWidth: 140 }}
+                          placeholder="选择团队模板"
+                          options={templates.map(t => ({ value: t.id, label: t.name }))}
+                        />
+                      )}
+                      <span className={styles.composeHint}>
+                        {templates.length === 0
+                          ? '还没有团队模板'
+                          : '新任务将使用所选模板'}
+                      </span>
+                      <AntdButton
+                        type="link"
+                        size="small"
+                        onClick={openCreateTemplate}
+                        style={{ padding: 0, height: 'auto' }}
+                      >
+                        新建模板
+                      </AntdButton>
+                      {templates.length > 0 && (
+                        <AntdButton
+                          type="link"
+                          size="small"
+                          onClick={openTemplateList}
+                          style={{ padding: 0, height: 'auto' }}
+                        >
+                          管理
+                        </AntdButton>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <Tag color="orange">{selectedTask.templateSnapshot.name}</Tag>
+                      <span className={styles.composeHint}>
+                        继续此任务 · 配置以创建时快照为准
+                      </span>
+                    </>
+                  )}
+                  <div className={styles.composeFooterSpacer} />
+                  <AntdButton
+                    type="primary"
+                    icon={<Send size={16} />}
+                    onClick={handleSendMessage}
+                    loading={isLoading}
+                    disabled={!inputMessage.trim() || (!selectedTask && !draftTemplate)}
+                    style={{ background: '#ff6600', borderColor: '#ff6600' }}
+                  >
+                    发送
+                  </AntdButton>
+                </div>
               </div>
               {selectedTask && (
                 <div style={{ fontSize: 10, opacity: 0.5, marginTop: 6 }}>
@@ -1067,68 +1181,6 @@ const CLITaskUI = ({
               )}
             </div>
           </div>
-
-          {!isMobile && taskInfoOpen && (
-            <CLITaskInfoPanel
-              open
-              onOpenChange={handleToggleTaskInfo}
-              task={selectedTask}
-              members={aiMembers}
-              inline
-              onCreateTaskFromThis={selectedTask ? handleCreateTaskFromThis : undefined}
-              onArchiveTask={handleArchiveTask}
-              onRestoreTask={handleRestoreTask}
-              onDeleteTask={handleDeleteTask}
-            />
-          )}
-
-          {!isMobile && templateListOpen && (
-            <CLITemplateListPanel
-              open
-              onOpenChange={handleToggleTemplateList}
-              templates={templates}
-              taskCountByTemplate={taskCountByTemplate}
-              onOpenTemplateSettings={openTemplateSettings}
-              inline
-            />
-          )}
-
-          {!isMobile && templateSettingsOpen && editingCLIGroup && (
-            <div style={{ width: settingsPanelWidth, flexShrink: 0 }}>
-              <CLIGroupSettings
-                open
-                onOpenChange={handleToggleTemplateSettings}
-                mode="template"
-                group={editingCLIGroup}
-                members={editingTemplateMembers}
-                mutedUsers={mutedUsers}
-                onToggleMute={(id) => setMutedUsers(prev =>
-                  prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id],
-                )}
-                workspacePath={editingCLIGroup.workspacePath || ''}
-                onWorkspacePathChange={(p) => handleUpdateEditingTemplate({ workspacePath: p })}
-                approvalMode={editingCLIGroup.approvalMode || 'auto'}
-                onApprovalModeChange={(mode) => handleUpdateEditingTemplate({ approvalMode: mode })}
-                timeout={editingCLIGroup.timeout ?? 300000}
-                onTimeoutChange={(t) => handleUpdateEditingTemplate({ timeout: t })}
-                showStderr={editingCLIGroup.showStderr !== false}
-                onShowStderrChange={(v) => handleUpdateEditingTemplate({ showStderr: v })}
-                strategy={editingCLIGroup.strategy || 'sequential'}
-                onStrategyChange={(s) => handleUpdateEditingTemplate({ strategy: s })}
-                onExecutionPlanChange={(p) => handleUpdateEditingTemplate({ executionPlan: p })}
-                onMembersChange={(ids) => handleUpdateEditingTemplate({ memberIds: ids })}
-                inline
-              />
-            </div>
-          )}
-
-          {!isMobile && showLibrary && (
-            <AIMemberLibrary
-              open
-              onOpenChange={handleToggleLibrary}
-              inline
-            />
-          )}
         </div>
 
         {isMobile && sidebarOpen && (

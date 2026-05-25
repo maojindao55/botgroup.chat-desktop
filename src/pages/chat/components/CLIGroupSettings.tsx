@@ -6,7 +6,7 @@ import { useState, useEffect } from 'react';
 import { Drawer, Switch, Button, Input, InputNumber, Tooltip, Tabs, Tag, Modal, Spin } from 'antd';
 import { Avatar as LobeAvatar, ActionIcon } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
-import { FolderOpen, Terminal, Mic, MicOff, CheckCircle2, XCircle, Play, FileText, RefreshCw, Clock, X } from 'lucide-react';
+import { FolderOpen, Terminal, Mic, MicOff, CheckCircle2, XCircle, Play, FileText, RefreshCw, Clock, X, ChevronLeft } from 'lucide-react';
 import { MemberPicker } from './MemberPicker';
 import { cliWorkflowTemplates } from '@/config/groupProduct';
 import { request } from '@/utils/request';
@@ -67,6 +67,9 @@ interface CLIGroupSettingsProps {
   onMembersChange?: (memberIds: string[]) => void;
   inline?: boolean;
   mode?: 'group' | 'template';
+  /** 从上级抽屉进入时显示返回按钮 */
+  onBack?: () => void;
+  backLabel?: string;
 }
 
 const useStyles = createStyles(({ token, css }) => ({
@@ -348,10 +351,33 @@ export const CLIGroupSettings = ({
   onMembersChange,
   inline,
   mode = 'group',
+  onBack,
+  backLabel,
 }: CLIGroupSettingsProps) => {
   const { styles, cx } = useStyles();
   const isTemplateMode = mode === 'template';
   const panelTitle = isTemplateMode ? '团队模板设置' : '开发群配置';
+  const drawerTitle = onBack ? (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <Button
+        type="text"
+        size="small"
+        icon={<ChevronLeft size={16} />}
+        onClick={onBack}
+        style={{ marginLeft: -8, padding: '0 6px', height: 28 }}
+      >
+        {backLabel || '返回'}
+      </Button>
+      <span>{panelTitle}</span>
+    </div>
+  ) : panelTitle;
+  const handleDrawerClose = () => {
+    if (onBack) {
+      onBack();
+      return;
+    }
+    onOpenChange(false);
+  };
   const workspaceTitle = isTemplateMode ? '默认 Workspace' : '本地 Workspace';
   const workspaceDesc = isTemplateMode
     ? '新任务将默认使用此目录；已有任务不受影响'
@@ -1230,11 +1256,11 @@ export const CLIGroupSettings = ({
   return (
     <>
       <Drawer
-        title={panelTitle}
+        title={drawerTitle}
         placement="right"
         open={open}
-        onClose={() => onOpenChange(false)}
-        width={400}
+        onClose={handleDrawerClose}
+        width={480}
       >
         <div className={styles.tabsContainer}>
           <Tabs

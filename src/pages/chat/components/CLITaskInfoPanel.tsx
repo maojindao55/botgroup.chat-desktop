@@ -185,7 +185,7 @@ export const CLITaskInfoPanel = ({
         placement="right"
         open={open}
         onClose={() => onOpenChange(false)}
-        width={360}
+        width={420}
       >
         <div className={styles.hint}>请先选择或创建一个开发任务。</div>
       </Drawer>
@@ -311,7 +311,7 @@ export const CLITaskInfoPanel = ({
       placement="right"
       open={open}
       onClose={() => onOpenChange(false)}
-      width={360}
+      width={420}
     >
       {body}
     </Drawer>
