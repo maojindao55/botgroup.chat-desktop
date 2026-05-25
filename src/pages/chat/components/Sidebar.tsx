@@ -24,7 +24,7 @@ import { UserSection } from './UserSection';
 import { useTheme } from '@/hooks/use-theme';
 import CreateGroupWizard from './CreateGroupWizard';
 import { getProductGroupType } from '@/config/groupProduct';
-import type { Group } from '@/config/groups';
+import type { Group, GroupType } from '@/config/groups';
 
 const getGroupIcon = (group: Group) => {
   switch (group.type) {
@@ -235,6 +235,9 @@ interface SidebarProps {
   groups: Group[];
   onCreateGroup?: (group: Group) => void;
   onOpenLibrary?: () => void;
+  activeView?: 'groups' | 'cli-tasks';
+  onNavigateCLI?: () => void;
+  hiddenGroupTypes?: GroupType[];
 }
 
 const Sidebar = ({
@@ -245,6 +248,9 @@ const Sidebar = ({
   groups,
   onCreateGroup,
   onOpenLibrary,
+  activeView = 'groups',
+  onNavigateCLI,
+  hiddenGroupTypes = [],
 }: SidebarProps) => {
   const { styles, cx } = useStyles();
   const [showCreateWizard, setShowCreateWizard] = useState(false);
@@ -272,6 +278,7 @@ const Sidebar = ({
 
   const filteredGroups = groups
     .map((group, originalIndex) => ({ group, originalIndex }))
+    .filter(({ group }) => !hiddenGroupTypes.includes(group.type || 'ai'))
     .filter(({ group }) =>
       group.name.toLowerCase().includes(searchQuery.toLowerCase()),
     );
@@ -395,6 +402,54 @@ const Sidebar = ({
               <div key={group.id}>{item}</div>
             );
           })}
+
+          {(() => {
+            const isCliActive = activeView === 'cli-tasks';
+            const devTasksBtn = (
+              <a
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault();
+                  onNavigateCLI?.();
+                }}
+                className={cx(
+                  styles.navItem,
+                  isCliActive && styles.navItemActive,
+                  !isOpen && styles.navItemCollapsed,
+                )}
+                style={{ marginTop: 8 }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    minWidth: 0,
+                    flex: 1,
+                    justifyContent: isOpen ? 'flex-start' : 'center',
+                  }}
+                >
+                  <Terminal
+                    size={16}
+                    style={{ color: isCliActive ? '#ff6600' : undefined, flexShrink: 0 }}
+                  />
+                  {isOpen && (
+                    <span className={styles.navItemLabel}>开发任务</span>
+                  )}
+                </div>
+                {isOpen && (
+                  <span className={cx(styles.tag, styles.tagCli)}>开发</span>
+                )}
+              </a>
+            );
+            return !isOpen ? (
+              <Tooltip title="开发任务" placement="right" mouseEnterDelay={0.15}>
+                {devTasksBtn}
+              </Tooltip>
+            ) : (
+              devTasksBtn
+            );
+          })()}
 
           {(() => {
             const btn = (

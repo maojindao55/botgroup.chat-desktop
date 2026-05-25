@@ -414,6 +414,8 @@ const AgentChatUI = ({
             groups={groups}
             onCreateGroup={onCreateGroup}
             onOpenLibrary={() => handleToggleLibrary(true)}
+            onNavigateCLI={() => { window.location.href = '?view=cli-tasks'; }}
+            hiddenGroupTypes={['cli']}
           />
 
           <div className={styles.rightCol}>

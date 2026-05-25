@@ -14,11 +14,61 @@ async function importTsModule(url) {
   return import(moduleUrl);
 }
 
-const { cliToolSessionKey, withCliToolSession } = await importTsModule(new URL('./cliToolSessions.ts', import.meta.url));
+const { cliToolSessionKey, resolveCliToolSessionKey, withCliToolSession } = await importTsModule(new URL('./cliToolSessions.ts', import.meta.url));
 
 assert.equal(
   cliToolSessionKey('group-1', 'cli-opencode', '/workspace/project'),
   'cliToolSession:group-1:cli-opencode:/workspace/project',
+);
+
+assert.equal(
+  resolveCliToolSessionKey({
+    developmentTaskId: 'devtask-aaa',
+    templateId: 'group-coding',
+    agentId: 'cli-opencode',
+    workspacePath: '/workspace/project',
+    sessionPolicy: 'task',
+  }),
+  'cliToolSession:devtask-aaa:cli-opencode:/workspace/project',
+);
+
+assert.equal(
+  resolveCliToolSessionKey({
+    developmentTaskId: 'devtask-aaa',
+    templateId: 'group-coding',
+    agentId: 'cli-opencode',
+    workspacePath: '/workspace/project',
+    sessionPolicy: 'template',
+  }),
+  'cliToolSession:group-coding:cli-opencode:/workspace/project',
+);
+
+assert.equal(
+  resolveCliToolSessionKey({
+    developmentTaskId: 'devtask-aaa',
+    templateId: 'group-coding',
+    agentId: 'cli-opencode',
+    workspacePath: '/workspace/project',
+    sessionPolicy: 'workspace',
+  }),
+  'cliToolSession:ws:/workspace/project:cli-opencode:/workspace/project',
+);
+
+assert.notEqual(
+  resolveCliToolSessionKey({
+    developmentTaskId: 'devtask-aaa',
+    templateId: 'group-coding',
+    agentId: 'cli-opencode',
+    workspacePath: '/workspace/project',
+    sessionPolicy: 'task',
+  }),
+  resolveCliToolSessionKey({
+    developmentTaskId: 'devtask-bbb',
+    templateId: 'group-coding',
+    agentId: 'cli-opencode',
+    workspacePath: '/workspace/project',
+    sessionPolicy: 'task',
+  }),
 );
 
 {

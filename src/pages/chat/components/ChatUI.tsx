@@ -22,6 +22,7 @@ import { SharePoster } from '@/pages/chat/components/SharePoster';
 import AIGroupSettings from './AIGroupSettings';
 import CLIGroupSettings from './CLIGroupSettings';
 import AgentChatUI from './AgentChatUI';
+import CLITaskUI from './CLITaskUI';
 import Sidebar from './Sidebar';
 import { AdBanner, AdBannerMobile } from './AdSection';
 import { useUserStore } from '@/store/userStore';
@@ -32,6 +33,31 @@ import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
 import type { Group, AIGroup, CLIGroup, AgentGroup, CLIStrategy, CLIExecutionPlan } from '@/config/groups';
 import { openPath } from '@tauri-apps/plugin-opener';
 
+const CLI_TEMPLATE_OVERRIDES_KEY = 'cli_template_overrides';
+
+function loadCLITemplateOverrides(): Record<string, CLIGroup> {
+  try {
+    const stored = localStorage.getItem(CLI_TEMPLATE_OVERRIDES_KEY);
+    return stored ? JSON.parse(stored) : {};
+  } catch {
+    return {};
+  }
+}
+
+function applyCLITemplateOverrides(groups: Group[]): Group[] {
+  const overrides = loadCLITemplateOverrides();
+  return groups.map((group) => {
+    if (group.type !== 'cli') return group;
+    const override = overrides[group.id];
+    return override ? { ...group, ...override, type: 'cli' } : group;
+  }) as Group[];
+}
+
+function persistCLITemplateOverride(group: CLIGroup) {
+  const overrides = loadCLITemplateOverrides();
+  overrides[group.id] = group;
+  localStorage.setItem(CLI_TEMPLATE_OVERRIDES_KEY, JSON.stringify(overrides));
+}
 
 const useStyles = createStyles(({ token, css }) => ({
   page: css`
@@ -362,6 +388,9 @@ const ChatUI = () => {
 
   const urlParams = new URLSearchParams(window.location.search);
   const id = urlParams.get('id') ? parseInt(urlParams.get('id')!) : 0;
+  const viewParam = urlParams.get('view');
+  const taskIdParam = urlParams.get('taskId');
+  const isCLIView = viewParam === 'cli-tasks' || viewParam === 'cli-task' || viewParam === 'cli-template';
 
   // State
   const [groups, setGroups] = useState<Group[]>([]);
@@ -489,14 +518,35 @@ const ChatUI = () => {
         if (!response.ok) throw new Error('初始化数据失败');
         const { data } = await response.json();
 
-        const currentGroup = data.groups[selectedGroupIndex];
-        if (!currentGroup) {
+        const resolvedGroups = applyCLITemplateOverrides(data.groups);
+        const currentGroup = resolvedGroups[selectedGroupIndex];
+
+        // 旧链接指向 CLI 群时，重定向到任务优先视图
+        if (currentGroup?.type === 'cli' && !isCLIView) {
+          window.location.replace('?view=cli-tasks');
+          return;
+        }
+
+        if (!currentGroup && !isCLIView) {
           setInitError('群聊不存在或无权访问');
           setIsInitializing(false);
           return;
         }
 
-        setGroups(data.groups);
+        setGroups(resolvedGroups);
+
+        if (isCLIView) {
+          setIsInitializing(false);
+          if (data.user) {
+            const r = await request('/api/user/info');
+            const userInfo = await r.json();
+            userStore.setUserInfo(userInfo.data);
+          } else {
+            userStore.setUserInfo({ id: 0, phone: '', nickname: '我', avatar_url: null, status: 0 });
+          }
+          return;
+        }
+
         setGroup(currentGroup);
         setIsInitializing(false);
 
@@ -544,7 +594,7 @@ const ChatUI = () => {
 
     initData();
     isInitialized.current = true;
-  }, [userStore, selectedGroupIndex]);
+  }, [userStore, selectedGroupIndex, isCLIView]);
 
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
@@ -555,6 +605,22 @@ const ChatUI = () => {
   };
   const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
   const handleSelectGroup = (index: number) => { window.location.href = `?id=${index}`; };
+  const handleNavigateCLI = () => { window.location.href = '?view=cli-tasks'; };
+
+  const handleUpdateCLIGroup = (updatedGroup: CLIGroup) => {
+    setGroups(prev => prev.map(g => g.id === updatedGroup.id ? updatedGroup : g));
+    persistCLITemplateOverride(updatedGroup);
+    try {
+      const stored = localStorage.getItem('custom_groups');
+      if (stored) {
+        const customGroups = JSON.parse(stored) as Group[];
+        const nextCustom = customGroups.map(g => g.id === updatedGroup.id ? updatedGroup : g);
+        localStorage.setItem('custom_groups', JSON.stringify(nextCustom));
+      }
+    } catch (e) {
+      console.error('Failed to update CLI template:', e);
+    }
+  };
 
   const updateGroup = (updatedGroup: Group) => {
     setGroup(updatedGroup);
@@ -653,7 +719,32 @@ const ChatUI = () => {
     );
   }
 
-  if (isInitializing || !group) {
+  if (isInitializing) {
+    return (
+      <div className={styles.loadingPage}>
+        <div className={styles.spinner} />
+      </div>
+    );
+  }
+
+  const cliGroups = groups.filter((g): g is CLIGroup => g.type === 'cli');
+
+  // CLI 开发任务视图
+  if (isCLIView) {
+    return (
+      <CLITaskUI
+        groups={groups}
+        cliGroups={cliGroups}
+        selectedGroupIndex={selectedGroupIndex}
+        onSelectGroup={handleSelectGroup}
+        onCreateGroup={handleCreateGroup}
+        onUpdateCLIGroup={handleUpdateCLIGroup}
+        initialTaskId={taskIdParam}
+      />
+    );
+  }
+
+  if (!group) {
     return (
       <div className={styles.loadingPage}>
         <div className={styles.spinner} />
@@ -1185,6 +1276,8 @@ const ChatUI = () => {
             groups={groups}
             onCreateGroup={handleCreateGroup}
             onOpenLibrary={() => handleToggleLibrary(true)}
+            onNavigateCLI={handleNavigateCLI}
+            hiddenGroupTypes={['cli']}
           />
 
           <div className={styles.rightCol}>
