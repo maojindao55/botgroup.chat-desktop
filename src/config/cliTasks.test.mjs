@@ -124,6 +124,49 @@ assert.notEqual(task.messages[0].id, task2.messages[0].id);
   assert.equal(filtered.length, 2);
 }
 
+{
+  const taskWsA = { ...task, workspacePath: '/Users/dev/project-a' };
+  const taskWsB = { ...task2, workspacePath: '/Users/dev/project-b' };
+  const filtered = mod.filterDevelopmentTasks([taskWsA, taskWsB], {
+    workspacePath: '/Users/dev/project-a',
+  });
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0].id, taskWsA.id);
+}
+
+{
+  const taskWithAgent = {
+    ...task,
+    messages: [
+      ...task.messages,
+      {
+        id: 'msg-agent',
+        taskId: task.id,
+        role: 'agent',
+        agentId: 'cli-codex',
+        agentName: 'Codex',
+        content: 'done',
+        status: 'completed',
+      },
+    ],
+  };
+  const taskOtherTemplate = {
+    ...task2,
+    templateSnapshot: {
+      ...task2.templateSnapshot,
+      memberIds: ['cli-claude-code'],
+    },
+  };
+  assert.equal(mod.taskInvolvesAgent(taskWithAgent, 'cli-codex'), true);
+  assert.equal(mod.taskInvolvesAgent(taskOtherTemplate, 'cli-codex'), false);
+  assert.equal(mod.taskInvolvesAgent(taskOtherTemplate, 'cli-claude-code'), true);
+  const filtered = mod.filterDevelopmentTasks([taskWithAgent, taskOtherTemplate], {
+    agentId: 'cli-codex',
+  });
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0].id, taskWithAgent.id);
+}
+
 assert.equal(mod.canMutateTask({ ...task, status: 'running' }), false);
 assert.equal(mod.canMutateTask({ ...task, status: 'completed' }), true);
 assert.equal(

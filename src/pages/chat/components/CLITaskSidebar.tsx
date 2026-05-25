@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Plus,
   Search,
@@ -12,8 +12,9 @@ import {
 import { Input, Tag, Tooltip, Select, Checkbox, Button } from 'antd';
 import { ActionIcon } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
-import type { CLIDevelopmentTask, CLITaskStatus, CLITeamTemplate } from '@/config/cliTasks';
+import type { CLIDevelopmentTask, CLITaskStatus } from '@/config/cliTasks';
 import { filterDevelopmentTasks } from '@/config/cliTasks';
+import { useAIMemberStore } from '@/store/aiMemberStore';
 
 const statusLabels: Record<CLITaskStatus, { label: string; color: string }> = {
   queued: { label: '排队', color: 'default' },
@@ -155,20 +156,54 @@ export const CLITaskSidebar = ({
   onOpenTemplateList,
 }: CLITaskSidebarProps) => {
   const { styles, cx } = useStyles();
+  const aiMembers = useAIMemberStore(s => s.members);
   const [searchQuery, setSearchQuery] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [statusFilter, setStatusFilter] = useState<CLITaskStatus | 'all'>('all');
   const [templateFilter, setTemplateFilter] = useState<string>('');
+  const [workspaceFilter, setWorkspaceFilter] = useState<string>('');
+  const [agentFilter, setAgentFilter] = useState<string>('');
   const [showArchived, setShowArchived] = useState(false);
 
   const templateOptions = Array.from(
     new Map(tasks.map(t => [t.templateId, t.templateSnapshot.name])).entries(),
   );
 
+  const workspaceOptions = useMemo(() => {
+    const paths = new Set<string>();
+    for (const task of tasks) {
+      if (task.workspacePath) paths.add(task.workspacePath);
+    }
+    return Array.from(paths).sort().map(path => ({ value: path, label: path }));
+  }, [tasks]);
+
+  const agentOptions = useMemo(() => {
+    const ids = new Set<string>();
+    for (const task of tasks) {
+      for (const id of task.templateSnapshot.memberIds) ids.add(id);
+      for (const message of task.messages) {
+        if (message.agentId) ids.add(message.agentId);
+      }
+    }
+    return Array.from(ids)
+      .map(id => ({
+        value: id,
+        label: aiMembers[id]?.name || id.replace(/^cli-/, ''),
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'zh-CN'));
+  }, [tasks, aiMembers]);
+
+  const hasActiveFilters = statusFilter !== 'all'
+    || !!templateFilter
+    || !!workspaceFilter
+    || !!agentFilter;
+
   const filteredTasks = filterDevelopmentTasks(tasks, {
     search: searchQuery,
     status: statusFilter,
     templateId: templateFilter || undefined,
+    workspacePath: workspaceFilter || undefined,
+    agentId: agentFilter || undefined,
     showArchived,
   });
 
@@ -237,7 +272,7 @@ export const CLITaskSidebar = ({
               onClick={() => setShowFilters(v => !v)}
             >
               <SlidersHorizontal size={12} />
-              筛选{showFilters ? '' : (statusFilter !== 'all' || templateFilter ? ' ·' : '')}
+              筛选{showFilters ? '' : (hasActiveFilters ? ' ·' : '')}
             </button>
             <button type="button" className={styles.linkBtn} onClick={onOpenTemplateList}>
               <Users size={12} />
@@ -272,6 +307,24 @@ export const CLITaskSidebar = ({
                 style={{ width: '100%' }}
                 options={templateOptions.map(([id, name]) => ({ value: id, label: name }))}
               />
+              <Select
+                size="small"
+                value={workspaceFilter || undefined}
+                placeholder="全部 Workspace"
+                allowClear
+                onChange={(v) => setWorkspaceFilter(v || '')}
+                style={{ width: '100%' }}
+                options={workspaceOptions}
+              />
+              <Select
+                size="small"
+                value={agentFilter || undefined}
+                placeholder="全部开发群友"
+                allowClear
+                onChange={(v) => setAgentFilter(v || '')}
+                style={{ width: '100%' }}
+                options={agentOptions}
+              />
               <Checkbox
                 checked={showArchived}
                 onChange={(e) => setShowArchived(e.target.checked)}
@@ -285,7 +338,7 @@ export const CLITaskSidebar = ({
           <nav className={styles.navList}>
             {filteredTasks.length === 0 && (
               <div className={styles.empty}>
-                {searchQuery || statusFilter !== 'all' || templateFilter
+                {searchQuery || hasActiveFilters
                   ? '未找到匹配任务'
                   : '还没有历史任务\n直接在右侧输入框开始第一个任务'}
               </div>

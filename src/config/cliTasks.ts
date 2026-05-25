@@ -182,8 +182,16 @@ export type CLITaskListFilter = {
   search?: string;
   status?: CLITaskStatus | 'all';
   templateId?: string;
+  workspacePath?: string;
+  agentId?: string;
   showArchived?: boolean;
 };
+
+/** 任务是否与某开发群友相关（模板成员或实际参与过） */
+export function taskInvolvesAgent(task: CLIDevelopmentTask, agentId: string): boolean {
+  if (task.templateSnapshot.memberIds.includes(agentId)) return true;
+  return task.messages.some(message => message.agentId === agentId);
+}
 
 /** 侧栏任务列表筛选 */
 export function filterDevelopmentTasks(
@@ -195,6 +203,10 @@ export function filterDevelopmentTasks(
     if (!filter.showArchived && task.status === 'archived') return false;
     if (filter.status && filter.status !== 'all' && task.status !== filter.status) return false;
     if (filter.templateId && task.templateId !== filter.templateId) return false;
+    if (filter.workspacePath !== undefined && filter.workspacePath !== '' && task.workspacePath !== filter.workspacePath) {
+      return false;
+    }
+    if (filter.agentId && !taskInvolvesAgent(task, filter.agentId)) return false;
     if (search) {
       const haystack = `${task.title}\n${task.prompt}`.toLowerCase();
       if (!haystack.includes(search)) return false;
