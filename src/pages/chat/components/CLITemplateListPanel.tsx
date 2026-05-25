@@ -6,6 +6,7 @@ import { Plus, Settings2, X } from 'lucide-react';
 import { createStyles } from 'antd-style';
 import { cliWorkflowTemplates } from '@/config/groupProduct';
 import type { CLITeamTemplate } from '@/config/cliTasks';
+import { sessionPolicyLabel } from '@/config/cliTasks';
 
 const useStyles = createStyles(({ token, css }) => ({
   inlinePanel: css`
@@ -166,6 +167,7 @@ export const CLITemplateListPanel = ({
           <div className={styles.meta}>
             {strategyLabel(template.strategy)} · {template.memberIds.length} 位成员
             {template.workspacePath ? ` · ${template.workspacePath}` : ''}
+            {` · ${sessionPolicyLabel(template.sessionPolicy)}`}
           </div>
           <div className={styles.meta}>
             已有 {taskCountByTemplate[template.id] || 0} 个开发任务

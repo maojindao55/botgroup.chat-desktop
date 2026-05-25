@@ -30,7 +30,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { AIMemberLibrary, AI_MEMBER_LIBRARY_INLINE_WIDTH } from './AIMemberLibrary';
 import { useAIMemberStore } from '@/store/aiMemberStore';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
-import type { Group, AIGroup, CLIGroup, AgentGroup, CLIStrategy, CLIExecutionPlan } from '@/config/groups';
+import type { Group, AIGroup, CLIGroup, AgentGroup, CLIStrategy, CLIExecutionPlan, CLISessionPolicy } from '@/config/groups';
 import { openPath } from '@tauri-apps/plugin-opener';
 
 const CLI_TEMPLATE_OVERRIDES_KEY = 'cli_template_overrides';
@@ -424,6 +424,7 @@ const ChatUI = () => {
   const [cliShowStderr, setCliShowStderr] = useState(true);
   const [cliStrategy, setCliStrategy] = useState<CLIStrategy>('sequential');
   const [cliExecutionPlan, setCliExecutionPlan] = useState<Partial<CLIExecutionPlan>>({});
+  const [cliSessionPolicy, setCliSessionPolicy] = useState<CLISessionPolicy>('task');
 
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -568,6 +569,7 @@ const ChatUI = () => {
           setApprovalMode(currentGroup.approvalMode || 'auto');
           setCliTimeout(currentGroup.timeout || 300000);
           setCliShowStderr(currentGroup.showStderr !== false);
+          setCliSessionPolicy(currentGroup.sessionPolicy || 'task');
           const strategyOverride = localStorage.getItem(`cliStrategy:${currentGroup.id}`) as CLIStrategy | null;
           setCliStrategy(strategyOverride || currentGroup.strategy || 'sequential');
           try {
@@ -619,6 +621,13 @@ const ChatUI = () => {
       }
     } catch (e) {
       console.error('Failed to update CLI template:', e);
+    }
+  };
+
+  const handleCliSessionPolicyChange = (policy: CLISessionPolicy) => {
+    setCliSessionPolicy(policy);
+    if (group?.type === 'cli') {
+      handleUpdateCLIGroup({ ...(group as CLIGroup), sessionPolicy: policy });
     }
   };
 
@@ -1246,6 +1255,8 @@ const ChatUI = () => {
           strategy={cliStrategy}
           onStrategyChange={handleCLIStrategyChange}
           onExecutionPlanChange={handleCLIExecutionPlanChange}
+          sessionPolicy={cliSessionPolicy}
+          onSessionPolicyChange={handleCliSessionPolicyChange}
           onRetryTask={(agentId, prompt) => {
             const m = aiMembers[agentId];
             const agent = m && m.kind === 'cli' ? mapAIMemberToLegacy(m) as CLIAgent : undefined;
@@ -1615,6 +1626,8 @@ const ChatUI = () => {
               strategy={cliStrategy}
               onStrategyChange={handleCLIStrategyChange}
               onExecutionPlanChange={handleCLIExecutionPlanChange}
+              sessionPolicy={cliSessionPolicy}
+              onSessionPolicyChange={handleCliSessionPolicyChange}
               onRetryTask={(agentId, prompt) => {
                 const m = aiMembers[agentId];
                 const agent = m && m.kind === 'cli' ? mapAIMemberToLegacy(m) as CLIAgent : undefined;

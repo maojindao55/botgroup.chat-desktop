@@ -37,6 +37,8 @@ assert.equal(template.name, 'AI Coding 工作组');
 assert.deepEqual(template.memberIds, ['cli-codex', 'cli-claude-code']);
 assert.equal(template.strategy, 'review');
 assert.equal(template.sessionPolicy, 'task');
+assert.equal(mod.cliGroupToTeamTemplate({ ...sampleGroup, sessionPolicy: 'workspace' }).sessionPolicy, 'workspace');
+assert.equal(mod.sessionPolicyLabel('template'), '按模板共享');
 assert.equal(template.workspacePath, '/Users/dev/project');
 
 const task = mod.createDevelopmentTask({
@@ -120,6 +122,63 @@ assert.notEqual(task.messages[0].id, task2.messages[0].id);
     templateId: 'group-coding',
   });
   assert.equal(filtered.length, 2);
+}
+
+{
+  const taskWsA = { ...task, workspacePath: '/Users/dev/project-a' };
+  const taskWsB = { ...task2, workspacePath: '/Users/dev/project-b' };
+  const filtered = mod.filterDevelopmentTasks([taskWsA, taskWsB], {
+    workspacePath: '/Users/dev/project-a',
+  });
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0].id, taskWsA.id);
+}
+
+{
+  const taskWithAgent = {
+    ...task,
+    messages: [
+      ...task.messages,
+      {
+        id: 'msg-agent',
+        taskId: task.id,
+        role: 'agent',
+        agentId: 'cli-codex',
+        agentName: 'Codex',
+        content: 'done',
+        status: 'completed',
+      },
+    ],
+  };
+  const taskOtherTemplate = {
+    ...task2,
+    templateSnapshot: {
+      ...task2.templateSnapshot,
+      memberIds: ['cli-claude-code'],
+    },
+  };
+  assert.equal(mod.taskInvolvesAgent(taskWithAgent, 'cli-codex'), true);
+  assert.equal(mod.taskInvolvesAgent(taskOtherTemplate, 'cli-codex'), false);
+  assert.equal(mod.taskInvolvesAgent(taskOtherTemplate, 'cli-claude-code'), true);
+  const filtered = mod.filterDevelopmentTasks([taskWithAgent, taskOtherTemplate], {
+    agentId: 'cli-codex',
+  });
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0].id, taskWithAgent.id);
+}
+
+{
+  const parsed = mod.parseAgentMention('@Codex fix login', ['cli-codex', 'cli-claude-code'], (id) => (
+    id === 'cli-codex' ? 'Codex' : 'Claude Code'
+  ));
+  assert.equal(parsed.agentId, 'cli-codex');
+  assert.equal(parsed.prompt, 'fix login');
+}
+
+{
+  const parsed = mod.parseAgentMention('fix login without mention', ['cli-codex'], () => 'Codex');
+  assert.equal(parsed.agentId, undefined);
+  assert.equal(parsed.prompt, 'fix login without mention');
 }
 
 assert.equal(mod.canMutateTask({ ...task, status: 'running' }), false);

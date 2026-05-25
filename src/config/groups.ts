@@ -63,6 +63,8 @@ export interface CLIExecutionPlan {
   resultPolicy?: CLIResultPolicy;
 }
 
+export type CLISessionPolicy = 'task' | 'workspace' | 'template';
+
 export interface CLIGroup {
   id: string;
   type: 'cli';
@@ -76,6 +78,8 @@ export interface CLIGroup {
   showStderr: boolean;              // 是否展示 stderr 输出
   strategy: CLIStrategy;            // 执行策略，默认 sequential
   coordinatorPrompt?: string;       // 路由/评判提示词（router/race 模式用）
+  /** CLI tool session 复用策略，缺省为 task */
+  sessionPolicy?: CLISessionPolicy;
   /** 执行细节：覆盖预设 plan 的部分字段；老数据可缺省 */
   executionPlan?: Partial<CLIExecutionPlan>;
 }

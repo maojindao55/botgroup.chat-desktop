@@ -1,4 +1,4 @@
-import type { CLIGroup, CLIStrategy, CLIExecutionPlan } from './groups';
+import type { CLIGroup, CLIStrategy, CLIExecutionPlan, CLISessionPolicy } from './groups';
 
 export type CLITaskStatus =
   | 'queued'
@@ -9,7 +9,60 @@ export type CLITaskStatus =
   | 'timeout'
   | 'archived';
 
-export type CLISessionPolicy = 'task' | 'workspace' | 'template';
+export type { CLISessionPolicy };
+
+export const cliSessionPolicyOptions: Array<{
+  value: CLISessionPolicy;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: 'task',
+    label: '按任务隔离',
+    description: '每个开发任务使用独立 CLI 会话；继续同一任务会复用该任务的会话。',
+  },
+  {
+    value: 'workspace',
+    label: '按 Workspace 共享',
+    description: '同一 Workspace 与开发群友下的所有任务共享 CLI 会话。',
+  },
+  {
+    value: 'template',
+    label: '按模板共享',
+    description: '使用同一团队模板创建的所有任务共享 CLI 会话，上下文隔离最弱。',
+  },
+];
+
+export function sessionPolicyLabel(policy: CLISessionPolicy): string {
+  return cliSessionPolicyOptions.find(item => item.value === policy)?.label ?? policy;
+}
+
+/** 解析输入开头的 @开发群友，用于指定单个 agent 执行任务 */
+export function parseAgentMention(
+  input: string,
+  memberIds: string[],
+  resolveName: (agentId: string) => string | undefined,
+): { agentId?: string; prompt: string; raw: string } {
+  const raw = input.trim();
+  const match = raw.match(/^@([^\s@]+)(?:\s+([\s\S]*))?$/);
+  if (!match) return { prompt: raw, raw };
+
+  const token = match[1].toLowerCase();
+  const rest = (match[2] ?? '').trim();
+  if (!rest) return { prompt: raw, raw };
+
+  for (const id of memberIds) {
+    const name = resolveName(id) || '';
+    const candidates = [id, id.replace(/^cli-/, ''), name]
+      .filter(Boolean)
+      .map(value => value.toLowerCase());
+    if (candidates.some(candidate => candidate === token || candidate.startsWith(token))) {
+      return { agentId: id, prompt: rest, raw };
+    }
+  }
+
+  return { prompt: raw, raw };
+}
 
 export interface CLITeamTemplate {
   id: string;
@@ -42,6 +95,8 @@ export interface CLITaskMessage {
   prompt?: string;
   stageLabel?: string;
   isError?: boolean;
+  /** Race worktree 结果是否被用户标记采纳 */
+  adopted?: boolean;
 }
 
 export interface CLIDevelopmentTask {
@@ -73,7 +128,7 @@ export function cliGroupToTeamTemplate(group: CLIGroup): CLITeamTemplate {
     showStderr: group.showStderr !== false,
     strategy: group.strategy || 'sequential',
     executionPlan: group.executionPlan,
-    sessionPolicy: DEFAULT_SESSION_POLICY,
+    sessionPolicy: group.sessionPolicy ?? DEFAULT_SESSION_POLICY,
   };
 }
 
@@ -156,8 +211,16 @@ export type CLITaskListFilter = {
   search?: string;
   status?: CLITaskStatus | 'all';
   templateId?: string;
+  workspacePath?: string;
+  agentId?: string;
   showArchived?: boolean;
 };
+
+/** 任务是否与某开发群友相关（模板成员或实际参与过） */
+export function taskInvolvesAgent(task: CLIDevelopmentTask, agentId: string): boolean {
+  if (task.templateSnapshot.memberIds.includes(agentId)) return true;
+  return task.messages.some(message => message.agentId === agentId);
+}
 
 /** 侧栏任务列表筛选 */
 export function filterDevelopmentTasks(
@@ -169,6 +232,10 @@ export function filterDevelopmentTasks(
     if (!filter.showArchived && task.status === 'archived') return false;
     if (filter.status && filter.status !== 'all' && task.status !== filter.status) return false;
     if (filter.templateId && task.templateId !== filter.templateId) return false;
+    if (filter.workspacePath !== undefined && filter.workspacePath !== '' && task.workspacePath !== filter.workspacePath) {
+      return false;
+    }
+    if (filter.agentId && !taskInvolvesAgent(task, filter.agentId)) return false;
     if (search) {
       const haystack = `${task.title}\n${task.prompt}`.toLowerCase();
       if (!haystack.includes(search)) return false;

@@ -119,6 +119,7 @@ assert.doesNotMatch(cliSettings, /群规/);
 assert.doesNotMatch(cliSettings, /Runtime/);
 assert.doesNotMatch(cliSettings, /本机 CLI Runtime 状态/);
 assert.match(cliSettings, /cliWorkflowTemplates/);
+assert.match(cliSettings, /CLI 会话复用/);
 assert.match(cliSettings, /开发群友/);
 
 const memberLibrary = await readFile(new URL('../pages/chat/components/AIMemberLibrary.tsx', import.meta.url), 'utf8');
