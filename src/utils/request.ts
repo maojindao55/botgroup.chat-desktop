@@ -1007,6 +1007,29 @@ export async function request(url: string, options: RequestInit = {}) {
       }
     }
 
+    // 9.7b CLI git diff (race worktree vs base commit)
+    if (cleanUrl === '/api/cli/git/diff') {
+      const body = JSON.parse(options.body as string);
+      const { cwd, baseSha } = body || {};
+      if (!cwd || !baseSha) {
+        return mockResponse(
+          { success: false, message: '/api/cli/git/diff requires { cwd, baseSha }' },
+          400,
+        );
+      }
+      try {
+        const result = await invoke('cli_git_diff', {
+          args: { cwd, baseSha },
+        });
+        return mockResponse({ success: true, data: result });
+      } catch (e: any) {
+        return mockResponse(
+          { success: false, message: typeof e === 'string' ? e : (e?.message || 'git diff failed') },
+          400,
+        );
+      }
+    }
+
     // 9.8 CLI temp copy prepare (discussion read-only isolation)
     if (cleanUrl === '/api/cli/tempcopy/prepare') {
       const body = JSON.parse(options.body as string);

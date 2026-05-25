@@ -9,6 +9,7 @@ import {
   Terminal,
   Share2,
   Info,
+  GitCompare,
 } from 'lucide-react';
 import { Input as AntdInput, Button as AntdButton, Tag, Modal, Select } from 'antd';
 import { ActionIcon, Avatar as LobeAvatar } from '@lobehub/ui';
@@ -26,6 +27,7 @@ import CLIGroupSettings from './CLIGroupSettings';
 import CLITaskInfoPanel from './CLITaskInfoPanel';
 import CLITemplateListPanel from './CLITemplateListPanel';
 import CLITaskCompareModal from './CLITaskCompareModal';
+import CLIRaceResultsDrawer from './CLIRaceResultsDrawer';
 import CLITaskSidebar from './CLITaskSidebar';
 import CreateGroupWizard from './CreateGroupWizard';
 import Sidebar from './Sidebar';
@@ -39,6 +41,8 @@ import type { Group, CLIGroup } from '@/config/groups';
 import {
   templateSnapshotToCLIGroup,
   parseAgentMention,
+  isRaceTask,
+  getRaceWorktreeEntries,
   type CLIDevelopmentTask,
 } from '@/config/cliTasks';
 import {
@@ -47,6 +51,7 @@ import {
   taskMessageToChatRow,
 } from '@/store/cliTaskStore';
 import { openPath } from '@tauri-apps/plugin-opener';
+import { toast } from 'sonner';
 
 interface CLITaskUIProps {
   groups: Group[];
@@ -381,6 +386,7 @@ const CLITaskUI = ({
   const [forkTemplateId, setForkTemplateId] = useState('');
   const [createTemplateOpen, setCreateTemplateOpen] = useState(false);
   const [compareModalOpen, setCompareModalOpen] = useState(false);
+  const [raceDrawerOpen, setRaceDrawerOpen] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
   const [showPoster, setShowPoster] = useState(false);
   const [showAd, setShowAd] = useState(false);
@@ -422,6 +428,11 @@ const CLITaskUI = ({
     }
     return counts;
   }, [tasks]);
+
+  const raceEntries = useMemo(() => {
+    if (!selectedTask || !isRaceTask(selectedTask)) return [];
+    return getRaceWorktreeEntries(selectedTask, workspacePath);
+  }, [selectedTask, workspacePath]);
 
   useEffect(() => { loadAIMembers(); }, [loadAIMembers]);
   useEffect(() => { if (isMobile !== undefined) { setSidebarOpen(!isMobile); setTaskSidebarOpen(!isMobile); } }, [isMobile]);
@@ -681,6 +692,25 @@ const CLITaskUI = ({
     updateMessage(selectedTask.id, messageId, { adopted: true });
   };
 
+  const handleCleanupWorktree = async (path: string, agentName?: string) => {
+    const confirmed = window.confirm(
+      `确认清理${agentName ? ` ${agentName} 的` : ''} worktree？\n${path}\n此操作不可恢复。`,
+    );
+    if (!confirmed) return;
+    try {
+      const res = await request('/api/cli/worktree/cleanup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paths: [path] }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.message || '清理失败');
+      toast.success('worktree 已清理');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '清理失败');
+    }
+  };
+
   const insertAgentMention = (agentName: string) => {
     const mention = `@${agentName} `;
     setInputMessage(prev => (prev.trim() ? `${mention}${prev}` : mention));
@@ -922,6 +952,14 @@ const CLITaskUI = ({
         initialTaskId={selectedTaskId}
       />
 
+      <CLIRaceResultsDrawer
+        open={raceDrawerOpen}
+        onOpenChange={setRaceDrawerOpen}
+        task={selectedTask}
+        workspacePath={workspacePath}
+        onAdopt={handleAdoptRaceResult}
+      />
+
       {showPoster && selectedTask && (
         <SharePoster
           messages={chatMessages}
@@ -1061,6 +1099,14 @@ const CLITaskUI = ({
                       title="任务信息"
                     />
                   )}
+                  {raceEntries.length > 0 && (
+                    <ActionIcon
+                      icon={GitCompare}
+                      size="small"
+                      onClick={() => setRaceDrawerOpen(true)}
+                      title="Race 结果对比"
+                    />
+                  )}
                 </div>
               </div>
             </header>
@@ -1196,6 +1242,14 @@ const CLITaskUI = ({
                                       标记采纳
                                     </button>
                                   )}
+                                  <button
+                                    type="button"
+                                    className={styles.cliWorktreeActionBtn}
+                                    style={{ color: '#ff4d4f', borderColor: '#ffccc7' }}
+                                    onClick={() => handleCleanupWorktree(message.cliCwd!, message.sender.name)}
+                                  >
+                                    清理
+                                  </button>
                                   {message.adopted && (
                                     <span style={{ fontSize: 11, color: '#52c41a', fontWeight: 600 }}>
                                       ✓ 已采纳

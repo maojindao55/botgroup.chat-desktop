@@ -207,6 +207,52 @@ export function cloneTaskMessages(messages: CLITaskMessage[]): CLITaskMessage[] 
   return messages.map(m => ({ ...m }));
 }
 
+export type CLIRaceWorktreeEntry = {
+  messageId: string;
+  agentId?: string;
+  agentName?: string;
+  status?: CLITaskStatus;
+  cliCwd: string;
+  cliBranch?: string;
+  baseSha?: string;
+  adopted?: boolean;
+  contentPreview: string;
+};
+
+export function isRaceTask(task: CLIDevelopmentTask): boolean {
+  return task.templateSnapshot.strategy === 'race';
+}
+
+/** 从任务消息中提取 race 模式的独立 worktree 结果（按路径去重） */
+export function getRaceWorktreeEntries(
+  task: CLIDevelopmentTask,
+  mainWorkspace?: string,
+): CLIRaceWorktreeEntry[] {
+  const seen = new Set<string>();
+  const entries: CLIRaceWorktreeEntry[] = [];
+
+  for (const message of task.messages) {
+    if (message.role !== 'agent' || !message.cliCwd) continue;
+    if (mainWorkspace && message.cliCwd === mainWorkspace) continue;
+    if (seen.has(message.cliCwd)) continue;
+    seen.add(message.cliCwd);
+
+    entries.push({
+      messageId: message.id,
+      agentId: message.agentId,
+      agentName: message.agentName,
+      status: message.status,
+      cliCwd: message.cliCwd,
+      cliBranch: message.cliBranch,
+      baseSha: message.baseSha,
+      adopted: message.adopted,
+      contentPreview: message.content.slice(0, 160),
+    });
+  }
+
+  return entries;
+}
+
 export type CLITaskListFilter = {
   search?: string;
   status?: CLITaskStatus | 'all';

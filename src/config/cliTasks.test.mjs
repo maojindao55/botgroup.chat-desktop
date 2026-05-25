@@ -181,6 +181,31 @@ assert.notEqual(task.messages[0].id, task2.messages[0].id);
   assert.equal(parsed.prompt, 'fix login without mention');
 }
 
+{
+  const raceTask = {
+    ...task,
+    templateSnapshot: { ...task.templateSnapshot, strategy: 'race' },
+    messages: [
+      ...task.messages,
+      {
+        id: 'race-msg',
+        taskId: task.id,
+        role: 'agent',
+        agentId: 'cli-codex',
+        agentName: 'Codex',
+        content: 'implemented',
+        status: 'completed',
+        cliCwd: '/tmp/cli-worktrees/codex',
+        baseSha: 'abc123',
+      },
+    ],
+  };
+  const entries = mod.getRaceWorktreeEntries(raceTask, '/Users/dev/project');
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].agentId, 'cli-codex');
+  assert.equal(mod.isRaceTask(raceTask), true);
+}
+
 assert.equal(mod.canMutateTask({ ...task, status: 'running' }), false);
 assert.equal(mod.canMutateTask({ ...task, status: 'completed' }), true);
 assert.equal(

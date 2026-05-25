@@ -1540,6 +1540,52 @@ pub async fn cli_worktree_cleanup(args: CliWorktreeCleanupArgs) -> Result<(), St
     }
 }
 
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CliGitDiffArgs {
+    pub cwd: String,
+    pub base_sha: String,
+}
+
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct CliGitDiffResult {
+    pub stat: String,
+    pub diff: String,
+    pub truncated: bool,
+}
+
+const MAX_GIT_DIFF_BYTES: usize = 120_000;
+
+#[tauri::command]
+pub async fn cli_git_diff(args: CliGitDiffArgs) -> Result<CliGitDiffResult, String> {
+    if args.cwd.is_empty() {
+        return Err("cwd 不能为空".to_string());
+    }
+    if args.base_sha.is_empty() {
+        return Err("baseSha 不能为空".to_string());
+    }
+
+    let cwd = std::path::PathBuf::from(&args.cwd);
+    if !cwd.exists() {
+        return Err(format!("路径不存在：{}", args.cwd));
+    }
+
+    let stat = run_git_capture(&cwd, &["diff", "--stat", &args.base_sha]).unwrap_or_default();
+    let mut diff = run_git_capture(&cwd, &["diff", &args.base_sha])?;
+    let truncated = diff.len() > MAX_GIT_DIFF_BYTES;
+    if truncated {
+        diff.truncate(MAX_GIT_DIFF_BYTES);
+        diff.push_str("\n\n... diff 过长，已截断 ...");
+    }
+
+    Ok(CliGitDiffResult {
+        stat,
+        diff,
+        truncated,
+    })
+}
+
 fn sanitize_path_segment(input: &str) -> String {
     input
         .chars()
