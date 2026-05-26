@@ -8,13 +8,11 @@ import {
   PanelLeftClose as PanelLeftCloseIcon,
   PlusCircle as PlusCircleIcon,
   Puzzle,
-  Search,
   Sun,
   Terminal,
-  X,
   Users as UsersIcon,
 } from 'lucide-react';
-import { Input, Tooltip } from 'antd';
+import { Tooltip } from 'antd';
 import { ActionIcon, Segmented } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 import GitHubButton from 'react-github-btn';
@@ -73,25 +71,34 @@ const useStyles = createStyles(({ token, css }) => ({
     white-space: nowrap;
     overflow: hidden;
   `,
-  searchWrapper: css`
-    padding: 12px 12px 4px;
-    flex: none;
-  `,
-  searchCollapsed: css`
-    display: flex;
-    justify-content: center;
-    padding: 8px;
-    flex: none;
-  `,
   navList: css`
     flex: 1;
-    overflow: auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     padding: 8px;
   `,
-  navEmpty: css`
-    text-align: center;
-    padding: 24px 16px;
-    font-size: 12px;
+  navSection: css`
+    flex: none;
+  `,
+  navScrollSection: css`
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    margin: 0 -8px;
+    padding: 0 8px;
+  `,
+  sectionDivider: css`
+    height: 1px;
+    background: ${token.colorBorderSecondary};
+    margin: 6px 8px;
+    flex: none;
+  `,
+  sectionLabel: css`
+    padding: 2px 12px 8px;
+    font-size: 11px;
+    font-weight: 600;
     color: ${token.colorTextTertiary};
   `,
   navItem: css`
@@ -255,7 +262,6 @@ const Sidebar = ({
   const { styles, cx } = useStyles();
   const [showCreateWizard, setShowCreateWizard] = useState(false);
   const [version, setVersion] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
   const { theme, resolvedTheme, setTheme } = useTheme();
 
   const colorScheme =
@@ -278,10 +284,7 @@ const Sidebar = ({
 
   const filteredGroups = groups
     .map((group, originalIndex) => ({ group, originalIndex }))
-    .filter(({ group }) => !hiddenGroupTypes.includes(group.type || 'ai'))
-    .filter(({ group }) =>
-      group.name.toLowerCase().includes(searchQuery.toLowerCase()),
-    );
+    .filter(({ group }) => !hiddenGroupTypes.includes(group.type || 'ai'));
 
   return (
     <>
@@ -311,47 +314,62 @@ const Sidebar = ({
           />
         </div>
 
-        {isOpen ? (
-          <div className={styles.searchWrapper}>
-            <Input
-              size="small"
-              placeholder="搜索群聊..."
-              prefix={<Search size={14} style={{ opacity: 0.6 }} />}
-              suffix={
-                searchQuery ? (
-                  <X
-                    size={12}
-                    onClick={() => setSearchQuery('')}
-                    style={{ cursor: 'pointer' }}
-                  />
-                ) : (
-                  <span />
-                )
-              }
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ borderRadius: 12, height: 36 }}
-            />
-          </div>
-        ) : (
-          <div className={styles.searchCollapsed}>
-            <ActionIcon
-              icon={Search}
-              size="small"
-              onClick={toggleSidebar}
-              title=""
-            />
-          </div>
-        )}
-
         <nav className={styles.navList}>
-          {filteredGroups.length === 0 && searchQuery.trim() !== '' && (
-            <div className={styles.navEmpty}>未找到匹配的群聊</div>
-          )}
+          <div className={styles.navSection}>
+            {isOpen && <div className={styles.sectionLabel}>工作区</div>}
+            {(() => {
+              const isCliActive = activeView === 'cli-tasks';
+              const devTasksBtn = (
+                <a
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onNavigateCLI?.();
+                  }}
+                  className={cx(
+                    styles.navItem,
+                    isCliActive && styles.navItemActive,
+                    !isOpen && styles.navItemCollapsed,
+                  )}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      minWidth: 0,
+                      flex: 1,
+                      justifyContent: isOpen ? 'flex-start' : 'center',
+                    }}
+                  >
+                    <Terminal
+                      size={16}
+                      style={{ color: isCliActive ? '#ff6600' : undefined, flexShrink: 0 }}
+                    />
+                    {isOpen && (
+                      <span className={styles.navItemLabel}>开发任务</span>
+                    )}
+                  </div>
+                </a>
+              );
+              return !isOpen ? (
+                <Tooltip title="开发任务" placement="right" mouseEnterDelay={0.15}>
+                  {devTasksBtn}
+                </Tooltip>
+              ) : (
+                devTasksBtn
+              );
+            })()}
+          </div>
 
-          {filteredGroups.map(({ group, originalIndex }) => {
+          <div className={styles.sectionDivider} />
+
+          <div className={styles.navScrollSection}>
+            {isOpen && <div className={styles.sectionLabel}>群聊</div>}
+
+            {filteredGroups.map(({ group, originalIndex }) => {
             const Icon = getGroupIcon(group);
-            const isSelected = selectedGroupIndex === originalIndex;
+            const isSelected = activeView === 'groups' && selectedGroupIndex === originalIndex;
             const item = (
               <a
                 href="#"
@@ -404,54 +422,6 @@ const Sidebar = ({
           })}
 
           {(() => {
-            const isCliActive = activeView === 'cli-tasks';
-            const devTasksBtn = (
-              <a
-                href="#"
-                onClick={(e) => {
-                  e.preventDefault();
-                  onNavigateCLI?.();
-                }}
-                className={cx(
-                  styles.navItem,
-                  isCliActive && styles.navItemActive,
-                  !isOpen && styles.navItemCollapsed,
-                )}
-                style={{ marginTop: 8 }}
-              >
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 10,
-                    minWidth: 0,
-                    flex: 1,
-                    justifyContent: isOpen ? 'flex-start' : 'center',
-                  }}
-                >
-                  <Terminal
-                    size={16}
-                    style={{ color: isCliActive ? '#ff6600' : undefined, flexShrink: 0 }}
-                  />
-                  {isOpen && (
-                    <span className={styles.navItemLabel}>开发任务</span>
-                  )}
-                </div>
-                {isOpen && (
-                  <span className={cx(styles.tag, styles.tagCli)}>开发</span>
-                )}
-              </a>
-            );
-            return !isOpen ? (
-              <Tooltip title="开发任务" placement="right" mouseEnterDelay={0.15}>
-                {devTasksBtn}
-              </Tooltip>
-            ) : (
-              devTasksBtn
-            );
-          })()}
-
-          {(() => {
             const btn = (
               <a
                 href="#"
@@ -497,53 +467,58 @@ const Sidebar = ({
               btn
             );
           })()}
+          </div>
 
-          {(() => {
-            const libraryBtn = (
-              <a
-                href="#"
-                onClick={(e) => {
-                  e.preventDefault();
-                  onOpenLibrary?.();
-                }}
-                className={cx(
-                  styles.navItem,
-                  !isOpen && styles.navItemCollapsed,
-                )}
-                style={{ marginTop: 8 }}
-              >
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 10,
-                    minWidth: 0,
-                    flex: 1,
-                    justifyContent: isOpen ? 'flex-start' : 'center',
+          <div className={styles.sectionDivider} />
+
+          <div className={styles.navSection}>
+            {isOpen && <div className={styles.sectionLabel}>资源</div>}
+            {(() => {
+              const libraryBtn = (
+                <a
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onOpenLibrary?.();
                   }}
-                >
-                  <UsersIcon
-                    size={16}
-                    style={{ color: '#ff6600', flexShrink: 0 }}
-                  />
-                  {isOpen && (
-                    <span className={styles.navItemLabel}>资源库</span>
+                  className={cx(
+                    styles.navItem,
+                    !isOpen && styles.navItemCollapsed,
                   )}
-                </div>
-              </a>
-            );
-            return !isOpen ? (
-              <Tooltip
-                title="资源库"
-                placement="right"
-                mouseEnterDelay={0.15}
-              >
-                {libraryBtn}
-              </Tooltip>
-            ) : (
-              libraryBtn
-            );
-          })()}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      minWidth: 0,
+                      flex: 1,
+                      justifyContent: isOpen ? 'flex-start' : 'center',
+                    }}
+                  >
+                    <UsersIcon
+                      size={16}
+                      style={{ color: '#ff6600', flexShrink: 0 }}
+                    />
+                    {isOpen && (
+                      <span className={styles.navItemLabel}>资源库</span>
+                    )}
+                  </div>
+                </a>
+              );
+              return !isOpen ? (
+                <Tooltip
+                  title="资源库"
+                  placement="right"
+                  mouseEnterDelay={0.15}
+                >
+                  {libraryBtn}
+                </Tooltip>
+              ) : (
+                libraryBtn
+              );
+            })()}
+          </div>
         </nav>
 
         <UserSection isOpen={isOpen} />
