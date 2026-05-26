@@ -5,7 +5,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   Send,
-  ChevronLeft,
+  PanelLeftOpen,
   Terminal,
   Info,
   GitCompare,
@@ -24,7 +24,6 @@ import { ChatMarkdown } from '@/components/Markdown';
 import CLIGroupSettings from './CLIGroupSettings';
 import CLITaskInfoPanel from './CLITaskInfoPanel';
 import CLITemplateListPanel from './CLITemplateListPanel';
-import CLITaskCompareModal from './CLITaskCompareModal';
 import CLIRaceResultsDrawer from './CLIRaceResultsDrawer';
 import CLITaskLogModal from './CLITaskLogModal';
 import CLITaskSidebar from './CLITaskSidebar';
@@ -92,6 +91,32 @@ const useStyles = createStyles(({ token, css }) => ({
     flex-direction: column;
     flex: 1;
     min-width: 0;
+    position: relative;
+  `,
+  taskSidebarExpandHandle: css`
+    position: absolute;
+    left: 0;
+    top: 18px;
+    z-index: 5;
+    transform: translateX(-50%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 32px;
+    padding: 0;
+    border: 1px solid ${token.colorBorderSecondary};
+    border-radius: 0 8px 8px 0;
+    background: ${token.colorBgContainer};
+    color: ${token.colorTextSecondary};
+    cursor: pointer;
+    box-shadow: 1px 0 4px rgba(0, 0, 0, 0.06);
+    transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+    &:hover {
+      color: #ff6600;
+      border-color: rgba(255, 102, 0, 0.35);
+      background: rgba(255, 102, 0, 0.06);
+    }
   `,
   headerBar: css`
     background: ${token.colorBgContainer};
@@ -371,12 +396,6 @@ const useStyles = createStyles(({ token, css }) => ({
     animation: spin 1s linear infinite;
     @keyframes spin { to { transform: rotate(360deg); } }
   `,
-  mobileBackBtn: css`
-    display: inline-flex;
-    margin-right: 8px;
-    cursor: pointer;
-    @media (min-width: 768px) { display: none; }
-  `,
   mobileOverlay: css`
     position: fixed;
     inset: 0;
@@ -432,7 +451,6 @@ const CLITaskUI = ({
   const [forkModalOpen, setForkModalOpen] = useState(false);
   const [forkTemplateId, setForkTemplateId] = useState('');
   const [createTemplateOpen, setCreateTemplateOpen] = useState(false);
-  const [compareModalOpen, setCompareModalOpen] = useState(false);
   const [raceDrawerOpen, setRaceDrawerOpen] = useState(false);
   const [logTarget, setLogTarget] = useState<{
     agentTaskId: string;
@@ -1166,13 +1184,6 @@ const CLITaskUI = ({
         fixedGroupType="cli"
       />
 
-      <CLITaskCompareModal
-        open={compareModalOpen}
-        onOpenChange={setCompareModalOpen}
-        tasks={tasks}
-        initialTaskId={selectedTaskId}
-      />
-
       <CLIRaceResultsDrawer
         open={raceDrawerOpen}
         onOpenChange={setRaceDrawerOpen}
@@ -1280,16 +1291,24 @@ const CLITaskUI = ({
             onSelectTask={navigateToTask}
             onNewTask={startNewTask}
             onOpenTemplateList={openTemplateList}
-            onOpenCompare={() => setCompareModalOpen(true)}
           />
 
           <div className={styles.rightCol}>
+            {!taskSidebarOpen && (
+              <Tooltip title="展开任务列表" placement="right">
+                <button
+                  type="button"
+                  className={styles.taskSidebarExpandHandle}
+                  onClick={() => setTaskSidebarOpen(true)}
+                  aria-label="展开任务列表"
+                >
+                  <PanelLeftOpen size={14} />
+                </button>
+              </Tooltip>
+            )}
             <header className={styles.headerBar}>
               <div className={styles.headerInner}>
                 <div style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
-                  <div className={styles.mobileBackBtn} onClick={() => setTaskSidebarOpen(true)}>
-                    <ChevronLeft size={20} />
-                  </div>
                   <div style={{ minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <Terminal size={16} color="#ff6600" />

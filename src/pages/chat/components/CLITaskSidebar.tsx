@@ -5,10 +5,8 @@ import {
   Terminal,
   X,
   PanelLeftClose,
-  Menu as MenuIcon,
   SlidersHorizontal,
   Users,
-  GitCompare,
 } from 'lucide-react';
 import { Input, Tag, Tooltip, Select, Checkbox, Button } from 'antd';
 import { ActionIcon } from '@lobehub/ui';
@@ -27,6 +25,8 @@ const statusLabels: Record<CLITaskStatus, { label: string; color: string }> = {
   archived: { label: '已归档', color: 'default' },
 };
 
+const SIDEBAR_WIDTH = 240;
+
 const useStyles = createStyles(({ token, css }) => ({
   container: css`
     height: 100%;
@@ -35,7 +35,14 @@ const useStyles = createStyles(({ token, css }) => ({
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    transition: width 0.3s ease;
+    transition: width 0.3s ease, min-width 0.3s ease;
+    width: ${SIDEBAR_WIDTH}px;
+    min-width: ${SIDEBAR_WIDTH}px;
+  `,
+  containerCollapsed: css`
+    width: 0;
+    min-width: 0;
+    border-right: none;
   `,
   headerRow: css`
     display: flex;
@@ -145,7 +152,6 @@ interface CLITaskSidebarProps {
   onSelectTask: (taskId: string) => void;
   onNewTask: () => void;
   onOpenTemplateList: () => void;
-  onOpenCompare?: () => void;
 }
 
 export const CLITaskSidebar = ({
@@ -156,7 +162,6 @@ export const CLITaskSidebar = ({
   onSelectTask,
   onNewTask,
   onOpenTemplateList,
-  onOpenCompare,
 }: CLITaskSidebarProps) => {
   const { styles, cx } = useStyles();
   const aiMembers = useAIMemberStore(s => s.members);
@@ -224,10 +229,7 @@ export const CLITaskSidebar = ({
   };
 
   return (
-    <div
-      style={{ width: isOpen ? 240 : 0, minWidth: isOpen ? 240 : 0 }}
-      className={styles.container}
-    >
+    <div className={cx(styles.container, !isOpen && styles.containerCollapsed)}>
       {isOpen && (
         <>
           <div className={styles.headerRow}>
@@ -281,12 +283,6 @@ export const CLITaskSidebar = ({
               <Users size={12} />
               团队模板
             </button>
-            {onOpenCompare && tasks.length >= 2 && (
-              <button type="button" className={styles.linkBtn} onClick={onOpenCompare}>
-                <GitCompare size={12} />
-                对比
-              </button>
-            )}
           </div>
 
           {showFilters && (
@@ -375,14 +371,6 @@ export const CLITaskSidebar = ({
             })}
           </nav>
         </>
-      )}
-
-      {!isOpen && (
-        <div style={{ padding: 8, display: 'flex', justifyContent: 'center' }}>
-          <Tooltip title="展开任务列表" placement="right">
-            <ActionIcon icon={MenuIcon} size="small" onClick={toggleSidebar} title="" />
-          </Tooltip>
-        </div>
       )}
     </div>
   );
