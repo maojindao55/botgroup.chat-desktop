@@ -46,6 +46,13 @@ export type CLIFailurePolicy = 'continue' | 'stopOnFailure' | 'stopOnCancelled';
 /** 结果选择策略（race 等多结果场景） */
 export type CLIResultPolicy = 'all' | 'firstSuccess' | 'fastest' | 'manualPick';
 
+export interface CLIReviewLoopRoles {
+  plannerId?: string;
+  implementerId?: string;
+  reviewerId?: string;
+  maxReviewRounds?: number;
+}
+
 /**
  * CLI 执行计划：由若干正交维度组合而成，作为内部统一调度模型。
  * 每个 `CLIStrategy` 预设模式映射到一个默认 plan；用户可覆盖部分字段。
@@ -77,9 +84,13 @@ export interface CLIGroup {
   timeout: number;                  // 单次执行超时(ms)，默认 300000
   showStderr: boolean;              // 是否展示 stderr 输出
   strategy: CLIStrategy;            // 执行策略，默认 sequential
+  /** 用户选择的协作方式模板 id，用于区分共用同一 strategy 的产品模板 */
+  workflowTemplateId?: string;
   coordinatorPrompt?: string;       // 路由/评判提示词（router/race 模式用）
   /** CLI tool session 复用策略，缺省为 task */
   sessionPolicy?: CLISessionPolicy;
+  /** 规划实现复审模式的显式角色分工 */
+  reviewLoopRoles?: CLIReviewLoopRoles;
   /** 执行细节：覆盖预设 plan 的部分字段；老数据可缺省 */
   executionPlan?: Partial<CLIExecutionPlan>;
 }

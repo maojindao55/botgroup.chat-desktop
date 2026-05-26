@@ -190,6 +190,14 @@ export const CreateGroupWizard = ({
       } as AIGroup;
     } else if (groupType === 'cli') {
       const selectedTemplate = cliWorkflowTemplates.find((item) => item.id === cliTemplateId);
+      const reviewLoopRoles = cliTemplateId === 'implement_review'
+        ? {
+          plannerId: selectedCLIMembers[0],
+          implementerId: selectedCLIMembers[1] || selectedCLIMembers[0],
+          reviewerId: selectedCLIMembers[0],
+          maxReviewRounds: 2,
+        }
+        : undefined;
       group = {
         id, type: 'cli', name, description,
         memberIds: selectedCLIMembers,
@@ -199,8 +207,10 @@ export const CreateGroupWizard = ({
         timeout,
         showStderr: true,
         strategy: cliStrategy,
+        workflowTemplateId: cliTemplateId,
         sessionPolicy: cliSessionPolicy,
         executionPlan: selectedTemplate?.executionPlan,
+        reviewLoopRoles,
       } as CLIGroup;
     } else {
       group = {

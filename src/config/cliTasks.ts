@@ -1,4 +1,4 @@
-import type { CLIGroup, CLIStrategy, CLIExecutionPlan, CLISessionPolicy } from './groups';
+import type { CLIGroup, CLIStrategy, CLIExecutionPlan, CLISessionPolicy, CLIReviewLoopRoles } from './groups';
 
 export type CLITaskStatus =
   | 'queued'
@@ -74,8 +74,10 @@ export interface CLITeamTemplate {
   timeout: number;
   showStderr: boolean;
   strategy: CLIStrategy;
+  workflowTemplateId?: string;
   executionPlan?: Partial<CLIExecutionPlan>;
   sessionPolicy: CLISessionPolicy;
+  reviewLoopRoles?: CLIReviewLoopRoles;
 }
 
 export interface CLITaskMessage {
@@ -131,8 +133,10 @@ export function cliGroupToTeamTemplate(group: CLIGroup): CLITeamTemplate {
     timeout: group.timeout ?? 300000,
     showStderr: group.showStderr !== false,
     strategy: group.strategy || 'sequential',
+    workflowTemplateId: group.workflowTemplateId,
     executionPlan: group.executionPlan,
     sessionPolicy: group.sessionPolicy ?? DEFAULT_SESSION_POLICY,
+    reviewLoopRoles: group.reviewLoopRoles,
   };
 }
 
@@ -149,7 +153,9 @@ export function templateSnapshotToCLIGroup(template: CLITeamTemplate): CLIGroup 
     timeout: template.timeout,
     showStderr: template.showStderr,
     strategy: template.strategy,
+    workflowTemplateId: template.workflowTemplateId,
     executionPlan: template.executionPlan,
+    reviewLoopRoles: template.reviewLoopRoles,
   };
 }
 

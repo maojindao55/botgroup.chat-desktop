@@ -39,7 +39,7 @@ assert.match(engine, /你负责规划阶段/);
 assert.match(engine, /你负责实现阶段/);
 assert.match(engine, /你负责评审阶段/);
 assert.match(engine, /你负责完整的规划、实现和自评闭环/);
-assert.match(settings, /建议至少选择 3 个开发群友/);
+assert.match(settings, /建议至少选择 2 个开发群友/);
 assert.match(chatUI, /buildCliUserPrompt/);
 assert.match(cliSendBlock, /const taskPrompt = buildCliUserPrompt\(promptText, workspacePath\)/);
 assert.doesNotMatch(cliSendBlock, /const cleanHistory = messageHistory\.slice\(-6\)/);

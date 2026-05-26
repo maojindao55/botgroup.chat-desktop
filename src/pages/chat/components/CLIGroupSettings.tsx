@@ -3,20 +3,21 @@
  * 管理开发群友、workspacePath、审批模式、超时等
  */
 import { useState, useEffect } from 'react';
-import { Drawer, Switch, Button, Input, InputNumber, Tooltip, Tabs, Tag, Spin } from 'antd';
+import { Drawer, Switch, Button, Input, InputNumber, Tooltip, Tabs, Tag, Spin, Select } from 'antd';
 import { Avatar as LobeAvatar, ActionIcon } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
-import { FolderOpen, Terminal, Mic, MicOff, CheckCircle2, XCircle, Play, FileText, RefreshCw, Clock, X, ChevronLeft } from 'lucide-react';
+import { FolderOpen, Terminal, Mic, MicOff, CheckCircle2, XCircle, Play, FileText, RefreshCw, Clock, X, ChevronLeft, Info } from 'lucide-react';
 import { MemberPicker } from './MemberPicker';
 import { cliWorkflowTemplates } from '@/config/groupProduct';
 import { request } from '@/utils/request';
-import type { CLIAgent } from '@/config/aiCharacters';
-import type { CLIExecutionPlan, CLIGroup, CLIStrategy, CLISessionPolicy } from '@/config/groups';
+import { mapAIMemberToLegacy, type CLIAgent } from '@/config/aiCharacters';
+import type { CLIExecutionPlan, CLIGroup, CLIStrategy, CLISessionPolicy, CLIReviewLoopRoles } from '@/config/groups';
 import { cliSessionPolicyOptions } from '@/config/cliTasks';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
 import { invoke } from '@tauri-apps/api/core';
 import { openPath } from '@tauri-apps/plugin-opener';
 import CLITaskLogModal from './CLITaskLogModal';
+import { useAIMemberStore } from '@/store/aiMemberStore';
 
 type CliStatus = { installed: boolean; version?: string; path?: string };
 
@@ -58,9 +59,14 @@ interface CLIGroupSettingsProps {
   onShowStderrChange: (show: boolean) => void;
   strategy: CLIStrategy;
   onStrategyChange: (strategy: CLIStrategy) => void;
+  onWorkflowTemplateChange?: (workflowTemplateId: string) => void;
   onExecutionPlanChange?: (patch: Partial<CLIExecutionPlan>, options?: { replace?: boolean }) => void;
   onRetryTask?: (agentId: string, prompt: string) => void;
   onMembersChange?: (memberIds: string[]) => void;
+  onNameChange?: (name: string) => void;
+  onDescriptionChange?: (description: string) => void;
+  onReviewLoopRolesChange?: (roles: CLIReviewLoopRoles | undefined) => void;
+  onSaveTemplate?: (group: CLIGroup) => void;
   sessionPolicy: CLISessionPolicy;
   onSessionPolicyChange: (policy: CLISessionPolicy) => void;
   inline?: boolean;
@@ -91,6 +97,29 @@ const useStyles = createStyles(({ token, css }) => ({
   panelDesc: css`
     font-size: 12px;
     color: ${token.colorTextTertiary};
+  `,
+  snapshotNotice: css`
+    border: 1px solid rgba(255, 102, 0, 0.22);
+    background: rgba(255, 102, 0, 0.06);
+    border-radius: 8px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  `,
+  snapshotMeta: css`
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 11px;
+    color: ${token.colorTextSecondary};
+
+    span {
+      border: 1px solid rgba(255, 102, 0, 0.2);
+      background: ${token.colorBgContainer};
+      border-radius: 999px;
+      padding: 2px 8px;
+    }
   `,
   rowBetween: css`
     display: flex;
@@ -128,6 +157,57 @@ const useStyles = createStyles(({ token, css }) => ({
     border-color: #ff6600;
     background: rgba(255, 102, 0, 0.08);
     color: #ff6600;
+  `,
+  sessionPolicyList: css`
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  `,
+  sessionPolicyBtn: css`
+    width: 100%;
+    min-height: 58px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid ${token.colorBorderSecondary};
+    background: ${token.colorBgContainer};
+    cursor: pointer;
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    transition: all 0.15s;
+
+    &:hover {
+      border-color: rgba(255, 102, 0, 0.45);
+      background: rgba(255, 102, 0, 0.04);
+    }
+  `,
+  sessionPolicyBtnActive: css`
+    border-color: #ff6600;
+    background: rgba(255, 102, 0, 0.08);
+  `,
+  sessionPolicyLabel: css`
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: ${token.colorText};
+  `,
+  sessionPolicyDescText: css`
+    font-size: 12px;
+    color: ${token.colorTextTertiary};
+    line-height: 1.5;
+  `,
+  riskTag: css`
+    flex: none;
+    border-radius: 999px;
+    padding: 1px 7px;
+    font-size: 10px;
+    font-weight: 500;
+    color: #c2410c;
+    background: rgba(249, 115, 22, 0.12);
   `,
   memberRow: css`
     display: flex;
@@ -241,6 +321,15 @@ const useStyles = createStyles(({ token, css }) => ({
       color: ${token.colorPrimary};
     }
   `,
+  emptyMembers: css`
+    border: 1px dashed ${token.colorBorderSecondary};
+    border-radius: 8px;
+    padding: 18px 12px;
+    text-align: center;
+    font-size: 12px;
+    color: ${token.colorTextTertiary};
+    background: ${token.colorFillTertiary};
+  `,
   inlinePanel: css`
     width: 400px;
     height: 100%;
@@ -288,6 +377,19 @@ const useStyles = createStyles(({ token, css }) => ({
     flex-direction: column;
     gap: 20px;
   `,
+  inlineFooter: css`
+    flex: none;
+    border-top: 1px solid ${token.colorBorderSecondary};
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  `,
+  autosaveHint: css`
+    font-size: 11px;
+    color: ${token.colorTextTertiary};
+  `,
 }));
 
 export const CLIGroupSettings = ({
@@ -307,9 +409,14 @@ export const CLIGroupSettings = ({
   onShowStderrChange,
   strategy,
   onStrategyChange,
+  onWorkflowTemplateChange,
   onExecutionPlanChange,
   onRetryTask,
   onMembersChange,
+  onNameChange,
+  onDescriptionChange,
+  onReviewLoopRolesChange,
+  onSaveTemplate,
   sessionPolicy,
   onSessionPolicyChange,
   inline,
@@ -320,19 +427,53 @@ export const CLIGroupSettings = ({
   linkedTaskCount = 0,
 }: CLIGroupSettingsProps) => {
   const { styles, cx } = useStyles();
+  const aiMembers = useAIMemberStore(s => s.members);
   const isTemplateMode = mode === 'template';
+  const buildTemplateDraft = (): CLIGroup => ({
+    ...group,
+    memberIds: group.memberIds || group.members || [],
+    members: group.memberIds || group.members || [],
+    workspacePath,
+    approvalMode,
+    timeout,
+    showStderr,
+    strategy,
+    sessionPolicy,
+  });
+  const [draftGroup, setDraftGroup] = useState<CLIGroup>(() => buildTemplateDraft());
+  const [originalDraftGroup, setOriginalDraftGroup] = useState<CLIGroup>(() => buildTemplateDraft());
+  const effectiveGroup = isTemplateMode ? draftGroup : group;
+  const effectiveWorkspacePath = isTemplateMode ? (draftGroup.workspacePath || '') : workspacePath;
+  const effectiveApprovalMode = isTemplateMode ? (draftGroup.approvalMode || 'auto') : approvalMode;
+  const effectiveTimeout = isTemplateMode ? (draftGroup.timeout ?? 300000) : timeout;
+  const effectiveShowStderr = isTemplateMode ? draftGroup.showStderr !== false : showStderr;
+  const effectiveStrategy = isTemplateMode ? (draftGroup.strategy || 'sequential') : strategy;
+  const effectiveSessionPolicy = isTemplateMode ? (draftGroup.sessionPolicy || 'task') : sessionPolicy;
+  const isDraftDirty = isTemplateMode && JSON.stringify(draftGroup) !== JSON.stringify(originalDraftGroup);
   const panelTitle = isTemplateMode ? '团队模板设置' : '开发群配置';
   const sessionPolicyTitle = isTemplateMode ? 'CLI 会话复用' : 'CLI 会话复用';
   const sessionPolicyDesc = isTemplateMode
     ? '新任务将按此策略决定 CLI tool session 是否跨任务共享；已有任务仍使用创建时的快照。'
     : '决定开发群友 CLI tool session 的复用范围。';
+  const handleDrawerClose = () => {
+    if (isDraftDirty) {
+      const confirmed = window.confirm('放弃未保存的模板修改？');
+      if (!confirmed) return;
+      setDraftGroup(originalDraftGroup);
+    }
+    if (onBack) {
+      onBack();
+      return;
+    }
+    onOpenChange(false);
+  };
   const drawerTitle = onBack ? (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
       <Button
         type="text"
         size="small"
         icon={<ChevronLeft size={16} />}
-        onClick={onBack}
+        onClick={handleDrawerClose}
         style={{ marginLeft: -8, padding: '0 6px', height: 28 }}
       >
         {backLabel || '返回'}
@@ -340,13 +481,6 @@ export const CLIGroupSettings = ({
       <span>{panelTitle}</span>
     </div>
   ) : panelTitle;
-  const handleDrawerClose = () => {
-    if (onBack) {
-      onBack();
-      return;
-    }
-    onOpenChange(false);
-  };
   const workspaceTitle = isTemplateMode ? '默认 Workspace' : '本地 Workspace';
   const workspaceDesc = isTemplateMode
     ? '新任务将默认使用此目录；已有任务不受影响'
@@ -373,8 +507,41 @@ export const CLIGroupSettings = ({
   useEffect(() => {
     if (open) {
       setActiveTab('config');
+      setSelectedCliTemplateId(null);
+      const nextDraft = buildTemplateDraft();
+      setDraftGroup(nextDraft);
+      setOriginalDraftGroup(nextDraft);
     }
-  }, [open]);
+  }, [open, group.id]);
+
+  const updateDraftGroup = (patch: Partial<CLIGroup>) => {
+    setDraftGroup(prev => ({
+      ...prev,
+      ...patch,
+      type: 'cli',
+    }));
+  };
+
+  const handleSaveDraft = () => {
+    const next = {
+      ...draftGroup,
+      memberIds: draftGroup.memberIds || draftGroup.members || [],
+      members: draftGroup.memberIds || draftGroup.members || [],
+      workspacePath: draftGroup.workspacePath || '',
+      approvalMode: draftGroup.approvalMode || 'auto',
+      timeout: draftGroup.timeout ?? 300000,
+      showStderr: draftGroup.showStderr !== false,
+      strategy: draftGroup.strategy || 'sequential',
+      sessionPolicy: draftGroup.sessionPolicy || 'task',
+    };
+    onSaveTemplate?.(next);
+    setDraftGroup(next);
+    setOriginalDraftGroup(next);
+  };
+
+  const handleRevertDraft = () => {
+    setDraftGroup(originalDraftGroup);
+  };
 
   // Load check status
   useEffect(() => {
@@ -509,10 +676,36 @@ export const CLIGroupSettings = ({
     debate: '多位开发群友独立提案、互评，再形成最终建议。',
     mapreduce: '并行执行同一任务，汇总所有结果对比查看',
   };
-  const selectedCliTemplate = cliWorkflowTemplates.find((item) => (
-    item.id === selectedCliTemplateId && item.strategy === strategy
-  ));
-  const activeCliTemplate = selectedCliTemplate || cliWorkflowTemplates.find((item) => item.strategy === strategy);
+  const selectedCliTemplate = cliWorkflowTemplates.find((item) => item.id === selectedCliTemplateId);
+  const persistedCliTemplate = cliWorkflowTemplates.find((item) => item.id === effectiveGroup.workflowTemplateId);
+  const activeCliTemplate = selectedCliTemplate || cliWorkflowTemplates.find((item) => item.strategy === effectiveStrategy);
+  const activeWorkflowTemplate = selectedCliTemplate || persistedCliTemplate || activeCliTemplate;
+  const isReviewLoopWorkflow = activeWorkflowTemplate?.id === 'implement_review';
+  const memberIds = effectiveGroup.memberIds || effectiveGroup.members || [];
+  const visibleMembers = isTemplateMode
+    ? memberIds
+      .map(id => aiMembers[id])
+      .filter(m => m && m.kind === 'cli')
+      .map(m => mapAIMemberToLegacy(m) as CLIAgent)
+    : members;
+  const reviewLoopRoles = {
+    plannerId: effectiveGroup.reviewLoopRoles?.plannerId || memberIds[0],
+    implementerId: effectiveGroup.reviewLoopRoles?.implementerId || memberIds[1] || memberIds[0],
+    reviewerId: effectiveGroup.reviewLoopRoles?.reviewerId || effectiveGroup.reviewLoopRoles?.plannerId || memberIds[0],
+    maxReviewRounds: effectiveGroup.reviewLoopRoles?.maxReviewRounds ?? 2,
+  };
+  const reviewLoopRoleOptions = visibleMembers.map(member => ({
+    value: member.id,
+    label: member.name,
+  }));
+  const handleReviewLoopRolesPatch = (patch: Partial<CLIReviewLoopRoles>) => {
+    const next = { ...reviewLoopRoles, ...patch };
+    if (isTemplateMode) {
+      updateDraftGroup({ reviewLoopRoles: next });
+    } else {
+      onReviewLoopRolesChange?.(next);
+    }
+  };
 
   const worktreeTasks = tasks.filter(task => task.cwd && task.cwd.includes('cli-worktrees'));
   const worktreePaths = [...new Set(worktreeTasks.map(task => task.cwd).filter((p): p is string => !!p))];
@@ -524,8 +717,49 @@ export const CLIGroupSettings = ({
       children: (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           {isTemplateMode && (
-            <div className={styles.panelDesc} style={{ padding: '0 4px', lineHeight: 1.6 }}>
-              修改后只影响之后创建的新任务，不会改变已有任务。
+            <div className={styles.snapshotNotice}>
+              <div className={styles.panelHeader}>
+                <Info size={16} />
+                <span>模板快照规则</span>
+              </div>
+              <div className={styles.panelDesc}>
+                修改后需点击保存才会生效；已有任务仍使用创建时保存的模板快照。
+              </div>
+              <div className={styles.snapshotMeta}>
+                <span>已有任务 {linkedTaskCount}</span>
+                <span>成员 {visibleMembers.length}</span>
+                <span>{effectiveWorkspacePath ? '已设置默认 Workspace' : '未设置默认 Workspace'}</span>
+              </div>
+            </div>
+          )}
+
+          {isTemplateMode && (
+            <div className={styles.panel}>
+              <div className={styles.panelHeader}>
+                <FileText size={16} />
+                <span>基础信息</span>
+              </div>
+              <Input
+                value={effectiveGroup.name}
+                onChange={(e) => {
+                  if (isTemplateMode) updateDraftGroup({ name: e.target.value });
+                  else onNameChange?.(e.target.value);
+                }}
+                placeholder="团队模板名称"
+                maxLength={32}
+                showCount
+              />
+              <Input.TextArea
+                value={effectiveGroup.description}
+                onChange={(e) => {
+                  if (isTemplateMode) updateDraftGroup({ description: e.target.value });
+                  else onDescriptionChange?.(e.target.value);
+                }}
+                placeholder="说明这个模板适合处理什么类型的开发任务"
+                rows={3}
+                maxLength={120}
+                showCount
+              />
             </div>
           )}
 
@@ -541,8 +775,11 @@ export const CLIGroupSettings = ({
             <div style={{ display: 'flex', gap: 8 }}>
               <Input
                 placeholder="/Users/you/projects/your-repo"
-                value={workspacePath}
-                onChange={(e) => onWorkspacePathChange(e.target.value)}
+                value={effectiveWorkspacePath}
+                onChange={(e) => {
+                  if (isTemplateMode) updateDraftGroup({ workspacePath: e.target.value });
+                  else onWorkspacePathChange(e.target.value);
+                }}
                 style={{ flex: 1, fontFamily: 'var(--ant-font-family-code)' }}
               />
               <Button
@@ -551,7 +788,10 @@ export const CLIGroupSettings = ({
                 onClick={async () => {
                   try {
                     const selected = await invoke<string | null>('select_directory');
-                    if (selected) onWorkspacePathChange(selected);
+                    if (selected) {
+                      if (isTemplateMode) updateDraftGroup({ workspacePath: selected });
+                      else onWorkspacePathChange(selected);
+                    }
                   } catch (e) {
                     console.error('Failed to select directory:', e);
                   }
@@ -570,8 +810,12 @@ export const CLIGroupSettings = ({
                 <div className={styles.panelDesc} style={{ marginTop: 4 }}>开启后开发群友自动执行，无需确认</div>
               </div>
               <Switch
-                checked={approvalMode === 'auto'}
-                onChange={(v) => onApprovalModeChange(v ? 'auto' : 'ask')}
+                checked={effectiveApprovalMode === 'auto'}
+                onChange={(v) => {
+                  const next = v ? 'auto' : 'ask';
+                  if (isTemplateMode) updateDraftGroup({ approvalMode: next });
+                  else onApprovalModeChange(next);
+                }}
               />
             </div>
           </div>
@@ -582,24 +826,30 @@ export const CLIGroupSettings = ({
             <div className={styles.panelDesc} style={{ marginTop: 4, marginBottom: 8 }}>
               {sessionPolicyDesc}
             </div>
-            {cliSessionPolicyOptions.map((item) => (
-              <button
-                key={item.value}
-                type="button"
-                onClick={() => onSessionPolicyChange(item.value)}
-                className={cx(
-                  styles.strategyBtn,
-                  sessionPolicy === item.value && styles.strategyBtnActive,
-                )}
-              >
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 14, fontWeight: 500 }}>{item.label}</div>
-                  <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginTop: 2 }}>
+            <div className={styles.sessionPolicyList}>
+              {cliSessionPolicyOptions.map((item) => (
+                <button
+                  key={item.value}
+                  type="button"
+                  onClick={() => {
+                    if (isTemplateMode) updateDraftGroup({ sessionPolicy: item.value });
+                    else onSessionPolicyChange(item.value);
+                  }}
+                  className={cx(
+                    styles.sessionPolicyBtn,
+                    effectiveSessionPolicy === item.value && styles.sessionPolicyBtnActive,
+                  )}
+                >
+                  <div className={styles.sessionPolicyLabel}>
+                    <span>{item.label}</span>
+                    {item.value === 'template' && <span className={styles.riskTag}>高复用</span>}
+                  </div>
+                  <div className={styles.sessionPolicyDescText}>
                     {item.description}
                   </div>
-                </div>
-              </button>
-            ))}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* stderr */}
@@ -609,7 +859,13 @@ export const CLIGroupSettings = ({
                 <div style={{ fontSize: 14, fontWeight: 500 }}>显示 stderr 输出</div>
                 <div className={styles.panelDesc} style={{ marginTop: 4 }}>关闭后隐藏 CLI 诊断信息，仅保留标准输出和错误状态</div>
               </div>
-              <Switch checked={showStderr} onChange={onShowStderrChange} />
+              <Switch
+                checked={effectiveShowStderr}
+                onChange={(value) => {
+                  if (isTemplateMode) updateDraftGroup({ showStderr: value });
+                  else onShowStderrChange(value);
+                }}
+              />
             </div>
           </div>
 
@@ -618,8 +874,12 @@ export const CLIGroupSettings = ({
             <div style={{ fontSize: 14, fontWeight: 500 }}>执行超时</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <InputNumber
-                value={timeout / 1000}
-                onChange={(v) => onTimeoutChange(Number(v) * 1000)}
+                value={effectiveTimeout / 1000}
+                onChange={(v) => {
+                  const next = Number(v) * 1000;
+                  if (isTemplateMode) updateDraftGroup({ timeout: next });
+                  else onTimeoutChange(next);
+                }}
                 min={30}
                 max={600}
                 style={{ width: 100 }}
@@ -637,12 +897,27 @@ export const CLIGroupSettings = ({
                   key={item.id}
                   onClick={() => {
                     setSelectedCliTemplateId(item.id);
-                    onStrategyChange(item.strategy);
-                    onExecutionPlanChange?.(item.executionPlan || {}, { replace: true });
+                    if (isTemplateMode) {
+                      updateDraftGroup({
+                        workflowTemplateId: item.id,
+                        strategy: item.strategy,
+                        executionPlan: item.executionPlan || {},
+                        reviewLoopRoles: item.id === 'implement_review' ? reviewLoopRoles : undefined,
+                      });
+                    } else {
+                      onWorkflowTemplateChange?.(item.id);
+                      onStrategyChange(item.strategy);
+                      onExecutionPlanChange?.(item.executionPlan || {}, { replace: true });
+                      if (item.id === 'implement_review') {
+                        onReviewLoopRolesChange?.(reviewLoopRoles);
+                      } else {
+                        onReviewLoopRolesChange?.(undefined);
+                      }
+                    }
                   }}
                   className={cx(
                     styles.strategyBtn,
-                    activeCliTemplate?.id === item.id && styles.strategyBtnActive,
+                    activeWorkflowTemplate?.id === item.id && styles.strategyBtnActive,
                   )}
                 >
                   {item.label}
@@ -650,29 +925,88 @@ export const CLIGroupSettings = ({
               ))}
             </div>
             <p className={styles.panelDesc} style={{ marginTop: 4 }}>
-              {strategyDescriptions[strategy]}
+              {activeWorkflowTemplate?.description || strategyDescriptions[effectiveStrategy]}
             </p>
-            {strategy === 'race' && (
+            {effectiveStrategy === 'race' && (
               <p className={styles.panelDesc} style={{ marginTop: 4, color: '#ff9500' }}>
                 需要 git 仓库，且当前工作区不能有未提交改动；每位开发群友在独立 worktree 中执行。
               </p>
             )}
-            {strategy === 'pipeline' && (
+            {effectiveStrategy === 'pipeline' && (
               <p className={styles.panelDesc} style={{ marginTop: 4 }}>
                 默认失败继续（让后续开发群友诊断）；用户取消会停止后续阶段。
               </p>
             )}
-            {strategy === 'review' && (
+            {isReviewLoopWorkflow && (
               <p className={styles.panelDesc} style={{ marginTop: 4 }}>
-                三阶段固定语义：规划阶段只产出方案；实现阶段按方案修改；评审阶段只做代码审查。
+                规划实现复审会先规划、再实现；评审不通过时，按反馈修正并再次复审。
               </p>
             )}
-            {strategy === 'review' && members.length < 3 && (
+            {isReviewLoopWorkflow && visibleMembers.length < 2 && (
               <p className={styles.panelDesc} style={{ marginTop: 4, color: '#ff9500' }}>
-                建议至少选择 3 个开发群友。当前成员不足时会自动降级：2 个成员为“规划 / 实现+自检”，1 个成员为“规划实现自评”。
+                建议至少选择 2 个开发群友，并分别指定规划/评审者与实现者。
               </p>
             )}
           </div>
+
+          {isTemplateMode && isReviewLoopWorkflow && (
+            <div className={styles.panel}>
+              <div style={{ fontSize: 14, fontWeight: 500 }}>角色分工</div>
+              <div className={styles.panelDesc}>
+                指定谁负责规划、谁按方案写代码、谁做复审。规划者和评审者可以是同一个开发群友。
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
+                <div>
+                  <div className={styles.panelDesc} style={{ marginBottom: 4 }}>规划者</div>
+                  <Select
+                    size="small"
+                    value={reviewLoopRoles.plannerId}
+                    onChange={(plannerId) => handleReviewLoopRolesPatch({ plannerId })}
+                    options={reviewLoopRoleOptions}
+                    placeholder="选择规划者"
+                    style={{ width: '100%' }}
+                  />
+                </div>
+                <div>
+                  <div className={styles.panelDesc} style={{ marginBottom: 4 }}>实现者</div>
+                  <Select
+                    size="small"
+                    value={reviewLoopRoles.implementerId}
+                    onChange={(implementerId) => handleReviewLoopRolesPatch({ implementerId })}
+                    options={reviewLoopRoleOptions}
+                    placeholder="选择实现者"
+                    style={{ width: '100%' }}
+                  />
+                </div>
+                <div>
+                  <div className={styles.panelDesc} style={{ marginBottom: 4 }}>评审者</div>
+                  <Select
+                    size="small"
+                    value={reviewLoopRoles.reviewerId}
+                    onChange={(reviewerId) => handleReviewLoopRolesPatch({ reviewerId })}
+                    options={reviewLoopRoleOptions}
+                    placeholder="选择评审者"
+                    style={{ width: '100%' }}
+                  />
+                </div>
+                <div>
+                  <div className={styles.panelDesc} style={{ marginBottom: 4 }}>最大复审轮数</div>
+                  <InputNumber
+                    size="small"
+                    value={reviewLoopRoles.maxReviewRounds}
+                    min={1}
+                    max={5}
+                    onChange={(value) => {
+                      handleReviewLoopRolesPatch({
+                        maxReviewRounds: typeof value === 'number' ? value : 2,
+                      });
+                    }}
+                    style={{ width: 100 }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Advanced Execution Plan Config (V3) */}
           <details style={{ marginTop: 0 }}>
@@ -686,11 +1020,16 @@ export const CLIGroupSettings = ({
                   <div className={styles.panelDesc} style={{ marginTop: 2 }}>开发群友失败后是否继续执行后续阶段</div>
                 </div>
                 <select
-                  value={group.executionPlan?.failurePolicy || 'continue'}
+                  value={effectiveGroup.executionPlan?.failurePolicy || 'continue'}
                   onChange={(e) => {
-                    onExecutionPlanChange?.({
+                    const patch = {
                       failurePolicy: e.target.value as CLIExecutionPlan['failurePolicy'],
-                    });
+                    };
+                    if (isTemplateMode) {
+                      updateDraftGroup({ executionPlan: { ...(effectiveGroup.executionPlan || {}), ...patch } });
+                    } else {
+                      onExecutionPlanChange?.(patch);
+                    }
                   }}
                   style={{ fontSize: 12, padding: '4px 8px', borderRadius: 4, border: '1px solid #d9d9d9' }}
                 >
@@ -699,38 +1038,48 @@ export const CLIGroupSettings = ({
                   <option value="stopOnCancelled">取消停止</option>
                 </select>
               </div>
-              {strategy === 'discussion' && (
+              {effectiveStrategy === 'discussion' && (
                 <div className={styles.rowBetween} style={{ marginTop: 8 }}>
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 500 }}>协作轮数</div>
                     <div className={styles.panelDesc} style={{ marginTop: 2 }}>staged 调度的最大轮次数</div>
                   </div>
                   <InputNumber
-                    value={group.executionPlan?.maxRounds ?? 2}
+                    value={effectiveGroup.executionPlan?.maxRounds ?? 2}
                     min={1}
                     max={5}
                     size="small"
                     style={{ width: 60 }}
                     onChange={(value) => {
-                      onExecutionPlanChange?.({
+                      const patch = {
                         maxRounds: typeof value === 'number' ? value : undefined,
-                      });
+                      };
+                      if (isTemplateMode) {
+                        updateDraftGroup({ executionPlan: { ...(effectiveGroup.executionPlan || {}), ...patch } });
+                      } else {
+                        onExecutionPlanChange?.(patch);
+                      }
                     }}
                   />
                 </div>
               )}
-              {strategy === 'race' && (
+              {effectiveStrategy === 'race' && (
                 <div className={styles.rowBetween} style={{ marginTop: 8 }}>
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 500 }}>结果处理</div>
                     <div className={styles.panelDesc} style={{ marginTop: 2 }}>多结果时如何取舍（当前仅展示全部）</div>
                   </div>
                   <select
-                    value={group.executionPlan?.resultPolicy || 'all'}
+                    value={effectiveGroup.executionPlan?.resultPolicy || 'all'}
                     onChange={(e) => {
-                      onExecutionPlanChange?.({
+                      const patch = {
                         resultPolicy: e.target.value as CLIExecutionPlan['resultPolicy'],
-                      });
+                      };
+                      if (isTemplateMode) {
+                        updateDraftGroup({ executionPlan: { ...(effectiveGroup.executionPlan || {}), ...patch } });
+                      } else {
+                        onExecutionPlanChange?.(patch);
+                      }
                     }}
                     style={{ fontSize: 12, padding: '4px 8px', borderRadius: 4, border: '1px solid #d9d9d9' }}
                   >
@@ -753,8 +1102,14 @@ export const CLIGroupSettings = ({
               <span style={{ fontSize: 14, fontWeight: 500 }}>{membersManageLabel}</span>
               <MemberPicker
                 kind="cli"
-                value={group.memberIds || group.members || []}
-                onChange={(newIds) => onMembersChange?.(newIds)}
+                value={memberIds}
+                onChange={(newIds) => {
+                  if (isTemplateMode) {
+                    updateDraftGroup({ memberIds: newIds, members: newIds });
+                  } else {
+                    onMembersChange?.(newIds);
+                  }
+                }}
                 placeholder={memberPickerPlaceholder}
               />
             </div>
@@ -766,10 +1121,15 @@ export const CLIGroupSettings = ({
                 marginBottom: 12,
               }}
             >
-              <span style={{ fontSize: 14, fontWeight: 500 }}>{membersListLabel}（{members.length}）</span>
+              <span style={{ fontSize: 14, fontWeight: 500 }}>{membersListLabel}（{visibleMembers.length}）</span>
             </div>
             <div className={styles.scrollList}>
-              {members.map((agent) => {
+              {visibleMembers.length === 0 && (
+                <div className={styles.emptyMembers}>
+                  还没有模板成员。添加至少 1 位开发群友后，新任务才能执行。
+                </div>
+              )}
+              {visibleMembers.map((agent) => {
                 const status = cliStatus[agent.id];
                 const a = getAvatarData(agent.name);
                 const url = resolveAvatarByName(agent.name, agent.avatar, 36);
@@ -843,8 +1203,12 @@ export const CLIGroupSettings = ({
                           icon={X}
                           size="small"
                           onClick={() => {
-                            const newIds = (group.memberIds || group.members || []).filter((id) => id !== agent.id);
-                            onMembersChange?.(newIds);
+                            const newIds = memberIds.filter((id) => id !== agent.id);
+                            if (isTemplateMode) {
+                              updateDraftGroup({ memberIds: newIds, members: newIds });
+                            } else {
+                              onMembersChange?.(newIds);
+                            }
                           }}
                           title=""
                         />
@@ -1123,6 +1487,20 @@ export const CLIGroupSettings = ({
     />
   ) : null;
 
+  const templateFooter = isTemplateMode ? (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+      <span className={styles.autosaveHint}>{isDraftDirty ? '有未保存修改' : '暂无未保存修改'}</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <Button onClick={handleRevertDraft} disabled={!isDraftDirty}>
+          撤销
+        </Button>
+        <Button type="primary" onClick={handleSaveDraft} disabled={!isDraftDirty} style={{ background: '#ff6600', borderColor: '#ff6600' }}>
+          保存
+        </Button>
+      </div>
+    </div>
+  ) : undefined;
+
   if (inline) {
     if (!open) return null;
     return (
@@ -1130,7 +1508,7 @@ export const CLIGroupSettings = ({
         <div className={styles.inlinePanel}>
           <div className={styles.inlineHeader}>
             <span className={styles.inlineTitle}>{panelTitle}</span>
-            <button className={styles.inlineCloseBtn} onClick={() => onOpenChange(false)}>
+            <button className={styles.inlineCloseBtn} onClick={handleDrawerClose}>
               <X size={16} />
             </button>
           </div>
@@ -1143,6 +1521,19 @@ export const CLIGroupSettings = ({
               />
             </div>
           </div>
+          {isTemplateMode && (
+            <div className={styles.inlineFooter}>
+              <span className={styles.autosaveHint}>{isDraftDirty ? '有未保存修改' : '暂无未保存修改'}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Button size="small" onClick={handleRevertDraft} disabled={!isDraftDirty}>
+                  撤销
+                </Button>
+                <Button type="primary" size="small" onClick={handleSaveDraft} disabled={!isDraftDirty} style={{ background: '#ff6600', borderColor: '#ff6600' }}>
+                  保存
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
 
         {taskLogModal}
@@ -1158,6 +1549,7 @@ export const CLIGroupSettings = ({
         open={open}
         onClose={handleDrawerClose}
         width={480}
+        footer={templateFooter}
       >
         <div className={styles.tabsContainer}>
           <Tabs

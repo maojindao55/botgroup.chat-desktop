@@ -129,8 +129,10 @@ interface CLITemplateListPanelProps {
   inline?: boolean;
 }
 
-function strategyLabel(strategy: string) {
-  return cliWorkflowTemplates.find(t => t.strategy === strategy)?.label || strategy;
+function strategyLabel(strategy: string, workflowTemplateId?: string) {
+  return cliWorkflowTemplates.find(t => t.id === workflowTemplateId)?.label
+    || cliWorkflowTemplates.find(t => t.strategy === strategy)?.label
+    || strategy;
 }
 
 export const CLITemplateListPanel = ({
@@ -203,7 +205,7 @@ export const CLITemplateListPanel = ({
             </div>
           </div>
           <div className={styles.meta}>
-            {strategyLabel(template.strategy)} · {template.memberIds.length} 位成员
+            {strategyLabel(template.strategy, template.workflowTemplateId)} · {template.memberIds.length} 位成员
             {template.workspacePath ? ` · ${template.workspacePath}` : ''}
             {` · ${sessionPolicyLabel(template.sessionPolicy)}`}
           </div>

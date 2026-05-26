@@ -7,8 +7,10 @@ import {
   PanelLeftClose,
   SlidersHorizontal,
   Users,
+  Archive,
+  Clock3,
 } from 'lucide-react';
-import { Input, Tag, Tooltip, Select, Checkbox, Button } from 'antd';
+import { Input, Tooltip, Select, Checkbox, Button } from 'antd';
 import { ActionIcon } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 import type { CLIDevelopmentTask, CLITaskStatus } from '@/config/cliTasks';
@@ -25,7 +27,7 @@ const statusLabels: Record<CLITaskStatus, { label: string; color: string }> = {
   archived: { label: '已归档', color: 'default' },
 };
 
-const SIDEBAR_WIDTH = 240;
+const SIDEBAR_WIDTH = 296;
 
 const useStyles = createStyles(({ token, css }) => ({
   container: css`
@@ -48,81 +50,193 @@ const useStyles = createStyles(({ token, css }) => ({
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 12px 8px;
+    padding: 14px 14px 8px;
     flex: none;
   `,
   title: css`
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
     color: ${token.colorText};
   `,
+  subtitle: css`
+    margin-top: 2px;
+    font-size: 11px;
+    color: ${token.colorTextTertiary};
+  `,
   topActions: css`
-    padding: 0 12px 8px;
-    display: flex;
-    flex-direction: column;
+    padding: 0 14px 8px;
+    display: grid;
+    grid-template-columns: 1fr 34px;
     gap: 8px;
     flex: none;
   `,
   searchWrapper: css`
-    padding: 0 12px 8px;
+    padding: 0 14px 8px;
     flex: none;
   `,
   toolbar: css`
-    padding: 0 12px 8px;
+    padding: 0 14px 8px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
     flex: none;
   `,
+  filterToggle: css`
+    height: 28px;
+    border-radius: 8px;
+    border: 1px solid ${token.colorBorderSecondary};
+    background: ${token.colorBgContainer};
+    color: ${token.colorTextSecondary};
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0 9px;
+    font-size: 11px;
+    &:hover {
+      border-color: #ff6600;
+      color: #ff6600;
+    }
+  `,
+  filterToggleActive: css`
+    border-color: rgba(255, 102, 0, 0.45);
+    background: rgba(255, 102, 0, 0.08);
+    color: #c2410c;
+  `,
+  filterBadge: css`
+    min-width: 16px;
+    height: 16px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: #ff6600;
+    color: #fff;
+    font-size: 10px;
+    line-height: 16px;
+    text-align: center;
+  `,
   filterRow: css`
-    padding: 0 12px 8px;
+    margin: 0 14px 10px;
+    padding: 10px;
+    border: 1px solid ${token.colorBorderSecondary};
+    border-radius: 8px;
+    background: ${token.colorBgContainer};
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 8px;
     flex: none;
+  `,
+  filterHeader: css`
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: ${token.colorText};
+  `,
+  filterField: css`
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  `,
+  filterFieldLabel: css`
+    font-size: 10px;
+    color: ${token.colorTextTertiary};
   `,
   navList: css`
     flex: 1;
     overflow: auto;
-    padding: 4px 8px 8px;
+    padding: 4px 10px 10px;
   `,
   navItem: css`
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    padding: 10px 12px;
-    border-radius: 10px;
+    gap: 7px;
+    padding: 11px 12px;
+    border-radius: 8px;
+    border: 1px solid transparent;
     cursor: pointer;
     color: ${token.colorTextSecondary};
     transition: all 0.15s ease;
-    margin-bottom: 4px;
+    margin-bottom: 6px;
     &:hover {
-      background: ${token.colorFillTertiary};
+      background: ${token.colorBgContainer};
+      border-color: ${token.colorBorderSecondary};
       color: ${token.colorText};
     }
   `,
   navItemActive: css`
-    background: rgba(255, 102, 0, 0.1) !important;
-    color: #ff6600 !important;
+    background: ${token.colorBgContainer} !important;
+    border-color: rgba(255, 102, 0, 0.45) !important;
+    box-shadow: inset 3px 0 0 #ff6600;
+    color: ${token.colorText} !important;
   `,
   taskTitle: css`
     font-size: 13px;
-    font-weight: 500;
+    font-weight: 600;
+    color: ${token.colorText};
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   `,
-  taskMeta: css`
+  taskStatus: css`
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
     font-size: 10px;
-    opacity: 0.6;
+    color: ${token.colorTextTertiary};
+  `,
+  statusDot: css`
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: ${token.colorTextQuaternary};
+  `,
+  statusDotRunning: css`
+    background: ${token.colorInfo};
+    box-shadow: 0 0 0 3px ${token.colorInfoBg};
+  `,
+  statusDotCompleted: css`
+    background: ${token.colorSuccess};
+  `,
+  statusDotFailed: css`
+    background: ${token.colorError};
+  `,
+  statusDotWarning: css`
+    background: ${token.colorWarning};
+  `,
+  taskMeta: css`
+    font-size: 11px;
+    color: ${token.colorTextTertiary};
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  `,
+  taskMetaRow: css`
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  `,
+  taskTemplate: css`
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  `,
+  taskWorkspace: css`
+    font-family: ${token.fontFamilyCode};
+    font-size: 10px;
+    color: ${token.colorTextQuaternary};
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   `,
   empty: css`
     text-align: center;
-    padding: 32px 16px;
+    padding: 36px 16px;
     font-size: 12px;
     color: ${token.colorTextTertiary};
     line-height: 1.6;
@@ -139,6 +253,22 @@ const useStyles = createStyles(({ token, css }) => ({
     gap: 4px;
     padding: 0;
     &:hover {
+      color: #ff6600;
+    }
+  `,
+  iconBtn: css`
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    border: 1px solid ${token.colorBorderSecondary};
+    background: ${token.colorBgContainer};
+    color: ${token.colorTextSecondary};
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    &:hover {
+      border-color: #ff6600;
       color: #ff6600;
     }
   `,
@@ -206,6 +336,13 @@ export const CLITaskSidebar = ({
     || !!workspaceFilter
     || !!agentFilter;
 
+  const activeFilterCount = [
+    statusFilter !== 'all',
+    !!templateFilter,
+    !!workspaceFilter,
+    !!agentFilter,
+  ].filter(Boolean).length;
+
   const filteredTasks = filterDevelopmentTasks(tasks, {
     search: searchQuery,
     status: statusFilter,
@@ -228,6 +365,28 @@ export const CLITaskSidebar = ({
     }
   };
 
+  const shortPath = (path: string) => {
+    if (!path) return '';
+    const parts = path.split('/').filter(Boolean);
+    if (parts.length <= 2) return path;
+    return `.../${parts.slice(-2).join('/')}`;
+  };
+
+  const resetFilters = () => {
+    setStatusFilter('all');
+    setTemplateFilter('');
+    setWorkspaceFilter('');
+    setAgentFilter('');
+  };
+
+  const statusDotClass = (status: CLITaskStatus) => {
+    if (status === 'running' || status === 'queued') return styles.statusDotRunning;
+    if (status === 'completed') return styles.statusDotCompleted;
+    if (status === 'failed' || status === 'timeout') return styles.statusDotFailed;
+    if (status === 'cancelled') return styles.statusDotWarning;
+    return '';
+  };
+
   return (
     <div className={cx(styles.container, !isOpen && styles.containerCollapsed)}>
       {isOpen && (
@@ -235,7 +394,10 @@ export const CLITaskSidebar = ({
           <div className={styles.headerRow}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Terminal size={16} color="#ff6600" />
-              <span className={styles.title}>开发任务</span>
+              <div>
+                <span className={styles.title}>开发任务</span>
+                <div className={styles.subtitle}>任务队列与历史记录</div>
+              </div>
             </div>
             <ActionIcon icon={PanelLeftClose} size="small" onClick={toggleSidebar} title="" />
           </div>
@@ -250,6 +412,11 @@ export const CLITaskSidebar = ({
             >
               新建任务
             </Button>
+            <Tooltip title="团队模板">
+              <button type="button" className={styles.iconBtn} onClick={onOpenTemplateList}>
+                <Users size={15} />
+              </button>
+            </Tooltip>
           </div>
 
           <div className={styles.searchWrapper}>
@@ -273,63 +440,81 @@ export const CLITaskSidebar = ({
           <div className={styles.toolbar}>
             <button
               type="button"
-              className={styles.linkBtn}
+              className={cx(styles.filterToggle, (showFilters || hasActiveFilters) && styles.filterToggleActive)}
               onClick={() => setShowFilters(v => !v)}
             >
               <SlidersHorizontal size={12} />
-              筛选{showFilters ? '' : (hasActiveFilters ? ' ·' : '')}
+              筛选
+              {activeFilterCount > 0 && <span className={styles.filterBadge}>{activeFilterCount}</span>}
             </button>
-            <button type="button" className={styles.linkBtn} onClick={onOpenTemplateList}>
-              <Users size={12} />
-              团队模板
-            </button>
+            <span className={styles.taskMeta}>{filteredTasks.length} / {tasks.length}</span>
           </div>
 
           {showFilters && (
             <div className={styles.filterRow}>
-              <Select
-                size="small"
-                value={statusFilter}
-                onChange={setStatusFilter}
-                style={{ width: '100%' }}
-                options={[
-                  { value: 'all', label: '全部状态' },
-                  { value: 'running', label: '运行中' },
-                  { value: 'queued', label: '排队' },
-                  { value: 'completed', label: '已完成' },
-                  { value: 'failed', label: '失败' },
-                  { value: 'cancelled', label: '已取消' },
-                  { value: 'timeout', label: '超时' },
-                  { value: 'archived', label: '已归档' },
-                ]}
-              />
-              <Select
-                size="small"
-                value={templateFilter || undefined}
-                placeholder="全部模板"
-                allowClear
-                onChange={(v) => setTemplateFilter(v || '')}
-                style={{ width: '100%' }}
-                options={templateOptions.map(([id, name]) => ({ value: id, label: name }))}
-              />
-              <Select
-                size="small"
-                value={workspaceFilter || undefined}
-                placeholder="全部 Workspace"
-                allowClear
-                onChange={(v) => setWorkspaceFilter(v || '')}
-                style={{ width: '100%' }}
-                options={workspaceOptions}
-              />
-              <Select
-                size="small"
-                value={agentFilter || undefined}
-                placeholder="全部开发群友"
-                allowClear
-                onChange={(v) => setAgentFilter(v || '')}
-                style={{ width: '100%' }}
-                options={agentOptions}
-              />
+              <div className={styles.filterHeader}>
+                <span>筛选任务</span>
+                {hasActiveFilters && (
+                  <button type="button" className={styles.linkBtn} onClick={resetFilters}>
+                    清除
+                  </button>
+                )}
+              </div>
+              <div className={styles.filterField}>
+                <span className={styles.filterFieldLabel}>状态</span>
+                <Select
+                  size="small"
+                  value={statusFilter}
+                  onChange={setStatusFilter}
+                  style={{ width: '100%' }}
+                  options={[
+                    { value: 'all', label: '全部状态' },
+                    { value: 'running', label: '运行中' },
+                    { value: 'queued', label: '排队' },
+                    { value: 'completed', label: '已完成' },
+                    { value: 'failed', label: '失败' },
+                    { value: 'cancelled', label: '已取消' },
+                    { value: 'timeout', label: '超时' },
+                    { value: 'archived', label: '已归档' },
+                  ]}
+                />
+              </div>
+              <div className={styles.filterField}>
+                <span className={styles.filterFieldLabel}>模板</span>
+                <Select
+                  size="small"
+                  value={templateFilter || undefined}
+                  placeholder="全部模板"
+                  allowClear
+                  onChange={(v) => setTemplateFilter(v || '')}
+                  style={{ width: '100%' }}
+                  options={templateOptions.map(([id, name]) => ({ value: id, label: name }))}
+                />
+              </div>
+              <div className={styles.filterField}>
+                <span className={styles.filterFieldLabel}>Workspace</span>
+                <Select
+                  size="small"
+                  value={workspaceFilter || undefined}
+                  placeholder="全部 Workspace"
+                  allowClear
+                  onChange={(v) => setWorkspaceFilter(v || '')}
+                  style={{ width: '100%' }}
+                  options={workspaceOptions}
+                />
+              </div>
+              <div className={styles.filterField}>
+                <span className={styles.filterFieldLabel}>开发群友</span>
+                <Select
+                  size="small"
+                  value={agentFilter || undefined}
+                  placeholder="全部开发群友"
+                  allowClear
+                  onChange={(v) => setAgentFilter(v || '')}
+                  style={{ width: '100%' }}
+                  options={agentOptions}
+                />
+              </div>
               <Checkbox
                 checked={showArchived}
                 onChange={(e) => setShowArchived(e.target.checked)}
@@ -351,6 +536,7 @@ export const CLITaskSidebar = ({
             {filteredTasks.map(task => {
               const statusInfo = statusLabels[task.status] || statusLabels.queued;
               const isSelected = selectedTaskId === task.id;
+              const workspace = shortPath(task.workspacePath);
               return (
                 <div
                   key={task.id}
@@ -359,13 +545,23 @@ export const CLITaskSidebar = ({
                 >
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
                     <span className={styles.taskTitle}>{task.title}</span>
-                    <Tag color={statusInfo.color} style={{ margin: 0, fontSize: 10, lineHeight: '16px' }}>
+                    <span className={styles.taskStatus}>
+                      <span className={cx(styles.statusDot, statusDotClass(task.status))} />
                       {statusInfo.label}
-                    </Tag>
+                    </span>
                   </div>
-                  <span className={styles.taskMeta}>
-                    {task.templateSnapshot.name} · {formatTime(task.updatedAt)}
-                  </span>
+                  <div className={styles.taskMetaRow}>
+                    <span className={styles.taskTemplate}>{task.templateSnapshot.name}</span>
+                    <span className={styles.taskMeta}>·</span>
+                    <Clock3 size={11} style={{ flex: 'none', opacity: 0.55 }} />
+                    <span className={styles.taskMeta}>{formatTime(task.updatedAt)}</span>
+                    {task.status === 'archived' && <Archive size={11} style={{ flex: 'none', opacity: 0.55 }} />}
+                  </div>
+                  {workspace && (
+                    <div className={styles.taskWorkspace} title={task.workspacePath}>
+                      {workspace}
+                    </div>
+                  )}
                 </div>
               );
             })}

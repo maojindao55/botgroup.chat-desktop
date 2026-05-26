@@ -647,6 +647,7 @@ const CLITaskUI = ({
       approvalMode: snapshot.approvalMode,
       showStderr: snapshot.showStderr,
       executionPlan: snapshot.executionPlan,
+      reviewLoopRoles: snapshot.reviewLoopRoles,
     };
 
     const messageIdByAgentTask = new Map<string, string>();
@@ -1251,14 +1252,19 @@ const CLITaskUI = ({
           onShowStderrChange={(v) => handleUpdateEditingTemplate({ showStderr: v })}
           strategy={editingCLIGroup.strategy || 'sequential'}
           onStrategyChange={(s) => handleUpdateEditingTemplate({ strategy: s })}
+          onWorkflowTemplateChange={(workflowTemplateId) => handleUpdateEditingTemplate({ workflowTemplateId })}
           onExecutionPlanChange={(p) => handleUpdateEditingTemplate({ executionPlan: p })}
           onMembersChange={(ids) => handleUpdateEditingTemplate({ memberIds: ids })}
+          onNameChange={(name) => handleUpdateEditingTemplate({ name })}
+          onDescriptionChange={(description) => handleUpdateEditingTemplate({ description })}
+          onReviewLoopRolesChange={(reviewLoopRoles) => handleUpdateEditingTemplate({ reviewLoopRoles })}
           sessionPolicy={editingCLIGroup.sessionPolicy || 'task'}
           onSessionPolicyChange={(policy) => handleUpdateEditingTemplate({ sessionPolicy: policy })}
           onBack={templateSettingsReturnTo === 'template-list' ? closeTemplateSettings : undefined}
           backLabel="团队模板"
           linkedTaskCount={taskCountByTemplate[editingCLIGroup.id] || 0}
           onDeleteTemplate={handleDeleteTemplate}
+          onSaveTemplate={handleUpdateEditingTemplate}
         />
       )}
 

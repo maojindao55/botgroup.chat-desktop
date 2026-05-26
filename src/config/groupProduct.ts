@@ -123,10 +123,10 @@ export const cliWorkflowTemplates: CLIWorkflowTemplate[] = [
   },
   {
     id: 'implement_review',
-    label: '写完再审',
-    description: '实现者先写代码，审核者再 review，必要时回到实现者修正。',
+    label: '规划实现复审',
+    description: '规划者先拆解方案，实现者按方案改代码；评审不通过时继续修正并复审。',
     strategy: 'review',
-    defaultStages: ['实现', '审核', '修正', '验证'],
+    defaultStages: ['规划', '实现', '复审', '修正'],
   },
   {
     id: 'review_fix',

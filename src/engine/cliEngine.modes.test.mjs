@@ -279,6 +279,46 @@ function runBodies(calls) {
 
 {
   const harness = createHarness();
+  const request = async (url, init = {}) => {
+    harness.calls.push({ url, init });
+    if (url === '/api/cli/run') {
+      const body = JSON.parse(init.body);
+      if (body.agentName.includes('复审 #1')) {
+        return sseResponse('REVIEW_DECISION: revise\n需要补测试');
+      }
+      if (body.agentName.includes('复审 #2')) {
+        return sseResponse('REVIEW_DECISION: approved\n没有发现必须修复的问题');
+      }
+      return sseResponse(`output:${body.agentId}:${body.agentName}`);
+    }
+    return harness.request(url, init);
+  };
+  const { executeCLIStrategy } = await loadEngine(request);
+  const results = await executeCLIStrategy(
+    {
+      ...baseGroup('review'),
+      reviewLoopRoles: {
+        plannerId: 'cli-codex',
+        implementerId: 'cli-opencode',
+        reviewerId: 'cli-codex',
+        maxReviewRounds: 2,
+      },
+    },
+    agents,
+    'implement oauth login',
+    '/workspace/project',
+    harness.callbacks,
+  );
+
+  const bodies = runBodies(harness.calls);
+  assert.deepEqual(results.map(r => r.stageLabel), ['规划', '实现', '复审 #1', '修正 #1', '复审 #2']);
+  assert.deepEqual(bodies.map(b => b.agentId), ['cli-codex', 'cli-opencode', 'cli-codex', 'cli-opencode', 'cli-codex']);
+  assert.match(bodies[2].prompt, /REVIEW_DECISION: approved 或 REVIEW_DECISION: revise/);
+  assert.match(bodies[3].prompt, /以下是评审者给出的修正反馈/);
+}
+
+{
+  const harness = createHarness();
   const { executeCLIStrategy } = await loadEngine(harness.request);
   await executeCLIStrategy(
     baseGroup('review', { isolation: 'copyPerAgent' }),

@@ -33,7 +33,7 @@ assert.deepEqual(
 
 assert.deepEqual(
   mod.cliWorkflowTemplates.map((item) => item.label),
-  ['快速响应', '写完再审', '审核修正', '多人出方案', '隔离竞赛', '只读讨论'],
+  ['快速响应', '规划实现复审', '审核修正', '多人出方案', '隔离竞赛', '只读讨论'],
 );
 
 assert.equal(
@@ -68,7 +68,7 @@ assert.equal(
 
 const developmentLoop = mod.cliWorkflowTemplates.find((item) => item.id === 'implement_review');
 assert.equal(developmentLoop.strategy, 'review');
-assert.equal(developmentLoop.defaultStages.join(' -> '), '实现 -> 审核 -> 修正 -> 验证');
+assert.equal(developmentLoop.defaultStages.join(' -> '), '规划 -> 实现 -> 复审 -> 修正');
 
 const labels = JSON.stringify({
   groups: mod.productGroupTypes,
