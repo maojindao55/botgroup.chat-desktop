@@ -7,11 +7,10 @@ import {
   Send,
   ChevronLeft,
   Terminal,
-  Share2,
   Info,
   GitCompare,
 } from 'lucide-react';
-import { Input as AntdInput, Button as AntdButton, Tag, Modal, Select } from 'antd';
+import { Input as AntdInput, Button as AntdButton, Tag, Modal, Select, Tooltip } from 'antd';
 import { ActionIcon, Avatar as LobeAvatar } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 import { request } from '@/utils/request';
@@ -22,12 +21,12 @@ import { resolveCliToolSessionKey, withCliToolSession } from '@/engine/cliToolSe
 import type { CLIAgent } from '@/config/aiCharacters';
 import { mapAIMemberToLegacy } from '@/config/aiCharacters';
 import { ChatMarkdown } from '@/components/Markdown';
-import { SharePoster } from '@/pages/chat/components/SharePoster';
 import CLIGroupSettings from './CLIGroupSettings';
 import CLITaskInfoPanel from './CLITaskInfoPanel';
 import CLITemplateListPanel from './CLITemplateListPanel';
 import CLITaskCompareModal from './CLITaskCompareModal';
 import CLIRaceResultsDrawer from './CLIRaceResultsDrawer';
+import CLITaskLogModal from './CLITaskLogModal';
 import CLITaskSidebar from './CLITaskSidebar';
 import CreateGroupWizard from './CreateGroupWizard';
 import Sidebar from './Sidebar';
@@ -44,12 +43,17 @@ import {
   isRaceTask,
   getRaceWorktreeEntries,
   type CLIDevelopmentTask,
+  type CLITaskStatus,
 } from '@/config/cliTasks';
 import {
   useCLITaskStore,
   getTeamTemplatesFromGroups,
   taskMessageToChatRow,
 } from '@/store/cliTaskStore';
+import {
+  scheduleCLITaskTitleSync,
+  scheduleOpenCodeTaskTitleSync,
+} from '@/utils/opencodeSessionTitle';
 import { openPath } from '@tauri-apps/plugin-opener';
 import { toast } from 'sonner';
 
@@ -60,8 +64,13 @@ interface CLITaskUIProps {
   onSelectGroup: (index: number) => void;
   onCreateGroup?: (group: Group) => void;
   onUpdateCLIGroup?: (group: CLIGroup) => void;
+  onDeleteCLIGroup?: (templateId: string) => void;
   initialTaskId?: string | null;
 }
+
+const DRAFT_COMPOSE_KEY = '__draft__';
+
+const resolveComposeKey = (taskId: string | null) => taskId ?? DRAFT_COMPOSE_KEY;
 
 const useStyles = createStyles(({ token, css }) => ({
   page: css`
@@ -95,6 +104,27 @@ const useStyles = createStyles(({ token, css }) => ({
     align-items: center;
     justify-content: space-between;
     padding: 10px 12px;
+  `,
+  avatarStack: css`
+    display: flex;
+    align-items: center;
+    & > * + * {
+      margin-left: -8px;
+    }
+  `,
+  avatarMore: css`
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: ${token.colorFillSecondary};
+    color: ${token.colorTextSecondary};
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 600;
+    border: 2px solid ${token.colorBgContainer};
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   `,
   chatArea: css`
     flex: 1;
@@ -316,6 +346,22 @@ const useStyles = createStyles(({ token, css }) => ({
     border-radius: 3px;
     cursor: pointer;
   `,
+  cliActionBtnLog: css`
+    padding: 0 6px;
+    height: 18px;
+    font-size: 10px;
+    background: transparent;
+    color: ${token.colorTextSecondary};
+    border: 1px solid ${token.colorBorderSecondary};
+    border-radius: 3px;
+    cursor: pointer;
+  `,
+  cliTaskActions: css`
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  `,
   spinnerIcon: css`
     width: 12px;
     height: 12px;
@@ -353,6 +399,7 @@ const CLITaskUI = ({
   onSelectGroup,
   onCreateGroup,
   onUpdateCLIGroup,
+  onDeleteCLIGroup,
   initialTaskId,
 }: CLITaskUIProps) => {
   const userStore = useUserStore();
@@ -374,7 +421,7 @@ const CLITaskUI = ({
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(initialTaskId || null);
   const [selectedTemplateId, setSelectedTemplateId] = useState(templates[0]?.id || '');
   const [inputMessage, setInputMessage] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [executingTaskIds, setExecutingTaskIds] = useState<Set<string>>(() => new Set());
   const [sidebarOpen, setSidebarOpen] = useState(!isMobile);
   const [taskSidebarOpen, setTaskSidebarOpen] = useState(!isMobile);
   const [taskInfoOpen, setTaskInfoOpen] = useState(false);
@@ -387,8 +434,15 @@ const CLITaskUI = ({
   const [createTemplateOpen, setCreateTemplateOpen] = useState(false);
   const [compareModalOpen, setCompareModalOpen] = useState(false);
   const [raceDrawerOpen, setRaceDrawerOpen] = useState(false);
+  const [logTarget, setLogTarget] = useState<{
+    agentTaskId: string;
+    messageId: string;
+    agentName: string;
+    adapter?: string;
+    prompt?: string;
+    status?: string;
+  } | null>(null);
   const [showLibrary, setShowLibrary] = useState(false);
-  const [showPoster, setShowPoster] = useState(false);
   const [showAd, setShowAd] = useState(false);
   const [mutedUsers, setMutedUsers] = useState<string[]>([]);
 
@@ -398,6 +452,35 @@ const CLITaskUI = ({
   const selectedTask = tasks.find(t => t.id === selectedTaskId) || null;
   const selectedTemplate = templates.find(t => t.id === selectedTemplateId) || templates[0];
   const draftTemplate = selectedTemplate;
+  const composeKey = resolveComposeKey(selectedTaskId);
+  const isComposeBusy = executingTaskIds.has(composeKey);
+
+  const beginTaskExecution = useCallback((key: string) => {
+    setExecutingTaskIds(prev => {
+      if (prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.add(key);
+      return next;
+    });
+  }, []);
+
+  const endTaskExecution = useCallback((key: string) => {
+    setExecutingTaskIds(prev => {
+      if (!prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+  }, []);
+
+  const transferTaskExecution = useCallback((from: string, to: string) => {
+    setExecutingTaskIds(prev => {
+      const next = new Set(prev);
+      next.delete(from);
+      next.add(to);
+      return next;
+    });
+  }, []);
 
   const workspacePath = selectedTask
     ? selectedTask.workspacePath
@@ -438,7 +521,12 @@ const CLITaskUI = ({
   useEffect(() => { if (isMobile !== undefined) { setSidebarOpen(!isMobile); setTaskSidebarOpen(!isMobile); } }, [isMobile]);
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMessages]);
 
+  // 仅在外部 URL 的 taskId 变化时同步选中项；tasks 更新时不应覆盖用户在侧栏的手动选择
+  // （navigateToTask 用 replaceState 更新 URL，不会触发 ChatUI 重渲染，initialTaskId 可能滞后）
+  const lastSyncedInitialTaskIdRef = useRef<string | null | undefined>(undefined);
   useEffect(() => {
+    if (initialTaskId === lastSyncedInitialTaskIdRef.current) return;
+    lastSyncedInitialTaskIdRef.current = initialTaskId;
     if (initialTaskId && tasks.some(t => t.id === initialTaskId)) {
       setSelectedTaskId(initialTaskId);
     }
@@ -544,6 +632,38 @@ const CLITaskUI = ({
     };
 
     const messageIdByAgentTask = new Map<string, string>();
+    const agentIdByAgentTask = new Map<string, string>();
+    const opencodeSessionByAgentTask = new Map<string, string>();
+    const openCodeLedThisRun = activeAgents.length > 0 && activeAgents[0].cli?.adapter === 'opencode';
+
+    const flushOpenCodeTitleSync = () => {
+      const seen = new Set<string>();
+      const schedule = (agentId: string, sessionId: string) => {
+        const key = `${agentId}:${sessionId}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        scheduleOpenCodeTaskTitleSync({
+          taskId: developmentTask.id,
+          agentId,
+          sessionId,
+          openCodeLedThisRun,
+          getTask: () => useCLITaskStore.getState().getTask(developmentTask.id),
+          updateTask,
+        });
+      };
+
+      for (const [agentTaskId, sessionId] of opencodeSessionByAgentTask.entries()) {
+        const agentId = agentIdByAgentTask.get(agentTaskId);
+        if (agentId && sessionId) schedule(agentId, sessionId);
+      }
+
+      const latestTask = useCLITaskStore.getState().getTask(developmentTask.id);
+      latestTask?.messages.forEach(message => {
+        if (message.agentId && message.toolSessionId) {
+          schedule(message.agentId, message.toolSessionId);
+        }
+      });
+    };
 
     try {
       await executeCLIStrategy(
@@ -553,6 +673,7 @@ const CLITaskUI = ({
         ws,
         {
           onAgentStart: (agentTaskId, agentId, agentName, meta) => {
+            agentIdByAgentTask.set(agentTaskId, agentId);
             const agentMember = aiMembers[agentId];
             const agentInfo = agentMember?.kind === 'cli'
               ? mapAIMemberToLegacy(agentMember) as CLIAgent
@@ -582,9 +703,16 @@ const CLITaskUI = ({
               agentTaskIds: [...(currentTask?.agentTaskIds || []), agentTaskId],
             });
           },
-          onToolSession: (_agentTaskId, agentId, adapter, sessionId) => {
+          onToolSession: (agentTaskId, agentId, adapter, sessionId) => {
             if (adapter === 'opencode' || adapter === 'codex' || adapter === 'claude') {
               localStorage.setItem(getSessionKey(developmentTask, agentId), sessionId);
+            }
+            if (adapter === 'opencode') {
+              opencodeSessionByAgentTask.set(agentTaskId, sessionId);
+              const msgId = messageIdByAgentTask.get(agentTaskId);
+              if (msgId) {
+                updateMessage(developmentTask.id, msgId, { toolSessionId: sessionId });
+              }
             }
           },
           onToken: (agentTaskId, token) => {
@@ -642,12 +770,13 @@ const CLITaskUI = ({
         isError: true,
       });
     } finally {
+      flushOpenCodeTitleSync();
       useCLITaskStore.getState().syncTaskStatus(developmentTask.id);
     }
   };
 
   const handleSendMessage = async () => {
-    if (isLoading || !inputMessage.trim()) return;
+    if (isComposeBusy || !inputMessage.trim()) return;
     const liveTemplate = draftTemplate;
     if (!liveTemplate && !selectedTask) return;
 
@@ -658,7 +787,9 @@ const CLITaskUI = ({
     const targetAgentId = parsed.agentId;
 
     setInputMessage('');
-    setIsLoading(true);
+
+    let activeScope = composeKey;
+    beginTaskExecution(activeScope);
 
     try {
       let task = selectedTask;
@@ -670,6 +801,17 @@ const CLITaskUI = ({
           template: liveTemplate,
           workspacePath: liveTemplate.workspacePath,
         });
+        const createdTaskId = task.id;
+        scheduleCLITaskTitleSync({
+          taskId: createdTaskId,
+          prompt: rawInput,
+          getTask: () => useCLITaskStore.getState().getTask(createdTaskId),
+          updateTask,
+        });
+        if (activeScope === DRAFT_COMPOSE_KEY) {
+          transferTaskExecution(DRAFT_COMPOSE_KEY, task.id);
+          activeScope = task.id;
+        }
         navigateToTask(task.id);
       } else {
         appendMessage(task.id, {
@@ -683,7 +825,7 @@ const CLITaskUI = ({
 
       await runExecution(task, executionPrompt, targetAgentId);
     } finally {
-      setIsLoading(false);
+      endTaskExecution(activeScope);
     }
   };
 
@@ -724,6 +866,33 @@ const CLITaskUI = ({
       .filter(member => member && member.kind === 'cli');
   }, [selectedTask, aiMembers]);
 
+  const headerTeamMembers = useMemo(() => {
+    const memberIds = selectedTask
+      ? selectedTask.templateSnapshot.memberIds
+      : draftTemplate?.memberIds ?? [];
+    return memberIds
+      .map(id => aiMembers[id])
+      .filter(member => member && member.kind === 'cli')
+      .map(member => {
+        const agent = mapAIMemberToLegacy(member) as CLIAgent;
+        return { id: agent.id, name: agent.name, avatar: agent.avatar };
+      });
+  }, [selectedTask, draftTemplate, aiMembers]);
+
+  const openTaskLog = (message: ReturnType<typeof taskMessageToChatRow>) => {
+    if (!message.taskId) return;
+    const member = message.sender.id?.startsWith('cli-') ? aiMembers[message.sender.id] : undefined;
+    const adapter = member?.kind === 'cli' ? member.cli?.adapter : undefined;
+    setLogTarget({
+      agentTaskId: message.taskId,
+      messageId: message.id,
+      agentName: message.sender.name,
+      adapter,
+      prompt: message.prompt,
+      status: message.status,
+    });
+  };
+
   const handleCancelTask = async (agentTaskId: string) => {
     try {
       await request('/api/cli/tasks/cancel', {
@@ -743,12 +912,14 @@ const CLITaskUI = ({
   };
 
   const handleRetryTask = async (msg: ReturnType<typeof taskMessageToChatRow>) => {
-    if (isLoading || !selectedTask || !msg.prompt || !msg.sender?.id) return;
-    setIsLoading(true);
+    if (!selectedTask || !msg.prompt || !msg.sender?.id) return;
+    if (executingTaskIds.has(selectedTask.id)) return;
+
+    beginTaskExecution(selectedTask.id);
     try {
       await runExecution(selectedTask, msg.prompt, msg.sender.id);
     } finally {
-      setIsLoading(false);
+      endTaskExecution(selectedTask.id);
     }
   };
 
@@ -766,6 +937,56 @@ const CLITaskUI = ({
       setTemplateListOpen(true);
     }
   };
+
+  const performDeleteTemplate = (templateId: string) => {
+    if (!onDeleteCLIGroup) return;
+
+    onDeleteCLIGroup(templateId);
+
+    if (editingTemplateId === templateId) {
+      closeTemplateSettings();
+    }
+
+    if (selectedTemplateId === templateId) {
+      const remaining = cliGroups.filter(g => g.id !== templateId);
+      setSelectedTemplateId(remaining[0]?.id || '');
+    }
+
+    toast.success('团队模板已删除');
+  };
+
+  const handleDeleteTemplate = (templateId: string) => {
+    if (!onDeleteCLIGroup) return;
+    const template = templates.find(t => t.id === templateId);
+    const taskCount = taskCountByTemplate[templateId] || 0;
+    const name = template?.name || '此模板';
+    const description = taskCount > 0
+      ? `已有 ${taskCount} 个开发任务不会受影响（仍保留创建时的快照），但无法再以此模板创建新任务。`
+      : '删除后无法再以此模板创建新任务，此操作不可恢复。';
+
+    Modal.confirm({
+      title: `删除团队模板「${name}」？`,
+      content: description,
+      okText: '删除',
+      okType: 'danger',
+      cancelText: '取消',
+      centered: true,
+      zIndex: 2100,
+      getContainer: () => document.body,
+      onOk: () => {
+        performDeleteTemplate(templateId);
+      },
+    });
+  };
+
+  useEffect(() => {
+    if (!editingTemplateId) return;
+    if (!cliGroups.some(group => group.id === editingTemplateId)) {
+      setTemplateSettingsOpen(false);
+      setEditingTemplateId(null);
+      setTemplateSettingsReturnTo(null);
+    }
+  }, [cliGroups, editingTemplateId]);
 
   const openTemplateSettings = (templateId: string) => {
     setEditingTemplateId(templateId);
@@ -960,12 +1181,22 @@ const CLITaskUI = ({
         onAdopt={handleAdoptRaceResult}
       />
 
-      {showPoster && selectedTask && (
-        <SharePoster
-          messages={chatMessages}
-          onClose={() => setShowPoster(false)}
-        />
-      )}
+      <CLITaskLogModal
+        open={!!logTarget}
+        onOpenChange={(open) => { if (!open) setLogTarget(null); }}
+        agentTaskId={logTarget?.agentTaskId ?? null}
+        agentName={logTarget?.agentName}
+        adapter={logTarget?.adapter}
+        prompt={logTarget?.prompt}
+        status={logTarget?.status}
+        onStatusChange={(status) => {
+          if (logTarget && selectedTask) {
+            updateMessage(selectedTask.id, logTarget.messageId, { status: status as CLITaskStatus });
+            setLogTarget(prev => (prev ? { ...prev, status } : null));
+          }
+        }}
+        onCancel={logTarget ? () => handleCancelTask(logTarget.agentTaskId) : undefined}
+      />
 
       <CLITaskInfoPanel
         open={taskInfoOpen}
@@ -985,6 +1216,7 @@ const CLITaskUI = ({
         taskCountByTemplate={taskCountByTemplate}
         onOpenTemplateSettings={openTemplateSettings}
         onCreateTemplate={openCreateTemplate}
+        onDeleteTemplate={handleDeleteTemplate}
       />
 
       {editingCLIGroup && (
@@ -1014,6 +1246,8 @@ const CLITaskUI = ({
           onSessionPolicyChange={(policy) => handleUpdateEditingTemplate({ sessionPolicy: policy })}
           onBack={templateSettingsReturnTo === 'template-list' ? closeTemplateSettings : undefined}
           backLabel="团队模板"
+          linkedTaskCount={taskCountByTemplate[editingCLIGroup.id] || 0}
+          onDeleteTemplate={handleDeleteTemplate}
         />
       )}
 
@@ -1085,12 +1319,29 @@ const CLITaskUI = ({
                   <div className={styles.desktopOnly}>
                     <AdBanner show={showAd} closeAd={() => setShowAd(false)} />
                   </div>
-                  <ActionIcon
-                    icon={Share2}
-                    size="small"
-                    onClick={() => setShowPoster(true)}
-                    title="分享"
-                  />
+                  {headerTeamMembers.length > 0 && (
+                    <div className={styles.avatarStack}>
+                      {headerTeamMembers.slice(0, 4).map((member) => {
+                        const a = getAvatarData(member.name);
+                        const url = resolveAvatarByName(member.name, member.avatar, 32);
+                        return (
+                          <Tooltip key={member.id} title={member.name}>
+                            <LobeAvatar
+                              avatar={url || a.text}
+                              background={a.backgroundColor}
+                              shape="circle"
+                              size={32}
+                              title={member.name}
+                              style={{ flexShrink: 0 }}
+                            />
+                          </Tooltip>
+                        );
+                      })}
+                      {headerTeamMembers.length > 4 && (
+                        <div className={styles.avatarMore}>+{headerTeamMembers.length - 4}</div>
+                      )}
+                    </div>
+                  )}
                   {selectedTask && (
                     <ActionIcon
                       icon={Info}
@@ -1140,7 +1391,10 @@ const CLITaskUI = ({
                     const a = getAvatarData(avatarName);
                     const url = resolveAvatarByName(avatarName, cliAgentInfo?.avatar, 40);
                     const isLatest = idx === chatMessages.length - 1;
-                    const isStreaming = message.isAI && (message.status === 'running' || (isLoading && isLatest));
+                    const isStreaming = message.isAI && (
+                      message.status === 'running'
+                      || (executingTaskIds.has(selectedTask!.id) && isLatest)
+                    );
                     const bubbleClass = isUser
                       ? styles.bubbleUser
                       : message.isError
@@ -1188,9 +1442,17 @@ const CLITaskUI = ({
                                   {message.status === 'cancelled' && <span style={{ color: '#faad14' }}>⏹ 已取消</span>}
                                   {message.status === 'timeout' && <span style={{ color: '#ff4d4f' }}>⏰ 超时</span>}
                                 </span>
-                                <div>
+                                <div className={styles.cliTaskActions}>
+                                  <button
+                                    type="button"
+                                    className={styles.cliActionBtnLog}
+                                    onClick={() => openTaskLog(message)}
+                                  >
+                                    日志
+                                  </button>
                                   {message.status === 'running' && message.taskId && (
                                     <button
+                                      type="button"
                                       className={styles.cliActionBtnCancel}
                                       onClick={() => handleCancelTask(message.taskId!)}
                                     >
@@ -1199,6 +1461,7 @@ const CLITaskUI = ({
                                   )}
                                   {['failed', 'cancelled', 'timeout'].includes(message.status || '') && (
                                     <button
+                                      type="button"
                                       className={styles.cliActionBtnRetry}
                                       onClick={() => handleRetryTask(message)}
                                     >
@@ -1287,7 +1550,7 @@ const CLITaskUI = ({
                       : '描述代码任务，开发群友会在 workspace 中协作执行...'
                   }
                   autoSize={{ minRows: 4, maxRows: 12 }}
-                  disabled={isLoading || (!selectedTask && !draftTemplate)}
+                  disabled={isComposeBusy || (!selectedTask && !draftTemplate)}
                   variant="borderless"
                 />
                 <div className={styles.composeFooter}>
@@ -1340,8 +1603,8 @@ const CLITaskUI = ({
                     type="primary"
                     icon={<Send size={16} />}
                     onClick={handleSendMessage}
-                    loading={isLoading}
-                    disabled={!inputMessage.trim() || (!selectedTask && !draftTemplate)}
+                    loading={isComposeBusy}
+                    disabled={isComposeBusy || !inputMessage.trim() || (!selectedTask && !draftTemplate)}
                     style={{ background: '#ff6600', borderColor: '#ff6600' }}
                   >
                     发送

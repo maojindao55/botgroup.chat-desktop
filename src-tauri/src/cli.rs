@@ -925,6 +925,12 @@ fn build_command(args: &CliRunArgs) -> Result<Command, String> {
                     }
                 }
             }
+            let has_title = args.extra_args.as_ref().map_or(false, |extra| {
+                extra.iter().any(|arg| arg == "--title" || arg.starts_with("--title="))
+            });
+            if !has_title {
+                cmd.arg("--title").arg(prompt_summary(&args.prompt, 48));
+            }
             cmd.arg(&args.prompt);
         }
 
@@ -1058,6 +1064,56 @@ fn build_command(args: &CliRunArgs) -> Result<Command, String> {
         .kill_on_drop(true);
 
     Ok(cmd)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenCodeSessionTitleResult {
+    pub title: Option<String>,
+}
+
+#[tauri::command]
+pub async fn cli_opencode_session_title(
+    session_id: String,
+    binary: Option<String>,
+) -> Result<OpenCodeSessionTitleResult, String> {
+    let bin = binary.unwrap_or_else(|| "opencode".to_string());
+    let path = which::which(&bin).map_err(|_| format!("{bin} binary not found"))?;
+
+    let output = tokio::time::timeout(
+        std::time::Duration::from_secs(15),
+        Command::new(&path)
+            .arg("export")
+            .arg(&session_id)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output(),
+    )
+    .await
+    .map_err(|_| "opencode export timed out".to_string())?
+    .map_err(|e| format!("opencode export failed: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "opencode export exited with {}: {}",
+            output.status, stderr.trim()
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(stdout.trim())
+        .map_err(|e| format!("invalid opencode export json: {e}"))?;
+
+    let title = json
+        .get("info")
+        .and_then(|info| info.get("title"))
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+
+    Ok(OpenCodeSessionTitleResult { title })
 }
 
 #[cfg(test)]
@@ -1275,6 +1331,7 @@ mod tests {
         assert!(rendered.contains("\"--format\""));
         assert!(rendered.contains("\"json\""));
         assert!(rendered.contains("\"--pure\""));
+        assert!(rendered.contains("\"--title\""));
         assert!(rendered.contains("\"继续刚才的任务\""));
     }
 

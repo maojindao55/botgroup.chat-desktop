@@ -23,6 +23,16 @@ const {
 
 {
   const parsed = parseOpenCodeJsonLine(JSON.stringify({
+    type: 'session.updated',
+    sessionId: 'ses_camel_case',
+    info: { id: 'ses_camel_case', title: 'Fix login' },
+  }));
+
+  assert.deepEqual(parsed, { sessionId: 'ses_camel_case' });
+}
+
+{
+  const parsed = parseOpenCodeJsonLine(JSON.stringify({
     type: 'step_start',
     sessionID: 'ses_abc123',
     part: { type: 'step-start' },

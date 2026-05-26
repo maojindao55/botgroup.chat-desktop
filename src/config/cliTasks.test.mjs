@@ -225,3 +225,83 @@ assert.equal(
   }),
   false,
 );
+
+{
+  const resolveMember = (id) => (
+    id === 'cli-opencode'
+      ? { kind: 'cli', cli: { adapter: 'opencode' } }
+      : { kind: 'cli', cli: { adapter: 'codex' } }
+  );
+  const opencodeFirst = {
+    ...task,
+    messages: [
+      ...task.messages,
+      {
+        id: 'msg-opencode',
+        taskId: task.id,
+        role: 'agent',
+        agentId: 'cli-opencode',
+        content: 'done',
+        status: 'completed',
+      },
+    ],
+  };
+  const codexFirst = {
+    ...task,
+    messages: [
+      ...task.messages,
+      {
+        id: 'msg-codex',
+        taskId: task.id,
+        role: 'agent',
+        agentId: 'cli-codex',
+        content: 'done',
+        status: 'completed',
+      },
+      {
+        id: 'msg-opencode',
+        taskId: task.id,
+        role: 'agent',
+        agentId: 'cli-opencode',
+        content: 'done',
+        status: 'completed',
+      },
+    ],
+  };
+  assert.equal(mod.shouldSyncOpenCodeTaskTitle(opencodeFirst, 'cli-opencode', resolveMember), true);
+  assert.equal(mod.shouldSyncOpenCodeTaskTitle(codexFirst, 'cli-opencode', resolveMember), false);
+  assert.equal(
+    mod.shouldSyncOpenCodeTaskTitle({ ...opencodeFirst, titleSource: 'manual' }, 'cli-opencode', resolveMember),
+    false,
+  );
+  assert.equal(
+    mod.shouldSyncOpenCodeTaskTitle(codexFirst, 'cli-opencode', resolveMember, { openCodeLedThisRun: true }),
+    true,
+  );
+
+  const codexFailedThenOpenCode = {
+    ...task,
+    messages: [
+      ...task.messages,
+      {
+        id: 'msg-codex-failed',
+        taskId: task.id,
+        role: 'agent',
+        agentId: 'cli-codex',
+        content: '[错误: not installed]',
+        status: 'failed',
+      },
+      {
+        id: 'msg-opencode',
+        taskId: task.id,
+        role: 'agent',
+        agentId: 'cli-opencode',
+        content: 'done',
+        status: 'completed',
+      },
+    ],
+  };
+  assert.equal(mod.shouldSyncOpenCodeTaskTitle(codexFailedThenOpenCode, 'cli-opencode', resolveMember), true);
+  assert.equal(mod.isPlaceholderOpenCodeTitle('New session - 2026-05-25T23:06:02.246Z'), true);
+  assert.equal(mod.normalizeOpenCodeSessionTitle('  修复登录页校验  '), '修复登录页校验');
+}

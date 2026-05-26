@@ -99,9 +99,13 @@ export interface CLITaskMessage {
   adopted?: boolean;
 }
 
+export type CLITaskTitleSource = 'auto' | 'manual';
+
 export interface CLIDevelopmentTask {
   id: string;
   title: string;
+  /** 标题来源；manual 时不被 OpenCode session 标题覆盖 */
+  titleSource?: CLITaskTitleSource;
   prompt: string;
   status: CLITaskStatus;
   templateId: string;
@@ -153,6 +157,63 @@ export function truncateTaskTitle(prompt: string, maxLen = 48): string {
   const line = prompt.trim().split('\n')[0] || '新开发任务';
   if (line.length <= maxLen) return line;
   return `${line.slice(0, maxLen - 1)}…`;
+}
+
+export function getFirstAgentMessage(task: CLIDevelopmentTask): CLITaskMessage | undefined {
+  return task.messages.find(message => message.role === 'agent');
+}
+
+/** 第一个有效发言的 agent（跳过失败/取消/超时） */
+export function getFirstSpeakingAgentMessage(task: CLIDevelopmentTask): CLITaskMessage | undefined {
+  return task.messages.find(message => {
+    if (message.role !== 'agent') return false;
+    if (message.status === 'failed' || message.status === 'cancelled' || message.status === 'timeout') {
+      return false;
+    }
+    return true;
+  });
+}
+
+/** 是否 OpenCode CLI 成员 */
+export function isOpenCodeCliAgent(
+  agentId: string,
+  resolveMember: (agentId: string) => { kind?: string; cli?: { adapter?: string } } | undefined,
+): boolean {
+  const member = resolveMember(agentId);
+  return member?.kind === 'cli' && member.cli?.adapter === 'opencode';
+}
+
+/**
+ * 是否应使用 OpenCode session 标题更新任务名：
+ * - 用户未手动改过标题
+ * - 该 OpenCode agent 是任务里第一个发言的 agent
+ */
+export function shouldSyncOpenCodeTaskTitle(
+  task: CLIDevelopmentTask,
+  agentId: string,
+  resolveMember: (agentId: string) => { kind?: string; cli?: { adapter?: string } } | undefined,
+  options?: { openCodeLedThisRun?: boolean },
+): boolean {
+  if (task.titleSource === 'manual') return false;
+  if (!isOpenCodeCliAgent(agentId, resolveMember)) return false;
+  if (options?.openCodeLedThisRun) return true;
+  const firstAgent = getFirstSpeakingAgentMessage(task);
+  return firstAgent?.agentId === agentId;
+}
+
+const OPENCODE_DEFAULT_TITLE_PREFIX = 'New session -';
+
+export function isPlaceholderOpenCodeTitle(title: string): boolean {
+  const trimmed = title.trim();
+  if (!trimmed) return true;
+  if (trimmed.startsWith(OPENCODE_DEFAULT_TITLE_PREFIX)) return true;
+  return false;
+}
+
+export function normalizeOpenCodeSessionTitle(title: string): string | null {
+  const trimmed = title.trim();
+  if (!trimmed || isPlaceholderOpenCodeTitle(trimmed)) return null;
+  return trimmed;
 }
 
 export function createDevelopmentTask(params: {
