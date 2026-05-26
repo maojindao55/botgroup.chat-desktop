@@ -6,7 +6,7 @@
  * - agent → AgentChatUI
  */
 import { useState, useRef, useEffect } from "react";
-import { Send, Share2, Settings2, ChevronLeft, Bot, Terminal } from "lucide-react";
+import { Send, Settings2, ChevronLeft, Bot, Terminal } from "lucide-react";
 import { Tooltip, Input as AntdInput, Button as AntdButton } from 'antd';
 import { ActionIcon, Avatar as LobeAvatar } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
@@ -18,7 +18,6 @@ import { cliToolSessionKey, withCliToolSession } from '@/engine/cliToolSessions'
 import type { AICharacter, CLIAgent } from "@/config/aiCharacters";
 import { mapAIMemberToLegacy } from "@/config/aiCharacters";
 import { ChatMarkdown } from '@/components/Markdown';
-import { SharePoster } from '@/pages/chat/components/SharePoster';
 import AIGroupSettings from './AIGroupSettings';
 import CLIGroupSettings from './CLIGroupSettings';
 import AgentChatUI from './AgentChatUI';
@@ -33,31 +32,13 @@ import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
 import type { Group, AIGroup, CLIGroup, AgentGroup, CLIStrategy, CLIExecutionPlan, CLISessionPolicy } from '@/config/groups';
 import { openPath } from '@tauri-apps/plugin-opener';
 
-const CLI_TEMPLATE_OVERRIDES_KEY = 'cli_template_overrides';
-
-function loadCLITemplateOverrides(): Record<string, CLIGroup> {
-  try {
-    const stored = localStorage.getItem(CLI_TEMPLATE_OVERRIDES_KEY);
-    return stored ? JSON.parse(stored) : {};
-  } catch {
-    return {};
-  }
-}
-
-function applyCLITemplateOverrides(groups: Group[]): Group[] {
-  const overrides = loadCLITemplateOverrides();
-  return groups.map((group) => {
-    if (group.type !== 'cli') return group;
-    const override = overrides[group.id];
-    return override ? { ...group, ...override, type: 'cli' } : group;
-  }) as Group[];
-}
-
-function persistCLITemplateOverride(group: CLIGroup) {
-  const overrides = loadCLITemplateOverrides();
-  overrides[group.id] = group;
-  localStorage.setItem(CLI_TEMPLATE_OVERRIDES_KEY, JSON.stringify(overrides));
-}
+import {
+  persistCLITemplateOverride,
+  prepareCLIGroups,
+  markCLITemplateDeleted,
+  removeCLITemplateLocalData,
+  removeCLITemplateFromCustomGroups,
+} from '@/config/cliTemplateStorage';
 
 const useStyles = createStyles(({ token, css }) => ({
   page: css`
@@ -416,7 +397,6 @@ const ChatUI = () => {
   const [inputMessage, setInputMessage] = useState("");
   const [initError, setInitError] = useState<string | null>(null);
   const [mutedUsers, setMutedUsers] = useState<string[]>([]);
-  const [showPoster, setShowPoster] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [workspacePath, setWorkspacePath] = useState("");
   const [approvalMode, setApprovalMode] = useState<'auto' | 'ask'>('auto');
@@ -519,7 +499,7 @@ const ChatUI = () => {
         if (!response.ok) throw new Error('初始化数据失败');
         const { data } = await response.json();
 
-        const resolvedGroups = applyCLITemplateOverrides(data.groups);
+        const resolvedGroups = prepareCLIGroups(data.groups);
         const currentGroup = resolvedGroups[selectedGroupIndex];
 
         // 旧链接指向 CLI 群时，重定向到任务优先视图
@@ -608,6 +588,13 @@ const ChatUI = () => {
   const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
   const handleSelectGroup = (index: number) => { window.location.href = `?id=${index}`; };
   const handleNavigateCLI = () => { window.location.href = '?view=cli-tasks'; };
+
+  const handleDeleteCLIGroup = (templateId: string) => {
+    markCLITemplateDeleted(templateId);
+    removeCLITemplateLocalData(templateId);
+    removeCLITemplateFromCustomGroups(templateId);
+    setGroups(prev => prev.filter(g => g.id !== templateId));
+  };
 
   const handleUpdateCLIGroup = (updatedGroup: CLIGroup) => {
     setGroups(prev => prev.map(g => g.id === updatedGroup.id ? updatedGroup : g));
@@ -748,6 +735,7 @@ const ChatUI = () => {
         onSelectGroup={handleSelectGroup}
         onCreateGroup={handleCreateGroup}
         onUpdateCLIGroup={handleUpdateCLIGroup}
+        onDeleteCLIGroup={handleDeleteCLIGroup}
         initialTaskId={taskIdParam}
       />
     );
@@ -1272,11 +1260,6 @@ const ChatUI = () => {
         />
       )}
 
-      {/* Share Poster */}
-      {showPoster && (
-        <SharePoster messages={messages} onClose={() => setShowPoster(false)} />
-      )}
-
       <div className={styles.page}>
         <div className={styles.container}>
           <Sidebar
@@ -1543,16 +1526,6 @@ const ChatUI = () => {
             {/* Input Area */}
             <div className={styles.inputArea}>
               <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12 }}>
-                {messages.length > 0 && (
-                  <Tooltip title="分享聊天记录">
-                    <ActionIcon
-                      icon={Share2}
-                      size="small"
-                      onClick={() => setShowPoster(true)}
-                      title="分享聊天记录"
-                    />
-                  </Tooltip>
-                )}
                 <AntdInput.TextArea
                   value={inputMessage}
                   onChange={(e) => setInputMessage(e.target.value)}

@@ -52,12 +52,14 @@ pub fn run() {
             cli::cli_run,
             cli::cli_kill,
             cli::cli_check,
+            cli::cli_opencode_session_title,
             cli::cli_task_list,
             cli::cli_task_get,
             cli::cli_task_read_log,
             cli::cli_runtime_list,
             cli::cli_worktree_prepare,
             cli::cli_worktree_cleanup,
+            cli::cli_git_diff,
             cli::cli_tempcopy_prepare,
             cli::cli_tempcopy_cleanup
         ])

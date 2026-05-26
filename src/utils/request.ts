@@ -4,6 +4,7 @@ import { llmChatReadableStream, llmChatComplete } from '@/utils/llmClient';
 import { resolveLlmCredentials } from '@/utils/resolveLlmCredentials';
 import { collectLegacyApiKeys, clearLegacyApiKeys } from '@/utils/legacyApiKeys';
 import { defaultGroups as staticGroups } from '@/config/groups';
+import { filterDeletedCLITemplates } from '@/config/cliTemplateStorage';
 import { generateAICharacters, cliAgents, modelConfigs } from '@/config/aiCharacters';
 import { builtinAIMembers, type AIMember } from '@/config/aiMembers';
 import { builtinProviders, lookupProviderByEnvName, mapProviderToRust } from '@/config/providers';
@@ -271,7 +272,7 @@ export async function request(url: string, options: RequestInit = {}) {
         customGroups = migratedCustomGroups;
       }
 
-      const allGroups = [...staticGroups, ...customGroups];
+      const allGroups = filterDeletedCLITemplates([...staticGroups, ...customGroups]);
 
       let characters: any[] = [];
       if (isTauri) {
@@ -843,6 +844,13 @@ export async function request(url: string, options: RequestInit = {}) {
                 }
                 break;
               case 'done': {
+                if (adapter === 'opencode' && opencodeSessionId) {
+                  enqueueEvent({
+                    type: 'tool_session',
+                    adapter: 'opencode',
+                    sessionId: opencodeSessionId,
+                  });
+                }
                 const code = typeof payload.exit_code === 'number' ? payload.exit_code : -1;
                 closeCodexCommandGroup();
                 closeClaudeCommandGroup();
@@ -1007,6 +1015,29 @@ export async function request(url: string, options: RequestInit = {}) {
       }
     }
 
+    // 9.7b CLI git diff (race worktree vs base commit)
+    if (cleanUrl === '/api/cli/git/diff') {
+      const body = JSON.parse(options.body as string);
+      const { cwd, baseSha } = body || {};
+      if (!cwd || !baseSha) {
+        return mockResponse(
+          { success: false, message: '/api/cli/git/diff requires { cwd, baseSha }' },
+          400,
+        );
+      }
+      try {
+        const result = await invoke('cli_git_diff', {
+          args: { cwd, baseSha },
+        });
+        return mockResponse({ success: true, data: result });
+      } catch (e: any) {
+        return mockResponse(
+          { success: false, message: typeof e === 'string' ? e : (e?.message || 'git diff failed') },
+          400,
+        );
+      }
+    }
+
     // 9.8 CLI temp copy prepare (discussion read-only isolation)
     if (cleanUrl === '/api/cli/tempcopy/prepare') {
       const body = JSON.parse(options.body as string);
@@ -1055,6 +1086,27 @@ export async function request(url: string, options: RequestInit = {}) {
       }
       const result = await invoke('cli_check', { adapter });
       return mockResponse({ success: true, data: result });
+    }
+
+    // 10b. OpenCode session title — used to auto-name tasks when OpenCode speaks first.
+    if (cleanUrl === '/api/cli/opencode/session-title') {
+      const body = JSON.parse(options.body as string);
+      const sessionId = body?.sessionId;
+      if (!sessionId || typeof sessionId !== 'string') {
+        return mockResponse({ success: false, message: 'sessionId required' }, 400);
+      }
+      try {
+        const result = await invoke('cli_opencode_session_title', {
+          sessionId,
+          binary: body?.binary,
+        });
+        return mockResponse({ success: true, data: result });
+      } catch (e: unknown) {
+        return mockResponse(
+          { success: false, message: typeof e === 'string' ? e : (e as Error)?.message || 'fetch title failed' },
+          400,
+        );
+      }
     }
 
 

@@ -3,7 +3,7 @@
  * 管理开发群友、workspacePath、审批模式、超时等
  */
 import { useState, useEffect } from 'react';
-import { Drawer, Switch, Button, Input, InputNumber, Tooltip, Tabs, Tag, Modal, Spin } from 'antd';
+import { Drawer, Switch, Button, Input, InputNumber, Tooltip, Tabs, Tag, Spin } from 'antd';
 import { Avatar as LobeAvatar, ActionIcon } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 import { FolderOpen, Terminal, Mic, MicOff, CheckCircle2, XCircle, Play, FileText, RefreshCw, Clock, X, ChevronLeft } from 'lucide-react';
@@ -16,6 +16,7 @@ import { cliSessionPolicyOptions } from '@/config/cliTasks';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
 import { invoke } from '@tauri-apps/api/core';
 import { openPath } from '@tauri-apps/plugin-opener';
+import CLITaskLogModal from './CLITaskLogModal';
 
 type CliStatus = { installed: boolean; version?: string; path?: string };
 
@@ -38,12 +39,6 @@ interface CliTask {
   endedAt?: string;
   createdAt: string;
   updatedAt: string;
-}
-
-interface CliTaskLogEntry {
-  ts: string;
-  type: 'stdout' | 'stderr' | 'system';
-  content: string;
 }
 
 interface CLIGroupSettingsProps {
@@ -73,6 +68,8 @@ interface CLIGroupSettingsProps {
   /** 从上级抽屉进入时显示返回按钮 */
   onBack?: () => void;
   backLabel?: string;
+  onDeleteTemplate?: (templateId: string) => void;
+  linkedTaskCount?: number;
 }
 
 const useStyles = createStyles(({ token, css }) => ({
@@ -233,45 +230,6 @@ const useStyles = createStyles(({ token, css }) => ({
     color: ${token.colorTextSecondary};
     word-break: break-all;
   `,
-  logConsole: css`
-    background: #141414;
-    border-radius: 8px;
-    padding: 14px;
-    font-family: 'Fira Code', 'Courier New', Courier, monospace;
-    font-size: 12px;
-    line-height: 1.6;
-    max-height: 480px;
-    overflow-y: auto;
-    color: #e3e3e3;
-    border: 1px solid #303030;
-  `,
-  logRow: css`
-    display: flex;
-    gap: 10px;
-    margin-bottom: 4px;
-    &:last-child {
-      margin-bottom: 0;
-    }
-  `,
-  logTimestamp: css`
-    color: #858585;
-    user-select: none;
-    flex-shrink: 0;
-  `,
-  logText: css`
-    word-break: break-all;
-    white-space: pre-wrap;
-  `,
-  logTypeStdout: css`
-    color: #4af626;
-  `,
-  logTypeStderr: css`
-    color: #ff5252;
-  `,
-  logTypeSystem: css`
-    color: #00e5ff;
-    font-weight: 500;
-  `,
   loadMoreBtn: css`
     width: 100%;
     text-align: center;
@@ -358,6 +316,8 @@ export const CLIGroupSettings = ({
   mode = 'group',
   onBack,
   backLabel,
+  onDeleteTemplate,
+  linkedTaskCount = 0,
 }: CLIGroupSettingsProps) => {
   const { styles, cx } = useStyles();
   const isTemplateMode = mode === 'template';
@@ -408,8 +368,6 @@ export const CLIGroupSettings = ({
   // Log viewer states
   const [logModalOpen, setLogModalOpen] = useState(false);
   const [activeLogTask, setActiveLogTask] = useState<CliTask | null>(null);
-  const [logEntries, setLogEntries] = useState<CliTaskLogEntry[]>([]);
-  const [loadingLogs, setLoadingLogs] = useState(false);
 
   // Reset tab when opening
   useEffect(() => {
@@ -477,50 +435,13 @@ export const CLIGroupSettings = ({
     }
   };
 
-  // Fetch tasks on history/worktree tab active
+  // Fetch tasks on history/worktree tab active (legacy CLI group only)
   useEffect(() => {
+    if (isTemplateMode) return;
     if (open && (activeTab === 'history' || activeTab === 'worktree')) {
       fetchTasks(false);
     }
-  }, [open, activeTab, group.id]);
-
-  // Fetch logs helper
-  const fetchLogs = async (taskId: string) => {
-    setLoadingLogs(true);
-    try {
-      const res = await request(`/api/cli/tasks/log?taskId=${taskId}`);
-      const json = await res.json();
-      if (json.success && json.data) {
-        setLogEntries(json.data.lines || []);
-      }
-    } catch (e) {
-      console.error('Failed to fetch logs:', e);
-    } finally {
-      setLoadingLogs(false);
-    }
-  };
-
-  // Real-time logs polling for active running tasks
-  useEffect(() => {
-    if (!logModalOpen || !activeLogTask) return;
-
-    fetchLogs(activeLogTask.id);
-
-    if (activeLogTask.status === 'running') {
-      const timer = setInterval(() => {
-        fetchLogs(activeLogTask.id);
-        request(`/api/cli/tasks/get?taskId=${activeLogTask.id}`)
-          .then(res => res.json())
-          .then(json => {
-            if (json.success && json.data) {
-              setActiveLogTask(json.data);
-            }
-          })
-          .catch(console.error);
-      }, 2000);
-      return () => clearInterval(timer);
-    }
-  }, [logModalOpen, activeLogTask?.id, activeLogTask?.status]);
+  }, [open, activeTab, group.id, isTemplateMode]);
 
   // SQLite CURRENT_TIMESTAMP formatting helpers
   const parseSqliteDatetime = (str?: string) => {
@@ -934,6 +855,25 @@ export const CLIGroupSettings = ({
               })}
             </div>
           </div>
+
+          {isTemplateMode && onDeleteTemplate && (
+            <div className={styles.panel}>
+              <div style={{ fontSize: 14, fontWeight: 500, color: '#ff4d4f' }}>删除团队模板</div>
+              <div className={styles.panelDesc} style={{ marginTop: 4, marginBottom: 12 }}>
+                删除后无法再以此模板创建新任务。
+                {linkedTaskCount > 0
+                  ? `已有 ${linkedTaskCount} 个开发任务不受影响，仍保留创建时的快照。`
+                  : '此操作不可恢复。'}
+              </div>
+              <Button
+                danger
+                block
+                onClick={() => onDeleteTemplate(group.id)}
+              >
+                删除此模板
+              </Button>
+            </div>
+          )}
         </div>
       )
     },
@@ -1159,6 +1099,30 @@ export const CLIGroupSettings = ({
     }
   ];
 
+  const visibleTabItems = isTemplateMode
+    ? tabItems.filter((item) => item.key === 'config')
+    : tabItems;
+
+  const taskLogModal = !isTemplateMode ? (
+    <CLITaskLogModal
+      open={logModalOpen}
+      onOpenChange={(open) => {
+        setLogModalOpen(open);
+        if (!open) setActiveLogTask(null);
+      }}
+      agentTaskId={activeLogTask?.id ?? null}
+      agentName={activeLogTask?.agentName}
+      adapter={activeLogTask?.adapter}
+      prompt={activeLogTask?.prompt}
+      status={activeLogTask?.status}
+      onStatusChange={(status) => {
+        if (activeLogTask) {
+          setActiveLogTask({ ...activeLogTask, status: status as CliTask['status'] });
+        }
+      }}
+    />
+  ) : null;
+
   if (inline) {
     if (!open) return null;
     return (
@@ -1175,115 +1139,13 @@ export const CLIGroupSettings = ({
               <Tabs
                 activeKey={activeTab}
                 onChange={setActiveTab}
-                items={tabItems}
+                items={visibleTabItems}
               />
             </div>
           </div>
         </div>
 
-        <Modal
-          title={
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingRight: 24 }}>
-              <span>任务执行日志</span>
-              {activeLogTask && (
-                <span style={{ fontSize: 12, fontWeight: 'normal', color: 'var(--ant-color-text-secondary)' }}>
-                  {activeLogTask.agentName} ({activeLogTask.adapter}) | 状态: {activeLogTask.status}
-                </span>
-              )}
-            </div>
-          }
-          open={logModalOpen}
-          onCancel={() => {
-            setLogModalOpen(false);
-            setActiveLogTask(null);
-            setLogEntries([]);
-          }}
-          footer={[
-            activeLogTask?.status === 'running' && (
-              <Button
-                key="cancel-task"
-                danger
-                onClick={async () => {
-                  try {
-                    await request('/api/cli/tasks/cancel', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ taskId: activeLogTask.id }),
-                    });
-                    const res = await request(`/api/cli/tasks/get?taskId=${activeLogTask.id}`);
-                    const json = await res.json();
-                    if (json.success && json.data) {
-                      setActiveLogTask(json.data);
-                    }
-                  } catch (e) {
-                    console.error('Failed to cancel task from log modal:', e);
-                  }
-                }}
-              >
-                停止运行
-              </Button>
-            ),
-            <Button 
-              key="refresh" 
-              onClick={() => activeLogTask && fetchLogs(activeLogTask.id)}
-              loading={loadingLogs}
-            >
-              刷新
-            </Button>,
-            <Button key="close" type="primary" onClick={() => setLogModalOpen(false)}>
-              关闭
-            </Button>
-          ]}
-          width={700}
-          destroyOnClose
-        >
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 12, color: 'var(--ant-color-text-secondary)', marginBottom: 4 }}>
-              <strong>执行命令/提示词:</strong>
-            </div>
-            <div style={{ 
-              fontSize: 12, 
-              padding: '8px 12px', 
-              background: 'var(--ant-color-fill-alter)', 
-              borderRadius: 6, 
-              fontFamily: 'monospace',
-              maxHeight: 80,
-              overflowY: 'auto',
-              whiteSpace: 'pre-wrap'
-            }}>
-              {activeLogTask?.prompt}
-            </div>
-          </div>
-
-          {loadingLogs && logEntries.length === 0 ? (
-            <div style={{ padding: '60px 0', textAlign: 'center' }}>
-              <Spin tip="加载日志中..." />
-            </div>
-          ) : logEntries.length === 0 ? (
-            <div className={styles.logConsole}>
-              <div className={cx(styles.logRow, styles.logTypeSystem)}>
-                <span>暂无日志输出</span>
-              </div>
-            </div>
-          ) : (
-            <div className={styles.logConsole}>
-              {logEntries.map((entry, idx) => {
-                let typeClass = styles.logTypeStdout;
-                if (entry.type === 'stderr') typeClass = styles.logTypeStderr;
-                else if (entry.type === 'system') typeClass = styles.logTypeSystem;
-                
-                const timeStr = entry.ts ? entry.ts.split('T')[1]?.slice(0, 8) || entry.ts : '';
-
-                return (
-                  <div key={idx} className={styles.logRow}>
-                    {timeStr && <span className={styles.logTimestamp}>[{timeStr}]</span>}
-                    <span className={cx(styles.logText, typeClass)}>{entry.content}</span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </Modal>
+        {taskLogModal}
       </>
     );
   }
@@ -1301,114 +1163,12 @@ export const CLIGroupSettings = ({
           <Tabs
             activeKey={activeTab}
             onChange={setActiveTab}
-            items={tabItems}
+            items={visibleTabItems}
           />
         </div>
       </Drawer>
 
-      <Modal
-        title={
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingRight: 24 }}>
-            <span>任务执行日志</span>
-            {activeLogTask && (
-              <span style={{ fontSize: 12, fontWeight: 'normal', color: 'var(--ant-color-text-secondary)' }}>
-                {activeLogTask.agentName} ({activeLogTask.adapter}) | 状态: {activeLogTask.status}
-              </span>
-            )}
-          </div>
-        }
-        open={logModalOpen}
-        onCancel={() => {
-          setLogModalOpen(false);
-          setActiveLogTask(null);
-          setLogEntries([]);
-        }}
-        footer={[
-          activeLogTask?.status === 'running' && (
-            <Button
-              key="cancel-task"
-              danger
-              onClick={async () => {
-                try {
-                  await request('/api/cli/tasks/cancel', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ taskId: activeLogTask.id }),
-                  });
-                  const res = await request(`/api/cli/tasks/get?taskId=${activeLogTask.id}`);
-                  const json = await res.json();
-                  if (json.success && json.data) {
-                    setActiveLogTask(json.data);
-                  }
-                } catch (e) {
-                  console.error('Failed to cancel task from log modal:', e);
-                }
-              }}
-            >
-              停止运行
-            </Button>
-          ),
-          <Button 
-            key="refresh" 
-            onClick={() => activeLogTask && fetchLogs(activeLogTask.id)}
-            loading={loadingLogs}
-          >
-            刷新
-          </Button>,
-          <Button key="close" type="primary" onClick={() => setLogModalOpen(false)}>
-            关闭
-          </Button>
-        ]}
-        width={700}
-        destroyOnClose
-      >
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 12, color: 'var(--ant-color-text-secondary)', marginBottom: 4 }}>
-            <strong>执行命令/提示词:</strong>
-          </div>
-          <div style={{ 
-            fontSize: 12, 
-            padding: '8px 12px', 
-            background: 'var(--ant-color-fill-alter)', 
-            borderRadius: 6, 
-            fontFamily: 'monospace',
-            maxHeight: 80,
-            overflowY: 'auto',
-            whiteSpace: 'pre-wrap'
-          }}>
-            {activeLogTask?.prompt}
-          </div>
-        </div>
-
-        {loadingLogs && logEntries.length === 0 ? (
-          <div style={{ padding: '60px 0', textAlign: 'center' }}>
-            <Spin tip="加载日志中..." />
-          </div>
-        ) : logEntries.length === 0 ? (
-          <div className={styles.logConsole}>
-            <div className={cx(styles.logRow, styles.logTypeSystem)}>
-              <span>暂无日志输出</span>
-            </div>
-          </div>
-        ) : (
-          <div className={styles.logConsole}>
-            {logEntries.map((entry, idx) => {
-              let typeClass = styles.logTypeStdout;
-              if (entry.type === 'stderr') typeClass = styles.logTypeStderr;
-              else if (entry.type === 'system') typeClass = styles.logTypeSystem;
-              
-              const timeStr = entry.ts ? entry.ts.split('T')[1]?.slice(0, 8) || entry.ts : '';
-
-              return (
-                <div key={idx} className={styles.logRow}>
-                  {timeStr && <span className={styles.logTimestamp}>[{timeStr}]</span>}
-                  <span className={cx(styles.logText, typeClass)}>{entry.content}</span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </Modal>
+      {taskLogModal}
     </>
   );
 };

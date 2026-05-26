@@ -101,8 +101,15 @@ export function parseOpenCodeJsonLine(line: string): OpenCodeJsonParseResult | n
   if (!event || typeof event !== 'object') return null;
 
   const result: OpenCodeJsonParseResult = {};
-  if (typeof event.sessionID === 'string' && event.sessionID) {
-    result.sessionId = event.sessionID;
+  const sessionId = [
+    event.sessionID,
+    event.sessionId,
+    event.part?.sessionID,
+    event.part?.sessionId,
+    event.info?.id,
+  ].find((value) => typeof value === 'string' && value.length > 0);
+  if (sessionId) {
+    result.sessionId = sessionId;
   }
 
   if (event.type === 'text' && typeof event.part?.text === 'string') {

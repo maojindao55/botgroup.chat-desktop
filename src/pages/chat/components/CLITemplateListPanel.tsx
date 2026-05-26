@@ -2,7 +2,7 @@
  * 团队模板列表 — 管理所有 CLI 团队模板，修改仅影响未来新任务
  */
 import { Button, Drawer } from 'antd';
-import { Plus, Settings2, X } from 'lucide-react';
+import { Plus, Settings2, Trash2, X } from 'lucide-react';
 import { createStyles } from 'antd-style';
 import { cliWorkflowTemplates } from '@/config/groupProduct';
 import type { CLITeamTemplate } from '@/config/cliTasks';
@@ -95,6 +95,27 @@ const useStyles = createStyles(({ token, css }) => ({
       color: #ff6600;
     }
   `,
+  cardActions: css`
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: none;
+  `,
+  deleteBtn: css`
+    flex: none;
+    border: 1px solid ${token.colorBorderSecondary};
+    background: ${token.colorBgContainer};
+    border-radius: 8px;
+    padding: 6px 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    color: ${token.colorTextTertiary};
+    &:hover {
+      border-color: #ff4d4f;
+      color: #ff4d4f;
+    }
+  `,
 }));
 
 interface CLITemplateListPanelProps {
@@ -104,6 +125,7 @@ interface CLITemplateListPanelProps {
   taskCountByTemplate: Record<string, number>;
   onOpenTemplateSettings: (templateId: string) => void;
   onCreateTemplate?: () => void;
+  onDeleteTemplate?: (templateId: string) => void;
   inline?: boolean;
 }
 
@@ -118,6 +140,7 @@ export const CLITemplateListPanel = ({
   taskCountByTemplate,
   onOpenTemplateSettings,
   onCreateTemplate,
+  onDeleteTemplate,
   inline,
 }: CLITemplateListPanelProps) => {
   const { styles } = useStyles();
@@ -155,14 +178,29 @@ export const CLITemplateListPanel = ({
               <div className={styles.cardTitle}>{template.name}</div>
               <div className={styles.cardDesc}>{template.description}</div>
             </div>
-            <button
-              type="button"
-              className={styles.settingsBtn}
-              onClick={() => onOpenTemplateSettings(template.id)}
-            >
-              <Settings2 size={14} />
-              设置
-            </button>
+            <div className={styles.cardActions}>
+              <button
+                type="button"
+                className={styles.settingsBtn}
+                onClick={() => onOpenTemplateSettings(template.id)}
+              >
+                <Settings2 size={14} />
+                设置
+              </button>
+              {onDeleteTemplate && (
+                <button
+                  type="button"
+                  className={styles.deleteBtn}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onDeleteTemplate(template.id);
+                  }}
+                  title="删除模板"
+                >
+                  <Trash2 size={14} />
+                </button>
+              )}
+            </div>
           </div>
           <div className={styles.meta}>
             {strategyLabel(template.strategy)} · {template.memberIds.length} 位成员
