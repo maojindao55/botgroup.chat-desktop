@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { AIMember, AIMemberKind, builtinAIMembers } from '../config/aiMembers';
+import { resolveEffectiveMember } from '../utils/aiMemberDisplay';
 import { lookupProviderByEnvName, lookupProviderByModel } from '../config/providers';
 import { normalizeTags } from '../config/tagTaxonomy';
 
@@ -130,6 +131,7 @@ export function mapToRust(m: AIMember): RustAIMember {
   } else if (m.kind === 'cli') {
     configObj = { cli: m.cli };
   }
+  if (m.forkedFrom) configObj.forkedFrom = m.forkedFrom;
 
   return {
     id: m.id,
@@ -144,12 +146,32 @@ export function mapToRust(m: AIMember): RustAIMember {
   };
 }
 
+interface CloneMemberOptions {
+  /** 优先保留原名，冲突时追加数字后缀 */
+  smartName?: boolean;
+  name?: string;
+  forkedFrom?: string;
+}
+
+function suggestClonedName(orig: AIMember, members: Record<string, AIMember>): string {
+  const userNames = new Set(
+    Object.values(members).filter((m) => m.source === 'user').map((m) => m.name),
+  );
+  if (!userNames.has(orig.name)) return orig.name;
+  for (let i = 2; i < 100; i += 1) {
+    const candidate = `${orig.name} ${i}`;
+    if (!userNames.has(candidate)) return candidate;
+  }
+  return `${orig.name} (副本)`;
+}
+
 interface AIMemberStore {
   members: Record<string, AIMember>;
   loading: boolean;
   load: (kind?: AIMemberKind) => Promise<void>;
   upsert: (member: AIMember) => Promise<void>;
-  clone: (id: string) => Promise<AIMember>;
+  clone: (id: string, options?: CloneMemberOptions) => Promise<AIMember>;
+  ensurePersonalCopy: (templateId: string) => Promise<AIMember>;
   remove: (id: string) => Promise<void>;
   list: (kind?: AIMemberKind) => AIMember[];
   get: (id: string) => AIMember | undefined;
@@ -185,6 +207,13 @@ export const useAIMemberStore = create<AIMemberStore>((set, get) => ({
 
         rustMembers.forEach((r) => {
           record[r.id] = mapFromRust(r);
+        });
+
+        // 内置成员头像等展示字段以代码配置为准，避免 DB 中旧 seed 数据滞后
+        builtinAIMembers.forEach((b) => {
+          if (record[b.id]?.source === 'builtin') {
+            record[b.id] = { ...record[b.id], avatar: b.avatar };
+          }
         });
 
         set({ members: { ...get().members, ...record } });
@@ -245,7 +274,7 @@ export const useAIMemberStore = create<AIMemberStore>((set, get) => ({
     }));
   },
 
-  clone: async (id: string) => {
+  clone: async (id: string, options?: CloneMemberOptions) => {
     const orig = get().members[id];
     if (!orig) {
       throw new Error('成员不存在');
@@ -254,11 +283,34 @@ export const useAIMemberStore = create<AIMemberStore>((set, get) => ({
     const cloned = JSON.parse(JSON.stringify(orig)) as AIMember;
     cloned.id = `${orig.id}-copy-${ts}`;
     cloned.source = 'user';
-    cloned.name = `${orig.name} (副本)`;
+    cloned.name = options?.name
+      ?? (options?.smartName ? suggestClonedName(orig, get().members) : `${orig.name} (副本)`);
+    if (options?.forkedFrom) {
+      cloned.forkedFrom = options.forkedFrom;
+    }
     cloned.createdAt = ts;
     cloned.updatedAt = ts;
     await get().upsert(cloned);
     return cloned;
+  },
+
+  ensurePersonalCopy: async (templateId: string) => {
+    const template = get().members[templateId];
+    if (!template) {
+      throw new Error('成员不存在');
+    }
+    if (template.source === 'user') {
+      return template;
+    }
+
+    const existing = Object.values(get().members).find(
+      (m) => m.source === 'user' && m.forkedFrom === templateId,
+    );
+    if (existing) {
+      return existing;
+    }
+
+    return get().clone(templateId, { smartName: true, forkedFrom: templateId });
   },
 
   remove: async (id: string) => {
@@ -284,7 +336,7 @@ export const useAIMemberStore = create<AIMemberStore>((set, get) => ({
     return all.filter((m) => m.kind === kind);
   },
 
-  get: (id: string) => get().members[id],
+  get: (id: string) => resolveEffectiveMember(get().members, id),
 
   findReferencingGroups: (id: string, allGroups: Group[]) =>
     allGroups.filter((g) => g.memberIds?.includes(id)),

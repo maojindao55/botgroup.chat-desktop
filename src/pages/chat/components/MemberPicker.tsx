@@ -5,6 +5,7 @@ import { useAIMemberStore } from '@/store/aiMemberStore';
 import { useProviderStore } from '@/store/providerStore';
 import type { AIMember } from '@/config/aiMembers';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
+import { getPickableMembers, resolveEffectiveMember } from '@/utils/aiMemberDisplay';
 
 interface MemberPickerProps {
   kind: 'llm' | 'agent' | 'cli';
@@ -24,7 +25,7 @@ function memberMetaLine(member: AIMember, providerName?: string): string {
     const unmapped = member.providerId?.startsWith('unmapped-');
     return `${providerName || member.providerId} · ${member.model} · 🛠 ${tools} tools${unmapped ? ' ⚠️' : ''}`;
   }
-  return `${member.cli?.adapter || 'cli'} · 开发群友`;
+  return `${member.cli?.adapter || 'cli'} · 开发成员`;
 }
 
 export const MemberPicker: React.FC<MemberPickerProps> = ({
@@ -34,7 +35,8 @@ export const MemberPicker: React.FC<MemberPickerProps> = ({
   placeholder = '选择资源...',
   disabled = false,
 }) => {
-  const { list, load } = useAIMemberStore();
+  const members = useAIMemberStore((state) => state.members);
+  const { load } = useAIMemberStore();
   const { providers, load: loadProviders } = useProviderStore();
 
   useEffect(() => {
@@ -42,10 +44,14 @@ export const MemberPicker: React.FC<MemberPickerProps> = ({
     loadProviders();
   }, [load, loadProviders]);
 
-  const members = list(kind);
+  const pickableMembers = useMemo(
+    () => getPickableMembers(members, kind),
+    [members, kind],
+  );
+
   const providerMap = useMemo(() => providers, [providers]);
 
-  const options = members.map((m) => ({
+  const options = pickableMembers.map((m) => ({
     label: m.name,
     value: m.id,
     desc: m.description || '',
@@ -124,9 +130,11 @@ export const MemberPicker: React.FC<MemberPickerProps> = ({
       }}
       tagRender={(props) => {
         const { label, value: val, closable, onClose } = props;
-        const member = members.find((m) => m.id === val);
-        const a = getAvatarData(label as string);
-        const url = resolveAvatarByName(label as string, member?.avatar, 16);
+        const member = resolveEffectiveMember(members, String(val));
+        const displayName = member?.name || (label as string);
+        const a = getAvatarData(displayName);
+        const url = resolveAvatarByName(displayName, member?.avatar, 16);
+        const isLegacyBuiltin = member?.source === 'builtin';
         return (
           <Tag
             closable={closable}
@@ -138,10 +146,10 @@ export const MemberPicker: React.FC<MemberPickerProps> = ({
               avatar={url || a.text}
               background={a.backgroundColor}
               shape="circle"
-              title={label as string}
+              title={displayName}
               style={{ flexShrink: 0 }}
             />
-            <span>{label}</span>
+            <span>{displayName}{isLegacyBuiltin ? ' (官方)' : ''}</span>
           </Tag>
         );
       }}

@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Drawer, Tabs, Input, Button, Tag, Space, Tooltip, Modal, Empty } from 'antd';
+import { Drawer, Tabs, Button, Tag, Modal, Empty } from 'antd';
 import { Avatar as LobeAvatar } from '@lobehub/ui';
 import { useAIMemberStore } from '@/store/aiMemberStore';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
+import { getVisibleMembers } from '@/utils/aiMemberDisplay';
 import { AIMember, AIMemberKind } from '@/config/aiMembers';
 import { Group } from '@/config/groups';
 import { AIMemberEditor } from './AIMemberEditor';
@@ -10,7 +11,7 @@ import { ProviderLibrary } from './ProviderLibrary';
 import { ProviderEditor } from './ProviderEditor';
 import { useProviderStore } from '@/store/providerStore';
 import type { Provider } from '@/config/providers';
-import { Search, Plus, Edit2, Trash2, ShieldAlert, Cpu, Terminal, Users, Sparkles, X, Copy } from 'lucide-react';
+import { Plus, Edit2, Trash2, ShieldAlert, Cpu, Terminal, Users, Sparkles, X, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import { createStyles } from 'antd-style';
 
@@ -21,32 +22,52 @@ const useStyles = createStyles(({ token, css }) => ({
   drawerBody: css`
     display: flex;
     flex-direction: column;
+    flex: 1;
+    min-height: 0;
     height: 100%;
     padding: 0;
+    overflow: hidden;
   `,
-  searchBar: css`
+  tabToolbar: css`
     display: flex;
-    gap: 12px;
-    padding: 16px 24px;
-    background: ${token.colorBgContainer};
-    border-bottom: 1px solid ${token.colorBorderSecondary};
-    align-items: center;
+    justify-content: flex-end;
+    padding: 16px 24px 0;
+    flex-shrink: 0;
   `,
   tabContainer: css`
     flex: 1;
+    min-height: 0;
     overflow: hidden;
     display: flex;
     flex-direction: column;
+
+    .ant-tabs {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
     .ant-tabs-nav {
       margin: 0 !important;
       padding: 0 24px;
       background: ${token.colorBgContainer};
       border-bottom: 1px solid ${token.colorBorderSecondary};
+      flex-shrink: 0;
     }
+
     .ant-tabs-content-holder {
       flex: 1;
-      overflow: auto;
+      min-height: 0;
+      overflow-y: auto;
+      overflow-x: hidden;
       background: ${token.colorBgLayout};
+    }
+
+    .ant-tabs-content,
+    .ant-tabs-tabpane-active {
+      height: auto;
     }
   `,
   listContainer: css`
@@ -133,12 +154,14 @@ const useStyles = createStyles(({ token, css }) => ({
   inlinePanel: css`
     width: ${AI_MEMBER_LIBRARY_INLINE_WIDTH}px;
     height: 100%;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     background: ${token.colorBgContainer};
     border-left: 1px solid ${token.colorBorderSecondary};
     flex-shrink: 0;
     z-index: 5;
+    overflow: hidden;
   `,
   inlineHeader: css`
     display: flex;
@@ -174,9 +197,16 @@ const useStyles = createStyles(({ token, css }) => ({
   `,
   inlineBody: css`
     flex: 1;
+    min-height: 0;
     overflow: hidden;
     display: flex;
     flex-direction: column;
+  `,
+  drawerContent: css`
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
   `,
 }));
 
@@ -190,11 +220,10 @@ interface AIMemberLibraryProps {
 
 export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose, groups, inline }) => {
   const { styles } = useStyles();
-  const { list, load, remove, clone, findReferencingGroups } = useAIMemberStore();
+  const members = useAIMemberStore((state) => state.members);
+  const { load, remove, ensurePersonalCopy, findReferencingGroups } = useAIMemberStore();
   const { load: loadProviders } = useProviderStore();
-  const [activeTab, setActiveTab] = useState<string>('all');
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  
+  const [activeTab, setActiveTab] = useState<string>('cli');
   // Editor State
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | undefined>(undefined);
@@ -222,21 +251,16 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
     setEditorOpen(true);
   };
 
-  const handleEdit = (member: AIMember) => {
-    setEditingId(member.id);
-    setEditorKind(member.kind);
-    setEditorOpen(true);
-  };
-
-  const handleClone = async (member: AIMember) => {
+  const handleEdit = async (member: AIMember) => {
     try {
-      const copied = await clone(member.id);
-      setEditingId(copied.id);
-      setEditorKind(copied.kind);
+      const target = member.source === 'builtin'
+        ? await ensurePersonalCopy(member.id)
+        : member;
+      setEditingId(target.id);
+      setEditorKind(target.kind);
       setEditorOpen(true);
-      toast.success(`已克隆为「${copied.name}」`);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : '克隆失败');
+      toast.error(e instanceof Error ? e.message : '无法打开编辑');
     }
   };
 
@@ -275,7 +299,9 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
 
     Modal.confirm({
       title: '确认删除资源？',
-      content: `确定要删除资源「${member.name}」吗？此操作不可撤销。`,
+      content: member.forkedFrom
+        ? `确定要删除「${member.name}」吗？删除后将恢复对应的官方默认配置。`
+        : `确定要删除资源「${member.name}」吗？此操作不可撤销。`,
       okText: '确认删除',
       okType: 'danger',
       cancelText: '取消',
@@ -292,33 +318,87 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
       case 'agent':
         return { label: '专家', icon: Sparkles, color: 'purple' };
       case 'cli':
-        return { label: '开发群友', icon: Terminal, color: 'green' };
+        return { label: '开发成员', icon: Terminal, color: 'green' };
     }
   };
 
-  const filterAndSearch = (kind?: AIMemberKind) => {
-    let members = list(kind);
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      members = members.filter(m => 
-        m.name.toLowerCase().includes(q) || 
-        m.description?.toLowerCase().includes(q) ||
-        m.tags?.some(t => t.toLowerCase().includes(q))
-      );
+  const getMembersByKind = (kind: AIMemberKind) => {
+    const list = getVisibleMembers(members, kind);
+    // 角色、专家不提供官方预设，仅展示用户自建资源
+    if (kind === 'llm' || kind === 'agent') {
+      return list.filter((m) => m.source !== 'builtin');
     }
-    return members.sort((a, b) => {
-      // User-created first, then builtin
-      if (a.source === 'user' && b.source === 'builtin') return -1;
-      if (a.source === 'builtin' && b.source === 'user') return 1;
-      return (b.updatedAt || 0) - (a.updatedAt || 0);
-    });
+    return list;
   };
+
+  const memberSourceTag = (member: AIMember) => {
+    if (member.source === 'builtin') {
+      return <Tag className={styles.badgeBuiltin}>官方默认</Tag>;
+    }
+    if (!member.forkedFrom) {
+      return <Tag className={styles.badgeUser}>自建</Tag>;
+    }
+    return null;
+  };
+
+  const renderMemberMeta = (member: AIMember) => (
+    <>
+      {member.kind === 'llm' && (
+        <>
+          <div className={styles.metaItem}>
+            <strong>模型:</strong> {member.model}
+            {member.providerId?.startsWith('unmapped-') && (
+              <span style={{ color: '#ef4444', marginLeft: 6 }}>⚠️ 未绑定 Provider</span>
+            )}
+          </div>
+          {member.schedulerTag && (
+            <div className={styles.metaItem}>
+              <strong>调度标签:</strong> {member.schedulerTag}
+            </div>
+          )}
+        </>
+      )}
+      {member.kind === 'agent' && (
+        <>
+          <div className={styles.metaItem}>
+            <strong>角色:</strong> {member.role || '无'}
+          </div>
+          <div className={styles.metaItem}>
+            <strong>模型:</strong> {member.model}
+            {member.providerId?.startsWith('unmapped-') && (
+              <span style={{ color: '#ef4444', marginLeft: 6 }}>⚠️ 未绑定 Provider</span>
+            )}
+          </div>
+          <div className={styles.metaItem}>
+            <strong>工具:</strong> {member.tools?.filter(t => t.enabled).length || 0} 个已启用
+          </div>
+        </>
+      )}
+      {member.kind === 'cli' && (
+        <>
+          <div className={styles.metaItem}>
+            <strong>执行适配器:</strong> {member.cli?.adapter}
+          </div>
+          {member.cli?.binary && (
+            <div className={styles.metaItem}>
+              <strong>二进制路径:</strong> {member.cli.binary}
+            </div>
+          )}
+          <div className={styles.metaItem}>
+            <strong>运行审批:</strong> {member.cli?.approvalMode === 'auto' ? '自动运行' : '人工审批'}
+          </div>
+        </>
+      )}
+    </>
+  );
 
   const renderMemberItem = (member: AIMember) => {
     const a = getAvatarData(member.name);
     const url = resolveAvatarByName(member.name, member.avatar, 48);
     const kindInfo = getKindLabel(member.kind);
     const KindIcon = kindInfo.icon;
+    const canDelete = member.source === 'user';
+    const isBuiltin = member.source === 'builtin';
 
     return (
       <div className={styles.memberCard} key={member.id}>
@@ -338,9 +418,7 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
               <KindIcon size={12} />
               {kindInfo.label}
             </Tag>
-            <Tag className={member.source === 'builtin' ? styles.badgeBuiltin : styles.badgeUser}>
-              {member.source === 'builtin' ? '系统预设' : '自建'}
-            </Tag>
+            {memberSourceTag(member)}
             {!member.enabled && <Tag color="default">已禁用</Tag>}
           </div>
 
@@ -357,162 +435,84 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
           )}
 
           <div className={styles.metaDetails}>
-            {member.kind === 'llm' && (
-              <>
-                <div className={styles.metaItem}>
-                  <strong>模型:</strong> {member.model}
-                  {member.providerId?.startsWith('unmapped-') && (
-                    <span style={{ color: '#ef4444', marginLeft: 6 }}>⚠️ 未绑定 Provider</span>
-                  )}
-                </div>
-                {member.schedulerTag && (
-                  <div className={styles.metaItem}>
-                    <strong>调度标签:</strong> {member.schedulerTag}
-                  </div>
-                )}
-              </>
-            )}
-            {member.kind === 'agent' && (
-              <>
-                <div className={styles.metaItem}>
-                  <strong>角色:</strong> {member.role || '无'}
-                </div>
-                <div className={styles.metaItem}>
-                  <strong>模型:</strong> {member.model}
-                  {member.providerId?.startsWith('unmapped-') && (
-                    <span style={{ color: '#ef4444', marginLeft: 6 }}>⚠️ 未绑定 Provider</span>
-                  )}
-                </div>
-                <div className={styles.metaItem}>
-                  <strong>工具:</strong> {member.tools?.filter(t => t.enabled).length || 0} 个已启用
-                </div>
-              </>
-            )}
-            {member.kind === 'cli' && (
-              <>
-                <div className={styles.metaItem}>
-                  <strong>执行适配器:</strong> {member.cli?.adapter}
-                </div>
-                {member.cli?.binary && (
-                  <div className={styles.metaItem}>
-                    <strong>二进制路径:</strong> {member.cli.binary}
-                  </div>
-                )}
-                <div className={styles.metaItem}>
-                  <strong>运行审批:</strong> {member.cli?.approvalMode === 'auto' ? '自动运行' : '人工审批'}
-                </div>
-              </>
-            )}
+            {renderMemberMeta(member)}
           </div>
         </div>
 
         <div className={styles.actionColumn}>
-          {member.source === 'builtin' ? (
+          <Button
+            type="text"
+            icon={isBuiltin ? <Copy size={14} /> : <Edit2 size={14} />}
+            onClick={() => handleEdit(member)}
+            style={{ padding: '4px 8px', height: 'auto' }}
+          >
+            {isBuiltin ? '复制' : '编辑'}
+          </Button>
+          {canDelete && (
             <Button
               type="text"
-              icon={<Copy size={14} />}
-              onClick={() => handleClone(member)}
-              style={{ padding: '4px 8px', height: 'auto' }}
-            >
-              克隆并编辑
-            </Button>
-          ) : (
-            <Button
-              type="text"
-              icon={<Edit2 size={14} />}
-              onClick={() => handleEdit(member)}
-              style={{ padding: '4px 8px', height: 'auto' }}
-            >
-              编辑
-            </Button>
-          )}
-          {member.source !== 'builtin' ? (
-            <Button 
-              type="text" 
-              danger 
-              icon={<Trash2 size={14} />} 
+              danger
+              icon={<Trash2 size={14} />}
               onClick={() => handleDelete(member)}
               style={{ padding: '4px 8px', height: 'auto' }}
             >
               删除
             </Button>
-          ) : (
-            <Tooltip title="内置预设资源无法删除">
-              <Button 
-                type="text" 
-                disabled 
-                icon={<Trash2 size={14} />} 
-                style={{ padding: '4px 8px', height: 'auto', opacity: 0.4 }}
-              >
-                删除
-              </Button>
-            </Tooltip>
           )}
         </div>
       </div>
     );
   };
 
-  const renderTabContent = (kind?: AIMemberKind) => {
-    const listData = filterAndSearch(kind);
-
-    if (listData.length === 0) {
-      return (
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '300px' }}>
-          <Empty description={searchQuery ? '没有找到符合条件的资源' : '暂无资源'} />
-        </div>
-      );
+  const createLabelForKind = (kind: AIMemberKind) => {
+    switch (kind) {
+      case 'cli':
+        return '新增开发成员';
+      case 'llm':
+        return '新增角色';
+      case 'agent':
+        return '新增专家';
     }
+  };
+
+  const renderTabContent = (kind: AIMemberKind) => {
+    const list = getMembersByKind(kind);
 
     return (
-      <div className={styles.listContainer}>
-        {listData.map(renderMemberItem)}
-      </div>
+      <>
+        <div className={styles.tabToolbar}>
+          <Button type="primary" icon={<Plus size={16} />} onClick={() => handleCreate(kind)}>
+            {createLabelForKind(kind)}
+          </Button>
+        </div>
+        {list.length === 0 ? (
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '300px' }}>
+            <Empty description="暂无资源" />
+          </div>
+        ) : (
+          <div className={styles.listContainer}>
+            {list.map(renderMemberItem)}
+          </div>
+        )}
+      </>
     );
   };
 
   const body = (
     <div className={styles.drawerBody}>
-      {activeTab !== 'providers' && (
-        <div className={styles.searchBar}>
-          <Input
-            placeholder="搜索资源名称、描述或标签..."
-            prefix={<Search size={16} style={{ opacity: 0.45 }} />}
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            style={{ flex: 1, borderRadius: 8 }}
-            allowClear
-          />
-          <Space>
-            <Button type="primary" icon={<Plus size={16} />} onClick={() => handleCreate('llm')}>
-              新增角色
-            </Button>
-            <Button icon={<Plus size={16} />} onClick={() => handleCreate('agent')}>
-              新增专家
-            </Button>
-            <Button icon={<Plus size={16} />} onClick={() => handleCreate('cli')}>
-              新增开发群友
-            </Button>
-          </Space>
-        </div>
-      )}
-
       <div className={styles.tabContainer}>
         <Tabs activeKey={activeTab} onChange={setActiveTab}>
-          <Tabs.TabPane tab="全部资源" key="all">
-            {renderTabContent()}
+          <Tabs.TabPane tab="开发成员" key="cli">
+            {renderTabContent('cli')}
+          </Tabs.TabPane>
+          <Tabs.TabPane tab="模型服务" key="providers">
+            <ProviderLibrary onCreate={handleCreateProvider} onEdit={handleEditProvider} />
           </Tabs.TabPane>
           <Tabs.TabPane tab="角色" key="llm">
             {renderTabContent('llm')}
           </Tabs.TabPane>
           <Tabs.TabPane tab="专家" key="agent">
             {renderTabContent('agent')}
-          </Tabs.TabPane>
-          <Tabs.TabPane tab="开发群友" key="cli">
-            {renderTabContent('cli')}
-          </Tabs.TabPane>
-          <Tabs.TabPane tab="模型服务" key="providers">
-            <ProviderLibrary onCreate={handleCreateProvider} onEdit={handleEditProvider} />
           </Tabs.TabPane>
         </Tabs>
       </div>
@@ -580,7 +580,10 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
         width={AI_MEMBER_LIBRARY_INLINE_WIDTH}
         open={open}
         onClose={onClose}
-        styles={{ body: { padding: 0 } }}
+        styles={{
+          body: { padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' },
+        }}
+        classNames={{ body: styles.drawerContent }}
       >
         {body}
       </Drawer>

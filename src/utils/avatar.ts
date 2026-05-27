@@ -1,4 +1,5 @@
 import React from 'react';
+import { resolveAvatarSource } from '@/utils/lobehubAvatar';
 import {
   OpenAI,
   Claude,
@@ -17,6 +18,7 @@ import {
   Doubao,
   Grok,
   OpenCode,
+  Cursor,
 } from '@lobehub/icons';
 
 interface User {
@@ -47,9 +49,10 @@ export const getAvatarData = (name: string) => {
 // 获取单个头像的样式和内容
 export const getSingleAvatarData = (user: User | AICharacter) => {
   if ('avatar' in user && user.avatar) {
+    const src = resolveAvatarSource(user.avatar) ?? user.avatar;
     return {
       type: 'image',
-      src: user.avatar,
+      src,
       alt: user.name,
       className: 'w-full h-full object-cover'
     };
@@ -66,9 +69,10 @@ export const getSingleAvatarData = (user: User | AICharacter) => {
 // 获取半头像的样式和内容
 export const getHalfAvatarData = (user: User, isFirst: boolean) => {
   if ('avatar' in user && user.avatar) {
+    const src = resolveAvatarSource(user.avatar) ?? user.avatar;
     return {
       type: 'image',
-      src: user.avatar,
+      src,
       alt: user.name,
       className: 'w-full h-full object-cover',
       containerStyle: { 
@@ -91,9 +95,10 @@ export const getHalfAvatarData = (user: User, isFirst: boolean) => {
 // 获取四分之一头像的样式和内容
 export const getQuarterAvatarData = (user: User, index: number) => {
   if ('avatar' in user && user.avatar) {
+    const src = resolveAvatarSource(user.avatar) ?? user.avatar;
     return {
       type: 'image',
-      src: user.avatar,
+      src,
       alt: user.name,
       className: 'w-full h-full object-cover',
       containerStyle: { 
@@ -120,6 +125,11 @@ export const resolveAvatarByName = (
   currentAvatar?: string,
   size: number = 40
 ): React.ReactNode | string | undefined => {
+  // 用户显式设置的头像（LobeHub 图标 / URL / 本地路径）优先于名称推断
+  if (currentAvatar?.trim()) {
+    return resolveAvatarSource(currentAvatar) ?? currentAvatar;
+  }
+
   const normalized = name.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g, '');
 
   const wrapIconCircle = (IconComponent: any, bgColor: string, iconSizeRatio = 0.6, iconProps: any = {}) => {
@@ -147,6 +157,7 @@ export const resolveAvatarByName = (
   if (normalized === 'claude') return wrapIconCircle(Claude, '#D97757', 0.75, { color: '#FFF' });
   if (normalized === 'codex') return wrapIconCircle(OpenAI, '#000', 0.75, { color: '#FFF' });
   if (normalized === 'opencode') return wrapIconCircle(OpenCode, '#0F0F0F', 0.6, { color: '#FFF' });
+  if (normalized === 'cursor') return wrapIconCircle(Cursor, '#000', 0.75, { color: '#FFF' });
   if (normalized === 'yuanbao' || normalized === '元宝') return wrapIconCircle(Yuanbao.Color, '#FFF', 0.6);
   if (normalized === 'doubao' || normalized === '豆包') return wrapIconCircle(Doubao.Color, '#FFF', 0.6);
   if (normalized === 'qianwen' || normalized === '千问' || normalized === 'qwen') return wrapIconCircle(Qwen, 'linear-gradient(to right, #6336E7, #6F69F7)', 0.75, { color: '#FFF' });
@@ -162,10 +173,6 @@ export const resolveAvatarByName = (
   if (normalized === 'minimax') return wrapIconCircle(Minimax, 'linear-gradient(to right, #E2167E, #FE603C)', 0.75, { color: '#FFF' });
   if (normalized === 'yi' || normalized === '零一万物') return wrapIconCircle(Yi, '#003425', 0.6, { color: '#FFF' });
   if (normalized === 'baichuan' || normalized === '百川') return wrapIconCircle(Baichuan, '#FF6933', 0.6, { color: '#FFF' });
-
-  if (currentAvatar) {
-    return currentAvatar;
-  }
 
   // Custom local icons for non-brand names:
   if (normalized === 'dousha' || normalized === '豆沙') return '/img/dousha.jpeg';

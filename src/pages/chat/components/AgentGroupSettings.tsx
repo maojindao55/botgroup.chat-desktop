@@ -4,7 +4,7 @@
  *
  * 注意：成员（含 LLM/Prompt/Tools）统一由资源库管理。
  */
-import { Drawer, Input, InputNumber, Tooltip } from 'antd';
+import { Drawer, Input, InputNumber, Tooltip, Button } from 'antd';
 import { Avatar as LobeAvatar, ActionIcon } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 import { Mic, MicOff, X } from 'lucide-react';
@@ -21,6 +21,8 @@ interface AgentGroupSettingsProps {
   mutedUsers: string[];
   onToggleMute: (userId: string) => void;
   onUpdateGroup: (updates: Partial<AgentGroup>) => void;
+  onDeleteGroup?: () => void;
+  canDeleteGroup?: boolean;
   /** 桌面端使用内联面板，移动端使用 Drawer */
   inline?: boolean;
 }
@@ -166,6 +168,8 @@ export const AgentGroupSettings = ({
   mutedUsers,
   onToggleMute,
   onUpdateGroup,
+  onDeleteGroup,
+  canDeleteGroup = true,
   inline,
 }: AgentGroupSettingsProps) => {
   const { styles, cx } = useStyles();
@@ -209,6 +213,25 @@ export const AgentGroupSettings = ({
 
   const settingsContent = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <label style={{ fontSize: 14, fontWeight: 500 }}>基础信息</label>
+        <Input
+          value={group.name}
+          onChange={(e) => onUpdateGroup({ name: e.target.value })}
+          placeholder="群名称"
+          maxLength={30}
+          showCount
+        />
+        <Input.TextArea
+          value={group.description || ''}
+          onChange={(e) => onUpdateGroup({ description: e.target.value })}
+          placeholder="群描述（可选）"
+          maxLength={100}
+          showCount
+          autoSize={{ minRows: 2, maxRows: 4 }}
+        />
+      </div>
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <label style={{ fontSize: 14, fontWeight: 500 }}>群内协作方式</label>
         {agentWorkflowTemplates.map((item) => (
@@ -372,6 +395,24 @@ export const AgentGroupSettings = ({
           })}
         </div>
       </div>
+
+      {onDeleteGroup && canDeleteGroup && (
+        <div style={{
+          borderTop: '1px solid rgba(0,0,0,0.06)',
+          paddingTop: 16,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+        }}>
+          <div style={{ fontSize: 14, fontWeight: 500, color: '#ff4d4f' }}>删除群聊</div>
+          <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>
+            删除后无法恢复，当前会话消息也会清空。
+          </div>
+          <Button danger onClick={onDeleteGroup} style={{ alignSelf: 'flex-start' }}>
+            删除此群聊
+          </Button>
+        </div>
+      )}
     </div>
   );
 

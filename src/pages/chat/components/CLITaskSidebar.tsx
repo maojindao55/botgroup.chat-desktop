@@ -9,13 +9,15 @@ import {
   Users,
   Archive,
   Clock3,
+  Trash2,
 } from 'lucide-react';
 import { Input, Tooltip, Select, Checkbox, Button } from 'antd';
 import { ActionIcon } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 import type { CLIDevelopmentTask, CLITaskStatus } from '@/config/cliTasks';
-import { filterDevelopmentTasks } from '@/config/cliTasks';
+import { canMutateTask, filterDevelopmentTasks } from '@/config/cliTasks';
 import { useAIMemberStore } from '@/store/aiMemberStore';
+import { resolveEffectiveMember } from '@/utils/aiMemberDisplay';
 
 const statusLabels: Record<CLITaskStatus, { label: string; color: string }> = {
   queued: { label: '排队', color: 'default' },
@@ -155,15 +157,18 @@ const useStyles = createStyles(({ token, css }) => ({
     gap: 7px;
     padding: 11px 12px;
     border-radius: 8px;
-    border: 1px solid transparent;
+    background: ${token.colorBgContainer};
+    border: 1px solid ${token.colorBorderSecondary};
     cursor: pointer;
     color: ${token.colorTextSecondary};
     transition: all 0.15s ease;
     margin-bottom: 6px;
     &:hover {
-      background: ${token.colorBgContainer};
-      border-color: ${token.colorBorderSecondary};
+      border-color: rgba(255, 102, 0, 0.35);
       color: ${token.colorText};
+      .taskDeleteBtn {
+        opacity: 1;
+      }
     }
   `,
   navItemActive: css`
@@ -171,6 +176,46 @@ const useStyles = createStyles(({ token, css }) => ({
     border-color: rgba(255, 102, 0, 0.45) !important;
     box-shadow: inset 3px 0 0 #ff6600;
     color: ${token.colorText} !important;
+  `,
+  taskTitleRow: css`
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    min-width: 0;
+  `,
+  taskTitleWrap: css`
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    flex: 1;
+  `,
+  taskDeleteBtn: css`
+    flex: none;
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: ${token.colorTextTertiary};
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
+    &:hover:not(:disabled) {
+      color: #ff4d4f;
+      background: ${token.colorErrorBg};
+    }
+    &:disabled {
+      cursor: not-allowed;
+      opacity: 0.35;
+    }
+  `,
+  taskDeleteBtnVisible: css`
+    opacity: 1;
   `,
   taskTitle: css`
     font-size: 13px;
@@ -217,13 +262,32 @@ const useStyles = createStyles(({ token, css }) => ({
   taskMetaRow: css`
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     min-width: 0;
   `,
-  taskTemplate: css`
-    min-width: 0;
+  taskTemplateTag: css`
+    flex: none;
+    max-width: calc(100% - 88px);
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 10px;
+    font-weight: 500;
+    line-height: 16px;
+    padding: 0 6px;
+    border-radius: 4px;
+    background: rgba(255, 102, 0, 0.06);
+    color: ${token.colorTextSecondary};
+    border: 1px solid rgba(255, 102, 0, 0.14);
+    letter-spacing: 0.01em;
+  `,
+  taskTimeMeta: css`
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex: none;
+    font-size: 10px;
+    color: ${token.colorTextTertiary};
     white-space: nowrap;
   `,
   taskWorkspace: css`
@@ -282,6 +346,7 @@ interface CLITaskSidebarProps {
   onSelectTask: (taskId: string) => void;
   onNewTask: () => void;
   onOpenTemplateList: () => void;
+  onDeleteTask?: (taskId: string) => void;
 }
 
 export const CLITaskSidebar = ({
@@ -292,6 +357,7 @@ export const CLITaskSidebar = ({
   onSelectTask,
   onNewTask,
   onOpenTemplateList,
+  onDeleteTask,
 }: CLITaskSidebarProps) => {
   const { styles, cx } = useStyles();
   const aiMembers = useAIMemberStore(s => s.members);
@@ -326,7 +392,7 @@ export const CLITaskSidebar = ({
     return Array.from(ids)
       .map(id => ({
         value: id,
-        label: aiMembers[id]?.name || id.replace(/^cli-/, ''),
+        label: resolveEffectiveMember(aiMembers, id)?.name || id.replace(/^cli-/, ''),
       }))
       .sort((a, b) => a.label.localeCompare(b.label, 'zh-CN'));
   }, [tasks, aiMembers]);
@@ -504,11 +570,11 @@ export const CLITaskSidebar = ({
                 />
               </div>
               <div className={styles.filterField}>
-                <span className={styles.filterFieldLabel}>开发群友</span>
+                <span className={styles.filterFieldLabel}>开发成员</span>
                 <Select
                   size="small"
                   value={agentFilter || undefined}
-                  placeholder="全部开发群友"
+                  placeholder="全部开发成员"
                   allowClear
                   onChange={(v) => setAgentFilter(v || '')}
                   style={{ width: '100%' }}
@@ -537,25 +603,53 @@ export const CLITaskSidebar = ({
               const statusInfo = statusLabels[task.status] || statusLabels.queued;
               const isSelected = selectedTaskId === task.id;
               const workspace = shortPath(task.workspacePath);
+              const canDelete = canMutateTask(task);
               return (
                 <div
                   key={task.id}
                   className={cx(styles.navItem, isSelected && styles.navItemActive)}
                   onClick={() => onSelectTask(task.id)}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-                    <span className={styles.taskTitle}>{task.title}</span>
-                    <span className={styles.taskStatus}>
-                      <span className={cx(styles.statusDot, statusDotClass(task.status))} />
-                      {statusInfo.label}
-                    </span>
+                  <div className={styles.taskTitleRow}>
+                    <div className={styles.taskTitleWrap}>
+                      <span className={styles.taskTitle}>{task.title}</span>
+                      <span className={styles.taskStatus}>
+                        <span className={cx(styles.statusDot, statusDotClass(task.status))} />
+                        {statusInfo.label}
+                      </span>
+                    </div>
+                    {onDeleteTask && (
+                      <Tooltip title={canDelete ? '删除任务' : '任务运行中，无法删除'}>
+                        <button
+                          type="button"
+                          className={cx(
+                            styles.taskDeleteBtn,
+                            'taskDeleteBtn',
+                            (isSelected || !canDelete) && styles.taskDeleteBtnVisible,
+                          )}
+                          disabled={!canDelete}
+                          aria-label="删除任务"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            if (canDelete) onDeleteTask(task.id);
+                          }}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </Tooltip>
+                    )}
                   </div>
                   <div className={styles.taskMetaRow}>
-                    <span className={styles.taskTemplate}>{task.templateSnapshot.name}</span>
-                    <span className={styles.taskMeta}>·</span>
-                    <Clock3 size={11} style={{ flex: 'none', opacity: 0.55 }} />
-                    <span className={styles.taskMeta}>{formatTime(task.updatedAt)}</span>
-                    {task.status === 'archived' && <Archive size={11} style={{ flex: 'none', opacity: 0.55 }} />}
+                    <span className={styles.taskTemplateTag} title={task.templateSnapshot.name}>
+                      {task.templateSnapshot.name}
+                    </span>
+                    <span className={styles.taskTimeMeta}>
+                      <Clock3 size={10} style={{ opacity: 0.65 }} />
+                      {formatTime(task.updatedAt)}
+                    </span>
+                    {task.status === 'archived' && (
+                      <Archive size={10} style={{ flex: 'none', opacity: 0.55, color: 'inherit' }} />
+                    )}
                   </div>
                   {workspace && (
                     <div className={styles.taskWorkspace} title={task.workspacePath}>

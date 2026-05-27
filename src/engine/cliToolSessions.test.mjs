@@ -168,4 +168,31 @@ assert.notEqual(
   assert.equal(next, agent);
 }
 
+{
+  const agent = {
+    id: 'cli-cursor',
+    name: 'Cursor',
+    tags: [],
+    cli: { adapter: 'cursor', extraArgs: [] },
+  };
+
+  const next = withCliToolSession(agent, '0f373dc8-07f8-4c79-8953-9d30ccb34053');
+
+  assert.notEqual(next, agent);
+  assert.equal(next.cli.toolSessionId, '0f373dc8-07f8-4c79-8953-9d30ccb34053');
+}
+
+{
+  const agent = {
+    id: 'cli-cursor',
+    name: 'Cursor',
+    tags: [],
+    cli: { adapter: 'cursor', extraArgs: ['--resume', 'manual-session'] },
+  };
+
+  const next = withCliToolSession(agent, '0f373dc8-07f8-4c79-8953-9d30ccb34053');
+
+  assert.equal(next, agent);
+}
+
 console.log('cliToolSessions.test.mjs: ok');

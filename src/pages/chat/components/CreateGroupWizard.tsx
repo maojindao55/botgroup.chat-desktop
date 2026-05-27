@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
-  Modal, Steps, Button, Input, InputNumber, Switch,
+  Modal, Steps, Button, Input, InputNumber, Switch, Empty,
 } from 'antd';
 import { createStyles } from 'antd-style';
 import {
@@ -21,6 +21,8 @@ import {
 import { cliSessionPolicyOptions } from '@/config/cliTasks';
 import { MemberPicker } from './MemberPicker';
 import { invoke } from '@tauri-apps/api/core';
+import { useAIMemberStore } from '@/store/aiMemberStore';
+import { getPickableMembers } from '@/utils/aiMemberDisplay';
 
 interface CreateGroupWizardProps {
   open: boolean;
@@ -28,6 +30,10 @@ interface CreateGroupWizardProps {
   onCreateGroup: (group: Group) => void;
   /** 锁定群类型并跳过「选择场景」步骤，用于开发任务页新建团队模板 */
   fixedGroupType?: GroupTypeChoice;
+  /** 允许创建的群类型；侧边栏入口应排除 cli */
+  allowedGroupTypes?: GroupTypeChoice[];
+  /** 成员为空时跳转资源库 */
+  onOpenLibrary?: () => void;
 }
 
 type GroupTypeChoice = 'ai' | 'cli' | 'agent';
@@ -123,11 +129,20 @@ export const CreateGroupWizard = ({
   onOpenChange,
   onCreateGroup,
   fixedGroupType,
+  allowedGroupTypes,
+  onOpenLibrary,
 }: CreateGroupWizardProps) => {
   const { styles, cx } = useStyles();
+  const members = useAIMemberStore((state) => state.members);
+  const { load: loadMembers } = useAIMemberStore();
+
+  const allowedTypes = allowedGroupTypes ?? (['ai', 'cli', 'agent'] as GroupTypeChoice[]);
+  const defaultGroupType = fixedGroupType || allowedTypes[0] || 'ai';
 
   const [step, setStep] = useState<WizardStep>(fixedGroupType ? 'basic' : 'type');
-  const [groupType, setGroupType] = useState<GroupTypeChoice>(fixedGroupType || 'ai');
+  const [groupType, setGroupType] = useState<GroupTypeChoice>(defaultGroupType);
+  const isTemplateMode = fixedGroupType === 'cli';
+  const visibleGroupTypes = productGroupTypes.filter((item) => allowedTypes.includes(item.type));
 
   // Basic info
   const [name, setName] = useState('');
@@ -153,9 +168,15 @@ export const CreateGroupWizard = ({
   const [maxRounds, setMaxRounds] = useState(defaultAgentTemplate.maxRounds);
   const [agentTemplateId, setAgentTemplateId] = useState(defaultAgentTemplate.id);
 
+  useEffect(() => {
+    if (open) {
+      loadMembers();
+    }
+  }, [open, loadMembers]);
+
   const reset = () => {
     setStep(fixedGroupType ? 'basic' : 'type');
-    setGroupType(fixedGroupType || 'ai');
+    setGroupType(defaultGroupType);
     setName('');
     setDescription('');
     setSelectedAIMembers([]);
@@ -202,7 +223,7 @@ export const CreateGroupWizard = ({
         id, type: 'cli', name, description,
         memberIds: selectedCLIMembers,
         members: selectedCLIMembers,
-        workspacePath,
+        workspacePath: isTemplateMode ? '' : workspacePath,
         approvalMode,
         timeout,
         showStderr: true,
@@ -236,7 +257,9 @@ export const CreateGroupWizard = ({
         if (groupType === 'cli') return selectedCLIMembers.length > 0;
         if (groupType === 'agent') return selectedAgentMembers.length > 0;
         return false;
-      case 'config': return groupType !== 'cli' || workspacePath.trim().length > 0;
+      case 'config':
+        if (groupType === 'cli' && !isTemplateMode) return workspacePath.trim().length > 0;
+        return true;
       default: return true;
     }
   };
@@ -261,9 +284,14 @@ export const CreateGroupWizard = ({
   const renderTypeStep = () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <p style={{ fontSize: 14, color: 'rgba(0,0,0,0.45)', marginBottom: 4 }}>
-        选择一个群聊场景，把合适的 AI 群友拉进来。
+        选择一个群聊场景，把合适的成员拉进来。
       </p>
-      {productGroupTypes.map(item => {
+      {!allowedTypes.includes('cli') && (
+        <p style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', margin: 0 }}>
+          开发群请前往侧边栏「开发任务」新建团队模板。
+        </p>
+      )}
+      {visibleGroupTypes.map(item => {
         const Icon = groupTypeIcons[item.type];
         return (
         <button key={item.type}
@@ -297,42 +325,83 @@ export const CreateGroupWizard = ({
     </div>
   );
 
+  const memberKind = groupType === 'ai' ? 'llm' as const : groupType === 'cli' ? 'cli' as const : 'agent' as const;
+  const pickableMemberCount = useMemo(
+    () => getPickableMembers(members, memberKind).length,
+    [members, memberKind],
+  );
+
+  const handleOpenLibrary = () => {
+    onOpenChange(false);
+    reset();
+    onOpenLibrary?.();
+  };
+
+  const renderEmptyMembers = (resourceLabel: string) => (
+    <div style={{ display: 'flex', justifyContent: 'center', padding: '32px 0' }}>
+      <Empty description={`暂无${resourceLabel}，请先在资源库创建`}>
+        {onOpenLibrary ? (
+          <Button type="primary" onClick={handleOpenLibrary}
+            style={{ background: '#ff6600', borderColor: '#ff6600' }}>
+            去资源库新建
+          </Button>
+        ) : (
+          <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>
+            请从侧边栏打开资源库后新建
+          </span>
+        )}
+      </Empty>
+    </div>
+  );
+
   const renderMembersStep = () => {
     if (groupType === 'ai') {
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <p style={{ fontSize: 14, color: 'rgba(0,0,0,0.45)' }}>选择角色群友加入群聊</p>
-          <MemberPicker
-            kind="llm"
-            value={selectedAIMembers}
-            onChange={setSelectedAIMembers}
-            placeholder="选择角色群友..."
-          />
+          <p style={{ fontSize: 14, color: 'rgba(0,0,0,0.45)' }}>选择角色加入群聊</p>
+          {pickableMemberCount === 0 ? (
+            renderEmptyMembers('角色')
+          ) : (
+            <MemberPicker
+              kind="llm"
+              value={selectedAIMembers}
+              onChange={setSelectedAIMembers}
+              placeholder="选择角色..."
+            />
+          )}
         </div>
       );
     }
     if (groupType === 'cli') {
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <p style={{ fontSize: 14, color: 'rgba(0,0,0,0.45)' }}>选择开发群友加入群聊</p>
-          <MemberPicker
-            kind="cli"
-            value={selectedCLIMembers}
-            onChange={setSelectedCLIMembers}
-            placeholder="选择开发群友..."
-          />
+          <p style={{ fontSize: 14, color: 'rgba(0,0,0,0.45)' }}>选择开发成员加入群聊</p>
+          {pickableMemberCount === 0 ? (
+            renderEmptyMembers('开发成员')
+          ) : (
+            <MemberPicker
+              kind="cli"
+              value={selectedCLIMembers}
+              onChange={setSelectedCLIMembers}
+              placeholder="选择开发成员..."
+            />
+          )}
         </div>
       );
     }
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <p style={{ fontSize: 14, color: 'rgba(0,0,0,0.45)' }}>选择专家群友加入群聊</p>
-        <MemberPicker
-          kind="agent"
-          value={selectedAgentMembers}
-          onChange={setSelectedAgentMembers}
-          placeholder="选择专家群友..."
-        />
+        <p style={{ fontSize: 14, color: 'rgba(0,0,0,0.45)' }}>选择专家加入群聊</p>
+        {pickableMemberCount === 0 ? (
+          renderEmptyMembers('专家')
+        ) : (
+          <MemberPicker
+            kind="agent"
+            value={selectedAgentMembers}
+            onChange={setSelectedAgentMembers}
+            placeholder="选择专家..."
+          />
+        )}
       </div>
     );
   };
@@ -358,25 +427,27 @@ export const CreateGroupWizard = ({
 
   const renderCLIConfigStep = () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div>
-        <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 6 }}>Workspace 路径 *</label>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <Input
-            placeholder="/Users/you/projects/your-repo"
-            value={workspacePath}
-            onChange={e => setWorkspacePath(e.target.value)}
-            style={{ flex: 1, fontFamily: 'var(--ant-font-family-code)' }}
-          />
-          <Button icon={<FolderOpen size={14} />}
-            onClick={async () => {
-              try {
-                const selected = await invoke<string | null>('select_directory');
-                if (selected) setWorkspacePath(selected);
-              } catch (e) { console.error('Failed to select directory:', e); }
-            }}>选择</Button>
+      {!isTemplateMode && (
+        <div>
+          <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 6 }}>Workspace 路径 *</label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Input
+              placeholder="/Users/you/projects/your-repo"
+              value={workspacePath}
+              onChange={e => setWorkspacePath(e.target.value)}
+              style={{ flex: 1, fontFamily: 'var(--ant-font-family-code)' }}
+            />
+            <Button icon={<FolderOpen size={14} />}
+              onClick={async () => {
+                try {
+                  const selected = await invoke<string | null>('select_directory');
+                  if (selected) setWorkspacePath(selected);
+                } catch (e) { console.error('Failed to select directory:', e); }
+              }}>选择</Button>
+          </div>
+          <p style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginTop: 6 }}>开发成员将在此目录读写代码，支持选择或输入绝对路径</p>
         </div>
-        <p style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginTop: 6 }}>开发群友将在此目录读写代码，支持选择或输入绝对路径</p>
-      </div>
+      )}
       <div>
         <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 8 }}>协作方式</label>
         {cliWorkflowTemplates.map(item => (
@@ -415,7 +486,7 @@ export const CreateGroupWizard = ({
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <div style={{ fontSize: 14, fontWeight: 500 }}>自动审批模式</div>
-            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginTop: 4 }}>开启后开发群友自动执行，无需确认</div>
+            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginTop: 4 }}>开启后开发成员自动执行，无需确认</div>
           </div>
           <Switch checked={approvalMode === 'auto'} onChange={v => setApprovalMode(v ? 'auto' : 'ask')} />
         </div>
@@ -473,20 +544,18 @@ export const CreateGroupWizard = ({
   };
 
 
-  const isTemplateMode = fixedGroupType === 'cli';
-
   const stepTitles: Record<WizardStep, string> = isTemplateMode
     ? {
       type: '',
       basic: '模板名称',
-      members: '选择开发群友',
-      config: '默认 Workspace 与执行策略',
+      members: '选择开发成员',
+      config: '执行策略',
       confirm: '',
     }
     : {
       type: '选择群聊场景',
       basic: '基础信息',
-      members: '选择群友',
+      members: '选择成员',
       config: '群聊设置',
       confirm: '',
     };

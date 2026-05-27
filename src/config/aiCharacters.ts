@@ -81,7 +81,7 @@ export interface CLIAgent {
   tags?: string[];
   runtime: 'cli';
   cli: {
-    adapter: 'codex' | 'opencode' | 'claude' | 'aider' | 'gemini' | 'generic';
+    adapter: 'codex' | 'opencode' | 'claude' | 'cursor' | 'aider' | 'gemini' | 'generic';
     binary?: string;
     extraArgs?: string[];
     toolSessionId?: string;

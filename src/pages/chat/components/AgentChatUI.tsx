@@ -16,6 +16,7 @@ import type { StreamCallback } from '@/engine/agentEngine';
 import AgentGroupSettings from './AgentGroupSettings';
 import Sidebar from './Sidebar';
 import type { AgentGroup, Group } from '@/config/groups';
+import { isBuiltinGroupId } from '@/config/groupStorage';
 import { useAIMemberStore } from '@/store/aiMemberStore';
 import { AIMemberLibrary, AI_MEMBER_LIBRARY_INLINE_WIDTH } from './AIMemberLibrary';
 
@@ -35,6 +36,8 @@ interface AgentChatUIProps {
   onSelectGroup: (index: number) => void;
   onCreateGroup?: (group: Group) => void;
   onUpdateGroup?: (updates: Partial<AgentGroup>) => void;
+  onEditGroup?: (index: number) => void;
+  onDeleteGroup?: (group: Group) => void;
 }
 
 const useStyles = createStyles(({ token, css }) => ({
@@ -212,6 +215,8 @@ const AgentChatUI = ({
   onSelectGroup,
   onCreateGroup,
   onUpdateGroup,
+  onEditGroup,
+  onDeleteGroup,
 }: AgentChatUIProps) => {
   const userStore = useUserStore();
   const isMobile = useIsMobile();
@@ -254,6 +259,15 @@ const AgentChatUI = ({
   const [isLoading, setIsLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('settings') === '1') {
+      setShowSettings(true);
+      params.delete('settings');
+      window.history.replaceState({}, '', `${window.location.pathname}?${params}`);
+    }
+  }, []);
 
   const AGENT_SETTINGS_WIDTH = 440;
 
@@ -401,6 +415,8 @@ const AgentChatUI = ({
           mutedUsers={mutedUsers}
           onToggleMute={handleToggleMute}
           onUpdateGroup={(updates) => onUpdateGroup?.(updates)}
+          onDeleteGroup={() => onDeleteGroup?.(group)}
+          canDeleteGroup={!isBuiltinGroupId(group.id)}
         />
       )}
 
@@ -415,6 +431,8 @@ const AgentChatUI = ({
             onCreateGroup={onCreateGroup}
             onOpenLibrary={() => handleToggleLibrary(true)}
             onNavigateCLI={() => { window.location.href = '?view=cli-tasks'; }}
+            onEditGroup={onEditGroup}
+            onDeleteGroup={(g) => onDeleteGroup?.(g)}
             hiddenGroupTypes={['cli']}
           />
 
@@ -602,6 +620,8 @@ const AgentChatUI = ({
               mutedUsers={mutedUsers}
               onToggleMute={handleToggleMute}
               onUpdateGroup={(updates) => onUpdateGroup?.(updates)}
+              onDeleteGroup={() => onDeleteGroup?.(group)}
+              canDeleteGroup={!isBuiltinGroupId(group.id)}
             />
           )}
 

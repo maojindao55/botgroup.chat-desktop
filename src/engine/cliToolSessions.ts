@@ -45,7 +45,7 @@ export function resolveCliToolSessionKey(params: {
 }
 
 export function withCliToolSession(agent: CLIAgent, sessionId: string | null | undefined): CLIAgent {
-  if (agent.cli?.adapter !== 'opencode' && agent.cli?.adapter !== 'codex' && agent.cli?.adapter !== 'claude') return agent;
+  if (agent.cli?.adapter !== 'opencode' && agent.cli?.adapter !== 'codex' && agent.cli?.adapter !== 'claude' && agent.cli?.adapter !== 'cursor') return agent;
   if (!sessionId) return agent;
 
   const extraArgs = agent.cli.extraArgs || [];

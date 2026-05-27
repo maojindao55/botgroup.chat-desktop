@@ -7,7 +7,7 @@
  */
 import { useState, useRef, useEffect } from "react";
 import { Send, Settings2, ChevronLeft, Bot, Terminal } from "lucide-react";
-import { Tooltip, Input as AntdInput, Button as AntdButton } from 'antd';
+import { Tooltip, Input as AntdInput, Button as AntdButton, Modal } from 'antd';
 import { ActionIcon, Avatar as LobeAvatar } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 import { request } from '@/utils/request';
@@ -28,6 +28,7 @@ import { useUserStore } from '@/store/userStore';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { AIMemberLibrary, AI_MEMBER_LIBRARY_INLINE_WIDTH } from './AIMemberLibrary';
 import { useAIMemberStore } from '@/store/aiMemberStore';
+import { resolveEffectiveMember } from '@/utils/aiMemberDisplay';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
 import type { Group, AIGroup, CLIGroup, AgentGroup, CLIStrategy, CLIExecutionPlan, CLISessionPolicy } from '@/config/groups';
 import { openPath } from '@tauri-apps/plugin-opener';
@@ -39,6 +40,11 @@ import {
   removeCLITemplateLocalData,
   removeCLITemplateFromCustomGroups,
 } from '@/config/cliTemplateStorage';
+import {
+  deleteChatGroup,
+  isBuiltinGroupId,
+  upsertCustomGroup,
+} from '@/config/groupStorage';
 
 const useStyles = createStyles(({ token, css }) => ({
   page: css`
@@ -470,7 +476,7 @@ const ChatUI = () => {
 
     if (group.type === 'ai' || !group.type) {
       const resolvedMembers = memberIds
-        .map(mid => aiMembers[mid])
+        .map(mid => resolveEffectiveMember(aiMembers, mid))
         .filter(m => m && m.enabled !== false && !(m.kind === 'llm' && m.schedulerTag === 'scheduler'));
       const resolvedCharacters = resolvedMembers.map(m => mapAIMemberToLegacy(m, group.name) as AICharacter);
 
@@ -479,7 +485,7 @@ const ChatUI = () => {
       setUsers([currentUser, ...resolvedCharacters]);
     } else if (group.type === 'cli') {
       const resolvedMembers = memberIds
-        .map(mid => aiMembers[mid])
+        .map(mid => resolveEffectiveMember(aiMembers, mid))
         .filter(m => m && m.enabled !== false);
       const resolvedCLIAgents = resolvedMembers.map(m => mapAIMemberToLegacy(m) as CLIAgent);
 
@@ -530,6 +536,13 @@ const ChatUI = () => {
 
         setGroup(currentGroup);
         setIsInitializing(false);
+
+        if (urlParams.get('settings') === '1') {
+          setShowSettings(true);
+          const url = new URL(window.location.href);
+          url.searchParams.delete('settings');
+          window.history.replaceState({}, '', `${url.pathname}${url.search}`);
+        }
 
         // AI/CLI group: resolve details
         if (currentGroup.type === 'ai' || !currentGroup.type) {
@@ -621,17 +634,7 @@ const ChatUI = () => {
   const updateGroup = (updatedGroup: Group) => {
     setGroup(updatedGroup);
     setGroups(prev => prev.map(g => g.id === updatedGroup.id ? updatedGroup : g));
-
-    try {
-      const stored = localStorage.getItem('custom_groups');
-      if (stored) {
-        const customGroups = JSON.parse(stored) as Group[];
-        const nextCustom = customGroups.map(g => g.id === updatedGroup.id ? updatedGroup : g);
-        localStorage.setItem('custom_groups', JSON.stringify(nextCustom));
-      }
-    } catch (e) {
-      console.error('Failed to update custom group:', e);
-    }
+    upsertCustomGroup(updatedGroup);
   };
 
   const handleMembersChange = (newIds: string[]) => {
@@ -646,6 +649,65 @@ const ChatUI = () => {
     updateGroup(nextGroup);
   };
 
+  const navigateToGroupIndex = (index: number, options?: { openSettings?: boolean }) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('id', String(index));
+    url.searchParams.delete('view');
+    url.searchParams.delete('taskId');
+    if (options?.openSettings) {
+      url.searchParams.set('settings', '1');
+    } else {
+      url.searchParams.delete('settings');
+    }
+    window.history.replaceState({}, '', `${url.pathname}${url.search}`);
+  };
+
+  const handleEditGroup = (index: number) => {
+    if (index !== selectedGroupIndex) {
+      window.location.href = `?id=${index}&settings=1`;
+      return;
+    }
+    handleToggleSettings(true);
+  };
+
+  const confirmDeleteGroup = (targetGroup: Group) => {
+    Modal.confirm({
+      title: `删除群聊「${targetGroup.name}」？`,
+      content: '删除后无法恢复，当前会话消息也会清空。',
+      okText: '删除',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: () => {
+        deleteChatGroup(targetGroup.id);
+        const deletedIndex = groups.findIndex((g) => g.id === targetGroup.id);
+        const remaining = groups.filter((g) => g.id !== targetGroup.id);
+        setGroups(remaining);
+
+        if (group?.id === targetGroup.id) {
+          setShowSettings(false);
+          setMessages([]);
+          if (remaining.length > 0) {
+            const nextIndex = Math.min(deletedIndex, remaining.length - 1);
+            setGroup(remaining[nextIndex]);
+            navigateToGroupIndex(nextIndex);
+          } else {
+            setGroup(null);
+            window.history.replaceState({}, '', window.location.pathname);
+          }
+          return;
+        }
+
+        if (deletedIndex >= 0 && deletedIndex < selectedGroupIndex) {
+          navigateToGroupIndex(selectedGroupIndex - 1);
+        }
+      },
+    });
+  };
+
+  const handleDeleteGroup = (targetGroup: Group) => {
+    confirmDeleteGroup(targetGroup);
+  };
+
   const handleCreateGroup = (newGroup: Group) => {
     try {
       const stored = localStorage.getItem('custom_groups');
@@ -655,8 +717,35 @@ const ChatUI = () => {
     } catch (e) {
       console.error('Failed to save custom group:', e);
     }
-    setGroups(prev => [...prev, newGroup]);
-    window.location.href = `?id=${groups.length}`;
+
+    let newIndex = 0;
+    setGroups((prev) => {
+      newIndex = prev.length;
+      return [...prev, newGroup];
+    });
+
+    if (newGroup.type === 'cli') {
+      const onCliTasks = new URL(window.location.href).searchParams.get('view') === 'cli-tasks';
+      if (!onCliTasks) {
+        window.location.href = '?view=cli-tasks';
+      }
+      return;
+    }
+
+    setGroup(newGroup);
+    if (newGroup.type === 'ai' || !newGroup.type) {
+      const aiGroup = newGroup as AIGroup;
+      setIsGroupDiscussionMode(aiGroup.isGroupDiscussionMode || false);
+      setSchedulerStrategy(aiGroup.schedulerStrategy || 'tag');
+    }
+    setShowSettings(false);
+    setShowLibrary(false);
+
+    const url = new URL(window.location.href);
+    url.searchParams.set('id', String(newIndex));
+    url.searchParams.delete('view');
+    url.searchParams.delete('taskId');
+    window.history.replaceState({}, '', `${url.pathname}${url.search}`);
   };
 
   const patchCurrentCLIGroup = (patch: Partial<CLIGroup>) => {
@@ -761,6 +850,8 @@ const ChatUI = () => {
         onSelectGroup={handleSelectGroup}
         onCreateGroup={handleCreateGroup}
         onUpdateGroup={handleUpdateGroup}
+        onEditGroup={handleEditGroup}
+        onDeleteGroup={handleDeleteGroup}
       />
     );
   }
@@ -786,7 +877,7 @@ const ChatUI = () => {
 
     setIsLoading(true);
     try {
-      const m = aiMembers[msg.sender.id];
+      const m = resolveEffectiveMember(aiMembers, msg.sender.id);
       const baseAgent = m && m.kind === 'cli' ? mapAIMemberToLegacy(m) as CLIAgent : undefined;
       const agent = baseAgent
         ? withCliToolSession(
@@ -794,7 +885,7 @@ const ChatUI = () => {
           localStorage.getItem(cliToolSessionKey((group as CLIGroup).id, baseAgent.id, workspacePath)),
         )
         : undefined;
-      if (!agent) throw new Error('找不到该开发群友');
+      if (!agent) throw new Error('找不到该开发成员');
       if (approvalMode === 'ask') {
         const confirmed = window.confirm(`确认让 ${agent.name} 在 ${workspacePath || '默认目录'} 执行这次任务？`);
         if (!confirmed) return;
@@ -816,7 +907,7 @@ const ChatUI = () => {
         workspacePath,
         {
           onAgentStart: (taskId, agentId, agentName, meta) => {
-            const agentInfoMember = aiMembers[agentId];
+            const agentInfoMember = resolveEffectiveMember(aiMembers, agentId);
             const agentInfo = agentInfoMember && agentInfoMember.kind === 'cli' ? mapAIMemberToLegacy(agentInfoMember) as CLIAgent : undefined;
             const baseName = agentInfo?.name || agentName;
             const aiMessage = {
@@ -835,7 +926,7 @@ const ChatUI = () => {
             setMessages(prev => [...prev, aiMessage]);
           },
           onToolSession: (_taskId, agentId, adapter, sessionId) => {
-            if (adapter === 'opencode' || adapter === 'codex' || adapter === 'claude') {
+            if (adapter === 'opencode' || adapter === 'codex' || adapter === 'claude' || adapter === 'cursor') {
               localStorage.setItem(cliToolSessionKey((group as CLIGroup).id, agentId, workspacePath), sessionId);
             }
           },
@@ -894,7 +985,7 @@ const ChatUI = () => {
 
     const memberIds = (group as CLIGroup).memberIds || (group as CLIGroup).members || [];
     const activeAgents = memberIds
-      .map(id => aiMembers[id])
+      .map(id => resolveEffectiveMember(aiMembers, id))
       .filter(m => m && m.kind === 'cli' && !mutedUsers.includes(m.id))
       .map(m => mapAIMemberToLegacy(m) as CLIAgent)
       .map(agent => withCliToolSession(
@@ -906,7 +997,7 @@ const ChatUI = () => {
       const systemMsg = {
         id: `sys-${Date.now()}`,
         sender: { id: 'sys', name: '系统提示' },
-        content: '群聊中没有启用的开发群友。请在右侧设置面板中添加或开启成员。',
+        content: '群聊中没有启用的开发成员。请在右侧设置面板中添加或开启成员。',
         isAI: true,
         isError: true,
       };
@@ -954,7 +1045,7 @@ const ChatUI = () => {
         workspacePath,
         {
           onAgentStart: (taskId, agentId, agentName, meta) => {
-            const agentInfoMember = aiMembers[agentId];
+            const agentInfoMember = resolveEffectiveMember(aiMembers, agentId);
             const agentInfo = agentInfoMember && agentInfoMember.kind === 'cli' ? mapAIMemberToLegacy(agentInfoMember) as CLIAgent : undefined;
             const baseName = agentInfo?.name || agentName;
             const aiMessage = {
@@ -973,7 +1064,7 @@ const ChatUI = () => {
             setMessages(prev => [...prev, aiMessage]);
           },
           onToolSession: (_taskId, agentId, adapter, sessionId) => {
-            if (adapter === 'opencode' || adapter === 'codex' || adapter === 'claude') {
+            if (adapter === 'opencode' || adapter === 'codex' || adapter === 'claude' || adapter === 'cursor') {
               localStorage.setItem(cliToolSessionKey((group as CLIGroup).id, agentId, workspacePath), sessionId);
             }
           },
@@ -1209,6 +1300,9 @@ const ChatUI = () => {
           schedulerStrategy={schedulerStrategy}
           onStrategyChange={setSchedulerStrategy}
           onMembersChange={handleMembersChange}
+          onUpdateGroup={handleUpdateGroup}
+          onDeleteGroup={() => handleDeleteGroup(group)}
+          canDeleteGroup={!isBuiltinGroupId(group.id)}
         />
       )}
 
@@ -1220,7 +1314,7 @@ const ChatUI = () => {
           group={{ ...(group as CLIGroup), strategy: cliStrategy, executionPlan: cliExecutionPlan }}
           members={
             ((group as CLIGroup).memberIds || (group as CLIGroup).members || [])
-              .map(id => aiMembers[id])
+              .map(id => resolveEffectiveMember(aiMembers, id))
               .filter(m => m && m.kind === 'cli')
               .map(m => mapAIMemberToLegacy(m) as CLIAgent)
           }
@@ -1246,7 +1340,7 @@ const ChatUI = () => {
           sessionPolicy={cliSessionPolicy}
           onSessionPolicyChange={handleCliSessionPolicyChange}
           onRetryTask={(agentId, prompt) => {
-            const m = aiMembers[agentId];
+            const m = resolveEffectiveMember(aiMembers, agentId);
             const agent = m && m.kind === 'cli' ? mapAIMemberToLegacy(m) as CLIAgent : undefined;
             if (agent) {
               handleRetryTask({
@@ -1271,6 +1365,8 @@ const ChatUI = () => {
             onCreateGroup={handleCreateGroup}
             onOpenLibrary={() => handleToggleLibrary(true)}
             onNavigateCLI={handleNavigateCLI}
+            onEditGroup={handleEditGroup}
+            onDeleteGroup={(g) => handleDeleteGroup(g)}
             hiddenGroupTypes={['cli']}
           />
 
@@ -1353,7 +1449,7 @@ const ChatUI = () => {
                 {messages.map((message) => {
                   const isUser = message.sender.name === userName;
                   const cliMember = message.sender?.id?.startsWith?.('cli-')
-                    ? aiMembers[message.sender.id]
+                    ? resolveEffectiveMember(aiMembers, message.sender.id)
                     : undefined;
                   const cliAgentInfo = cliMember && cliMember.kind === 'cli'
                     ? (mapAIMemberToLegacy(cliMember) as CLIAgent)
@@ -1536,7 +1632,7 @@ const ChatUI = () => {
                     }
                   }}
                   autoSize={{ minRows: 1, maxRows: 6 }}
-                  placeholder={isCLIGroup ? '输入代码任务，开发群友将在 workspace 中协作执行...' : '在角色群里输入消息...'}
+                  placeholder={isCLIGroup ? '输入代码任务，开发成员将在 workspace 中协作执行...' : '在角色群里输入消息...'}
                   style={{ flex: 1, borderRadius: 12 }}
                 />
                 <AntdButton
@@ -1564,6 +1660,10 @@ const ChatUI = () => {
               onToggleGroupDiscussion={() => setIsGroupDiscussionMode(!isGroupDiscussionMode)}
               schedulerStrategy={schedulerStrategy}
               onStrategyChange={setSchedulerStrategy}
+              onMembersChange={handleMembersChange}
+              onUpdateGroup={handleUpdateGroup}
+              onDeleteGroup={() => handleDeleteGroup(group)}
+              canDeleteGroup={!isBuiltinGroupId(group.id)}
             />
           )}
 
@@ -1576,7 +1676,7 @@ const ChatUI = () => {
               group={{ ...(group as CLIGroup), strategy: cliStrategy, executionPlan: cliExecutionPlan }}
               members={
                 ((group as CLIGroup).memberIds || (group as CLIGroup).members || [])
-                  .map(id => aiMembers[id])
+                  .map(id => resolveEffectiveMember(aiMembers, id))
                   .filter(m => m && m.kind === 'cli')
                   .map(m => mapAIMemberToLegacy(m) as CLIAgent)
               }
@@ -1602,7 +1702,7 @@ const ChatUI = () => {
               sessionPolicy={cliSessionPolicy}
               onSessionPolicyChange={handleCliSessionPolicyChange}
               onRetryTask={(agentId, prompt) => {
-                const m = aiMembers[agentId];
+                const m = resolveEffectiveMember(aiMembers, agentId);
                 const agent = m && m.kind === 'cli' ? mapAIMemberToLegacy(m) as CLIAgent : undefined;
                 if (agent) {
                   handleRetryTask({

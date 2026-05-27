@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "usershongbin9wwwbotgroupchat-desktop",
+  "productName": "BotGroup Chat",
   "version": "0.1.0",
   "identifier": "com.hongbin9.usershongbin9wwwbotgroupchat-desktop",
   "build": {
@@ -12,6 +12,7 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "BotGroup Chat",
         "width": 1024,
         "height": 768,

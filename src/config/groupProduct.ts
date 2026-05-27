@@ -50,7 +50,7 @@ export const productGroupTypes: ProductGroupType[] = [
     type: 'cli',
     label: '开发群',
     shortLabel: '开发',
-    description: '邀请 Codex、Claude Code、OpenCode、KimiCode、PI 等开发群友协作改代码。',
+    description: '邀请 Codex、Claude Code、OpenCode、KimiCode、PI 等开发成员协作改代码。',
   },
 ];
 
@@ -117,7 +117,7 @@ export const cliWorkflowTemplates: CLIWorkflowTemplate[] = [
   {
     id: 'quick_response',
     label: '快速响应',
-    description: '自动选择一位开发群友处理当前代码任务。',
+    description: '自动选择一位开发成员处理当前代码任务。',
     strategy: 'router',
     defaultStages: ['分派', '执行'],
   },
@@ -131,28 +131,28 @@ export const cliWorkflowTemplates: CLIWorkflowTemplate[] = [
   {
     id: 'review_fix',
     label: '审核修正',
-    description: '先审查现有改动，再让开发群友按意见修正。',
+    description: '先审查现有改动，再让开发成员按意见修正。',
     strategy: 'review',
     defaultStages: ['审核', '修正', '验证'],
   },
   {
     id: 'multi_solution',
     label: '多人出方案',
-    description: '多个开发群友分别处理同一任务，结果在群里并列展示。',
+    description: '多个开发成员分别处理同一任务，结果在群里并列展示。',
     strategy: 'sequential',
     defaultStages: ['方案 A', '方案 B', '对比'],
   },
   {
     id: 'isolated_race',
     label: '隔离竞赛',
-    description: '多个开发群友在独立 worktree 中并行实现，用户选择采纳。',
+    description: '多个开发成员在独立 worktree 中并行实现，用户选择采纳。',
     strategy: 'race',
     defaultStages: ['并行实现', '结果对比', '用户采纳'],
   },
   {
     id: 'discussion',
     label: '只读讨论',
-    description: '只分析代码方案和风险，不要求开发群友修改文件。',
+    description: '只分析代码方案和风险，不要求开发成员修改文件。',
     strategy: 'discussion',
     defaultStages: ['分析', '补充', '结论'],
     executionPlan: { isolation: 'copyPerAgent' },

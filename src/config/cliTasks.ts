@@ -24,7 +24,7 @@ export const cliSessionPolicyOptions: Array<{
   {
     value: 'workspace',
     label: '按 Workspace 共享',
-    description: '同一 Workspace 与开发群友下的所有任务共享 CLI 会话。',
+    description: '同一 Workspace 与开发成员下的所有任务共享 CLI 会话。',
   },
   {
     value: 'template',
@@ -37,7 +37,7 @@ export function sessionPolicyLabel(policy: CLISessionPolicy): string {
   return cliSessionPolicyOptions.find(item => item.value === policy)?.label ?? policy;
 }
 
-/** 解析输入开头的 @开发群友，用于指定单个 agent 执行任务 */
+/** 解析输入开头的 @开发成员，用于指定单个 agent 执行任务 */
 export function parseAgentMention(
   input: string,
   memberIds: string[],
@@ -329,7 +329,7 @@ export type CLITaskListFilter = {
   showArchived?: boolean;
 };
 
-/** 任务是否与某开发群友相关（模板成员或实际参与过） */
+/** 任务是否与某开发成员相关（模板成员或实际参与过） */
 export function taskInvolvesAgent(task: CLIDevelopmentTask, agentId: string): boolean {
   if (task.templateSnapshot.memberIds.includes(agentId)) return true;
   return task.messages.some(message => message.agentId === agentId);

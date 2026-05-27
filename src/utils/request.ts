@@ -4,7 +4,7 @@ import { llmChatReadableStream, llmChatComplete } from '@/utils/llmClient';
 import { resolveLlmCredentials } from '@/utils/resolveLlmCredentials';
 import { collectLegacyApiKeys, clearLegacyApiKeys } from '@/utils/legacyApiKeys';
 import { defaultGroups as staticGroups } from '@/config/groups';
-import { filterDeletedCLITemplates } from '@/config/cliTemplateStorage';
+import { prepareChatGroups } from '@/config/groupStorage';
 import { generateAICharacters, cliAgents, modelConfigs } from '@/config/aiCharacters';
 import { builtinAIMembers, type AIMember } from '@/config/aiMembers';
 import { builtinProviders, lookupProviderByEnvName, mapProviderToRust } from '@/config/providers';
@@ -15,6 +15,13 @@ import {
   renderClaudeCommandGroupStart,
   renderClaudeCommandStarted,
 } from '@/utils/claudeStream';
+import {
+  parseCursorJsonLine,
+  renderCursorCommandCompleted,
+  renderCursorCommandGroupEnd,
+  renderCursorCommandGroupStart,
+  renderCursorCommandStarted,
+} from '@/utils/cursorStream';
 import { cleanCliOutputLine, shouldSuppressCliOutputLine } from '@/utils/cliOutput';
 import {
   parseCodexJsonLine,
@@ -272,7 +279,7 @@ export async function request(url: string, options: RequestInit = {}) {
         customGroups = migratedCustomGroups;
       }
 
-      const allGroups = filterDeletedCLITemplates([...staticGroups, ...customGroups]);
+      const allGroups = prepareChatGroups(staticGroups, customGroups);
 
       let characters: any[] = [];
       if (isTauri) {
@@ -600,11 +607,14 @@ export async function request(url: string, options: RequestInit = {}) {
           let isJsonMode = adapter === 'codex';
           let codexSessionId: string | null = null;
           let claudeSessionId: string | null = null;
+          let cursorSessionId: string | null = null;
           let opencodeSessionId: string | null = null;
           let codexCommandGroupOpen = false;
           let codexCommandIndex = 0;
           let claudeCommandGroupOpen = false;
           let claudeCommandIndex = 0;
+          let cursorCommandGroupOpen = false;
+          let cursorCommandIndex = 0;
           let opencodeCommandGroupOpen = false;
           let opencodeCommandIndex = 0;
           // Track whether we're inside an "intermediate" phase so we can
@@ -656,6 +666,21 @@ export async function request(url: string, options: RequestInit = {}) {
             if (claudeCommandGroupOpen) {
               claudeCommandGroupOpen = false;
               enqueueChunk(renderClaudeCommandGroupEnd());
+            }
+          };
+
+          const ensureCursorCommandGroupOpen = () => {
+            if (!cursorCommandGroupOpen) {
+              cursorCommandGroupOpen = true;
+              cursorCommandIndex = 0;
+              enqueueChunk(renderCursorCommandGroupStart());
+            }
+          };
+
+          const closeCursorCommandGroup = () => {
+            if (cursorCommandGroupOpen) {
+              cursorCommandGroupOpen = false;
+              enqueueChunk(renderCursorCommandGroupEnd());
             }
           };
 
@@ -752,6 +777,43 @@ export async function request(url: string, options: RequestInit = {}) {
                     break;
                   }
 
+                  if (adapter === 'cursor') {
+                    const parsed = parseCursorJsonLine(stdoutLine);
+                    if (parsed?.sessionId && parsed.sessionId !== cursorSessionId) {
+                      cursorSessionId = parsed.sessionId;
+                      enqueueEvent({
+                        type: 'tool_session',
+                        adapter: 'cursor',
+                        sessionId: parsed.sessionId,
+                      });
+                    }
+                    if (parsed?.error) {
+                      closeCursorCommandGroup();
+                      enqueueEvent({
+                        type: 'error',
+                        content: `\n**[Cursor Agent error]** ${parsed.error}\n`,
+                        error: parsed.error,
+                      });
+                    }
+                    if (parsed?.content) {
+                      closeCursorCommandGroup();
+                      enqueueChunk(parsed.content);
+                    }
+                    if (parsed?.command) {
+                      if (parsed.command.phase === 'started') {
+                        ensureCursorCommandGroupOpen();
+                        cursorCommandIndex++;
+                        enqueueChunk(renderCursorCommandStarted(parsed.command.command, cursorCommandIndex));
+                      } else if (cursorCommandGroupOpen) {
+                        enqueueChunk(renderCursorCommandCompleted(parsed.command.exitCode, parsed.command.output));
+                      }
+                    } else if (!parsed && !stdoutLine.startsWith('{')) {
+                      closeCursorCommandGroup();
+                      enqueueChunk(stdoutLine + '\n');
+                    }
+                    break;
+                  }
+
                   // Codex --json mode: parse structured events, stream everything
                   if (isJsonMode && stdoutLine.startsWith('{') && stdoutLine.includes('"type"')) {
                     try {
@@ -791,6 +853,7 @@ export async function request(url: string, options: RequestInit = {}) {
                   } else {
                     closeCodexCommandGroup();
                     closeClaudeCommandGroup();
+                    closeCursorCommandGroup();
                     closeOpenCodeCommandGroup();
                     // Non-JSON stdout (opencode, claude, etc.) — show as-is
                     enqueueChunk(stdoutLine + '\n');
@@ -809,9 +872,10 @@ export async function request(url: string, options: RequestInit = {}) {
                 if (/401|token.?invalid|unauthorized|session.?ended|auth.?error|app_session_terminated|please.*(log\s*in|sign\s*in)/i.test(line)) {
                   authErrorDetected = true;
                   closeOpenCodeCommandGroup();
+                  closeCursorCommandGroup();
                   enqueueEvent({
                     type: 'error',
-                    content: `\n**登录已过期，请在终端重新登录：**\n\`\`\`\ncodex login    # Codex\nclaude login   # Claude Code\n\`\`\`\n`,
+                    content: `\n**登录已过期，请在终端重新登录：**\n\`\`\`\ncodex login          # Codex\nclaude login         # Claude Code\ncursor agent login   # Cursor Agent\n\`\`\`\n`,
                     error: 'auth_error',
                   });
                   break;
@@ -835,6 +899,7 @@ export async function request(url: string, options: RequestInit = {}) {
                 if (typeof payload.message === 'string') {
                   closeCodexCommandGroup();
                   closeClaudeCommandGroup();
+                  closeCursorCommandGroup();
                   closeOpenCodeCommandGroup();
                   enqueueEvent({
                     type: 'error',
@@ -854,6 +919,7 @@ export async function request(url: string, options: RequestInit = {}) {
                 const code = typeof payload.exit_code === 'number' ? payload.exit_code : -1;
                 closeCodexCommandGroup();
                 closeClaudeCommandGroup();
+                closeCursorCommandGroup();
                 closeOpenCodeCommandGroup();
                 closeDetails();
                 const status =

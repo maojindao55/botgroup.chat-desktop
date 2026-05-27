@@ -9,6 +9,7 @@ import {
   Terminal,
   Info,
   GitCompare,
+  FolderOpen,
 } from 'lucide-react';
 import { Input as AntdInput, Button as AntdButton, Tag, Modal, Select, Tooltip } from 'antd';
 import { ActionIcon, Avatar as LobeAvatar } from '@lobehub/ui';
@@ -35,12 +36,14 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { AIMemberLibrary } from './AIMemberLibrary';
 import { useAIMemberStore } from '@/store/aiMemberStore';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
+import { resolveEffectiveMember } from '@/utils/aiMemberDisplay';
 import type { Group, CLIGroup } from '@/config/groups';
 import {
   templateSnapshotToCLIGroup,
   parseAgentMention,
   isRaceTask,
   getRaceWorktreeEntries,
+  canMutateTask,
   type CLIDevelopmentTask,
   type CLITaskStatus,
 } from '@/config/cliTasks';
@@ -54,7 +57,13 @@ import {
   scheduleOpenCodeTaskTitleSync,
 } from '@/utils/opencodeSessionTitle';
 import { openPath } from '@tauri-apps/plugin-opener';
+import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
+import {
+  readLastCliWorkspace,
+  writeLastCliWorkspace,
+  resolveDraftCliWorkspace,
+} from '@/utils/cliWorkspaceStorage';
 
 interface CLITaskUIProps {
   groups: Group[];
@@ -198,6 +207,26 @@ const useStyles = createStyles(({ token, css }) => ({
     font-size: 11px;
     color: ${token.colorTextTertiary};
     line-height: 1.4;
+  `,
+  composeWorkspaceRow: css`
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-top: 1px solid ${token.colorBorderSecondary};
+    flex-wrap: wrap;
+  `,
+  composeWorkspaceLabel: css`
+    font-size: 11px;
+    font-weight: 500;
+    color: ${token.colorTextSecondary};
+    flex: none;
+  `,
+  composeWorkspaceInput: css`
+    flex: 1;
+    min-width: 160px;
+    font-family: ${token.fontFamilyCode} !important;
+    font-size: 12px !important;
   `,
   agentChipRow: css`
     display: flex;
@@ -439,6 +468,7 @@ const CLITaskUI = ({
   const templates = useMemo(() => getTeamTemplatesFromGroups(cliGroups), [cliGroups]);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(initialTaskId || null);
   const [selectedTemplateId, setSelectedTemplateId] = useState(templates[0]?.id || '');
+  const [draftWorkspacePath, setDraftWorkspacePath] = useState(() => readLastCliWorkspace());
   const [inputMessage, setInputMessage] = useState('');
   const [executingTaskIds, setExecutingTaskIds] = useState<Set<string>>(() => new Set());
   const [sidebarOpen, setSidebarOpen] = useState(!isMobile);
@@ -473,6 +503,28 @@ const CLITaskUI = ({
   const composeKey = resolveComposeKey(selectedTaskId);
   const isComposeBusy = executingTaskIds.has(composeKey);
 
+  useEffect(() => {
+    if (selectedTaskId) return;
+    setDraftWorkspacePath((prev) => {
+      if (prev.trim()) return prev;
+      return resolveDraftCliWorkspace(draftTemplate?.workspacePath);
+    });
+  }, [selectedTaskId, selectedTemplateId, draftTemplate?.workspacePath]);
+
+  const handleDraftWorkspaceChange = (path: string) => {
+    setDraftWorkspacePath(path);
+    writeLastCliWorkspace(path);
+  };
+
+  const handleSelectDraftWorkspace = async () => {
+    try {
+      const selected = await invoke<string | null>('select_directory');
+      if (selected) handleDraftWorkspaceChange(selected);
+    } catch (e) {
+      console.error('Failed to select directory:', e);
+    }
+  };
+
   const beginTaskExecution = useCallback((key: string) => {
     setExecutingTaskIds(prev => {
       if (prev.has(key)) return prev;
@@ -502,7 +554,7 @@ const CLITaskUI = ({
 
   const workspacePath = selectedTask
     ? selectedTask.workspacePath
-    : (draftTemplate?.workspacePath || '');
+    : draftWorkspacePath;
   const headerTemplateName = selectedTask
     ? selectedTask.templateSnapshot.name
     : draftTemplate?.name;
@@ -518,7 +570,7 @@ const CLITaskUI = ({
     ? cliGroups.find(g => g.id === editingTemplateId) || null
     : null;
   const editingTemplateMembers = (editingCLIGroup?.memberIds || [])
-    .map(id => aiMembers[id])
+    .map(id => resolveEffectiveMember(aiMembers, id))
     .filter(m => m && m.kind === 'cli')
     .map(m => mapAIMemberToLegacy(m) as CLIAgent);
 
@@ -595,7 +647,7 @@ const CLITaskUI = ({
 
     const memberIds = snapshot.memberIds;
     let activeAgents = memberIds
-      .map(id => aiMembers[id])
+      .map(id => resolveEffectiveMember(aiMembers, id))
       .filter(m => m && m.kind === 'cli' && !mutedUsers.includes(m.id))
       .map(m => mapAIMemberToLegacy(m) as CLIAgent);
 
@@ -613,7 +665,7 @@ const CLITaskUI = ({
         id: `sys-${Date.now()}`,
         taskId: developmentTask.id,
         role: 'system',
-        content: '没有启用的开发群友。请在模板设置中添加或开启成员。',
+        content: '没有启用的开发成员。请在模板设置中添加或开启成员。',
         isError: true,
       });
       return;
@@ -634,7 +686,7 @@ const CLITaskUI = ({
 
     if (snapshot.approvalMode === 'ask') {
       const names = activeAgents.map(a => a.name).join('、');
-      const confirmed = window.confirm(`确认让开发群友 ${names} 在 ${ws || '默认目录'} 协作处理这次任务？`);
+      const confirmed = window.confirm(`确认让开发成员 ${names} 在 ${ws || '默认目录'} 协作处理这次任务？`);
       if (!confirmed) return;
     }
 
@@ -693,7 +745,7 @@ const CLITaskUI = ({
         {
           onAgentStart: (agentTaskId, agentId, agentName, meta) => {
             agentIdByAgentTask.set(agentTaskId, agentId);
-            const agentMember = aiMembers[agentId];
+            const agentMember = resolveEffectiveMember(aiMembers, agentId);
             const agentInfo = agentMember?.kind === 'cli'
               ? mapAIMemberToLegacy(agentMember) as CLIAgent
               : undefined;
@@ -723,7 +775,7 @@ const CLITaskUI = ({
             });
           },
           onToolSession: (agentTaskId, agentId, adapter, sessionId) => {
-            if (adapter === 'opencode' || adapter === 'codex' || adapter === 'claude') {
+            if (adapter === 'opencode' || adapter === 'codex' || adapter === 'claude' || adapter === 'cursor') {
               localStorage.setItem(getSessionKey(developmentTask, agentId), sessionId);
             }
             if (adapter === 'opencode') {
@@ -801,7 +853,7 @@ const CLITaskUI = ({
 
     const rawInput = inputMessage.trim();
     const memberIds = selectedTask?.templateSnapshot.memberIds ?? liveTemplate?.memberIds ?? [];
-    const parsed = parseAgentMention(rawInput, memberIds, id => aiMembers[id]?.name);
+    const parsed = parseAgentMention(rawInput, memberIds, id => resolveEffectiveMember(aiMembers, id)?.name);
     const executionPrompt = parsed.prompt;
     const targetAgentId = parsed.agentId;
 
@@ -815,10 +867,16 @@ const CLITaskUI = ({
 
       if (!task) {
         if (!liveTemplate) return;
+        const ws = draftWorkspacePath.trim() || liveTemplate.workspacePath?.trim() || '';
+        if (!ws) {
+          toast.error('请先选择 Workspace 目录');
+          return;
+        }
+        writeLastCliWorkspace(ws);
         task = createTask({
           prompt: rawInput,
           template: liveTemplate,
-          workspacePath: liveTemplate.workspacePath,
+          workspacePath: ws,
         });
         const createdTaskId = task.id;
         scheduleCLITaskTitleSync({
@@ -881,7 +939,7 @@ const CLITaskUI = ({
   const continueTaskAgents = useMemo(() => {
     if (!selectedTask) return [];
     return selectedTask.templateSnapshot.memberIds
-      .map(id => aiMembers[id])
+      .map(id => resolveEffectiveMember(aiMembers, id))
       .filter(member => member && member.kind === 'cli');
   }, [selectedTask, aiMembers]);
 
@@ -890,7 +948,7 @@ const CLITaskUI = ({
       ? selectedTask.templateSnapshot.memberIds
       : draftTemplate?.memberIds ?? [];
     return memberIds
-      .map(id => aiMembers[id])
+      .map(id => resolveEffectiveMember(aiMembers, id))
       .filter(member => member && member.kind === 'cli')
       .map(member => {
         const agent = mapAIMemberToLegacy(member) as CLIAgent;
@@ -900,7 +958,7 @@ const CLITaskUI = ({
 
   const openTaskLog = (message: ReturnType<typeof taskMessageToChatRow>) => {
     if (!message.taskId) return;
-    const member = message.sender.id?.startsWith('cli-') ? aiMembers[message.sender.id] : undefined;
+    const member = message.sender.id?.startsWith('cli-') ? resolveEffectiveMember(aiMembers, message.sender.id) : undefined;
     const adapter = member?.kind === 'cli' ? member.cli?.adapter : undefined;
     setLogTarget({
       agentTaskId: message.taskId,
@@ -944,7 +1002,8 @@ const CLITaskUI = ({
 
   const handleUpdateEditingTemplate = (updates: Partial<CLIGroup>) => {
     if (!editingCLIGroup || !onUpdateCLIGroup) return;
-    onUpdateCLIGroup({ ...editingCLIGroup, ...updates });
+    const { workspacePath: _ignored, ...rest } = updates;
+    onUpdateCLIGroup({ ...editingCLIGroup, ...rest, workspacePath: '' });
   };
 
   const closeTemplateSettings = () => {
@@ -1073,14 +1132,43 @@ const CLITaskUI = ({
     restoreTask(selectedTask.id);
   };
 
+  const confirmDeleteTask = useCallback((taskId: string) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+    if (!canMutateTask(task)) {
+      toast.error('任务运行中，请等待结束后再删除');
+      return;
+    }
+
+    Modal.confirm({
+      title: '确认删除任务？',
+      content: (
+        <div>
+          <p>确定要删除任务「<strong>{task.title}</strong>」吗？</p>
+          <p style={{ margin: 0, color: '#999', fontSize: 12 }}>删除后无法恢复，消息记录将一并清除。</p>
+        </div>
+      ),
+      okText: '确认删除',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: () => {
+        if (!deleteTask(taskId)) {
+          toast.error('无法删除该任务');
+          return;
+        }
+        if (selectedTaskId === taskId) {
+          setSelectedTaskId(null);
+          navigateToList();
+          setTaskInfoOpen(false);
+        }
+        toast.success('任务已删除');
+      },
+    });
+  }, [tasks, deleteTask, selectedTaskId]);
+
   const handleDeleteTask = () => {
     if (!selectedTask) return;
-    const confirmed = window.confirm(`确定删除任务「${selectedTask.title}」？此操作不可恢复。`);
-    if (!confirmed) return;
-    if (!deleteTask(selectedTask.id)) return;
-    handleToggleTaskInfo(false);
-    setSelectedTaskId(null);
-    navigateToList();
+    confirmDeleteTask(selectedTask.id);
   };
 
   const statusTag = (status: string) => {
@@ -1183,6 +1271,7 @@ const CLITaskUI = ({
         onOpenChange={setCreateTemplateOpen}
         onCreateGroup={handleCreateTemplateGroup}
         fixedGroupType="cli"
+        onOpenLibrary={() => handleToggleLibrary(true)}
       />
 
       <CLIRaceResultsDrawer
@@ -1297,6 +1386,7 @@ const CLITaskUI = ({
             onSelectTask={navigateToTask}
             onNewTask={startNewTask}
             onOpenTemplateList={openTemplateList}
+            onDeleteTask={confirmDeleteTask}
           />
 
           <div className={styles.rightCol}>
@@ -1407,7 +1497,7 @@ const CLITaskUI = ({
                   {chatMessages.map((message, idx) => {
                     const isUser = !message.isAI;
                     const cliMember = message.sender?.id?.startsWith?.('cli-')
-                      ? aiMembers[message.sender.id]
+                      ? resolveEffectiveMember(aiMembers, message.sender.id)
                       : undefined;
                     const cliAgentInfo = cliMember?.kind === 'cli'
                       ? mapAIMemberToLegacy(cliMember) as CLIAgent
@@ -1571,13 +1661,32 @@ const CLITaskUI = ({
                   }}
                   placeholder={
                     selectedTask
-                      ? '继续这个任务… 输入 @开发群友名 可指定执行者'
-                      : '描述代码任务，开发群友会在 workspace 中协作执行...'
+                      ? '继续这个任务… 输入 @开发成员名 可指定执行者'
+                      : '描述代码任务，开发成员会在 workspace 中协作执行...'
                   }
                   autoSize={{ minRows: 4, maxRows: 12 }}
                   disabled={isComposeBusy || (!selectedTask && !draftTemplate)}
                   variant="borderless"
                 />
+                {!selectedTask && (
+                  <div className={styles.composeWorkspaceRow}>
+                    <span className={styles.composeWorkspaceLabel}>Workspace</span>
+                    <AntdInput
+                      className={styles.composeWorkspaceInput}
+                      size="small"
+                      placeholder="/Users/you/projects/your-repo"
+                      value={draftWorkspacePath}
+                      onChange={(e) => handleDraftWorkspaceChange(e.target.value)}
+                    />
+                    <AntdButton
+                      size="small"
+                      icon={<FolderOpen size={14} />}
+                      onClick={handleSelectDraftWorkspace}
+                    >
+                      选择
+                    </AntdButton>
+                  </div>
+                )}
                 <div className={styles.composeFooter}>
                   {!selectedTask ? (
                     <>
@@ -1594,7 +1703,7 @@ const CLITaskUI = ({
                       <span className={styles.composeHint}>
                         {templates.length === 0
                           ? '还没有团队模板'
-                          : '新任务将使用所选模板'}
+                          : '模板决定成员与协作方式，Workspace 在上方指定'}
                       </span>
                       <AntdButton
                         type="link"
@@ -1638,7 +1747,7 @@ const CLITaskUI = ({
               </div>
               {selectedTask && (
                 <div style={{ fontSize: 10, opacity: 0.5, marginTop: 6 }}>
-                  继续任务会复用此任务的 CLI 会话；输入 @开发群友名 可只让该成员执行。
+                  继续任务会复用此任务的 CLI 会话；输入 @开发成员名 可只让该成员执行。
                 </div>
               )}
               {selectedTask && continueTaskAgents.length > 0 && (

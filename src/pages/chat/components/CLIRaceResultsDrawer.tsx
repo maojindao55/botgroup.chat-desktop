@@ -193,7 +193,7 @@ export const CLIRaceResultsDrawer = ({
   }, [open, selected?.messageId, selected?.cliCwd, selected?.baseSha]);
 
   const handleCleanupOne = async (entry: CLIRaceWorktreeEntry) => {
-    const confirmed = window.confirm(`确认清理 ${entry.agentName || '该开发群友'} 的 worktree？\n${entry.cliCwd}`);
+    const confirmed = window.confirm(`确认清理 ${entry.agentName || '该开发成员'} 的 worktree？\n${entry.cliCwd}`);
     if (!confirmed) return;
     setCleaning(true);
     try {
@@ -235,7 +235,7 @@ export const CLIRaceResultsDrawer = ({
       destroyOnClose
     >
       <div className={styles.hint}>
-        对比各开发群友在独立 worktree 中相对基准 commit 的代码变更。标记采纳仅记录你的选择，不会自动 merge 到主 workspace。
+        对比各开发成员在独立 worktree 中相对基准 commit 的代码变更。标记采纳仅记录你的选择，不会自动 merge 到主 workspace。
       </div>
 
       <div className={styles.topBar}>
@@ -273,7 +273,7 @@ export const CLIRaceResultsDrawer = ({
                 onClick={() => setSelectedId(entry.messageId)}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                  <strong style={{ fontSize: 13 }}>{entry.agentName || entry.agentId || '开发群友'}</strong>
+                  <strong style={{ fontSize: 13 }}>{entry.agentName || entry.agentId || '开发成员'}</strong>
                   <Tag color={statusColor[entry.status || 'queued'] || 'default'} style={{ margin: 0 }}>
                     {entry.status || 'unknown'}
                   </Tag>

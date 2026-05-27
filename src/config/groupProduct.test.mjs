@@ -120,11 +120,11 @@ assert.doesNotMatch(cliSettings, /Runtime/);
 assert.doesNotMatch(cliSettings, /本机 CLI Runtime 状态/);
 assert.match(cliSettings, /cliWorkflowTemplates/);
 assert.match(cliSettings, /CLI 会话复用/);
-assert.match(cliSettings, /开发群友/);
+assert.match(cliSettings, /开发成员/);
 
 const memberLibrary = await readFile(new URL('../pages/chat/components/AIMemberLibrary.tsx', import.meta.url), 'utf8');
 
-for (const copy of ['资源库', '新增角色', '新增专家', '新增开发群友', '模型服务']) {
+for (const copy of ['资源库', '新增角色', '新增专家', '新增开发成员', '模型服务']) {
   assert.match(memberLibrary, new RegExp(copy));
 }
 for (const oldCopy of ['AI 群员管理库', 'AI 群员库', 'LLM 角色', 'Agent 协作', 'CLI Agent', '暂无群员']) {
@@ -133,7 +133,7 @@ for (const oldCopy of ['AI 群员管理库', 'AI 群员库', 'LLM 角色', 'Agen
 
 const memberEditor = await readFile(new URL('../pages/chat/components/AIMemberEditor.tsx', import.meta.url), 'utf8');
 
-for (const copy of ['编辑资源', '新建资源', '资源类型', '资源名称', '角色', '专家', '开发群友']) {
+for (const copy of ['编辑资源', '新建资源', '资源类型', '资源名称', '角色', '专家', '开发成员']) {
   assert.match(memberEditor, new RegExp(copy));
 }
 for (const oldCopy of ['编辑群员', '新建群员', '群员类型', '群员名称', 'LLM 角色', '>Agent<', 'CLI Agent']) {
@@ -142,7 +142,7 @@ for (const oldCopy of ['编辑群员', '新建群员', '群员类型', '群员�
 
 const memberPicker = await readFile(new URL('../pages/chat/components/MemberPicker.tsx', import.meta.url), 'utf8');
 
-assert.match(memberPicker, /开发群友/);
+assert.match(memberPicker, /开发成员/);
 assert.doesNotMatch(memberPicker, /CLI Agent/);
 assert.doesNotMatch(memberPicker, /选择群员/);
 
@@ -157,8 +157,8 @@ for (const oldCopy of ['工作空间', 'AI 群员库', '>AI<', '>CLI<', '>Agent<
 
 const chatUI = await readFile(new URL('../pages/chat/components/ChatUI.tsx', import.meta.url), 'utf8');
 
-assert.match(chatUI, /群聊中没有启用的开发群友/);
-assert.match(chatUI, /开发群友将在 workspace 中协作执行/);
+assert.match(chatUI, /群聊中没有启用的开发成员/);
+assert.match(chatUI, /开发成员将在 workspace 中协作执行/);
 assert.match(chatUI, /当前协作方式是“只读讨论”/);
 assert.match(chatUI, /资源库/);
 assert.doesNotMatch(chatUI, /当前群规是/);

@@ -273,33 +273,15 @@ export type Group = AIGroup | CLIGroup | AgentGroup;
 // ============ 预设群聊 ============
 export const defaultGroups: Group[] = [
   {
-    id: 'group1',
-    type: 'ai',
-    name: '硅碳生命体交流群',
-    description: '群消息关注度权重："user"的最新消息>其他成员最新消息>"user"的历史消息>其他成员历史消息>',
-    memberIds: ['ai8', 'ai6', 'ai7', 'ai9', 'ai10', 'ai5'],
-    isGroupDiscussionMode: false,
-    schedulerStrategy: 'tag',
-  },
-  {
     id: 'group-coding',
     type: 'cli',
     name: 'AI Coding 工作组',
     description: '多 CLI Agent 协作编码：你给需求，Agent 直接在本地 workspace 里执行修改。请先在群设置里指定 workspacePath。',
-    memberIds: ['cli-codex', 'cli-claude-code', 'cli-opencode'],
+    memberIds: ['cli-codex', 'cli-claude-code', 'cli-opencode', 'cli-cursor'],
     workspacePath: '',
     approvalMode: 'auto',
     timeout: 300000,
     showStderr: true,
     strategy: 'sequential',
-  },
-  {
-    id: 'group-agent-demo',
-    type: 'agent',
-    name: 'Agent 协作示例群',
-    description: '自定义 Agent 群示例：产品经理 + 架构师协作讨论方案',
-    memberIds: ['agent-pm', 'agent-architect'],
-    strategy: 'sequential',
-    maxRounds: 3,
   },
 ];

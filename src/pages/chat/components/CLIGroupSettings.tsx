@@ -1,6 +1,6 @@
 /**
  * 开发群配置面板
- * 管理开发群友、workspacePath、审批模式、超时等
+ * 管理开发成员、workspacePath、审批模式、超时等
  */
 import { useState, useEffect } from 'react';
 import { Drawer, Switch, Button, Input, InputNumber, Tooltip, Tabs, Tag, Spin, Select } from 'antd';
@@ -14,6 +14,7 @@ import { mapAIMemberToLegacy, type CLIAgent } from '@/config/aiCharacters';
 import type { CLIExecutionPlan, CLIGroup, CLIStrategy, CLISessionPolicy, CLIReviewLoopRoles } from '@/config/groups';
 import { cliSessionPolicyOptions } from '@/config/cliTasks';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
+import { resolveEffectiveMember } from '@/utils/aiMemberDisplay';
 import { invoke } from '@tauri-apps/api/core';
 import { openPath } from '@tauri-apps/plugin-opener';
 import CLITaskLogModal from './CLITaskLogModal';
@@ -433,7 +434,7 @@ export const CLIGroupSettings = ({
     ...group,
     memberIds: group.memberIds || group.members || [],
     members: group.memberIds || group.members || [],
-    workspacePath,
+    workspacePath: isTemplateMode ? '' : workspacePath,
     approvalMode,
     timeout,
     showStderr,
@@ -454,7 +455,7 @@ export const CLIGroupSettings = ({
   const sessionPolicyTitle = isTemplateMode ? 'CLI 会话复用' : 'CLI 会话复用';
   const sessionPolicyDesc = isTemplateMode
     ? '新任务将按此策略决定 CLI tool session 是否跨任务共享；已有任务仍使用创建时的快照。'
-    : '决定开发群友 CLI tool session 的复用范围。';
+    : '决定开发成员 CLI tool session 的复用范围。';
   const handleDrawerClose = () => {
     if (isDraftDirty) {
       const confirmed = window.confirm('放弃未保存的模板修改？');
@@ -484,12 +485,12 @@ export const CLIGroupSettings = ({
   const workspaceTitle = isTemplateMode ? '默认 Workspace' : '本地 Workspace';
   const workspaceDesc = isTemplateMode
     ? '新任务将默认使用此目录；已有任务不受影响'
-    : '开发群友将在此目录下读写代码，支持选择或输入绝对路径';
-  const membersManageLabel = isTemplateMode ? '模板成员' : '添加/管理开发群友';
-  const membersListLabel = isTemplateMode ? '模板成员' : '开发群友';
+    : '开发成员将在此目录下读写代码，支持选择或输入绝对路径';
+  const membersManageLabel = isTemplateMode ? '模板成员' : '添加/管理开发成员';
+  const membersListLabel = isTemplateMode ? '模板成员' : '开发成员';
   const memberPickerPlaceholder = isTemplateMode
     ? '选择模板成员...'
-    : '选择开发群友加入群聊...';
+    : '选择开发成员加入群聊...';
   const [cliStatus, setCliStatus] = useState<Record<string, CliStatus | 'loading'>>({});
 
   // History tab states
@@ -527,7 +528,7 @@ export const CLIGroupSettings = ({
       ...draftGroup,
       memberIds: draftGroup.memberIds || draftGroup.members || [],
       members: draftGroup.memberIds || draftGroup.members || [],
-      workspacePath: draftGroup.workspacePath || '',
+      workspacePath: '',
       approvalMode: draftGroup.approvalMode || 'auto',
       timeout: draftGroup.timeout ?? 300000,
       showStderr: draftGroup.showStderr !== false,
@@ -667,13 +668,13 @@ export const CLIGroupSettings = ({
   };
 
   const strategyDescriptions: Record<CLIStrategy, string> = {
-    router: '自动选择最合适的开发群友处理当前任务，适合大多数一次性请求。',
-    sequential: '多个开发群友独立处理同一任务，结果并列展示，适合比较不同方案。',
-    pipeline: '按成员顺序接力开发，后续开发群友会看到上一阶段输出。',
-    race: '为每位开发群友创建独立 worktree 并行完成同一任务，适合隔离对比代码结果。',
+    router: '自动选择最合适的开发成员处理当前任务，适合大多数一次性请求。',
+    sequential: '多个开发成员独立处理同一任务，结果并列展示，适合比较不同方案。',
+    pipeline: '按成员顺序接力开发，后续开发成员会看到上一阶段输出。',
+    race: '为每位开发成员创建独立 worktree 并行完成同一任务，适合隔离对比代码结果。',
     review: '实现、审核、修正形成闭环，适合 Codex 写代码、Claude Code 审核这类开发协作。',
-    discussion: '多位开发群友分轮讨论方案和风险，在临时只读副本中执行。',
-    debate: '多位开发群友独立提案、互评，再形成最终建议。',
+    discussion: '多位开发成员分轮讨论方案和风险，在临时只读副本中执行。',
+    debate: '多位开发成员独立提案、互评，再形成最终建议。',
     mapreduce: '并行执行同一任务，汇总所有结果对比查看',
   };
   const selectedCliTemplate = cliWorkflowTemplates.find((item) => item.id === selectedCliTemplateId);
@@ -684,7 +685,7 @@ export const CLIGroupSettings = ({
   const memberIds = effectiveGroup.memberIds || effectiveGroup.members || [];
   const visibleMembers = isTemplateMode
     ? memberIds
-      .map(id => aiMembers[id])
+      .map(id => resolveEffectiveMember(aiMembers, id))
       .filter(m => m && m.kind === 'cli')
       .map(m => mapAIMemberToLegacy(m) as CLIAgent)
     : members;
@@ -728,7 +729,6 @@ export const CLIGroupSettings = ({
               <div className={styles.snapshotMeta}>
                 <span>已有任务 {linkedTaskCount}</span>
                 <span>成员 {visibleMembers.length}</span>
-                <span>{effectiveWorkspacePath ? '已设置默认 Workspace' : '未设置默认 Workspace'}</span>
               </div>
             </div>
           )}
@@ -763,7 +763,7 @@ export const CLIGroupSettings = ({
             </div>
           )}
 
-          {/* workspace */}
+          {!isTemplateMode && (
           <div className={styles.panel}>
             <div className={styles.panelHeader}>
               <FolderOpen size={16} />
@@ -777,8 +777,7 @@ export const CLIGroupSettings = ({
                 placeholder="/Users/you/projects/your-repo"
                 value={effectiveWorkspacePath}
                 onChange={(e) => {
-                  if (isTemplateMode) updateDraftGroup({ workspacePath: e.target.value });
-                  else onWorkspacePathChange(e.target.value);
+                  onWorkspacePathChange(e.target.value);
                 }}
                 style={{ flex: 1, fontFamily: 'var(--ant-font-family-code)' }}
               />
@@ -789,8 +788,7 @@ export const CLIGroupSettings = ({
                   try {
                     const selected = await invoke<string | null>('select_directory');
                     if (selected) {
-                      if (isTemplateMode) updateDraftGroup({ workspacePath: selected });
-                      else onWorkspacePathChange(selected);
+                      onWorkspacePathChange(selected);
                     }
                   } catch (e) {
                     console.error('Failed to select directory:', e);
@@ -801,13 +799,14 @@ export const CLIGroupSettings = ({
               </Button>
             </div>
           </div>
+          )}
 
           {/* approval */}
           <div className={styles.panel}>
             <div className={styles.rowBetween}>
               <div>
                 <div style={{ fontSize: 14, fontWeight: 500 }}>自动审批</div>
-                <div className={styles.panelDesc} style={{ marginTop: 4 }}>开启后开发群友自动执行，无需确认</div>
+                <div className={styles.panelDesc} style={{ marginTop: 4 }}>开启后开发成员自动执行，无需确认</div>
               </div>
               <Switch
                 checked={effectiveApprovalMode === 'auto'}
@@ -929,12 +928,12 @@ export const CLIGroupSettings = ({
             </p>
             {effectiveStrategy === 'race' && (
               <p className={styles.panelDesc} style={{ marginTop: 4, color: '#ff9500' }}>
-                需要 git 仓库，且当前工作区不能有未提交改动；每位开发群友在独立 worktree 中执行。
+                需要 git 仓库，且当前工作区不能有未提交改动；每位开发成员在独立 worktree 中执行。
               </p>
             )}
             {effectiveStrategy === 'pipeline' && (
               <p className={styles.panelDesc} style={{ marginTop: 4 }}>
-                默认失败继续（让后续开发群友诊断）；用户取消会停止后续阶段。
+                默认失败继续（让后续开发成员诊断）；用户取消会停止后续阶段。
               </p>
             )}
             {isReviewLoopWorkflow && (
@@ -944,7 +943,7 @@ export const CLIGroupSettings = ({
             )}
             {isReviewLoopWorkflow && visibleMembers.length < 2 && (
               <p className={styles.panelDesc} style={{ marginTop: 4, color: '#ff9500' }}>
-                建议至少选择 2 个开发群友，并分别指定规划/评审者与实现者。
+                建议至少选择 2 个开发成员，并分别指定规划/评审者与实现者。
               </p>
             )}
           </div>
@@ -953,7 +952,7 @@ export const CLIGroupSettings = ({
             <div className={styles.panel}>
               <div style={{ fontSize: 14, fontWeight: 500 }}>角色分工</div>
               <div className={styles.panelDesc}>
-                指定谁负责规划、谁按方案写代码、谁做复审。规划者和评审者可以是同一个开发群友。
+                指定谁负责规划、谁按方案写代码、谁做复审。规划者和评审者可以是同一个开发成员。
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
                 <div>
@@ -1017,7 +1016,7 @@ export const CLIGroupSettings = ({
               <div className={styles.rowBetween}>
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 500 }}>失败处理</div>
-                  <div className={styles.panelDesc} style={{ marginTop: 2 }}>开发群友失败后是否继续执行后续阶段</div>
+                  <div className={styles.panelDesc} style={{ marginTop: 2 }}>开发成员失败后是否继续执行后续阶段</div>
                 </div>
                 <select
                   value={effectiveGroup.executionPlan?.failurePolicy || 'continue'}
@@ -1126,7 +1125,7 @@ export const CLIGroupSettings = ({
             <div className={styles.scrollList}>
               {visibleMembers.length === 0 && (
                 <div className={styles.emptyMembers}>
-                  还没有模板成员。添加至少 1 位开发群友后，新任务才能执行。
+                  还没有模板成员。添加至少 1 位开发成员后，新任务才能执行。
                 </div>
               )}
               {visibleMembers.map((agent) => {
@@ -1361,7 +1360,7 @@ export const CLIGroupSettings = ({
             </div>
             <div style={{ padding: 12, background: 'rgba(0,0,0,0.04)', borderRadius: 8, marginBottom: 12 }}>
               <p style={{ fontSize: 12, color: 'rgba(0,0,0,0.65)', margin: 0 }}>
-                隔离竞赛会为每位开发群友创建独立的 git worktree。
+                隔离竞赛会为每位开发成员创建独立的 git worktree。
                 执行完成后 worktree 默认保留，你可以在此处查看和清理。
               </p>
             </div>

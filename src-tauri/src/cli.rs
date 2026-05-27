@@ -109,7 +109,7 @@ pub struct CliRunArgs {
     pub group_id: String,
     pub agent_id: String,
     pub agent_name: String,
-    /// "codex" | "opencode" | "claude" | "generic"
+    /// "codex" | "opencode" | "claude" | "cursor" | "generic"
     pub adapter: String,
     pub prompt: String,
     pub cwd: Option<String>,
@@ -842,6 +842,7 @@ fn adapter_binary(adapter: &str) -> Option<&'static str> {
         "codex" => Some("codex"),
         "opencode" => Some("opencode"),
         "claude" => Some("claude"),
+        "cursor" => Some("cursor"),
         "aider" => Some("aider"),
         "gemini" => Some("gemini"),
         "generic" => None, // requires explicit binary override
@@ -969,6 +970,67 @@ fn build_command(args: &CliRunArgs) -> Result<Command, String> {
                         || arg == "-c"
                         || arg == "--session-id"
                         || arg.starts_with("--session-id=")
+                })
+            });
+            if !has_session {
+                if let Some(tool_session_id) = &args.tool_session_id {
+                    if !tool_session_id.is_empty() {
+                        cmd.arg("--resume").arg(tool_session_id);
+                    }
+                }
+            }
+            cmd.arg(&args.prompt);
+        }
+
+        // cursor agent -p [flags] "<prompt>"
+        // Headless print mode; streams stream-json events on stdout.
+        "cursor" => {
+            cmd.arg("agent");
+            cmd.arg("-p");
+            let has_output_format = args.extra_args.as_ref().map_or(false, |extra| {
+                extra
+                    .iter()
+                    .any(|arg| arg == "--output-format" || arg.starts_with("--output-format="))
+            });
+            if !has_output_format {
+                cmd.arg("--output-format").arg("stream-json");
+            }
+            let has_trust = args.extra_args.as_ref().map_or(false, |extra| {
+                extra.iter().any(|arg| arg == "--trust")
+            });
+            if !has_trust {
+                cmd.arg("--trust");
+            }
+            if args.approval_mode.as_deref() == Some("auto") {
+                let has_force = args.extra_args.as_ref().map_or(false, |extra| {
+                    extra.iter().any(|arg| arg == "--force" || arg == "--yolo")
+                });
+                if !has_force {
+                    cmd.arg("--force");
+                }
+            }
+            if let Some(cwd) = &args.cwd {
+                if !cwd.is_empty() {
+                    let has_workspace = args.extra_args.as_ref().map_or(false, |extra| {
+                        extra
+                            .iter()
+                            .any(|arg| arg == "--workspace" || arg.starts_with("--workspace="))
+                    });
+                    if !has_workspace {
+                        cmd.arg("--workspace").arg(cwd);
+                    }
+                }
+            }
+            if let Some(extra) = &args.extra_args {
+                for a in extra {
+                    cmd.arg(a);
+                }
+            }
+            let has_session = args.extra_args.as_ref().map_or(false, |extra| {
+                extra.iter().any(|arg| {
+                    arg == "--resume"
+                        || arg.starts_with("--resume=")
+                        || arg == "--continue"
                 })
             });
             if !has_session {
@@ -1359,6 +1421,92 @@ mod tests {
 
         assert!(rendered.contains("\"--format\" \"default\""));
         assert!(!rendered.contains("\"--format\" \"json\""));
+    }
+
+    #[test]
+    fn cursor_agent_defaults_to_stream_json() {
+        let cmd = build_command(&CliRunArgs {
+            session_id: "session-1".to_string(),
+            group_id: "group-1".to_string(),
+            agent_id: "cli-cursor".to_string(),
+            agent_name: "Cursor".to_string(),
+            adapter: "cursor".to_string(),
+            prompt: "审查代码".to_string(),
+            cwd: Some("/tmp/project".to_string()),
+            extra_args: None,
+            tool_session_id: None,
+            binary: None,
+            env: Some(HashMap::new()),
+            timeout_ms: Some(300000),
+            approval_mode: Some("auto".to_string()),
+            show_stderr: Some(false),
+        })
+        .expect("cursor command should build");
+
+        let rendered = format!("{:?}", cmd);
+
+        assert!(rendered.contains("\"agent\""));
+        assert!(rendered.contains("\"-p\""));
+        assert!(rendered.contains("\"--output-format\""));
+        assert!(rendered.contains("\"stream-json\""));
+        assert!(rendered.contains("\"--trust\""));
+        assert!(rendered.contains("\"--force\""));
+        assert!(rendered.contains("\"--workspace\""));
+        assert!(rendered.contains("\"/tmp/project\""));
+        assert!(rendered.contains("\"审查代码\""));
+    }
+
+    #[test]
+    fn cursor_agent_resumes_tool_session_when_available() {
+        let cmd = build_command(&CliRunArgs {
+            session_id: "session-1".to_string(),
+            group_id: "group-1".to_string(),
+            agent_id: "cli-cursor".to_string(),
+            agent_name: "Cursor".to_string(),
+            adapter: "cursor".to_string(),
+            prompt: "继续审查".to_string(),
+            cwd: Some("/tmp/project".to_string()),
+            extra_args: None,
+            tool_session_id: Some("0f373dc8-07f8-4c79-8953-9d30ccb34053".to_string()),
+            binary: None,
+            env: Some(HashMap::new()),
+            timeout_ms: Some(300000),
+            approval_mode: Some("auto".to_string()),
+            show_stderr: Some(false),
+        })
+        .expect("cursor resume command should build");
+
+        let rendered = format!("{:?}", cmd);
+
+        assert!(rendered.contains("\"--resume\""));
+        assert!(rendered.contains("\"0f373dc8-07f8-4c79-8953-9d30ccb34053\""));
+        assert!(rendered.contains("\"继续审查\""));
+    }
+
+    #[test]
+    fn cursor_agent_respects_explicit_resume_arg() {
+        let cmd = build_command(&CliRunArgs {
+            session_id: "session-1".to_string(),
+            group_id: "group-1".to_string(),
+            agent_id: "cli-cursor".to_string(),
+            agent_name: "Cursor".to_string(),
+            adapter: "cursor".to_string(),
+            prompt: "继续审查".to_string(),
+            cwd: Some("/tmp/project".to_string()),
+            extra_args: Some(vec!["--resume".to_string(), "manual-session".to_string()]),
+            tool_session_id: Some("stored-session".to_string()),
+            binary: None,
+            env: Some(HashMap::new()),
+            timeout_ms: Some(300000),
+            approval_mode: Some("auto".to_string()),
+            show_stderr: Some(false),
+        })
+        .expect("cursor command should build");
+
+        let rendered = format!("{:?}", cmd);
+
+        assert!(rendered.contains("\"manual-session\""));
+        assert!(!rendered.contains("\"stored-session\""));
     }
 
     #[test]

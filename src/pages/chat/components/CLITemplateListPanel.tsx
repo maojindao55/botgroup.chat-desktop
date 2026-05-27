@@ -206,7 +206,6 @@ export const CLITemplateListPanel = ({
           </div>
           <div className={styles.meta}>
             {strategyLabel(template.strategy, template.workflowTemplateId)} · {template.memberIds.length} 位成员
-            {template.workspacePath ? ` · ${template.workspacePath}` : ''}
             {` · ${sessionPolicyLabel(template.sessionPolicy)}`}
           </div>
           <div className={styles.meta}>

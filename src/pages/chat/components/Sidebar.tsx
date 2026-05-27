@@ -5,6 +5,7 @@ import {
   MessageSquare as MessageSquareIcon,
   Monitor,
   Moon,
+  MoreHorizontal,
   PanelLeftClose as PanelLeftCloseIcon,
   PlusCircle as PlusCircleIcon,
   Puzzle,
@@ -12,7 +13,8 @@ import {
   Terminal,
   Users as UsersIcon,
 } from 'lucide-react';
-import { Tooltip } from 'antd';
+import { Dropdown, Tooltip } from 'antd';
+import type { MenuProps } from 'antd';
 import { ActionIcon, Segmented } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 import GitHubButton from 'react-github-btn';
@@ -22,6 +24,7 @@ import { UserSection } from './UserSection';
 import { useTheme } from '@/hooks/use-theme';
 import CreateGroupWizard from './CreateGroupWizard';
 import { getProductGroupType } from '@/config/groupProduct';
+import { isBuiltinGroupId } from '@/config/groupStorage';
 import type { Group, GroupType } from '@/config/groups';
 
 const getGroupIcon = (group: Group) => {
@@ -147,6 +150,41 @@ const useStyles = createStyles(({ token, css }) => ({
     flex: 1;
     min-width: 0;
   `,
+  navItemRow: css`
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-bottom: 4px;
+
+    &:hover .nav-menu-btn {
+      opacity: 1;
+    }
+  `,
+  navItemMain: css`
+    flex: 1;
+    min-width: 0;
+    margin-bottom: 0 !important;
+  `,
+  navMenuBtn: css`
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    color: ${token.colorTextTertiary};
+    opacity: 0;
+    transition: all 0.15s ease;
+
+    &:hover {
+      background: ${token.colorFillTertiary};
+      color: ${token.colorText};
+    }
+  `,
   createBtn: css`
     margin-top: 12px;
   `,
@@ -242,6 +280,8 @@ interface SidebarProps {
   groups: Group[];
   onCreateGroup?: (group: Group) => void;
   onOpenLibrary?: () => void;
+  onEditGroup?: (index: number) => void;
+  onDeleteGroup?: (group: Group, index: number) => void;
   activeView?: 'groups' | 'cli-tasks';
   onNavigateCLI?: () => void;
   hiddenGroupTypes?: GroupType[];
@@ -255,6 +295,8 @@ const Sidebar = ({
   groups,
   onCreateGroup,
   onOpenLibrary,
+  onEditGroup,
+  onDeleteGroup,
   activeView = 'groups',
   onNavigateCLI,
   hiddenGroupTypes = [],
@@ -292,6 +334,11 @@ const Sidebar = ({
         open={showCreateWizard}
         onOpenChange={setShowCreateWizard}
         onCreateGroup={handleCreateGroup}
+        allowedGroupTypes={['ai', 'agent']}
+        onOpenLibrary={() => {
+          setShowCreateWizard(false);
+          onOpenLibrary?.();
+        }}
       />
 
       <div
@@ -370,42 +417,71 @@ const Sidebar = ({
             {filteredGroups.map(({ group, originalIndex }) => {
             const Icon = getGroupIcon(group);
             const isSelected = activeView === 'groups' && selectedGroupIndex === originalIndex;
+            const canManage = !isBuiltinGroupId(group.id) && (group.type === 'ai' || group.type === 'agent');
+            const menuItems: MenuProps['items'] = [
+              {
+                key: 'edit',
+                label: '编辑群聊',
+                onClick: () => onEditGroup?.(originalIndex),
+              },
+              {
+                key: 'delete',
+                label: '删除群聊',
+                danger: true,
+                onClick: () => onDeleteGroup?.(group, originalIndex),
+              },
+            ];
             const item = (
-              <a
-                href="#"
-                onClick={(e) => {
-                  e.preventDefault();
-                  onSelectGroup?.(originalIndex);
-                }}
-                className={cx(
-                  styles.navItem,
-                  isSelected && styles.navItemActive,
-                  !isOpen && styles.navItemCollapsed,
-                )}
-              >
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 10,
-                    minWidth: 0,
-                    flex: 1,
-                    justifyContent: isOpen ? 'flex-start' : 'center',
+              <div className={styles.navItemRow}>
+                <a
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onSelectGroup?.(originalIndex);
                   }}
-                >
-                  <Icon
-                    size={16}
-                    style={{
-                      flexShrink: 0,
-                      color: isSelected ? '#ff6600' : undefined,
-                    }}
-                  />
-                  {isOpen && (
-                    <span className={styles.navItemLabel}>{group.name}</span>
+                  className={cx(
+                    styles.navItem,
+                    styles.navItemMain,
+                    isSelected && styles.navItemActive,
+                    !isOpen && styles.navItemCollapsed,
                   )}
-                </div>
-                {isOpen && renderGroupTag(group.type || 'ai', styles, cx)}
-              </a>
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      minWidth: 0,
+                      flex: 1,
+                      justifyContent: isOpen ? 'flex-start' : 'center',
+                    }}
+                  >
+                    <Icon
+                      size={16}
+                      style={{
+                        flexShrink: 0,
+                        color: isSelected ? '#ff6600' : undefined,
+                      }}
+                    />
+                    {isOpen && (
+                      <span className={styles.navItemLabel}>{group.name}</span>
+                    )}
+                  </div>
+                  {isOpen && renderGroupTag(group.type || 'ai', styles, cx)}
+                </a>
+                {isOpen && canManage && (onEditGroup || onDeleteGroup) && (
+                  <Dropdown menu={{ items: menuItems }} trigger={['click']} placement="bottomRight">
+                    <button
+                      type="button"
+                      className={cx(styles.navMenuBtn, 'nav-menu-btn')}
+                      aria-label="群聊操作"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <MoreHorizontal size={16} />
+                    </button>
+                  </Dropdown>
+                )}
+              </div>
             );
             return !isOpen ? (
               <Tooltip

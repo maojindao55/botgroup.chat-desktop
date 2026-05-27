@@ -7,10 +7,11 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "test:cli": "node src/config/cliTasks.test.mjs && node src/utils/cliTaskTitleCandidates.test.mjs && node src/engine/cliEngine.modes.test.mjs && node src/engine/cliWorkflowModes.test.mjs && node src/engine/cliIntent.test.mjs && node src/engine/cliPrompt.test.mjs && node src/engine/cliToolSessions.test.mjs",
-    "test:llm": "node src/utils/llmClient.test.mjs && node src/utils/cliOutput.test.mjs && node src/utils/opencodeStream.test.mjs && node src/utils/codexStream.test.mjs && node src/utils/claudeStream.test.mjs && node src/utils/markdownContent.test.mjs",
+    "test:llm": "node src/utils/llmClient.test.mjs && node src/utils/cliOutput.test.mjs && node src/utils/opencodeStream.test.mjs && node src/utils/codexStream.test.mjs && node src/utils/claudeStream.test.mjs && node src/utils/cursorStream.test.mjs && node src/utils/lobehubAvatar.test.mjs && node src/utils/markdownContent.test.mjs",
     "test:product": "node src/config/groupProduct.test.mjs",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "icon:gen": "tauri icon src-tauri/icons/icon-source.png -o src-tauri/icons"
   },
   "dependencies": {
     "@alicloud/credentials": "^2.4.2",

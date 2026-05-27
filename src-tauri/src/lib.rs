@@ -63,6 +63,24 @@ pub fn run() {
             cli::cli_tempcopy_prepare,
             cli::cli_tempcopy_cleanup
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            if let tauri::RunEvent::Ready = event {
+                apply_window_icons(&app_handle);
+            }
+        });
+}
+
+/// macOS 开发模式下 Dock 图标有时不会自动刷新，显式同步窗口图标。
+fn apply_window_icons(app: &tauri::AppHandle) {
+    use tauri::Manager;
+
+    let Some(icon) = app.default_window_icon().cloned() else {
+        return;
+    };
+
+    for (_, window) in app.webview_windows() {
+        let _ = window.set_icon(icon.clone());
+    }
 }
