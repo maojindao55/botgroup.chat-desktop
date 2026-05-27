@@ -6,7 +6,7 @@ import { X } from 'lucide-react';
 import { createStyles } from 'antd-style';
 import { cliWorkflowTemplates } from '@/config/groupProduct';
 import type { CLIDevelopmentTask, CLITaskStatus } from '@/config/cliTasks';
-import { canMutateTask, sessionPolicyLabel } from '@/config/cliTasks';
+import { canMutateTask, getTaskDisplayStatus, sessionPolicyLabel } from '@/config/cliTasks';
 import type { AIMember } from '@/config/aiMembers';
 
 const statusLabels: Record<CLITaskStatus, { label: string; color: string }> = {
@@ -193,7 +193,7 @@ export const CLITaskInfoPanel = ({
   }
 
   const snapshot = task.templateSnapshot;
-  const statusInfo = statusLabels[task.status] || statusLabels.queued;
+  const statusInfo = statusLabels[getTaskDisplayStatus(task)] || statusLabels.queued;
   const snapshotMembers = snapshot.memberIds
     .map(id => members[id])
     .filter(Boolean);

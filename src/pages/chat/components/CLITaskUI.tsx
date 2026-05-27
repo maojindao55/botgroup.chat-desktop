@@ -41,6 +41,8 @@ import { resolveEffectiveMember } from '@/utils/aiMemberDisplay';
 import type { Group, CLIGroup } from '@/config/groups';
 import {
   templateSnapshotToCLIGroup,
+  cliTaskMemberSnapshotToAgent,
+  createCLITaskMemberSnapshots,
   parseAgentMention,
   isRaceTask,
   getRaceWorktreeEntries,
@@ -65,6 +67,8 @@ import {
   writeLastCliWorkspace,
   resolveDraftCliWorkspace,
 } from '@/utils/cliWorkspaceStorage';
+import { getCLIWorkflowLabel } from '@/config/groupProduct';
+import { adapterUsesOpenCodeSessionTitle, supportsCliToolSession } from '@/config/cliAdapters';
 
 interface CLITaskUIProps {
   groups: Group[];
@@ -380,6 +384,13 @@ const useStyles = createStyles(({ token, css }) => ({
     padding-top: 8px;
     border-top: 1px solid ${token.colorBorderSecondary};
     font-size: 11px;
+    gap: 16px;
+  `,
+  cliTaskStatus: css`
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 500;
   `,
   cliActionBtnRetry: css`
     padding: 0 6px;
@@ -418,11 +429,15 @@ const useStyles = createStyles(({ token, css }) => ({
     flex-wrap: wrap;
   `,
   spinnerIcon: css`
+    display: inline-block;
+    flex-shrink: 0;
+    box-sizing: border-box;
     width: 12px;
     height: 12px;
     border-radius: 50%;
     border: 2px solid ${token.colorInfo};
     border-top-color: transparent;
+    vertical-align: middle;
     animation: spin 1s linear infinite;
     @keyframes spin { to { transform: rotate(360deg); } }
   `,
@@ -773,11 +788,16 @@ const CLITaskUI = ({
     const execGroup = templateSnapshotToCLIGroup(snapshot);
     const ws = developmentTask.workspacePath || snapshot.workspacePath || '';
 
+    const snapshotAgents = developmentTask.memberSnapshots?.length
+      ? developmentTask.memberSnapshots.map(memberSnapshot => cliTaskMemberSnapshotToAgent(memberSnapshot) as CLIAgent)
+      : null;
     const memberIds = snapshot.memberIds;
-    let activeAgents = memberIds
+    let activeAgents = snapshotAgents || memberIds
       .map(id => resolveEffectiveMember(aiMembers, id))
-      .filter(m => m && m.kind === 'cli' && !mutedUsers.includes(m.id))
+      .filter(m => m && m.kind === 'cli')
       .map(m => mapAIMemberToLegacy(m) as CLIAgent);
+
+    activeAgents = activeAgents.filter(agent => !mutedUsers.includes(agent.id));
 
     if (retryAgentId) {
       activeAgents = activeAgents.filter(a => a.id === retryAgentId);
@@ -833,7 +853,14 @@ const CLITaskUI = ({
     const messageIdByAgentTask = new Map<string, string>();
     const agentIdByAgentTask = new Map<string, string>();
     const opencodeSessionByAgentTask = new Map<string, string>();
-    const openCodeLedThisRun = activeAgents.length > 0 && activeAgents[0].cli?.adapter === 'opencode';
+    const openCodeLedThisRun = activeAgents.length > 0 && adapterUsesOpenCodeSessionTitle(activeAgents[0].cli?.adapter);
+    const resolveRuntimeMember = (agentId: string) => {
+      const memberSnapshot = developmentTask.memberSnapshots?.find(member => member.id === agentId);
+      if (memberSnapshot) {
+        return { kind: 'cli', cli: memberSnapshot.cli };
+      }
+      return resolveEffectiveMember(aiMembers, agentId);
+    };
 
     const flushOpenCodeTitleSync = () => {
       const seen = new Set<string>();
@@ -847,6 +874,7 @@ const CLITaskUI = ({
           sessionId,
           openCodeLedThisRun,
           getTask: () => useCLITaskStore.getState().getTask(developmentTask.id),
+          resolveMember: resolveRuntimeMember,
           updateTask,
         });
       };
@@ -873,10 +901,7 @@ const CLITaskUI = ({
         {
           onAgentStart: (agentTaskId, agentId, agentName, meta) => {
             agentIdByAgentTask.set(agentTaskId, agentId);
-            const agentMember = resolveEffectiveMember(aiMembers, agentId);
-            const agentInfo = agentMember?.kind === 'cli'
-              ? mapAIMemberToLegacy(agentMember) as CLIAgent
-              : undefined;
+            const agentInfo = activeAgents.find(agent => agent.id === agentId);
             const baseName = agentInfo?.name || agentName;
             const msgId = `msg-${agentTaskId}`;
             messageIdByAgentTask.set(agentTaskId, msgId);
@@ -903,10 +928,10 @@ const CLITaskUI = ({
             });
           },
           onToolSession: (agentTaskId, agentId, adapter, sessionId) => {
-            if (adapter === 'opencode' || adapter === 'codex' || adapter === 'claude' || adapter === 'cursor') {
+            if (supportsCliToolSession(adapter)) {
               localStorage.setItem(getSessionKey(developmentTask, agentId), sessionId);
             }
-            if (adapter === 'opencode') {
+            if (adapterUsesOpenCodeSessionTitle(adapter)) {
               opencodeSessionByAgentTask.set(agentTaskId, sessionId);
               const msgId = messageIdByAgentTask.get(agentTaskId);
               if (msgId) {
@@ -970,6 +995,11 @@ const CLITaskUI = ({
       });
     } finally {
       flushOpenCodeTitleSync();
+      scheduleCLITaskTitleSync({
+        taskId: developmentTask.id,
+        getTask: () => useCLITaskStore.getState().getTask(developmentTask.id),
+        updateTask,
+      });
       useCLITaskStore.getState().syncTaskStatus(developmentTask.id);
     }
   };
@@ -1005,6 +1035,9 @@ const CLITaskUI = ({
           prompt: rawInput,
           template: liveTemplate,
           workspacePath: ws,
+          memberSnapshots: createCLITaskMemberSnapshots(
+            liveTemplate.memberIds.map(id => resolveEffectiveMember(aiMembers, id)),
+          ),
         });
         const createdTaskId = task.id;
         scheduleCLITaskTitleSync({
@@ -1677,7 +1710,7 @@ const CLITaskUI = ({
                               >
                                 <div className={styles.templateCardTitle}>{tmpl.name}</div>
                                 <div className={styles.templateCardMeta}>
-                                  <span>{tmpl.strategy === 'race' ? '竞争模式' : tmpl.strategy === 'mapreduce' ? 'MapReduce 策略' : '顺序执行'}</span>
+                                  <span>{getCLIWorkflowLabel(tmpl.strategy, tmpl.workflowTemplateId)}</span>
                                   <span>·</span>
                                   <span>{tmpl.memberIds.length} 位成员</span>
                                 </div>
@@ -1788,13 +1821,16 @@ const CLITaskUI = ({
                           </div>
                           <div className={cx(bubbleClass, 'chat-message')}>
                             <ChatMarkdown content={message.content} isUser={isUser} />
+                            {isStreaming && (
+                              <span className="typing-indicator" style={{ marginLeft: 4 }}>▋</span>
+                            )}
                             {message.taskId && (
                               <div className={styles.cliTaskFooter}>
-                                <span>
+                                <span className={styles.cliTaskStatus}>
                                   {message.status === 'running' && (
                                     <>
                                       <span className={styles.spinnerIcon} />
-                                      <span> 执行中</span>
+                                      <span>执行中</span>
                                     </>
                                   )}
                                   {message.status === 'completed' && <span style={{ color: '#52c41a' }}>✅ 已完成</span>}

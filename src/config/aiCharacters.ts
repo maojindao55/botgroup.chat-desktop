@@ -1,5 +1,6 @@
 import { builtinAIMembers, AIMember } from './aiMembers';
 import { applyPromptTemplate } from '@/utils/prompt';
+import type { CLIAdapterId } from './cliAdapters';
 
 // ============ 模型配置 ============
 export const modelConfigs = [
@@ -81,7 +82,7 @@ export interface CLIAgent {
   tags?: string[];
   runtime: 'cli';
   cli: {
-    adapter: 'codex' | 'opencode' | 'claude' | 'cursor' | 'aider' | 'gemini' | 'generic';
+    adapter: CLIAdapterId;
     binary?: string;
     extraArgs?: string[];
     toolSessionId?: string;

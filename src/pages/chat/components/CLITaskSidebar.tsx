@@ -14,7 +14,7 @@ import { Input, Tooltip, Button } from 'antd';
 import { ActionIcon } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 import type { CLIDevelopmentTask, CLITaskStatus } from '@/config/cliTasks';
-import { canMutateTask, filterDevelopmentTasks } from '@/config/cliTasks';
+import { canMutateTask, filterDevelopmentTasks, getTaskDisplayStatus } from '@/config/cliTasks';
 import { useAIMemberStore } from '@/store/aiMemberStore';
 import { resolveEffectiveMember } from '@/utils/aiMemberDisplay';
 
@@ -451,7 +451,8 @@ export const CLITaskSidebar = ({
               </div>
             )}
             {filteredTasks.map(task => {
-              const statusInfo = statusLabels[task.status] || statusLabels.queued;
+              const displayStatus = getTaskDisplayStatus(task);
+              const statusInfo = statusLabels[displayStatus] || statusLabels.queued;
               const isSelected = selectedTaskId === task.id;
               const canDelete = canMutateTask(task);
               return (
@@ -464,7 +465,7 @@ export const CLITaskSidebar = ({
                     <div className={styles.taskTitleWrap}>
                       <span className={styles.taskTitle}>{task.title}</span>
                       <span className={styles.taskStatus}>
-                        <span className={cx(styles.statusDot, statusDotClass(task.status))} />
+                        <span className={cx(styles.statusDot, statusDotClass(displayStatus))} />
                         {statusInfo.label}
                       </span>
                     </div>

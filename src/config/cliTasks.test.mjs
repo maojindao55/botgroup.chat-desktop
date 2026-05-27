@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import ts from 'typescript';
 
-async function importTsModule(url) {
-  const source = await readFile(url, 'utf8');
+async function importTsModule(url, transform = (source) => source) {
+  const source = transform(await readFile(url, 'utf8'));
   const compiled = ts.transpileModule(`${source}\n// cache-bust:${Date.now()}:${Math.random()}`, {
     compilerOptions: {
       module: ts.ModuleKind.ES2022,
@@ -14,8 +14,22 @@ async function importTsModule(url) {
   return import(moduleUrl);
 }
 
-const mod = await importTsModule(new URL('./cliTasks.ts', import.meta.url));
-const sessions = await importTsModule(new URL('../engine/cliToolSessions.ts', import.meta.url));
+const adapterModule = await importTsModule(new URL('./cliAdapters.ts', import.meta.url));
+globalThis.__cliTasksTestDeps = adapterModule;
+const mod = await importTsModule(
+  new URL('./cliTasks.ts', import.meta.url),
+  source => source.replace(
+    "import { adapterUsesOpenCodeSessionTitle } from './cliAdapters';",
+    'const { adapterUsesOpenCodeSessionTitle } = globalThis.__cliTasksTestDeps;',
+  ),
+);
+const sessions = await importTsModule(
+  new URL('../engine/cliToolSessions.ts', import.meta.url),
+  source => source.replace(
+    "import { hasExplicitToolSessionArg, supportsCliToolSession } from '@/config/cliAdapters';",
+    'const { hasExplicitToolSessionArg, supportsCliToolSession } = globalThis.__cliTasksTestDeps;',
+  ),
+);
 
 const sampleGroup = {
   id: 'group-coding',
@@ -56,6 +70,60 @@ assert.deepEqual(task.templateSnapshot, template);
 assert.equal(task.messages.length, 1);
 assert.equal(task.messages[0].role, 'user');
 assert.equal(task.messages[0].content, 'Fix login page validation');
+
+{
+  const sourceMembers = [
+    {
+      id: 'cli-codex',
+      kind: 'cli',
+      name: 'Codex Stable',
+      avatar: '/img/codex.webp',
+      tags: ['编码'],
+      cli: {
+        adapter: 'codex',
+        binary: '/usr/local/bin/codex',
+        extraArgs: ['--json'],
+        env: { CODEX_HOME: '/tmp/codex-home' },
+        approvalMode: 'auto',
+        showStderr: true,
+      },
+    },
+    {
+      id: 'llm-qwen',
+      kind: 'llm',
+      name: 'Qwen',
+    },
+  ];
+  const memberSnapshots = mod.createCLITaskMemberSnapshots(sourceMembers);
+  const snapshotTask = mod.createDevelopmentTask({
+    prompt: 'Use original runtime',
+    template,
+    workspacePath: '/Users/dev/project',
+    memberSnapshots,
+  });
+
+  assert.deepEqual(snapshotTask.memberSnapshots.map((m) => m.id), ['cli-codex']);
+  assert.equal(snapshotTask.memberSnapshots[0].name, 'Codex Stable');
+  assert.equal(snapshotTask.memberSnapshots[0].cli.adapter, 'codex');
+  assert.equal(snapshotTask.memberSnapshots[0].cli.binary, '/usr/local/bin/codex');
+  assert.deepEqual(snapshotTask.memberSnapshots[0].cli.extraArgs, ['--json']);
+  assert.deepEqual(snapshotTask.memberSnapshots[0].cli.env, { CODEX_HOME: '/tmp/codex-home' });
+
+  sourceMembers[0].cli.adapter = 'opencode';
+  sourceMembers[0].cli.extraArgs.push('--mutated');
+  sourceMembers[0].cli.env.CODEX_HOME = '/tmp/mutated';
+
+  assert.equal(snapshotTask.memberSnapshots[0].cli.adapter, 'codex');
+  assert.deepEqual(snapshotTask.memberSnapshots[0].cli.extraArgs, ['--json']);
+  assert.deepEqual(snapshotTask.memberSnapshots[0].cli.env, { CODEX_HOME: '/tmp/codex-home' });
+
+  const restoredAgent = mod.cliTaskMemberSnapshotToAgent(snapshotTask.memberSnapshots[0]);
+  assert.equal(restoredAgent.id, 'cli-codex');
+  assert.equal(restoredAgent.name, 'Codex Stable');
+  assert.equal(restoredAgent.runtime, 'cli');
+  assert.equal(restoredAgent.cli.adapter, 'codex');
+  assert.deepEqual(restoredAgent.cli.extraArgs, ['--json']);
+}
 
 const task2 = mod.createDevelopmentTask({
   prompt: 'Second isolated task',
@@ -227,6 +295,36 @@ assert.equal(
 );
 
 {
+  const roundOneFailedRoundTwoCompleted = [
+    { id: 'msg-user-1', taskId: task.id, role: 'user', content: '第一轮' },
+    { id: 'msg-agent-1', taskId: task.id, role: 'agent', content: '失败', status: 'failed' },
+    { id: 'msg-user-2', taskId: task.id, role: 'user', content: '第二轮' },
+    { id: 'msg-agent-2', taskId: task.id, role: 'agent', content: '完成', status: 'completed' },
+  ];
+  assert.equal(mod.deriveTaskStatus(roundOneFailedRoundTwoCompleted), 'completed');
+
+  const roundOneCompletedRoundTwoRunning = [
+    { id: 'msg-user-1', taskId: task.id, role: 'user', content: '第一轮' },
+    { id: 'msg-agent-1', taskId: task.id, role: 'agent', content: '完成', status: 'completed' },
+    { id: 'msg-user-2', taskId: task.id, role: 'user', content: '第二轮' },
+    { id: 'msg-agent-2', taskId: task.id, role: 'agent', content: '执行中', status: 'running' },
+  ];
+  assert.equal(mod.deriveTaskStatus(roundOneCompletedRoundTwoRunning), 'running');
+
+  const staleRunningFromEarlierRound = [
+    { id: 'msg-user-1', taskId: task.id, role: 'user', content: '第一轮' },
+    { id: 'msg-agent-1', taskId: task.id, role: 'agent', content: '卡住', status: 'running' },
+    { id: 'msg-user-2', taskId: task.id, role: 'user', content: '第二轮' },
+    { id: 'msg-agent-2', taskId: task.id, role: 'agent', content: '完成', status: 'completed' },
+  ];
+  assert.equal(mod.deriveTaskStatus(staleRunningFromEarlierRound), 'completed');
+  assert.equal(
+    mod.canMutateTask({ ...task, status: 'completed', messages: staleRunningFromEarlierRound }),
+    true,
+  );
+}
+
+{
   const resolveMember = (id) => (
     id === 'cli-opencode'
       ? { kind: 'cli', cli: { adapter: 'opencode' } }
@@ -304,4 +402,29 @@ assert.equal(
   assert.equal(mod.shouldSyncOpenCodeTaskTitle(codexFailedThenOpenCode, 'cli-opencode', resolveMember), true);
   assert.equal(mod.isPlaceholderOpenCodeTitle('New session - 2026-05-25T23:06:02.246Z'), true);
   assert.equal(mod.normalizeOpenCodeSessionTitle('  修复登录页校验  '), '修复登录页校验');
+}
+
+{
+  const task = {
+    id: 'devtask-1',
+    title: mod.truncateTaskTitle('修复登录页面的验证码校验逻辑'),
+    prompt: '修复登录页面的验证码校验逻辑',
+    status: 'queued',
+    templateId: 'tmpl-1',
+    templateSnapshot: { id: 'tmpl-1', name: '默认', memberIds: [], strategy: 'sequential' },
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    agentTaskIds: [],
+    messages: [],
+  };
+
+  assert.equal(mod.needsTaskTitleSummary(task), true);
+  assert.equal(
+    mod.needsTaskTitleSummary({ ...task, title: '修复登录页验证码', titleSource: 'auto' }),
+    false,
+  );
+  assert.equal(
+    mod.needsTaskTitleSummary({ ...task, title: '修复登录页验证码', titleSource: 'manual' }),
+    false,
+  );
 }

@@ -1,4 +1,5 @@
 import type { CLIAgent } from '@/config/aiCharacters';
+import { hasExplicitToolSessionArg, supportsCliToolSession } from '@/config/cliAdapters';
 
 export type CLISessionPolicy = 'task' | 'workspace' | 'template';
 
@@ -45,24 +46,11 @@ export function resolveCliToolSessionKey(params: {
 }
 
 export function withCliToolSession(agent: CLIAgent, sessionId: string | null | undefined): CLIAgent {
-  if (agent.cli?.adapter !== 'opencode' && agent.cli?.adapter !== 'codex' && agent.cli?.adapter !== 'claude' && agent.cli?.adapter !== 'cursor') return agent;
+  if (!supportsCliToolSession(agent.cli?.adapter)) return agent;
   if (!sessionId) return agent;
 
   const extraArgs = agent.cli.extraArgs || [];
-  const hasExplicitSession = extraArgs.some((arg) =>
-    arg === '--session' ||
-    arg.startsWith('--session=') ||
-    arg === '--session-id' ||
-    arg.startsWith('--session-id=') ||
-    arg === '--resume' ||
-    arg.startsWith('--resume=') ||
-    arg === '-r' ||
-    arg === '-s' ||
-    arg === '--continue' ||
-    arg === '-c' ||
-    arg === 'resume' ||
-    arg === '--last'
-  );
+  const hasExplicitSession = hasExplicitToolSessionArg(agent.cli.adapter, extraArgs);
   if (hasExplicitSession) return agent;
 
   return {

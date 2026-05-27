@@ -1,4 +1,5 @@
 import type { CLIGroup, CLIStrategy, CLIExecutionPlan, CLISessionPolicy, CLIReviewLoopRoles } from './groups';
+import { adapterUsesOpenCodeSessionTitle } from './cliAdapters';
 
 export type CLITaskStatus =
   | 'queued'
@@ -80,6 +81,21 @@ export interface CLITeamTemplate {
   reviewLoopRoles?: CLIReviewLoopRoles;
 }
 
+export interface CLITaskMemberSnapshot {
+  id: string;
+  name: string;
+  avatar?: string;
+  tags?: string[];
+  cli: {
+    adapter: string;
+    binary?: string;
+    extraArgs?: string[];
+    env?: Record<string, string>;
+    approvalMode?: 'auto' | 'ask';
+    showStderr?: boolean;
+  };
+}
+
 export interface CLITaskMessage {
   id: string;
   taskId: string;
@@ -116,6 +132,8 @@ export interface CLIDevelopmentTask {
   createdAt: string;
   updatedAt: string;
   agentTaskIds: string[];
+  /** 创建任务时的 CLI 成员运行配置快照；旧任务可为空并回退到当前成员配置 */
+  memberSnapshots?: CLITaskMemberSnapshot[];
   messages: CLITaskMessage[];
 }
 
@@ -165,6 +183,14 @@ export function truncateTaskTitle(prompt: string, maxLen = 48): string {
   return `${line.slice(0, maxLen - 1)}…`;
 }
 
+/** 任务标题是否仍是 prompt 截断占位、尚未完成自动总结 */
+export function needsTaskTitleSummary(task: CLIDevelopmentTask): boolean {
+  if (task.titleSource === 'manual') return false;
+  const autoTitle = truncateTaskTitle(task.prompt);
+  if (task.title === autoTitle) return true;
+  return task.titleSource !== 'auto';
+}
+
 export function getFirstAgentMessage(task: CLIDevelopmentTask): CLITaskMessage | undefined {
   return task.messages.find(message => message.role === 'agent');
 }
@@ -186,7 +212,7 @@ export function isOpenCodeCliAgent(
   resolveMember: (agentId: string) => { kind?: string; cli?: { adapter?: string } } | undefined,
 ): boolean {
   const member = resolveMember(agentId);
-  return member?.kind === 'cli' && member.cli?.adapter === 'opencode';
+  return member?.kind === 'cli' && adapterUsesOpenCodeSessionTitle(member.cli?.adapter);
 }
 
 /**
@@ -222,11 +248,80 @@ export function normalizeOpenCodeSessionTitle(title: string): string | null {
   return trimmed;
 }
 
+export function createCLITaskMemberSnapshots(
+  members: Array<{
+    id?: string;
+    kind?: string;
+    name?: string;
+    avatar?: string;
+    tags?: string[];
+    cli?: {
+      adapter?: string;
+      binary?: string;
+      extraArgs?: string[];
+      env?: Record<string, string>;
+      approvalMode?: 'auto' | 'ask';
+      showStderr?: boolean;
+    };
+  } | null | undefined>,
+): CLITaskMemberSnapshot[] {
+  return members
+    .filter((member): member is NonNullable<typeof member> => !!member && member.kind === 'cli' && !!member.cli?.adapter && !!member.id && !!member.name)
+    .map((member) => ({
+      id: member.id as string,
+      name: member.name as string,
+      avatar: member.avatar,
+      tags: member.tags ? [...member.tags] : undefined,
+      cli: {
+        adapter: member.cli!.adapter as string,
+        binary: member.cli!.binary,
+        extraArgs: member.cli!.extraArgs ? [...member.cli!.extraArgs] : undefined,
+        env: member.cli!.env ? { ...member.cli!.env } : undefined,
+        approvalMode: member.cli!.approvalMode,
+        showStderr: member.cli!.showStderr,
+      },
+    }));
+}
+
+export function cloneCLITaskMemberSnapshots(
+  snapshots: CLITaskMemberSnapshot[] | undefined,
+): CLITaskMemberSnapshot[] | undefined {
+  if (!snapshots) return undefined;
+  return snapshots.map((snapshot) => ({
+    ...snapshot,
+    tags: snapshot.tags ? [...snapshot.tags] : undefined,
+    cli: {
+      ...snapshot.cli,
+      extraArgs: snapshot.cli.extraArgs ? [...snapshot.cli.extraArgs] : undefined,
+      env: snapshot.cli.env ? { ...snapshot.cli.env } : undefined,
+    },
+  }));
+}
+
+export function cliTaskMemberSnapshotToAgent(snapshot: CLITaskMemberSnapshot) {
+  return {
+    id: snapshot.id,
+    name: snapshot.name,
+    personality: `${snapshot.id}-cli`,
+    model: 'qwen-plus',
+    avatar: snapshot.avatar,
+    custom_prompt: '',
+    tags: snapshot.tags,
+    runtime: 'cli' as const,
+    cli: {
+      ...snapshot.cli,
+      extraArgs: snapshot.cli.extraArgs ? [...snapshot.cli.extraArgs] : undefined,
+      env: snapshot.cli.env ? { ...snapshot.cli.env } : undefined,
+    },
+  };
+}
+
 export function createDevelopmentTask(params: {
   prompt: string;
   template: CLITeamTemplate;
   workspacePath?: string;
   title?: string;
+  memberSnapshots?: CLITaskMemberSnapshot[];
 }): CLIDevelopmentTask {
   const now = new Date().toISOString();
   const unique = typeof crypto !== 'undefined' && crypto.randomUUID
@@ -252,21 +347,46 @@ export function createDevelopmentTask(params: {
     createdAt: now,
     updatedAt: now,
     agentTaskIds: [],
+    memberSnapshots: cloneCLITaskMemberSnapshots(params.memberSnapshots),
     messages: [userMsg],
   };
 }
 
-export function deriveTaskStatus(messages: CLITaskMessage[]): CLITaskStatus {
-  const agentMsgs = messages.filter(m => m.role === 'agent');
+/** 取最后一次用户消息之后的 agent 回复（最新一轮对话） */
+export function getLatestAgentRoundMessages(messages: CLITaskMessage[]): CLITaskMessage[] {
+  let lastUserIndex = -1;
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    if (messages[i]?.role === 'user') {
+      lastUserIndex = i;
+      break;
+    }
+  }
+  if (lastUserIndex < 0) {
+    return messages.filter(message => message.role === 'agent');
+  }
+  return messages.slice(lastUserIndex + 1).filter(message => message.role === 'agent');
+}
+
+function deriveAgentRoundStatus(agentMsgs: CLITaskMessage[]): CLITaskStatus {
   if (agentMsgs.length === 0) return 'queued';
-  if (agentMsgs.some(m => m.status === 'running')) return 'running';
-  if (agentMsgs.some(m => m.status === 'failed' || m.status === 'timeout')) return 'failed';
-  if (agentMsgs.every(m => m.status === 'completed' || m.status === 'cancelled')) {
+  if (agentMsgs.some(message => message.status === 'running')) return 'running';
+  if (agentMsgs.some(message => message.status === 'failed' || message.status === 'timeout')) return 'failed';
+  if (agentMsgs.every(message => message.status === 'completed' || message.status === 'cancelled')) {
     const last = agentMsgs[agentMsgs.length - 1];
     if (last?.status === 'cancelled') return 'cancelled';
     return 'completed';
   }
   return 'running';
+}
+
+export function deriveTaskStatus(messages: CLITaskMessage[]): CLITaskStatus {
+  return deriveAgentRoundStatus(getLatestAgentRoundMessages(messages));
+}
+
+/** 侧栏/列表展示用状态：归档保留，其余按最新一轮 agent 回复推导 */
+export function getTaskDisplayStatus(task: CLIDevelopmentTask): CLITaskStatus {
+  if (task.status === 'archived') return 'archived';
+  return deriveTaskStatus(task.messages);
 }
 
 /** 确保两个任务的 messages 数组互不影响（深拷贝快照） */
@@ -343,7 +463,7 @@ export function filterDevelopmentTasks(
   const search = filter.search?.trim().toLowerCase();
   return tasks.filter(task => {
     if (!filter.showArchived && task.status === 'archived') return false;
-    if (filter.status && filter.status !== 'all' && task.status !== filter.status) return false;
+    if (filter.status && filter.status !== 'all' && getTaskDisplayStatus(task) !== filter.status) return false;
     if (filter.templateId && task.templateId !== filter.templateId) return false;
     if (filter.workspacePath !== undefined && filter.workspacePath !== '' && task.workspacePath !== filter.workspacePath) {
       return false;
@@ -358,5 +478,7 @@ export function filterDevelopmentTasks(
 }
 
 export function canMutateTask(task: CLIDevelopmentTask): boolean {
-  return task.status !== 'running' && !task.messages.some(message => message.status === 'running');
+  if (task.status === 'running') return false;
+  const latestAgents = getLatestAgentRoundMessages(task.messages);
+  return !latestAgents.some(message => message.status === 'running');
 }

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { CLIDevelopmentTask, CLITaskMessage, CLITeamTemplate } from '@/config/cliTasks';
+import type { CLIDevelopmentTask, CLITaskMemberSnapshot, CLITaskMessage, CLITeamTemplate } from '@/config/cliTasks';
 import {
   createDevelopmentTask,
   deriveTaskStatus,
@@ -16,6 +16,7 @@ interface CLITaskStore {
     prompt: string;
     template: CLITeamTemplate;
     workspacePath?: string;
+    memberSnapshots?: CLITaskMemberSnapshot[];
   }) => CLIDevelopmentTask;
   updateTask: (taskId: string, patch: Partial<CLIDevelopmentTask>) => void;
   appendMessage: (taskId: string, message: CLITaskMessage) => void;
@@ -118,6 +119,14 @@ export const useCLITaskStore = create<CLITaskStore>()(
     {
       name: 'cli_development_tasks',
       partialize: (state) => ({ tasks: state.tasks }),
+      onRehydrateStorage: () => (state) => {
+        if (!state?.tasks?.length) return;
+        state.tasks = state.tasks.map((task) => {
+          if (task.status === 'archived') return task;
+          const status = deriveTaskStatus(task.messages);
+          return task.status === status ? task : { ...task, status };
+        });
+      },
     },
   ),
 );

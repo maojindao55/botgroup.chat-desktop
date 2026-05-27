@@ -31,6 +31,7 @@ import { useAIMemberStore } from '@/store/aiMemberStore';
 import { resolveEffectiveMember } from '@/utils/aiMemberDisplay';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
 import type { Group, AIGroup, CLIGroup, AgentGroup, CLIStrategy, CLIExecutionPlan, CLISessionPolicy } from '@/config/groups';
+import { supportsCliToolSession } from '@/config/cliAdapters';
 import { openPath } from '@tauri-apps/plugin-opener';
 
 import {
@@ -354,11 +355,15 @@ const useStyles = createStyles(({ token, css }) => ({
     }
   `,
   spinnerIcon: css`
+    display: inline-block;
+    flex-shrink: 0;
+    box-sizing: border-box;
     width: 12px;
     height: 12px;
     border-radius: 50%;
     border: 2px solid ${token.colorInfo};
     border-top-color: transparent;
+    vertical-align: middle;
     animation: cli-spin 1s linear infinite;
     @keyframes cli-spin {
       to {
@@ -926,7 +931,7 @@ const ChatUI = () => {
             setMessages(prev => [...prev, aiMessage]);
           },
           onToolSession: (_taskId, agentId, adapter, sessionId) => {
-            if (adapter === 'opencode' || adapter === 'codex' || adapter === 'claude' || adapter === 'cursor') {
+            if (supportsCliToolSession(adapter)) {
               localStorage.setItem(cliToolSessionKey((group as CLIGroup).id, agentId, workspacePath), sessionId);
             }
           },
@@ -1064,7 +1069,7 @@ const ChatUI = () => {
             setMessages(prev => [...prev, aiMessage]);
           },
           onToolSession: (_taskId, agentId, adapter, sessionId) => {
-            if (adapter === 'opencode' || adapter === 'codex' || adapter === 'claude' || adapter === 'cursor') {
+            if (supportsCliToolSession(adapter)) {
               localStorage.setItem(cliToolSessionKey((group as CLIGroup).id, agentId, workspacePath), sessionId);
             }
           },

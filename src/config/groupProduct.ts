@@ -159,6 +159,17 @@ export const cliWorkflowTemplates: CLIWorkflowTemplate[] = [
   },
 ];
 
+/** 展示团队模板的协作方式名称（优先 workflowTemplateId，其次 strategy） */
+export function getCLIWorkflowLabel(strategy: CLIStrategy, workflowTemplateId?: string): string {
+  if (workflowTemplateId) {
+    const byId = cliWorkflowTemplates.find((t) => t.id === workflowTemplateId);
+    if (byId) return byId.label;
+  }
+  const byStrategy = cliWorkflowTemplates.find((t) => t.strategy === strategy);
+  if (byStrategy) return byStrategy.label;
+  return strategy;
+}
+
 export function resolveAISpeechMode(group: {
   isGroupDiscussionMode?: boolean;
   schedulerStrategy?: 'tag' | 'round_robin' | 'all';

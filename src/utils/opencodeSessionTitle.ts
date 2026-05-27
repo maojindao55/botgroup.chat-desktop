@@ -4,6 +4,7 @@ import {
   normalizeOpenCodeSessionTitle,
   truncateTaskTitle,
   isPlaceholderOpenCodeTitle,
+  needsTaskTitleSummary,
 } from '@/config/cliTasks';
 import { request } from '@/utils/request';
 import { llmChatComplete } from '@/utils/llmClient';
@@ -158,7 +159,7 @@ export function scheduleOpenCodeTaskTitleSync(params: ScheduleOpenCodeTaskTitleS
       scheduledKeys.delete(dedupeKey);
       return;
     }
-    if (latest.titleSource === 'auto' && latest.title !== truncateTaskTitle(latest.prompt)) {
+    if (!needsTaskTitleSummary(latest)) {
       scheduledKeys.delete(dedupeKey);
       return;
     }
@@ -216,7 +217,7 @@ export function scheduleCLITaskTitleSync(params: ScheduleCLITaskTitleSyncParams)
       scheduledKeys.delete(dedupeKey);
       return;
     }
-    if (latest.title !== autoTitle && latest.titleSource === 'auto') {
+    if (!needsTaskTitleSummary(latest)) {
       scheduledKeys.delete(dedupeKey);
       return;
     }

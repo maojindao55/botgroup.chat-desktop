@@ -837,17 +837,170 @@ pub async fn cli_check(app: AppHandle, adapter: String) -> Result<CliCheckResult
 
 // ---------- Adapters: how each CLI is invoked in headless mode -----------
 
+#[derive(Clone, Copy)]
+struct CliAdapterDefinition {
+    id: &'static str,
+    default_binary: Option<&'static str>,
+}
+
+const CLI_ADAPTER_DEFINITIONS: &[CliAdapterDefinition] = &[
+    CliAdapterDefinition { id: "codex", default_binary: Some("codex") },
+    CliAdapterDefinition { id: "opencode", default_binary: Some("opencode") },
+    CliAdapterDefinition { id: "claude", default_binary: Some("claude") },
+    CliAdapterDefinition { id: "cursor", default_binary: Some("cursor") },
+    CliAdapterDefinition { id: "aider", default_binary: Some("aider") },
+    CliAdapterDefinition { id: "gemini", default_binary: Some("gemini") },
+    CliAdapterDefinition { id: "generic", default_binary: None },
+];
+
+fn adapter_definition(adapter: &str) -> Option<CliAdapterDefinition> {
+    CLI_ADAPTER_DEFINITIONS
+        .iter()
+        .copied()
+        .find(|definition| definition.id == adapter)
+}
+
 fn adapter_binary(adapter: &str) -> Option<&'static str> {
-    match adapter {
-        "codex" => Some("codex"),
-        "opencode" => Some("opencode"),
-        "claude" => Some("claude"),
-        "cursor" => Some("cursor"),
-        "aider" => Some("aider"),
-        "gemini" => Some("gemini"),
-        "generic" => None, // requires explicit binary override
-        _ => None,
+    adapter_definition(adapter).and_then(|definition| definition.default_binary)
+}
+
+fn has_extra_arg(args: &CliRunArgs, needle: &str) -> bool {
+    args.extra_args
+        .as_ref()
+        .map_or(false, |extra| extra.iter().any(|arg| arg == needle))
+}
+
+fn has_any_extra_arg(args: &CliRunArgs, needles: &[&str]) -> bool {
+    args.extra_args.as_ref().map_or(false, |extra| {
+        extra.iter().any(|arg| needles.iter().any(|needle| arg == needle))
+    })
+}
+
+fn has_extra_arg_prefix(args: &CliRunArgs, prefix: &str) -> bool {
+    args.extra_args
+        .as_ref()
+        .map_or(false, |extra| extra.iter().any(|arg| arg.starts_with(prefix)))
+}
+
+fn has_any_extra_arg_prefix(args: &CliRunArgs, prefixes: &[&str]) -> bool {
+    args.extra_args.as_ref().map_or(false, |extra| {
+        extra.iter().any(|arg| prefixes.iter().any(|prefix| arg.starts_with(prefix)))
+    })
+}
+
+fn append_extra_args(cmd: &mut Command, args: &CliRunArgs) {
+    if let Some(extra) = &args.extra_args {
+        for a in extra {
+            cmd.arg(a);
+        }
     }
+}
+
+fn append_tool_session(cmd: &mut Command, args: &CliRunArgs, flag: &str) {
+    if let Some(tool_session_id) = &args.tool_session_id {
+        if !tool_session_id.is_empty() {
+            cmd.arg(flag).arg(tool_session_id);
+        }
+    }
+}
+
+fn build_codex_command(cmd: &mut Command, args: &CliRunArgs) {
+    cmd.arg("exec");
+    if !has_extra_arg(args, "--skip-git-repo-check") {
+        cmd.arg("--skip-git-repo-check");
+    }
+    append_extra_args(cmd, args);
+    if !has_any_extra_arg(args, &["resume", "--last"]) {
+        if let Some(tool_session_id) = &args.tool_session_id {
+            if !tool_session_id.is_empty() {
+                cmd.arg("resume").arg(tool_session_id);
+            }
+        }
+    }
+    cmd.arg(&args.prompt);
+}
+
+fn build_opencode_command(cmd: &mut Command, args: &CliRunArgs) {
+    cmd.arg("run");
+    if !has_extra_arg(args, "--format") && !has_extra_arg_prefix(args, "--format=") {
+        cmd.arg("--format").arg("json");
+    }
+    append_extra_args(cmd, args);
+    if !has_any_extra_arg(args, &["--session", "-s", "--continue", "-c"])
+        && !has_extra_arg_prefix(args, "--session=")
+    {
+        append_tool_session(cmd, args, "--session");
+    }
+    if !has_extra_arg(args, "--title") && !has_extra_arg_prefix(args, "--title=") {
+        cmd.arg("--title").arg(prompt_summary(&args.prompt, 48));
+    }
+    cmd.arg(&args.prompt);
+}
+
+fn build_claude_command(cmd: &mut Command, args: &CliRunArgs) {
+    cmd.arg("-p");
+    if !has_extra_arg(args, "--output-format") && !has_extra_arg_prefix(args, "--output-format=") {
+        cmd.arg("--output-format").arg("stream-json");
+    }
+    if !has_extra_arg(args, "--include-partial-messages") {
+        cmd.arg("--include-partial-messages");
+    }
+    if args.approval_mode.as_deref() == Some("auto") {
+        cmd.arg("--dangerously-skip-permissions");
+    }
+    append_extra_args(cmd, args);
+    if !has_any_extra_arg(args, &["--resume", "-r", "--continue", "-c", "--session-id"])
+        && !has_any_extra_arg_prefix(args, &["--resume=", "--session-id="])
+    {
+        append_tool_session(cmd, args, "--resume");
+    }
+    cmd.arg(&args.prompt);
+}
+
+fn build_cursor_command(cmd: &mut Command, args: &CliRunArgs) {
+    cmd.arg("agent");
+    cmd.arg("-p");
+    if !has_extra_arg(args, "--output-format") && !has_extra_arg_prefix(args, "--output-format=") {
+        cmd.arg("--output-format").arg("stream-json");
+    }
+    if !has_extra_arg(args, "--trust") {
+        cmd.arg("--trust");
+    }
+    if args.approval_mode.as_deref() == Some("auto")
+        && !has_any_extra_arg(args, &["--force", "--yolo"])
+    {
+        cmd.arg("--force");
+    }
+    if let Some(cwd) = &args.cwd {
+        if !cwd.is_empty()
+            && !has_extra_arg(args, "--workspace")
+            && !has_extra_arg_prefix(args, "--workspace=")
+        {
+            cmd.arg("--workspace").arg(cwd);
+        }
+    }
+    append_extra_args(cmd, args);
+    if !has_any_extra_arg(args, &["--resume", "--continue"])
+        && !has_extra_arg_prefix(args, "--resume=")
+    {
+        append_tool_session(cmd, args, "--resume");
+    }
+    cmd.arg(&args.prompt);
+}
+
+fn build_aider_command(cmd: &mut Command, args: &CliRunArgs) {
+    cmd.arg("--message").arg(&args.prompt).arg("--yes-always");
+    append_extra_args(cmd, args);
+}
+
+fn build_gemini_command(cmd: &mut Command, args: &CliRunArgs) {
+    cmd.arg("-p").arg(&args.prompt);
+    append_extra_args(cmd, args);
+}
+
+fn build_generic_command(cmd: &mut Command, args: &CliRunArgs) {
+    append_extra_args(cmd, args);
+    cmd.arg(&args.prompt);
 }
 
 fn build_command(args: &CliRunArgs) -> Result<Command, String> {
@@ -865,214 +1018,13 @@ fn build_command(args: &CliRunArgs) -> Result<Command, String> {
     let mut cmd = Command::new(&binary);
 
     match args.adapter.as_str() {
-        // codex exec [flags] "<prompt>"
-        // Non-interactive mode; final result on stdout, progress on stderr.
-        "codex" => {
-            cmd.arg("exec");
-            let has_skip_git_repo_check = args.extra_args.as_ref().map_or(false, |extra| {
-                extra.iter().any(|arg| arg == "--skip-git-repo-check")
-            });
-            if !has_skip_git_repo_check {
-                cmd.arg("--skip-git-repo-check");
-            }
-            if let Some(extra) = &args.extra_args {
-                for a in extra {
-                    cmd.arg(a);
-                }
-            }
-            let has_session = args.extra_args.as_ref().map_or(false, |extra| {
-                extra
-                    .iter()
-                    .any(|arg| arg == "resume" || arg == "--last")
-            });
-            if !has_session {
-                if let Some(tool_session_id) = &args.tool_session_id {
-                    if !tool_session_id.is_empty() {
-                        cmd.arg("resume").arg(tool_session_id);
-                    }
-                }
-            }
-            cmd.arg(&args.prompt);
-        }
-
-        // opencode run [flags] "<prompt>"
-        // Headless mode; positional prompt at the end, no stdin support.
-        "opencode" => {
-            cmd.arg("run");
-            let has_format = args.extra_args.as_ref().map_or(false, |extra| {
-                extra.iter().any(|arg| arg == "--format" || arg.starts_with("--format="))
-            });
-            if !has_format {
-                cmd.arg("--format").arg("json");
-            }
-            if let Some(extra) = &args.extra_args {
-                for a in extra {
-                    cmd.arg(a);
-                }
-            }
-            let has_session = args.extra_args.as_ref().map_or(false, |extra| {
-                extra.iter().any(|arg| {
-                    arg == "--session"
-                        || arg.starts_with("--session=")
-                        || arg == "-s"
-                        || arg == "--continue"
-                        || arg == "-c"
-                })
-            });
-            if !has_session {
-                if let Some(tool_session_id) = &args.tool_session_id {
-                    if !tool_session_id.is_empty() {
-                        cmd.arg("--session").arg(tool_session_id);
-                    }
-                }
-            }
-            let has_title = args.extra_args.as_ref().map_or(false, |extra| {
-                extra.iter().any(|arg| arg == "--title" || arg.starts_with("--title="))
-            });
-            if !has_title {
-                cmd.arg("--title").arg(prompt_summary(&args.prompt, 48));
-            }
-            cmd.arg(&args.prompt);
-        }
-
-        // claude -p [flags] "<prompt>"
-        // Print mode (non-interactive). Streams answer to stdout.
-        "claude" => {
-            cmd.arg("-p");
-            let has_output_format = args.extra_args.as_ref().map_or(false, |extra| {
-                extra
-                    .iter()
-                    .any(|arg| arg == "--output-format" || arg.starts_with("--output-format="))
-            });
-            if !has_output_format {
-                cmd.arg("--output-format").arg("stream-json");
-            }
-            let has_partial_messages = args.extra_args.as_ref().map_or(false, |extra| {
-                extra.iter().any(|arg| arg == "--include-partial-messages")
-            });
-            if !has_partial_messages {
-                cmd.arg("--include-partial-messages");
-            }
-            if args.approval_mode.as_deref() == Some("auto") {
-                cmd.arg("--dangerously-skip-permissions");
-            }
-            if let Some(extra) = &args.extra_args {
-                for a in extra {
-                    cmd.arg(a);
-                }
-            }
-            let has_session = args.extra_args.as_ref().map_or(false, |extra| {
-                extra.iter().any(|arg| {
-                    arg == "--resume"
-                        || arg.starts_with("--resume=")
-                        || arg == "-r"
-                        || arg == "--continue"
-                        || arg == "-c"
-                        || arg == "--session-id"
-                        || arg.starts_with("--session-id=")
-                })
-            });
-            if !has_session {
-                if let Some(tool_session_id) = &args.tool_session_id {
-                    if !tool_session_id.is_empty() {
-                        cmd.arg("--resume").arg(tool_session_id);
-                    }
-                }
-            }
-            cmd.arg(&args.prompt);
-        }
-
-        // cursor agent -p [flags] "<prompt>"
-        // Headless print mode; streams stream-json events on stdout.
-        "cursor" => {
-            cmd.arg("agent");
-            cmd.arg("-p");
-            let has_output_format = args.extra_args.as_ref().map_or(false, |extra| {
-                extra
-                    .iter()
-                    .any(|arg| arg == "--output-format" || arg.starts_with("--output-format="))
-            });
-            if !has_output_format {
-                cmd.arg("--output-format").arg("stream-json");
-            }
-            let has_trust = args.extra_args.as_ref().map_or(false, |extra| {
-                extra.iter().any(|arg| arg == "--trust")
-            });
-            if !has_trust {
-                cmd.arg("--trust");
-            }
-            if args.approval_mode.as_deref() == Some("auto") {
-                let has_force = args.extra_args.as_ref().map_or(false, |extra| {
-                    extra.iter().any(|arg| arg == "--force" || arg == "--yolo")
-                });
-                if !has_force {
-                    cmd.arg("--force");
-                }
-            }
-            if let Some(cwd) = &args.cwd {
-                if !cwd.is_empty() {
-                    let has_workspace = args.extra_args.as_ref().map_or(false, |extra| {
-                        extra
-                            .iter()
-                            .any(|arg| arg == "--workspace" || arg.starts_with("--workspace="))
-                    });
-                    if !has_workspace {
-                        cmd.arg("--workspace").arg(cwd);
-                    }
-                }
-            }
-            if let Some(extra) = &args.extra_args {
-                for a in extra {
-                    cmd.arg(a);
-                }
-            }
-            let has_session = args.extra_args.as_ref().map_or(false, |extra| {
-                extra.iter().any(|arg| {
-                    arg == "--resume"
-                        || arg.starts_with("--resume=")
-                        || arg == "--continue"
-                })
-            });
-            if !has_session {
-                if let Some(tool_session_id) = &args.tool_session_id {
-                    if !tool_session_id.is_empty() {
-                        cmd.arg("--resume").arg(tool_session_id);
-                    }
-                }
-            }
-            cmd.arg(&args.prompt);
-        }
-
-        // aider --message "<prompt>" --yes-always [flags]
-        "aider" => {
-            cmd.arg("--message").arg(&args.prompt).arg("--yes-always");
-            if let Some(extra) = &args.extra_args {
-                for a in extra {
-                    cmd.arg(a);
-                }
-            }
-        }
-
-        // gemini -p "<prompt>"
-        "gemini" => {
-            cmd.arg("-p").arg(&args.prompt);
-            if let Some(extra) = &args.extra_args {
-                for a in extra {
-                    cmd.arg(a);
-                }
-            }
-        }
-
-        // generic: caller supplies binary and optional extra_args; prompt is appended last.
-        "generic" => {
-            if let Some(extra) = &args.extra_args {
-                for a in extra {
-                    cmd.arg(a);
-                }
-            }
-            cmd.arg(&args.prompt);
-        }
-
+        "codex" => build_codex_command(&mut cmd, args),
+        "opencode" => build_opencode_command(&mut cmd, args),
+        "claude" => build_claude_command(&mut cmd, args),
+        "cursor" => build_cursor_command(&mut cmd, args),
+        "aider" => build_aider_command(&mut cmd, args),
+        "gemini" => build_gemini_command(&mut cmd, args),
+        "generic" => build_generic_command(&mut cmd, args),
         other => return Err(format!("unknown adapter: {}", other)),
     }
 
@@ -1180,7 +1132,7 @@ pub async fn cli_opencode_session_title(
 
 #[cfg(test)]
 mod tests {
-    use super::{build_command, prompt_summary, CliRunArgs};
+    use super::{adapter_definition, build_command, prompt_summary, CliRunArgs};
     use std::collections::HashMap;
 
     #[test]
@@ -1197,6 +1149,16 @@ mod tests {
     fn prompt_summary_keeps_short_prompt() {
         let prompt = "写一个冒泡排序";
         assert_eq!(prompt_summary(prompt, 60), prompt);
+    }
+
+    #[test]
+    fn adapter_definition_centralizes_default_binary_lookup() {
+        assert_eq!(adapter_definition("codex").and_then(|d| d.default_binary), Some("codex"));
+        assert_eq!(adapter_definition("opencode").and_then(|d| d.default_binary), Some("opencode"));
+        assert_eq!(adapter_definition("claude").and_then(|d| d.default_binary), Some("claude"));
+        assert_eq!(adapter_definition("cursor").and_then(|d| d.default_binary), Some("cursor"));
+        assert_eq!(adapter_definition("generic").and_then(|d| d.default_binary), None);
+        assert!(adapter_definition("unknown").is_none());
     }
 
     #[test]

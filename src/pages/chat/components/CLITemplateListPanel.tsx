@@ -4,7 +4,7 @@
 import { Button, Drawer } from 'antd';
 import { Plus, Settings2, Trash2, X } from 'lucide-react';
 import { createStyles } from 'antd-style';
-import { cliWorkflowTemplates } from '@/config/groupProduct';
+import { getCLIWorkflowLabel } from '@/config/groupProduct';
 import type { CLITeamTemplate } from '@/config/cliTasks';
 import { sessionPolicyLabel } from '@/config/cliTasks';
 
@@ -129,12 +129,6 @@ interface CLITemplateListPanelProps {
   inline?: boolean;
 }
 
-function strategyLabel(strategy: string, workflowTemplateId?: string) {
-  return cliWorkflowTemplates.find(t => t.id === workflowTemplateId)?.label
-    || cliWorkflowTemplates.find(t => t.strategy === strategy)?.label
-    || strategy;
-}
-
 export const CLITemplateListPanel = ({
   open,
   onOpenChange,
@@ -205,7 +199,7 @@ export const CLITemplateListPanel = ({
             </div>
           </div>
           <div className={styles.meta}>
-            {strategyLabel(template.strategy, template.workflowTemplateId)} · {template.memberIds.length} 位成员
+            {getCLIWorkflowLabel(template.strategy, template.workflowTemplateId)} · {template.memberIds.length} 位成员
             {` · ${sessionPolicyLabel(template.sessionPolicy)}`}
           </div>
           <div className={styles.meta}>

@@ -63,4 +63,30 @@ const { normalizeChatMarkdownContent } = await importTsModule(new URL('./markdow
   assert.doesNotMatch(normalized, /<details open data-cli-command-group="opencode">/);
 }
 
+{
+  const content = [
+    '<details open data-cli-command-group="cursor"><summary>⚙️ 执行命令</summary>',
+    'command output',
+    '</details>',
+  ].join('\n');
+
+  const normalized = normalizeChatMarkdownContent(content);
+
+  assert.match(normalized, /<details data-cli-command-group="cursor">/);
+  assert.doesNotMatch(normalized, /<details open data-cli-command-group="cursor">/);
+}
+
+{
+  const content = [
+    '<details open data-cli-command-group="custom-adapter"><summary>⚙️ 执行命令</summary>',
+    'command output',
+    '</details>',
+  ].join('\n');
+
+  const normalized = normalizeChatMarkdownContent(content);
+
+  assert.match(normalized, /<details data-cli-command-group="custom-adapter">/);
+  assert.doesNotMatch(normalized, /<details open data-cli-command-group="custom-adapter">/);
+}
+
 console.log('markdownContent.test.mjs: ok');

@@ -8,34 +8,8 @@ import { prepareChatGroups } from '@/config/groupStorage';
 import { generateAICharacters, cliAgents, modelConfigs } from '@/config/aiCharacters';
 import { builtinAIMembers, type AIMember } from '@/config/aiMembers';
 import { builtinProviders, lookupProviderByEnvName, mapProviderToRust } from '@/config/providers';
-import {
-  parseClaudeJsonLine,
-  renderClaudeCommandCompleted,
-  renderClaudeCommandGroupEnd,
-  renderClaudeCommandGroupStart,
-  renderClaudeCommandStarted,
-} from '@/utils/claudeStream';
-import {
-  parseCursorJsonLine,
-  renderCursorCommandCompleted,
-  renderCursorCommandGroupEnd,
-  renderCursorCommandGroupStart,
-  renderCursorCommandStarted,
-} from '@/utils/cursorStream';
 import { cleanCliOutputLine, shouldSuppressCliOutputLine } from '@/utils/cliOutput';
-import {
-  parseCodexJsonLine,
-  renderCodexCommandCompleted,
-  renderCodexCommandGroupEnd,
-  renderCodexCommandGroupStart,
-  renderCodexCommandStarted,
-} from '@/utils/codexStream';
-import {
-  parseOpenCodeJsonLine,
-  renderOpenCodeCommand,
-  renderOpenCodeCommandGroupEnd,
-  renderOpenCodeCommandGroupStart,
-} from '@/utils/opencodeStream';
+import { createCLIStreamHandler } from '@/utils/cliStreamHandlers';
 
 const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
 if (isTauri) {
@@ -601,22 +575,9 @@ export async function request(url: string, options: RequestInit = {}) {
           // Subscribe BEFORE invoking, so we don't miss the first lines.
           let authErrorDetected = false;
 
-          // ── Codex JSON mode: ALL output streams in real-time ──
-          // Thinking & commands use a subdued visual style so the final reply stands out.
-          // For non-JSON adapters we still stream raw stdout directly.
-          let isJsonMode = adapter === 'codex';
-          let codexSessionId: string | null = null;
-          let claudeSessionId: string | null = null;
-          let cursorSessionId: string | null = null;
-          let opencodeSessionId: string | null = null;
-          let codexCommandGroupOpen = false;
-          let codexCommandIndex = 0;
-          let claudeCommandGroupOpen = false;
-          let claudeCommandIndex = 0;
-          let cursorCommandGroupOpen = false;
-          let cursorCommandIndex = 0;
-          let opencodeCommandGroupOpen = false;
-          let opencodeCommandIndex = 0;
+          const streamHandler = createCLIStreamHandler(adapter, { enqueueChunk, enqueueEvent });
+          const isJsonMode = streamHandler.usesJsonModeStderr;
+
           // Track whether we're inside an "intermediate" phase so we can
           // open/close a <details> wrapper around thinking+commands.
           let detailsOpen = false;
@@ -639,66 +600,6 @@ export async function request(url: string, options: RequestInit = {}) {
             }
           };
 
-          const ensureCodexCommandGroupOpen = () => {
-            if (!codexCommandGroupOpen) {
-              codexCommandGroupOpen = true;
-              codexCommandIndex = 0;
-              enqueueChunk(renderCodexCommandGroupStart());
-            }
-          };
-
-          const closeCodexCommandGroup = () => {
-            if (codexCommandGroupOpen) {
-              codexCommandGroupOpen = false;
-              enqueueChunk(renderCodexCommandGroupEnd());
-            }
-          };
-
-          const ensureClaudeCommandGroupOpen = () => {
-            if (!claudeCommandGroupOpen) {
-              claudeCommandGroupOpen = true;
-              claudeCommandIndex = 0;
-              enqueueChunk(renderClaudeCommandGroupStart());
-            }
-          };
-
-          const closeClaudeCommandGroup = () => {
-            if (claudeCommandGroupOpen) {
-              claudeCommandGroupOpen = false;
-              enqueueChunk(renderClaudeCommandGroupEnd());
-            }
-          };
-
-          const ensureCursorCommandGroupOpen = () => {
-            if (!cursorCommandGroupOpen) {
-              cursorCommandGroupOpen = true;
-              cursorCommandIndex = 0;
-              enqueueChunk(renderCursorCommandGroupStart());
-            }
-          };
-
-          const closeCursorCommandGroup = () => {
-            if (cursorCommandGroupOpen) {
-              cursorCommandGroupOpen = false;
-              enqueueChunk(renderCursorCommandGroupEnd());
-            }
-          };
-
-          const ensureOpenCodeCommandGroupOpen = () => {
-            if (!opencodeCommandGroupOpen) {
-              opencodeCommandGroupOpen = true;
-              opencodeCommandIndex = 0;
-              enqueueChunk(renderOpenCodeCommandGroupStart());
-            }
-          };
-
-          const closeOpenCodeCommandGroup = () => {
-            if (opencodeCommandGroupOpen) {
-              opencodeCommandGroupOpen = false;
-              enqueueChunk(renderOpenCodeCommandGroupEnd());
-            }
-          };
-
           unlistenFn = await listen<any>(eventName, (evt) => {
             const payload = evt.payload || {};
             switch (payload.type) {
@@ -709,153 +610,9 @@ export async function request(url: string, options: RequestInit = {}) {
                   const stdoutLine = cleanCliOutputLine(payload.content);
                   if (shouldSuppressCliOutputLine(stdoutLine)) break;
 
-                  if (adapter === 'opencode') {
-                    const parsed = parseOpenCodeJsonLine(stdoutLine);
-                    if (parsed?.sessionId && parsed.sessionId !== opencodeSessionId) {
-                      opencodeSessionId = parsed.sessionId;
-                      enqueueEvent({
-                        type: 'tool_session',
-                        adapter: 'opencode',
-                        sessionId: parsed.sessionId,
-                      });
-                    }
-                    if (parsed?.error) {
-                      closeOpenCodeCommandGroup();
-                      enqueueEvent({
-                        type: 'error',
-                        content: `\n**[OpenCode error]** ${parsed.error}\n`,
-                        error: parsed.error,
-                      });
-                    } else if (parsed?.command) {
-                      ensureOpenCodeCommandGroupOpen();
-                      opencodeCommandIndex++;
-                      enqueueChunk(renderOpenCodeCommand(parsed.command, opencodeCommandIndex));
-                    } else if (parsed?.content) {
-                      closeOpenCodeCommandGroup();
-                      enqueueChunk(parsed.content);
-                    } else if (!stdoutLine.startsWith('{')) {
-                      closeOpenCodeCommandGroup();
-                      enqueueChunk(stdoutLine + '\n');
-                    }
-                    break;
-                  }
-
-                  if (adapter === 'claude') {
-                    const parsed = parseClaudeJsonLine(stdoutLine);
-                    if (parsed?.sessionId && parsed.sessionId !== claudeSessionId) {
-                      claudeSessionId = parsed.sessionId;
-                      enqueueEvent({
-                        type: 'tool_session',
-                        adapter: 'claude',
-                        sessionId: parsed.sessionId,
-                      });
-                    }
-                    if (parsed?.error) {
-                      closeClaudeCommandGroup();
-                      enqueueEvent({
-                        type: 'error',
-                        content: `\n**[Claude Code error]** ${parsed.error}\n`,
-                        error: parsed.error,
-                      });
-                    }
-                    if (parsed?.content) {
-                      closeClaudeCommandGroup();
-                      enqueueChunk(parsed.content);
-                    }
-                    if (parsed?.command) {
-                      if (parsed.command.phase === 'started') {
-                        ensureClaudeCommandGroupOpen();
-                        claudeCommandIndex++;
-                        enqueueChunk(renderClaudeCommandStarted(parsed.command.command, claudeCommandIndex));
-                      } else if (claudeCommandGroupOpen) {
-                        enqueueChunk(renderClaudeCommandCompleted(parsed.command.output));
-                      }
-                    } else if (!parsed && !stdoutLine.startsWith('{')) {
-                      closeClaudeCommandGroup();
-                      enqueueChunk(stdoutLine + '\n');
-                    }
-                    break;
-                  }
-
-                  if (adapter === 'cursor') {
-                    const parsed = parseCursorJsonLine(stdoutLine);
-                    if (parsed?.sessionId && parsed.sessionId !== cursorSessionId) {
-                      cursorSessionId = parsed.sessionId;
-                      enqueueEvent({
-                        type: 'tool_session',
-                        adapter: 'cursor',
-                        sessionId: parsed.sessionId,
-                      });
-                    }
-                    if (parsed?.error) {
-                      closeCursorCommandGroup();
-                      enqueueEvent({
-                        type: 'error',
-                        content: `\n**[Cursor Agent error]** ${parsed.error}\n`,
-                        error: parsed.error,
-                      });
-                    }
-                    if (parsed?.content) {
-                      closeCursorCommandGroup();
-                      enqueueChunk(parsed.content);
-                    }
-                    if (parsed?.command) {
-                      if (parsed.command.phase === 'started') {
-                        ensureCursorCommandGroupOpen();
-                        cursorCommandIndex++;
-                        enqueueChunk(renderCursorCommandStarted(parsed.command.command, cursorCommandIndex));
-                      } else if (cursorCommandGroupOpen) {
-                        enqueueChunk(renderCursorCommandCompleted(parsed.command.exitCode, parsed.command.output));
-                      }
-                    } else if (!parsed && !stdoutLine.startsWith('{')) {
-                      closeCursorCommandGroup();
-                      enqueueChunk(stdoutLine + '\n');
-                    }
-                    break;
-                  }
-
-                  // Codex --json mode: parse structured events, stream everything
-                  if (isJsonMode && stdoutLine.startsWith('{') && stdoutLine.includes('"type"')) {
-                    try {
-                      const parsed = parseCodexJsonLine(stdoutLine);
-                      if (parsed?.sessionId && parsed.sessionId !== codexSessionId) {
-                        codexSessionId = parsed.sessionId;
-                        enqueueEvent({
-                          type: 'tool_session',
-                          adapter: 'codex',
-                          sessionId: parsed.sessionId,
-                        });
-                      }
-                      if (parsed?.error) {
-                        closeCodexCommandGroup();
-                        enqueueEvent({
-                          type: 'error',
-                          content: `\n**[Codex error]** ${parsed.error}\n`,
-                          error: parsed.error,
-                        });
-                      } else if (parsed?.command) {
-                        ensureCodexCommandGroupOpen();
-                        if (parsed.command.phase === 'started') {
-                          codexCommandIndex++;
-                          enqueueChunk(renderCodexCommandStarted(parsed.command.command, codexCommandIndex));
-                        } else {
-                          enqueueChunk(renderCodexCommandCompleted(parsed.command.exitCode, parsed.command.output));
-                        }
-                      } else if (parsed?.content) {
-                        closeCodexCommandGroup();
-                        enqueueChunk(parsed.content);
-                      }
-                    } catch {
-                      closeCodexCommandGroup();
-                      // Not valid JSON, show as-is
-                      enqueueChunk(stdoutLine + '\n');
-                    }
-                  } else {
-                    closeCodexCommandGroup();
-                    closeClaudeCommandGroup();
-                    closeCursorCommandGroup();
-                    closeOpenCodeCommandGroup();
-                    // Non-JSON stdout (opencode, claude, etc.) — show as-is
+                  const handled = streamHandler.handleStdoutLine(stdoutLine);
+                  if (!handled) {
+                    streamHandler.closeCommandGroups();
                     enqueueChunk(stdoutLine + '\n');
                   }
                 }
@@ -871,8 +628,7 @@ export async function request(url: string, options: RequestInit = {}) {
                 // Detect auth/token errors — show ONE friendly message then mute
                 if (/401|token.?invalid|unauthorized|session.?ended|auth.?error|app_session_terminated|please.*(log\s*in|sign\s*in)/i.test(line)) {
                   authErrorDetected = true;
-                  closeOpenCodeCommandGroup();
-                  closeCursorCommandGroup();
+                  streamHandler.closeCommandGroups();
                   enqueueEvent({
                     type: 'error',
                     content: `\n**登录已过期，请在终端重新登录：**\n\`\`\`\ncodex login          # Codex\nclaude login         # Claude Code\ncursor agent login   # Cursor Agent\n\`\`\`\n`,
@@ -884,23 +640,20 @@ export async function request(url: string, options: RequestInit = {}) {
                 if (/^(OpenAI Codex|-------|workdir:|model:|provider:|approval:|sandbox:|reasoning|session id:)/i.test(line.trim())) break;
                 // In JSON mode, stream stderr as thinking inside the details block
                 if (isJsonMode) {
-                  if (codexCommandGroupOpen) {
+                  if (streamHandler.hasCommandGroupOpen()) {
                     enqueueChunk(`> 📝 _${line.trim().replace(/_/g, '\\_')}_\n\n`);
                   } else {
                     ensureDetailsOpen();
                     enqueueChunk(`> 📝 _${line.trim().replace(/_/g, '\\_')}_\n\n`);
                   }
                 } else {
-                  closeOpenCodeCommandGroup();
+                  streamHandler.closeCommandGroups();
                   enqueueChunk('> _' + line.replace(/_/g, '\\_') + '_\n');
                 }
                 break;
               case 'error':
                 if (typeof payload.message === 'string') {
-                  closeCodexCommandGroup();
-                  closeClaudeCommandGroup();
-                  closeCursorCommandGroup();
-                  closeOpenCodeCommandGroup();
+                  streamHandler.closeCommandGroups();
                   enqueueEvent({
                     type: 'error',
                     content: `\n**[CLI error]** ${payload.message}\n`,
@@ -909,18 +662,9 @@ export async function request(url: string, options: RequestInit = {}) {
                 }
                 break;
               case 'done': {
-                if (adapter === 'opencode' && opencodeSessionId) {
-                  enqueueEvent({
-                    type: 'tool_session',
-                    adapter: 'opencode',
-                    sessionId: opencodeSessionId,
-                  });
-                }
                 const code = typeof payload.exit_code === 'number' ? payload.exit_code : -1;
-                closeCodexCommandGroup();
-                closeClaudeCommandGroup();
-                closeCursorCommandGroup();
-                closeOpenCodeCommandGroup();
+                streamHandler.flushDone();
+                streamHandler.closeCommandGroups();
                 closeDetails();
                 const status =
                   code === -2 ? 'cancelled'

@@ -1,0 +1,130 @@
+export type CLIAdapterId =
+  | 'codex'
+  | 'claude'
+  | 'opencode'
+  | 'cursor'
+  | 'aider'
+  | 'gemini'
+  | 'generic'
+  | (string & {});
+
+export type CLIStreamMode =
+  | 'codex-json'
+  | 'claude-json'
+  | 'opencode-json'
+  | 'cursor-json'
+  | 'raw';
+
+export interface CLIAdapterDefinition {
+  id: CLIAdapterId;
+  label: string;
+  defaultBinary?: string;
+  streamMode: CLIStreamMode;
+  commandGroup?: string;
+  capabilities: {
+    toolSession: boolean;
+    openCodeSessionTitle?: boolean;
+  };
+  toolSessionArgs?: string[];
+  toolSessionArgPrefixes?: string[];
+}
+
+export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
+  {
+    id: 'codex',
+    label: 'Codex',
+    defaultBinary: 'codex',
+    streamMode: 'codex-json',
+    commandGroup: 'codex',
+    capabilities: { toolSession: true },
+    toolSessionArgs: ['resume', '--last'],
+  },
+  {
+    id: 'claude',
+    label: 'Claude Code',
+    defaultBinary: 'claude',
+    streamMode: 'claude-json',
+    commandGroup: 'claude',
+    capabilities: { toolSession: true },
+    toolSessionArgs: ['--resume', '-r', '--continue', '-c', '--session-id'],
+    toolSessionArgPrefixes: ['--resume=', '--session-id='],
+  },
+  {
+    id: 'opencode',
+    label: 'OpenCode',
+    defaultBinary: 'opencode',
+    streamMode: 'opencode-json',
+    commandGroup: 'opencode',
+    capabilities: { toolSession: true, openCodeSessionTitle: true },
+    toolSessionArgs: ['--session', '-s', '--continue', '-c'],
+    toolSessionArgPrefixes: ['--session='],
+  },
+  {
+    id: 'cursor',
+    label: 'Cursor Agent',
+    defaultBinary: 'cursor',
+    streamMode: 'cursor-json',
+    commandGroup: 'cursor',
+    capabilities: { toolSession: true },
+    toolSessionArgs: ['--resume', '--continue'],
+    toolSessionArgPrefixes: ['--resume='],
+  },
+  {
+    id: 'aider',
+    label: 'Aider',
+    defaultBinary: 'aider',
+    streamMode: 'raw',
+    capabilities: { toolSession: false },
+  },
+  {
+    id: 'gemini',
+    label: 'Gemini',
+    defaultBinary: 'gemini',
+    streamMode: 'raw',
+    capabilities: { toolSession: false },
+  },
+  {
+    id: 'generic',
+    label: 'Generic CLI',
+    streamMode: 'raw',
+    capabilities: { toolSession: false },
+  },
+];
+
+const definitionsById = new Map(cliAdapterDefinitions.map((definition) => [definition.id, definition]));
+
+export function getCLIAdapterDefinition(adapter: string): CLIAdapterDefinition {
+  const known = definitionsById.get(adapter as CLIAdapterId);
+  if (known) return known;
+  return {
+    id: adapter as CLIAdapterId,
+    label: adapter,
+    streamMode: 'raw',
+    capabilities: { toolSession: false },
+  };
+}
+
+export function supportsCliToolSession(adapter: string | null | undefined): boolean {
+  if (!adapter) return false;
+  return getCLIAdapterDefinition(adapter).capabilities.toolSession;
+}
+
+export function adapterUsesOpenCodeSessionTitle(adapter: string | null | undefined): boolean {
+  if (!adapter) return false;
+  return getCLIAdapterDefinition(adapter).capabilities.openCodeSessionTitle === true;
+}
+
+export function hasExplicitToolSessionArg(
+  adapter: string | null | undefined,
+  extraArgs: string[] | null | undefined,
+): boolean {
+  if (!adapter || !extraArgs?.length) return false;
+  const definition = getCLIAdapterDefinition(adapter);
+  const exactArgs = definition.toolSessionArgs || [];
+  const argPrefixes = definition.toolSessionArgPrefixes || [];
+
+  return extraArgs.some((arg) =>
+    exactArgs.includes(arg) ||
+    argPrefixes.some((prefix) => arg.startsWith(prefix))
+  );
+}

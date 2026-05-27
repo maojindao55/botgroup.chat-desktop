@@ -8,6 +8,7 @@ import { TagPicker } from './TagPicker';
 import { DryRunModal, type DryRunParams } from './DryRunModal';
 import { Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { cliAdapterDefinitions } from '@/config/cliAdapters';
 
 const AVAILABLE_TOOLS = [
   { name: 'web_search', description: '联网搜索获取实时信息' },
@@ -396,13 +397,11 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
           <>
             <Form.Item label="开发工具适配器 (Adapter)" name="cliAdapter" rules={[{ required: true, message: '请选择适配器' }]}>
               <Select placeholder="选择适配器">
-                <Select.Option value="codex">Codex (编码 CLI)</Select.Option>
-                <Select.Option value="claude">ClaudeCode (Claude 官方 CLI)</Select.Option>
-                <Select.Option value="opencode">OpenCode (开源通用编码)</Select.Option>
-                <Select.Option value="cursor">Cursor Agent (Cursor 官方 CLI)</Select.Option>
-                <Select.Option value="aider">Aider (开源 Aider 编码器)</Select.Option>
-                <Select.Option value="gemini">Gemini CLI</Select.Option>
-                <Select.Option value="generic">Generic (通用 Shell)</Select.Option>
+                {cliAdapterDefinitions.map((adapter) => (
+                  <Select.Option key={adapter.id} value={adapter.id}>
+                    {adapter.label}
+                  </Select.Option>
+                ))}
               </Select>
             </Form.Item>
 

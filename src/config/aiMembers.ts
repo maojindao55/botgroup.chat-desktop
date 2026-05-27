@@ -1,4 +1,5 @@
 import type { AgentTool } from './groups';
+import type { CLIAdapterId } from './cliAdapters';
 
 export interface AIMemberBase {
   id: string;                   // Unique ID (e.g. llm-*, agent-*, cli-*)
@@ -38,7 +39,7 @@ export interface AgentMember_v2 extends AIMemberBase {
 export interface CLIMember extends AIMemberBase {
   kind: 'cli';
   cli: {
-    adapter: 'codex' | 'claude' | 'opencode' | 'cursor' | 'aider' | 'gemini' | 'generic';
+    adapter: CLIAdapterId;
     binary?: string;
     extraArgs?: string[];
     toolSessionId?: string;

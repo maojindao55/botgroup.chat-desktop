@@ -70,6 +70,10 @@ const developmentLoop = mod.cliWorkflowTemplates.find((item) => item.id === 'imp
 assert.equal(developmentLoop.strategy, 'review');
 assert.equal(developmentLoop.defaultStages.join(' -> '), '规划 -> 实现 -> 复审 -> 修正');
 
+assert.equal(mod.getCLIWorkflowLabel('review', 'implement_review'), '规划实现复审');
+assert.equal(mod.getCLIWorkflowLabel('race', 'isolated_race'), '隔离竞赛');
+assert.equal(mod.getCLIWorkflowLabel('sequential', 'multi_solution'), '多人出方案');
+
 const labels = JSON.stringify({
   groups: mod.productGroupTypes,
   agent: mod.agentWorkflowTemplates,

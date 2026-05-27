@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import {
-  Modal, Steps, Button, Input, InputNumber, Switch, Empty,
+  Modal, Steps, Button, Input, InputNumber, Switch, Empty, Select,
 } from 'antd';
 import { createStyles } from 'antd-style';
 import {
@@ -8,7 +8,7 @@ import {
   Check, FolderOpen,
 } from 'lucide-react';
 import type {
-  Group, AIGroup, CLIGroup, CLIStrategy, CLISessionPolicy, AgentGroup, AgentStrategy,
+  Group, AIGroup, CLIGroup, CLIStrategy, CLISessionPolicy, AgentGroup, AgentStrategy, CLIReviewLoopRoles,
 } from '@/config/groups';
 import {
   aiSpeechModes,
@@ -48,6 +48,15 @@ const groupTypeIcons = {
 const defaultAgentTemplate = agentWorkflowTemplates[0];
 const defaultCliWorkflowTemplate =
   cliWorkflowTemplates.find((item) => item.id === 'implement_review') || cliWorkflowTemplates[0];
+
+function buildDefaultReviewLoopRoles(memberIds: string[]): CLIReviewLoopRoles {
+  return {
+    plannerId: memberIds[0],
+    implementerId: memberIds[1] || memberIds[0],
+    reviewerId: memberIds[0],
+    maxReviewRounds: 2,
+  };
+}
 
 const useStyles = createStyles(({ token, css }) => ({
   card: css`
@@ -160,6 +169,7 @@ export const CreateGroupWizard = ({
   const [cliStrategy, setCliStrategy] = useState<CLIStrategy>(defaultCliWorkflowTemplate.strategy);
   const [cliTemplateId, setCliTemplateId] = useState(defaultCliWorkflowTemplate.id);
   const [cliSessionPolicy, setCliSessionPolicy] = useState<CLISessionPolicy>('task');
+  const [reviewLoopRoles, setReviewLoopRoles] = useState<CLIReviewLoopRoles>(() => buildDefaultReviewLoopRoles([]));
 
   // Agent group
   const [selectedAgentMembers, setSelectedAgentMembers] = useState<string[]>([]);
@@ -173,6 +183,25 @@ export const CreateGroupWizard = ({
       loadMembers();
     }
   }, [open, loadMembers]);
+
+  useEffect(() => {
+    if (cliTemplateId !== 'implement_review' || selectedCLIMembers.length === 0) return;
+    const defaults = buildDefaultReviewLoopRoles(selectedCLIMembers);
+    setReviewLoopRoles(prev => ({
+      plannerId: prev.plannerId && selectedCLIMembers.includes(prev.plannerId) ? prev.plannerId : defaults.plannerId,
+      implementerId: prev.implementerId && selectedCLIMembers.includes(prev.implementerId) ? prev.implementerId : defaults.implementerId,
+      reviewerId: prev.reviewerId && selectedCLIMembers.includes(prev.reviewerId) ? prev.reviewerId : defaults.reviewerId,
+      maxReviewRounds: prev.maxReviewRounds ?? 2,
+    }));
+  }, [cliTemplateId, selectedCLIMembers]);
+
+  const reviewLoopRoleOptions = useMemo(
+    () => selectedCLIMembers.map(id => ({
+      value: id,
+      label: members[id]?.name || id,
+    })),
+    [selectedCLIMembers, members],
+  );
 
   const reset = () => {
     setStep(fixedGroupType ? 'basic' : 'type');
@@ -188,6 +217,7 @@ export const CreateGroupWizard = ({
     setCliStrategy(defaultCliWorkflowTemplate.strategy);
     setCliTemplateId(defaultCliWorkflowTemplate.id);
     setCliSessionPolicy('task');
+    setReviewLoopRoles(buildDefaultReviewLoopRoles([]));
     setSelectedAgentMembers([]);
     setStrategy(defaultAgentTemplate.strategy);
     setCoordinatorPrompt(defaultAgentTemplate.coordinatorPrompt || '');
@@ -211,12 +241,15 @@ export const CreateGroupWizard = ({
       } as AIGroup;
     } else if (groupType === 'cli') {
       const selectedTemplate = cliWorkflowTemplates.find((item) => item.id === cliTemplateId);
-      const reviewLoopRoles = cliTemplateId === 'implement_review'
+      const resolvedReviewLoopRoles = cliTemplateId === 'implement_review'
+        ? buildDefaultReviewLoopRoles(selectedCLIMembers)
+        : undefined;
+      const reviewLoopRolesToSave = cliTemplateId === 'implement_review'
         ? {
-          plannerId: selectedCLIMembers[0],
-          implementerId: selectedCLIMembers[1] || selectedCLIMembers[0],
-          reviewerId: selectedCLIMembers[0],
-          maxReviewRounds: 2,
+          plannerId: reviewLoopRoles.plannerId || resolvedReviewLoopRoles?.plannerId,
+          implementerId: reviewLoopRoles.implementerId || resolvedReviewLoopRoles?.implementerId,
+          reviewerId: reviewLoopRoles.reviewerId || resolvedReviewLoopRoles?.reviewerId,
+          maxReviewRounds: reviewLoopRoles.maxReviewRounds ?? 2,
         }
         : undefined;
       group = {
@@ -231,7 +264,7 @@ export const CreateGroupWizard = ({
         workflowTemplateId: cliTemplateId,
         sessionPolicy: cliSessionPolicy,
         executionPlan: selectedTemplate?.executionPlan,
-        reviewLoopRoles,
+        reviewLoopRoles: reviewLoopRolesToSave,
       } as CLIGroup;
     } else {
       group = {
@@ -465,6 +498,70 @@ export const CreateGroupWizard = ({
           </button>
         ))}
       </div>
+      {cliTemplateId === 'implement_review' && (
+        <div style={{ padding: 12, background: 'rgba(0,0,0,0.04)', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 500 }}>角色分工</div>
+            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginTop: 4 }}>
+              指定谁负责规划、谁按方案写代码、谁做复审。规划者和评审者可以是同一个开发成员。
+            </div>
+            {selectedCLIMembers.length < 2 && (
+              <div style={{ fontSize: 12, color: '#ff9500', marginTop: 4 }}>
+                建议至少选择 2 个开发成员，并分别指定规划/评审者与实现者。
+              </div>
+            )}
+          </div>
+          <div>
+            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginBottom: 4 }}>规划者</div>
+            <Select
+              size="small"
+              value={reviewLoopRoles.plannerId}
+              onChange={(plannerId) => setReviewLoopRoles(prev => ({ ...prev, plannerId }))}
+              options={reviewLoopRoleOptions}
+              placeholder="选择规划者"
+              style={{ width: '100%' }}
+            />
+          </div>
+          <div>
+            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginBottom: 4 }}>实现者</div>
+            <Select
+              size="small"
+              value={reviewLoopRoles.implementerId}
+              onChange={(implementerId) => setReviewLoopRoles(prev => ({ ...prev, implementerId }))}
+              options={reviewLoopRoleOptions}
+              placeholder="选择实现者"
+              style={{ width: '100%' }}
+            />
+          </div>
+          <div>
+            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginBottom: 4 }}>评审者</div>
+            <Select
+              size="small"
+              value={reviewLoopRoles.reviewerId}
+              onChange={(reviewerId) => setReviewLoopRoles(prev => ({ ...prev, reviewerId }))}
+              options={reviewLoopRoleOptions}
+              placeholder="选择评审者"
+              style={{ width: '100%' }}
+            />
+          </div>
+          <div>
+            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginBottom: 4 }}>最大复审轮数</div>
+            <InputNumber
+              size="small"
+              value={reviewLoopRoles.maxReviewRounds}
+              min={1}
+              max={5}
+              onChange={(value) => {
+                setReviewLoopRoles(prev => ({
+                  ...prev,
+                  maxReviewRounds: typeof value === 'number' ? value : 2,
+                }));
+              }}
+              style={{ width: 100 }}
+            />
+          </div>
+        </div>
+      )}
       <div>
         <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 8 }}>CLI 会话复用</label>
         {cliSessionPolicyOptions.map(item => (

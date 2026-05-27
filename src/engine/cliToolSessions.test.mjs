@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import ts from 'typescript';
 
-async function importTsModule(url) {
-  const source = await readFile(url, 'utf8');
+async function importTsModule(url, transform = (source) => source) {
+  const source = transform(await readFile(url, 'utf8'));
   const compiled = ts.transpileModule(`${source}\n// cache-bust:${Date.now()}:${Math.random()}`, {
     compilerOptions: {
       module: ts.ModuleKind.ES2022,
@@ -14,7 +14,16 @@ async function importTsModule(url) {
   return import(moduleUrl);
 }
 
-const { cliToolSessionKey, resolveCliToolSessionKey, withCliToolSession } = await importTsModule(new URL('./cliToolSessions.ts', import.meta.url));
+const adapterModule = await importTsModule(new URL('../config/cliAdapters.ts', import.meta.url));
+globalThis.__cliToolSessionTestDeps = adapterModule;
+
+const { cliToolSessionKey, resolveCliToolSessionKey, withCliToolSession } = await importTsModule(
+  new URL('./cliToolSessions.ts', import.meta.url),
+  source => source.replace(
+    "import { hasExplicitToolSessionArg, supportsCliToolSession } from '@/config/cliAdapters';",
+    'const { hasExplicitToolSessionArg, supportsCliToolSession } = globalThis.__cliToolSessionTestDeps;',
+  ),
+);
 
 assert.equal(
   cliToolSessionKey('group-1', 'cli-opencode', '/workspace/project'),
@@ -191,6 +200,19 @@ assert.notEqual(
   };
 
   const next = withCliToolSession(agent, '0f373dc8-07f8-4c79-8953-9d30ccb34053');
+
+  assert.equal(next, agent);
+}
+
+{
+  const agent = {
+    id: 'cli-aider',
+    name: 'Aider',
+    tags: [],
+    cli: { adapter: 'aider', extraArgs: [] },
+  };
+
+  const next = withCliToolSession(agent, 'session-not-supported');
 
   assert.equal(next, agent);
 }
