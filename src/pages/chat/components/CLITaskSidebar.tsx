@@ -5,13 +5,12 @@ import {
   Terminal,
   X,
   PanelLeftClose,
-  SlidersHorizontal,
   Users,
   Archive,
   Clock3,
   Trash2,
 } from 'lucide-react';
-import { Input, Tooltip, Select, Checkbox, Button } from 'antd';
+import { Input, Tooltip, Button } from 'antd';
 import { ActionIcon } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 import type { CLIDevelopmentTask, CLITaskStatus } from '@/config/cliTasks';
@@ -68,7 +67,7 @@ const useStyles = createStyles(({ token, css }) => ({
   topActions: css`
     padding: 0 14px 8px;
     display: grid;
-    grid-template-columns: 1fr 34px;
+    grid-template-columns: 1fr 1fr;
     gap: 8px;
     flex: none;
   `,
@@ -289,6 +288,7 @@ const useStyles = createStyles(({ token, css }) => ({
     font-size: 10px;
     color: ${token.colorTextTertiary};
     white-space: nowrap;
+    margin-left: auto;
   `,
   taskWorkspace: css`
     font-family: ${token.fontFamilyCode};
@@ -362,61 +362,13 @@ export const CLITaskSidebar = ({
   const { styles, cx } = useStyles();
   const aiMembers = useAIMemberStore(s => s.members);
   const [searchQuery, setSearchQuery] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<CLITaskStatus | 'all'>('all');
-  const [templateFilter, setTemplateFilter] = useState<string>('');
-  const [workspaceFilter, setWorkspaceFilter] = useState<string>('');
-  const [agentFilter, setAgentFilter] = useState<string>('');
-  const [showArchived, setShowArchived] = useState(false);
 
-  const templateOptions = Array.from(
-    new Map(tasks.map(t => [t.templateId, t.templateSnapshot.name])).entries(),
-  );
-
-  const workspaceOptions = useMemo(() => {
-    const paths = new Set<string>();
-    for (const task of tasks) {
-      if (task.workspacePath) paths.add(task.workspacePath);
-    }
-    return Array.from(paths).sort().map(path => ({ value: path, label: path }));
-  }, [tasks]);
-
-  const agentOptions = useMemo(() => {
-    const ids = new Set<string>();
-    for (const task of tasks) {
-      for (const id of task.templateSnapshot.memberIds) ids.add(id);
-      for (const message of task.messages) {
-        if (message.agentId) ids.add(message.agentId);
-      }
-    }
-    return Array.from(ids)
-      .map(id => ({
-        value: id,
-        label: resolveEffectiveMember(aiMembers, id)?.name || id.replace(/^cli-/, ''),
-      }))
-      .sort((a, b) => a.label.localeCompare(b.label, 'zh-CN'));
-  }, [tasks, aiMembers]);
-
-  const hasActiveFilters = statusFilter !== 'all'
-    || !!templateFilter
-    || !!workspaceFilter
-    || !!agentFilter;
-
-  const activeFilterCount = [
-    statusFilter !== 'all',
-    !!templateFilter,
-    !!workspaceFilter,
-    !!agentFilter,
-  ].filter(Boolean).length;
-
-  const filteredTasks = filterDevelopmentTasks(tasks, {
-    search: searchQuery,
-    status: statusFilter,
-    templateId: templateFilter || undefined,
-    workspacePath: workspaceFilter || undefined,
-    agentId: agentFilter || undefined,
-    showArchived,
-  });
+  const filteredTasks = useMemo(() => {
+    return filterDevelopmentTasks(tasks, {
+      search: searchQuery,
+      showArchived: false,
+    });
+  }, [tasks, searchQuery]);
 
   const formatTime = (iso: string) => {
     try {
@@ -429,20 +381,6 @@ export const CLITaskSidebar = ({
     } catch {
       return '';
     }
-  };
-
-  const shortPath = (path: string) => {
-    if (!path) return '';
-    const parts = path.split('/').filter(Boolean);
-    if (parts.length <= 2) return path;
-    return `.../${parts.slice(-2).join('/')}`;
-  };
-
-  const resetFilters = () => {
-    setStatusFilter('all');
-    setTemplateFilter('');
-    setWorkspaceFilter('');
-    setAgentFilter('');
   };
 
   const statusDotClass = (status: CLITaskStatus) => {
@@ -471,18 +409,19 @@ export const CLITaskSidebar = ({
           <div className={styles.topActions}>
             <Button
               type="primary"
-              block
               icon={<Plus size={14} />}
               onClick={onNewTask}
               style={{ background: '#ff6600', borderColor: '#ff6600', height: 36, borderRadius: 10 }}
             >
               新建任务
             </Button>
-            <Tooltip title="团队模板">
-              <button type="button" className={styles.iconBtn} onClick={onOpenTemplateList}>
-                <Users size={15} />
-              </button>
-            </Tooltip>
+            <Button
+              icon={<Users size={14} />}
+              onClick={onOpenTemplateList}
+              style={{ height: 36, borderRadius: 10 }}
+            >
+              团队模板
+            </Button>
           </div>
 
           <div className={styles.searchWrapper}>
@@ -503,106 +442,17 @@ export const CLITaskSidebar = ({
             />
           </div>
 
-          <div className={styles.toolbar}>
-            <button
-              type="button"
-              className={cx(styles.filterToggle, (showFilters || hasActiveFilters) && styles.filterToggleActive)}
-              onClick={() => setShowFilters(v => !v)}
-            >
-              <SlidersHorizontal size={12} />
-              筛选
-              {activeFilterCount > 0 && <span className={styles.filterBadge}>{activeFilterCount}</span>}
-            </button>
-            <span className={styles.taskMeta}>{filteredTasks.length} / {tasks.length}</span>
-          </div>
-
-          {showFilters && (
-            <div className={styles.filterRow}>
-              <div className={styles.filterHeader}>
-                <span>筛选任务</span>
-                {hasActiveFilters && (
-                  <button type="button" className={styles.linkBtn} onClick={resetFilters}>
-                    清除
-                  </button>
-                )}
-              </div>
-              <div className={styles.filterField}>
-                <span className={styles.filterFieldLabel}>状态</span>
-                <Select
-                  size="small"
-                  value={statusFilter}
-                  onChange={setStatusFilter}
-                  style={{ width: '100%' }}
-                  options={[
-                    { value: 'all', label: '全部状态' },
-                    { value: 'running', label: '运行中' },
-                    { value: 'queued', label: '排队' },
-                    { value: 'completed', label: '已完成' },
-                    { value: 'failed', label: '失败' },
-                    { value: 'cancelled', label: '已取消' },
-                    { value: 'timeout', label: '超时' },
-                    { value: 'archived', label: '已归档' },
-                  ]}
-                />
-              </div>
-              <div className={styles.filterField}>
-                <span className={styles.filterFieldLabel}>模板</span>
-                <Select
-                  size="small"
-                  value={templateFilter || undefined}
-                  placeholder="全部模板"
-                  allowClear
-                  onChange={(v) => setTemplateFilter(v || '')}
-                  style={{ width: '100%' }}
-                  options={templateOptions.map(([id, name]) => ({ value: id, label: name }))}
-                />
-              </div>
-              <div className={styles.filterField}>
-                <span className={styles.filterFieldLabel}>Workspace</span>
-                <Select
-                  size="small"
-                  value={workspaceFilter || undefined}
-                  placeholder="全部 Workspace"
-                  allowClear
-                  onChange={(v) => setWorkspaceFilter(v || '')}
-                  style={{ width: '100%' }}
-                  options={workspaceOptions}
-                />
-              </div>
-              <div className={styles.filterField}>
-                <span className={styles.filterFieldLabel}>开发成员</span>
-                <Select
-                  size="small"
-                  value={agentFilter || undefined}
-                  placeholder="全部开发成员"
-                  allowClear
-                  onChange={(v) => setAgentFilter(v || '')}
-                  style={{ width: '100%' }}
-                  options={agentOptions}
-                />
-              </div>
-              <Checkbox
-                checked={showArchived}
-                onChange={(e) => setShowArchived(e.target.checked)}
-                style={{ fontSize: 11 }}
-              >
-                显示已归档
-              </Checkbox>
-            </div>
-          )}
-
           <nav className={styles.navList}>
             {filteredTasks.length === 0 && (
               <div className={styles.empty}>
-                {searchQuery || hasActiveFilters
+                {searchQuery
                   ? '未找到匹配任务'
-                  : '还没有历史任务\n直接在右侧输入框开始第一个任务'}
+                  : '还没有历史任务\n直接在右侧开始新建任务'}
               </div>
             )}
             {filteredTasks.map(task => {
               const statusInfo = statusLabels[task.status] || statusLabels.queued;
               const isSelected = selectedTaskId === task.id;
-              const workspace = shortPath(task.workspacePath);
               const canDelete = canMutateTask(task);
               return (
                 <div
@@ -651,11 +501,6 @@ export const CLITaskSidebar = ({
                       <Archive size={10} style={{ flex: 'none', opacity: 0.55, color: 'inherit' }} />
                     )}
                   </div>
-                  {workspace && (
-                    <div className={styles.taskWorkspace} title={task.workspacePath}>
-                      {workspace}
-                    </div>
-                  )}
                 </div>
               );
             })}

@@ -235,33 +235,29 @@ export const ProviderLibrary: React.FC<ProviderLibraryProps> = ({ onCreate, onEd
         </div>
 
         <div className={styles.actionColumn}>
-          {provider.source === 'builtin' ? (
-            <Button
-              type="text"
-              icon={<Copy size={14} />}
-              onClick={async () => {
-                try {
-                  const copied = await clone(provider.id);
-                  onEdit(copied);
-                  toast.success(`已克隆为「${copied.name}」`);
-                } catch (e) {
-                  toast.error(e instanceof Error ? e.message : '克隆失败');
-                }
-              }}
-              style={{ padding: '4px 8px', height: 'auto' }}
-            >
-              克隆并编辑
-            </Button>
-          ) : (
-            <Button
-              type="text"
-              icon={<Edit2 size={14} />}
-              onClick={() => onEdit(provider)}
-              style={{ padding: '4px 8px', height: 'auto' }}
-            >
-              编辑
-            </Button>
-          )}
+          <Button
+            type="text"
+            icon={<Copy size={14} />}
+            onClick={async () => {
+              try {
+                const copied = await clone(provider.id);
+                toast.success(`已复制为「${copied.name}」`);
+              } catch (e) {
+                toast.error(e instanceof Error ? e.message : '复制失败');
+              }
+            }}
+            style={{ padding: '4px 8px', height: 'auto' }}
+          >
+            复制
+          </Button>
+          <Button
+            type="text"
+            icon={<Edit2 size={14} />}
+            onClick={() => onEdit(provider)}
+            style={{ padding: '4px 8px', height: 'auto' }}
+          >
+            编辑
+          </Button>
           {provider.source !== 'builtin' ? (
             <Button
               type="text"

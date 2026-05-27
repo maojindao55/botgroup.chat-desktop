@@ -10,6 +10,7 @@ import {
   Info,
   GitCompare,
   FolderOpen,
+  Plus,
 } from 'lucide-react';
 import { Input as AntdInput, Button as AntdButton, Tag, Modal, Select, Tooltip } from 'antd';
 import { ActionIcon, Avatar as LobeAvatar } from '@lobehub/ui';
@@ -437,6 +438,133 @@ const useStyles = createStyles(({ token, css }) => ({
   `,
   mobileOnly: css`
     @media (min-width: 768px) { display: none; }
+  `,
+  creationFormContainer: css`
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 24px 0;
+    min-height: 100%;
+  `,
+  creationFormCard: css`
+    width: 100%;
+    max-width: 680px;
+    background: ${token.colorBgContainer};
+    border: 1px solid ${token.colorBorderSecondary};
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.05);
+    padding: 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  `,
+  creationHeader: css`
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    border-bottom: 1px solid ${token.colorBorderSecondary};
+    padding-bottom: 16px;
+  `,
+  creationTitle: css`
+    font-size: 18px;
+    font-weight: 600;
+    color: ${token.colorText};
+    margin: 0;
+  `,
+  creationSubtitle: css`
+    font-size: 12px;
+    color: ${token.colorTextTertiary};
+  `,
+  formField: css`
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  `,
+  formFieldHeader: css`
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  `,
+  formLabel: css`
+    font-size: 13px;
+    font-weight: 600;
+    color: ${token.colorTextSecondary};
+  `,
+  templateGrid: css`
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+    margin-top: 4px;
+  `,
+  templateCard: css`
+    border: 1px solid ${token.colorBorderSecondary};
+    border-radius: 12px;
+    padding: 14px;
+    background: ${token.colorFillQuaternary};
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    position: relative;
+    &:hover {
+      border-color: rgba(255, 102, 0, 0.35);
+      background: ${token.colorFillTertiary};
+    }
+  `,
+  templateCardActive: css`
+    border-color: #ff6600 !important;
+    background: rgba(255, 102, 0, 0.04) !important;
+    box-shadow: 0 0 0 2px rgba(255, 102, 0, 0.1);
+  `,
+  templateCardTitle: css`
+    font-size: 13px;
+    font-weight: 600;
+    color: ${token.colorText};
+  `,
+  templateCardMeta: css`
+    font-size: 10px;
+    color: ${token.colorTextTertiary};
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  `,
+  templateCardDesc: css`
+    font-size: 11px;
+    color: ${token.colorTextSecondary};
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  `,
+  templateEmpty: css`
+    border: 1px dashed ${token.colorBorder};
+    border-radius: 12px;
+    padding: 24px;
+    text-align: center;
+    color: ${token.colorTextTertiary};
+    font-size: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  `,
+  workspaceRow: css`
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  `,
+  workspaceInput: css`
+    font-family: ${token.fontFamilyCode} !important;
+    font-size: 12px !important;
+  `,
+  submitBtnRow: css`
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 12px;
+    border-top: 1px solid ${token.colorBorderSecondary};
+    padding-top: 20px;
   `,
 }));
 
@@ -1479,15 +1607,132 @@ const CLITaskUI = ({
 
             <div className={styles.chatArea}>
               {!selectedTask && (
-                <div className={styles.emptyState}>
-                  <Terminal size={48} style={{ opacity: 0.3 }} />
-                  <div style={{ fontSize: 16, fontWeight: 500 }}>
-                    {tasks.length === 0 ? '开始第一个开发任务' : '新建或继续任务'}
-                  </div>
-                  <div style={{ fontSize: 13, maxWidth: 360, lineHeight: 1.6 }}>
-                    {tasks.length === 0
-                      ? '先新建团队模板，再在下方输入代码需求即可开始。'
-                      : '在下方输入新需求将创建独立任务；点击左侧任务可继续已有对话。'}
+                <div className={styles.creationFormContainer}>
+                  <div className={styles.creationFormCard}>
+                    <div className={styles.creationHeader}>
+                      <h2 className={styles.creationTitle}>新建开发任务</h2>
+                      <span className={styles.creationSubtitle}>描述需求并选择团队模板以开始执行任务</span>
+                    </div>
+
+                    <div className={styles.formField}>
+                      <span className={styles.formLabel}>需求描述</span>
+                      <AntdInput.TextArea
+                        value={inputMessage}
+                        onChange={(e) => setInputMessage(e.target.value)}
+                        placeholder="描述你的代码任务，开发成员会在 workspace 中协作执行... (例如: 添加一个导出 CSV 的按钮，并且编写对应的测试)"
+                        autoSize={{ minRows: 4, maxRows: 8 }}
+                        disabled={isComposeBusy}
+                        style={{ borderRadius: 10, padding: '10px 12px' }}
+                      />
+                    </div>
+
+                    <div className={styles.formField}>
+                      <div className={styles.formFieldHeader}>
+                        <span className={styles.formLabel}>选择团队模板</span>
+                        <div style={{ display: 'flex', gap: 12 }}>
+                          <AntdButton
+                            type="link"
+                            size="small"
+                            onClick={openCreateTemplate}
+                            icon={<Plus size={12} />}
+                            style={{ padding: 0, height: 'auto', fontSize: 12 }}
+                          >
+                            新建模板
+                          </AntdButton>
+                          {templates.length > 0 && (
+                            <AntdButton
+                              type="link"
+                              size="small"
+                              onClick={openTemplateList}
+                              style={{ padding: 0, height: 'auto', fontSize: 12 }}
+                            >
+                              管理模板
+                            </AntdButton>
+                          )}
+                        </div>
+                      </div>
+
+                      {templates.length === 0 ? (
+                        <div className={styles.templateEmpty}>
+                          <span>还没有团队模板，执行需要团队配置。</span>
+                          <AntdButton
+                            type="primary"
+                            size="small"
+                            onClick={openCreateTemplate}
+                            icon={<Plus size={14} />}
+                            style={{ background: '#ff6600', borderColor: '#ff6600' }}
+                          >
+                            新建团队模板
+                          </AntdButton>
+                        </div>
+                      ) : (
+                        <div className={styles.templateGrid}>
+                          {templates.map(tmpl => {
+                            const isCardSelected = selectedTemplateId === tmpl.id;
+                            return (
+                              <div
+                                key={tmpl.id}
+                                className={cx(styles.templateCard, isCardSelected && styles.templateCardActive)}
+                                onClick={() => setSelectedTemplateId(tmpl.id)}
+                              >
+                                <div className={styles.templateCardTitle}>{tmpl.name}</div>
+                                <div className={styles.templateCardMeta}>
+                                  <span>{tmpl.strategy === 'race' ? '竞争模式' : tmpl.strategy === 'mapreduce' ? 'MapReduce 策略' : '顺序执行'}</span>
+                                  <span>·</span>
+                                  <span>{tmpl.memberIds.length} 位成员</span>
+                                </div>
+                                {tmpl.description && (
+                                  <div className={styles.templateCardDesc} title={tmpl.description}>
+                                    {tmpl.description}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className={styles.formField}>
+                      <span className={styles.formLabel}>工作目录 (Workspace)</span>
+                      <div className={styles.workspaceRow}>
+                        <AntdInput
+                          className={styles.workspaceInput}
+                          placeholder="/Users/you/projects/your-repo"
+                          value={draftWorkspacePath}
+                          onChange={(e) => handleDraftWorkspaceChange(e.target.value)}
+                          style={{ borderRadius: 10, height: 36 }}
+                        />
+                        <AntdButton
+                          icon={<FolderOpen size={14} />}
+                          onClick={handleSelectDraftWorkspace}
+                          style={{ height: 36, borderRadius: 10 }}
+                        >
+                          选择
+                        </AntdButton>
+                      </div>
+                    </div>
+
+                    <div className={styles.submitBtnRow}>
+                      <AntdButton
+                        type="primary"
+                        icon={<Send size={16} />}
+                        onClick={handleSendMessage}
+                        loading={isComposeBusy}
+                        disabled={isComposeBusy || !inputMessage.trim() || templates.length === 0}
+                        style={{
+                          background: '#ff6600',
+                          borderColor: '#ff6600',
+                          height: 40,
+                          borderRadius: 10,
+                          padding: '0 24px',
+                          fontWeight: 600,
+                          boxShadow: '0 4px 12px rgba(255, 102, 0, 0.2)',
+                        }}
+                      >
+                        创建并启动任务
+                      </AntdButton>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1646,125 +1891,62 @@ const CLITaskUI = ({
               )}
             </div>
 
-            <div className={styles.inputArea}>
-              <div className={styles.composeBox}>
-                <AntdInput.TextArea
-                  ref={inputRef}
-                  className={styles.composeTextarea}
-                  value={inputMessage}
-                  onChange={(e) => setInputMessage(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSendMessage();
-                    }
-                  }}
-                  placeholder={
-                    selectedTask
-                      ? '继续这个任务… 输入 @开发成员名 可指定执行者'
-                      : '描述代码任务，开发成员会在 workspace 中协作执行...'
-                  }
-                  autoSize={{ minRows: 4, maxRows: 12 }}
-                  disabled={isComposeBusy || (!selectedTask && !draftTemplate)}
-                  variant="borderless"
-                />
-                {!selectedTask && (
-                  <div className={styles.composeWorkspaceRow}>
-                    <span className={styles.composeWorkspaceLabel}>Workspace</span>
-                    <AntdInput
-                      className={styles.composeWorkspaceInput}
-                      size="small"
-                      placeholder="/Users/you/projects/your-repo"
-                      value={draftWorkspacePath}
-                      onChange={(e) => handleDraftWorkspaceChange(e.target.value)}
-                    />
+            {selectedTask && (
+              <div className={styles.inputArea}>
+                <div className={styles.composeBox}>
+                  <AntdInput.TextArea
+                    ref={inputRef}
+                    className={styles.composeTextarea}
+                    value={inputMessage}
+                    onChange={(e) => setInputMessage(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSendMessage();
+                      }
+                    }}
+                    placeholder="继续这个任务… 输入 @开发成员名 可指定执行者"
+                    autoSize={{ minRows: 4, maxRows: 12 }}
+                    disabled={isComposeBusy}
+                    variant="borderless"
+                  />
+                  <div className={styles.composeFooter}>
+                    <Tag color="orange">{selectedTask.templateSnapshot.name}</Tag>
+                    <span className={styles.composeHint}>
+                      继续此任务 · 配置以创建时快照为准
+                    </span>
+                    <div className={styles.composeFooterSpacer} />
                     <AntdButton
-                      size="small"
-                      icon={<FolderOpen size={14} />}
-                      onClick={handleSelectDraftWorkspace}
+                      type="primary"
+                      icon={<Send size={16} />}
+                      onClick={handleSendMessage}
+                      loading={isComposeBusy}
+                      disabled={isComposeBusy || !inputMessage.trim()}
+                      style={{ background: '#ff6600', borderColor: '#ff6600' }}
                     >
-                      选择
+                      发送
                     </AntdButton>
                   </div>
-                )}
-                <div className={styles.composeFooter}>
-                  {!selectedTask ? (
-                    <>
-                      {templates.length > 0 && (
-                        <Select
-                          size="small"
-                          value={selectedTemplateId || undefined}
-                          onChange={setSelectedTemplateId}
-                          style={{ minWidth: 140 }}
-                          placeholder="选择团队模板"
-                          options={templates.map(t => ({ value: t.id, label: t.name }))}
-                        />
-                      )}
-                      <span className={styles.composeHint}>
-                        {templates.length === 0
-                          ? '还没有团队模板'
-                          : '模板决定成员与协作方式，Workspace 在上方指定'}
-                      </span>
-                      <AntdButton
-                        type="link"
-                        size="small"
-                        onClick={openCreateTemplate}
-                        style={{ padding: 0, height: 'auto' }}
-                      >
-                        新建模板
-                      </AntdButton>
-                      {templates.length > 0 && (
-                        <AntdButton
-                          type="link"
-                          size="small"
-                          onClick={openTemplateList}
-                          style={{ padding: 0, height: 'auto' }}
-                        >
-                          管理
-                        </AntdButton>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <Tag color="orange">{selectedTask.templateSnapshot.name}</Tag>
-                      <span className={styles.composeHint}>
-                        继续此任务 · 配置以创建时快照为准
-                      </span>
-                    </>
-                  )}
-                  <div className={styles.composeFooterSpacer} />
-                  <AntdButton
-                    type="primary"
-                    icon={<Send size={16} />}
-                    onClick={handleSendMessage}
-                    loading={isComposeBusy}
-                    disabled={isComposeBusy || !inputMessage.trim() || (!selectedTask && !draftTemplate)}
-                    style={{ background: '#ff6600', borderColor: '#ff6600' }}
-                  >
-                    发送
-                  </AntdButton>
                 </div>
-              </div>
-              {selectedTask && (
                 <div style={{ fontSize: 10, opacity: 0.5, marginTop: 6 }}>
                   继续任务会复用此任务的 CLI 会话；输入 @开发成员名 可只让该成员执行。
                 </div>
-              )}
-              {selectedTask && continueTaskAgents.length > 0 && (
-                <div className={styles.agentChipRow}>
-                  {continueTaskAgents.map(member => (
-                    <button
-                      key={member.id}
-                      type="button"
-                      className={styles.agentChip}
-                      onClick={() => insertAgentMention(member.name)}
-                    >
-                      @{member.name}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+                {continueTaskAgents.length > 0 && (
+                  <div className={styles.agentChipRow}>
+                    {continueTaskAgents.map(member => (
+                      <button
+                        key={member.id}
+                        type="button"
+                        className={styles.agentChip}
+                        onClick={() => insertAgentMention(member.name)}
+                      >
+                        @{member.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

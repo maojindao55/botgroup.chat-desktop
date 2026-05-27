@@ -105,15 +105,27 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
   };
 
   const handleFinish = async (values: Record<string, unknown>) => {
-    if (readOnly) return;
-
     setSaving(true);
     try {
       const id = providerId || `user-${Date.now()}`;
-      await persistProvider(values, id);
-      message.success('保存成功');
-      onClose();
-      onSave?.();
+      if (readOnly) {
+        // Builtin provider: only api key can be configured
+        const apiKey = (values.apiKey as string)?.trim();
+        if (apiKey) {
+          await ensureSecret(id, apiKey);
+          setSecretConfigured(true);
+          message.success('API 密钥保存成功');
+        } else {
+          message.info('未输入新密钥');
+        }
+        onClose();
+        onSave?.();
+      } else {
+        await persistProvider(values, id);
+        message.success('保存成功');
+        onClose();
+        onSave?.();
+      }
     } catch {
       message.error('保存失败，请重试');
     } finally {
@@ -199,7 +211,7 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
       onCloneEdit?.(copied.id);
       onSave?.();
     } catch (e) {
-      message.error(formatInvokeError(e) || '克隆失败，请重试');
+      message.error(formatInvokeError(e) || '复制失败，请重试');
     } finally {
       setCloning(false);
     }
@@ -216,15 +228,13 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
         <Space>
           {isBuiltin && (
             <Button icon={<Copy size={14} />} loading={cloning} onClick={handleClone}>
-              克隆并编辑
+              复制并编辑
             </Button>
           )}
           <Button onClick={onClose}>取消</Button>
-          {!readOnly && (
-            <Button type="primary" loading={saving} onClick={() => form.submit()}>
-              保存
-            </Button>
-          )}
+          <Button type="primary" loading={saving} onClick={() => form.submit()}>
+            保存
+          </Button>
         </Space>
       }
     >

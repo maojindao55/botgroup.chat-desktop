@@ -125,7 +125,7 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
   upsert: async (p: Provider) => {
     const existing = get().providers[p.id];
     if (existing?.source === 'builtin') {
-      throw new Error('无法修改内置 Provider，请使用「克隆并编辑」。');
+      throw new Error('无法修改内置 Provider，请使用「复制并编辑」。');
     }
     if (!existing && p.source === 'builtin') {
       throw new Error('不能从界面创建 builtin Provider。');
