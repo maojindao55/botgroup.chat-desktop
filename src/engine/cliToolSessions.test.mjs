@@ -206,10 +206,10 @@ assert.notEqual(
 
 {
   const agent = {
-    id: 'cli-aider',
-    name: 'Aider',
+    id: 'cli-custom',
+    name: 'Custom CLI',
     tags: [],
-    cli: { adapter: 'aider', extraArgs: [] },
+    cli: { adapter: 'custom-cli', extraArgs: [] },
   };
 
   const next = withCliToolSession(agent, 'session-not-supported');

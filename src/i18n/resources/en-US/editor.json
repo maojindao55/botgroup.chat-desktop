@@ -46,7 +46,7 @@
       "cliAdapterRequired": "Select an adapter",
       "cliAdapterPlaceholder": "Select adapter",
       "cliBinary": "Binary path",
-      "cliBinaryPlaceholder": "Leave empty to use the global command (e.g. claudecode, aider)",
+      "cliBinaryPlaceholder": "Leave empty to use the global command (e.g. codex, claude, opencode)",
       "cliExtraArgs": "Extra CLI args",
       "cliExtraArgsPlaceholder": "Arguments appended to the command",
       "cliApproval": "Execution approval",

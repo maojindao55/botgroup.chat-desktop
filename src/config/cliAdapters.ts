@@ -3,9 +3,6 @@ export type CLIAdapterId =
   | 'claude'
   | 'opencode'
   | 'cursor'
-  | 'aider'
-  | 'gemini'
-  | 'generic'
   | (string & {});
 
 export type CLIStreamMode =
@@ -68,26 +65,6 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     capabilities: { toolSession: true },
     toolSessionArgs: ['--resume', '--continue'],
     toolSessionArgPrefixes: ['--resume='],
-  },
-  {
-    id: 'aider',
-    label: 'Aider',
-    defaultBinary: 'aider',
-    streamMode: 'raw',
-    capabilities: { toolSession: false },
-  },
-  {
-    id: 'gemini',
-    label: 'Gemini',
-    defaultBinary: 'gemini',
-    streamMode: 'raw',
-    capabilities: { toolSession: false },
-  },
-  {
-    id: 'generic',
-    label: 'Generic CLI',
-    streamMode: 'raw',
-    capabilities: { toolSession: false },
   },
 ];
 

@@ -143,7 +143,7 @@ async function callCLIAgent(
   });
 
   const startTime = Date.now();
-  const cliCfg = agent.cli || { adapter: 'generic' as const };
+  const cliCfg = agent.cli || { adapter: 'codex' as const };
 
   const requestBody = {
     sessionId,

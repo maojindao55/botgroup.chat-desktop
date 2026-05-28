@@ -46,7 +46,7 @@
       "cliAdapterRequired": "请选择适配器",
       "cliAdapterPlaceholder": "选择适配器",
       "cliBinary": "可执行路径 (Binary Path)",
-      "cliBinaryPlaceholder": "不填则使用系统全局安装命令 (如 `claudecode`, `aider` 等)",
+      "cliBinaryPlaceholder": "不填则使用系统全局安装命令 (如 `codex`, `claude`, `opencode` 等)",
       "cliExtraArgs": "额外运行参数 (Extra Args)",
       "cliExtraArgsPlaceholder": "在命令行后添加的参数",
       "cliApproval": "自动执行审批",

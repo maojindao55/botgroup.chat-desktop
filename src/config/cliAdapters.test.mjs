@@ -23,9 +23,6 @@ assert.equal(mod.supportsCliToolSession('codex'), true);
 assert.equal(mod.supportsCliToolSession('claude'), true);
 assert.equal(mod.supportsCliToolSession('opencode'), true);
 assert.equal(mod.supportsCliToolSession('cursor'), true);
-assert.equal(mod.supportsCliToolSession('aider'), false);
-assert.equal(mod.supportsCliToolSession('gemini'), false);
-assert.equal(mod.supportsCliToolSession('generic'), false);
 
 assert.equal(mod.adapterUsesOpenCodeSessionTitle('opencode'), true);
 assert.equal(mod.adapterUsesOpenCodeSessionTitle('codex'), false);

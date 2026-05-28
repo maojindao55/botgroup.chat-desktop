@@ -16,7 +16,7 @@ async function importTsModule(url, transform = (source) => source) {
 
 const groupsModule = await importTsModule(new URL('../config/groups.ts', import.meta.url));
 
-function createAgent(id, name, description, adapter = 'generic') {
+function createAgent(id, name, description, adapter = 'codex') {
   return {
     id,
     name,

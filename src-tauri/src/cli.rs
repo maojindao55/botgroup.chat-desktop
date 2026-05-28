@@ -109,7 +109,7 @@ pub struct CliRunArgs {
     pub group_id: String,
     pub agent_id: String,
     pub agent_name: String,
-    /// "codex" | "opencode" | "claude" | "cursor" | "generic"
+    /// "codex" | "opencode" | "claude" | "cursor"
     pub adapter: String,
     pub prompt: String,
     pub cwd: Option<String>,
@@ -848,9 +848,6 @@ const CLI_ADAPTER_DEFINITIONS: &[CliAdapterDefinition] = &[
     CliAdapterDefinition { id: "opencode", default_binary: Some("opencode") },
     CliAdapterDefinition { id: "claude", default_binary: Some("claude") },
     CliAdapterDefinition { id: "cursor", default_binary: Some("cursor") },
-    CliAdapterDefinition { id: "aider", default_binary: Some("aider") },
-    CliAdapterDefinition { id: "gemini", default_binary: Some("gemini") },
-    CliAdapterDefinition { id: "generic", default_binary: None },
 ];
 
 fn adapter_definition(adapter: &str) -> Option<CliAdapterDefinition> {
@@ -988,21 +985,6 @@ fn build_cursor_command(cmd: &mut Command, args: &CliRunArgs) {
     cmd.arg(&args.prompt);
 }
 
-fn build_aider_command(cmd: &mut Command, args: &CliRunArgs) {
-    cmd.arg("--message").arg(&args.prompt).arg("--yes-always");
-    append_extra_args(cmd, args);
-}
-
-fn build_gemini_command(cmd: &mut Command, args: &CliRunArgs) {
-    cmd.arg("-p").arg(&args.prompt);
-    append_extra_args(cmd, args);
-}
-
-fn build_generic_command(cmd: &mut Command, args: &CliRunArgs) {
-    append_extra_args(cmd, args);
-    cmd.arg(&args.prompt);
-}
-
 fn build_command(args: &CliRunArgs) -> Result<Command, String> {
     let binary = args
         .binary
@@ -1022,9 +1004,6 @@ fn build_command(args: &CliRunArgs) -> Result<Command, String> {
         "opencode" => build_opencode_command(&mut cmd, args),
         "claude" => build_claude_command(&mut cmd, args),
         "cursor" => build_cursor_command(&mut cmd, args),
-        "aider" => build_aider_command(&mut cmd, args),
-        "gemini" => build_gemini_command(&mut cmd, args),
-        "generic" => build_generic_command(&mut cmd, args),
         other => return Err(format!("unknown adapter: {}", other)),
     }
 
@@ -1157,7 +1136,6 @@ mod tests {
         assert_eq!(adapter_definition("opencode").and_then(|d| d.default_binary), Some("opencode"));
         assert_eq!(adapter_definition("claude").and_then(|d| d.default_binary), Some("claude"));
         assert_eq!(adapter_definition("cursor").and_then(|d| d.default_binary), Some("cursor"));
-        assert_eq!(adapter_definition("generic").and_then(|d| d.default_binary), None);
         assert!(adapter_definition("unknown").is_none());
     }
 
