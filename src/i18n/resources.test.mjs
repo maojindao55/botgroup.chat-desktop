@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const locales = ['zh-CN', 'en-US'];
-const namespaces = ['common', 'sidebar', 'user', 'wizard', 'product', 'library', 'editor', 'settings', 'chat'];
+const namespaces = ['common', 'sidebar', 'user', 'wizard', 'product', 'library', 'editor', 'settings', 'chat', 'cli', 'engine', 'providers', 'tags', 'ad'];
 
 function flattenKeys(value, prefix = '') {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {

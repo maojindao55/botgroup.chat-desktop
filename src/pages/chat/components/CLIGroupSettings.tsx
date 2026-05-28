@@ -430,7 +430,7 @@ export const CLIGroupSettings = ({
   linkedTaskCount = 0,
 }: CLIGroupSettingsProps) => {
   const { styles, cx } = useStyles();
-  const { t } = useTranslation(['cli', 'common', 'product']);
+  const { t, i18n } = useTranslation(['cli', 'common', 'product']);
   const aiMembers = useAIMemberStore(s => s.members);
   const isTemplateMode = mode === 'template';
   const buildTemplateDraft = (): CLIGroup => ({
@@ -679,7 +679,7 @@ export const CLIGroupSettings = ({
     discussion: t('cli:groupSettings.strategies.discussion'),
     debate: t('cli:groupSettings.strategies.debate'),
     mapreduce: t('cli:groupSettings.strategies.mapreduce'),
-  }), [t]);
+  }), [i18n.language]);
   const selectedCliTemplate = cliWorkflowTemplates.find((item) => item.id === selectedCliTemplateId);
   const persistedCliTemplate = cliWorkflowTemplates.find((item) => item.id === effectiveGroup.workflowTemplateId);
   const activeCliTemplate = selectedCliTemplate || cliWorkflowTemplates.find((item) => item.strategy === effectiveStrategy);

@@ -268,7 +268,7 @@ async function callCLIAgent(
     status,
     exitCode,
     durationMs,
-    isError: failed || fullContent.startsWith('['),
+    isError: failed || fullContent.startsWith('[CLI'),
     cwd: ctx.cwd,
     branch: ctx.branchName,
     stageLabel: meta.stageLabel,

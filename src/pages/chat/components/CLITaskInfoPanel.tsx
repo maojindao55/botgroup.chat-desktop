@@ -156,7 +156,7 @@ export const CLITaskInfoPanel = ({
   onDeleteTask,
 }: CLITaskInfoPanelProps) => {
   const { styles } = useStyles();
-  const { t } = useTranslation(['cli', 'product']);
+  const { t, i18n } = useTranslation(['cli', 'product']);
 
   const statusLabels: Record<CLITaskStatus, { label: string; color: string }> = useMemo(() => ({
     queued: { label: t('cli:status.queued'), color: 'default' },
@@ -166,7 +166,7 @@ export const CLITaskInfoPanel = ({
     cancelled: { label: t('cli:status.cancelled'), color: 'warning' },
     timeout: { label: t('cli:status.timeout'), color: 'error' },
     archived: { label: t('cli:status.archived'), color: 'default' },
-  }), [t]);
+  }), [i18n.language]);
 
   const strategyLabel = (strategy: string, workflowTemplateId?: string) => {
     const tpl = workflowTemplateId

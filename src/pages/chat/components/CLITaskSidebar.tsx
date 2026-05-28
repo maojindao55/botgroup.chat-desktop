@@ -350,7 +350,7 @@ export const CLITaskSidebar = ({
   onDeleteTask,
 }: CLITaskSidebarProps) => {
   const { styles, cx } = useStyles();
-  const { t } = useTranslation(['cli']);
+  const { t, i18n } = useTranslation(['cli']);
   const [searchQuery, setSearchQuery] = useState('');
 
   const statusLabels: Record<CLITaskStatus, { label: string; color: string }> = useMemo(() => ({
@@ -361,7 +361,7 @@ export const CLITaskSidebar = ({
     cancelled: { label: t('cli:status.cancelled'), color: 'warning' },
     timeout: { label: t('cli:status.timeout'), color: 'error' },
     archived: { label: t('cli:status.archived'), color: 'default' },
-  }), [t]);
+  }), [i18n.language]);
 
   const filteredTasks = useMemo(() => {
     return filterDevelopmentTasks(tasks, {

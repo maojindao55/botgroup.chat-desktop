@@ -1,5 +1,3 @@
-import i18n from '@/i18n';
-
 export interface PromptContext {
   groupName?: string;
   aiName?: string;
@@ -9,7 +7,9 @@ export interface PromptContext {
 }
 
 function getPromptLocale(): string {
-  return i18n.language || 'zh-CN';
+  // Always use zh-CN for prompt formatting to avoid leaking UI locale into LLM context.
+  // TODO: Phase 6 - introduce a separate promptLocale setting decoupled from UI locale.
+  return 'zh-CN';
 }
 
 function formatDate(d: Date): string {
