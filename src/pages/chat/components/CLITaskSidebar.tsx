@@ -13,20 +13,10 @@ import {
 import { Input, Tooltip, Button } from 'antd';
 import { ActionIcon } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
+import { useTranslation } from 'react-i18next';
+import { formatLocaleDateTime } from '@/i18n/formatLocale';
 import type { CLIDevelopmentTask, CLITaskStatus } from '@/config/cliTasks';
 import { canMutateTask, filterDevelopmentTasks, getTaskDisplayStatus } from '@/config/cliTasks';
-import { useAIMemberStore } from '@/store/aiMemberStore';
-import { resolveEffectiveMember } from '@/utils/aiMemberDisplay';
-
-const statusLabels: Record<CLITaskStatus, { label: string; color: string }> = {
-  queued: { label: '排队', color: 'default' },
-  running: { label: '运行中', color: 'processing' },
-  completed: { label: '已完成', color: 'success' },
-  failed: { label: '失败', color: 'error' },
-  cancelled: { label: '已取消', color: 'warning' },
-  timeout: { label: '超时', color: 'error' },
-  archived: { label: '已归档', color: 'default' },
-};
 
 const SIDEBAR_WIDTH = 296;
 
@@ -360,8 +350,18 @@ export const CLITaskSidebar = ({
   onDeleteTask,
 }: CLITaskSidebarProps) => {
   const { styles, cx } = useStyles();
-  const aiMembers = useAIMemberStore(s => s.members);
+  const { t, i18n } = useTranslation(['cli']);
   const [searchQuery, setSearchQuery] = useState('');
+
+  const statusLabels: Record<CLITaskStatus, { label: string; color: string }> = useMemo(() => ({
+    queued: { label: t('cli:status.queued'), color: 'default' },
+    running: { label: t('cli:status.running'), color: 'processing' },
+    completed: { label: t('cli:status.completed'), color: 'success' },
+    failed: { label: t('cli:status.failed'), color: 'error' },
+    cancelled: { label: t('cli:status.cancelled'), color: 'warning' },
+    timeout: { label: t('cli:status.timeout'), color: 'error' },
+    archived: { label: t('cli:status.archived'), color: 'default' },
+  }), [i18n.language]);
 
   const filteredTasks = useMemo(() => {
     return filterDevelopmentTasks(tasks, {
@@ -370,18 +370,13 @@ export const CLITaskSidebar = ({
     });
   }, [tasks, searchQuery]);
 
-  const formatTime = (iso: string) => {
-    try {
-      return new Date(iso).toLocaleString(undefined, {
-        month: 'numeric',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-    } catch {
-      return '';
-    }
-  };
+  const formatTime = (iso: string) =>
+    formatLocaleDateTime(iso, {
+      month: 'numeric',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
 
   const statusDotClass = (status: CLITaskStatus) => {
     if (status === 'running' || status === 'queued') return styles.statusDotRunning;
@@ -399,8 +394,8 @@ export const CLITaskSidebar = ({
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Terminal size={16} color="#ff6600" />
               <div>
-                <span className={styles.title}>开发任务</span>
-                <div className={styles.subtitle}>任务队列与历史记录</div>
+                <span className={styles.title}>{t('cli:taskSidebar.title')}</span>
+                <div className={styles.subtitle}>{t('cli:taskSidebar.subtitle')}</div>
               </div>
             </div>
             <ActionIcon icon={PanelLeftClose} size="small" onClick={toggleSidebar} title="" />
@@ -413,21 +408,21 @@ export const CLITaskSidebar = ({
               onClick={onNewTask}
               style={{ background: '#ff6600', borderColor: '#ff6600', height: 36, borderRadius: 10 }}
             >
-              新建任务
+              {t('cli:taskSidebar.newTask')}
             </Button>
             <Button
               icon={<Users size={14} />}
               onClick={onOpenTemplateList}
               style={{ height: 36, borderRadius: 10 }}
             >
-              团队模板
+              {t('cli:taskSidebar.teamTemplates')}
             </Button>
           </div>
 
           <div className={styles.searchWrapper}>
             <Input
               size="small"
-              placeholder="搜索任务..."
+              placeholder={t('cli:taskSidebar.searchPlaceholder')}
               prefix={<Search size={14} style={{ opacity: 0.6 }} />}
               suffix={
                 searchQuery ? (
@@ -446,8 +441,8 @@ export const CLITaskSidebar = ({
             {filteredTasks.length === 0 && (
               <div className={styles.empty}>
                 {searchQuery
-                  ? '未找到匹配任务'
-                  : '还没有历史任务\n直接在右侧开始新建任务'}
+                  ? t('cli:taskSidebar.emptySearch')
+                  : t('cli:taskSidebar.empty')}
               </div>
             )}
             {filteredTasks.map(task => {
@@ -470,7 +465,7 @@ export const CLITaskSidebar = ({
                       </span>
                     </div>
                     {onDeleteTask && (
-                      <Tooltip title={canDelete ? '删除任务' : '任务运行中，无法删除'}>
+                      <Tooltip title={canDelete ? t('cli:taskSidebar.deleteTask') : t('cli:taskSidebar.deleteTaskRunning')}>
                         <button
                           type="button"
                           className={cx(
@@ -479,7 +474,7 @@ export const CLITaskSidebar = ({
                             (isSelected || !canDelete) && styles.taskDeleteBtnVisible,
                           )}
                           disabled={!canDelete}
-                          aria-label="删除任务"
+                          aria-label={t('cli:taskSidebar.deleteTaskAria')}
                           onClick={(event) => {
                             event.stopPropagation();
                             if (canDelete) onDeleteTask(task.id);

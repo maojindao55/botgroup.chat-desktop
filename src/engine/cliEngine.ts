@@ -14,6 +14,8 @@ import type {
 } from '@/config/groups';
 import { resolveExecutionPlan } from '@/config/groups';
 import type { CLIAgent } from '@/config/aiCharacters';
+import { translateCliStageLabel } from '@/i18n/engineLabels';
+import { te } from '@/i18n/translate';
 import { request } from '@/utils/request';
 
 // ============ 类型定义 ============
@@ -128,8 +130,9 @@ async function callCLIAgent(
     ? (crypto as any).randomUUID()
     : `cli-${Date.now()}-${Math.random().toString(36).slice(2)}`) as string;
 
-  const displayName = meta.stageLabel
-    ? `${agent.name} · ${meta.stageLabel}`
+  const displayStageLabel = meta.stageLabel ? translateCliStageLabel(meta.stageLabel) : undefined;
+  const displayName = displayStageLabel
+    ? `${agent.name} · ${displayStageLabel}`
     : agent.name;
 
   callbacks.onAgentStart(sessionId, agent.id, displayName, {
@@ -174,11 +177,11 @@ async function callCLIAgent(
     });
 
     if (!response.ok) {
-      throw new Error(`CLI 请求失败: ${response.status}`);
+      throw new Error(te('errors.cliRequestFailed', { status: response.status }));
     }
 
     const reader = response.body?.getReader();
-    if (!reader) throw new Error('无法获取响应流');
+    if (!reader) throw new Error(te('errors.streamUnavailable'));
 
     const decoder = new TextDecoder();
     let buffer = '';
@@ -205,7 +208,7 @@ async function callCLIAgent(
             }
             if (data.type === 'error') {
               failed = true;
-              errorMessage = data.error || data.content || 'CLI 执行出错';
+              errorMessage = data.error || data.content || te('errors.cliExecutionError');
             }
             if (data.type === 'tool_session' && typeof data.sessionId === 'string') {
               toolSessionId = data.sessionId;
@@ -221,7 +224,7 @@ async function callCLIAgent(
                 }
               } else if (typeof exitCode === 'number' && exitCode !== 0) {
                 failed = true;
-                errorMessage = errorMessage || `CLI 非 0 退出: ${exitCode}`;
+                errorMessage = errorMessage || te('errors.cliNonZeroExit', { code: exitCode });
               }
             }
           } catch { /* 跳过解析错误 */ }
@@ -231,13 +234,13 @@ async function callCLIAgent(
 
     exitCode = exitCode ?? (failed ? -1 : 0);
     if (failed) {
-      callbacks.onError(sessionId, errorMessage || 'CLI 执行失败');
+      callbacks.onError(sessionId, errorMessage || te('errors.cliExecutionFailed'));
     } else {
       callbacks.onAgentEnd(sessionId, fullContent);
     }
   } catch (error: any) {
-    const errMsg = error?.message || '未知错误';
-    fullContent = `[CLI Agent 执行出错: ${errMsg}]`;
+    const errMsg = error?.message || te('errors.unknownError');
+    fullContent = te('errors.cliAgentExecutionError', { message: errMsg });
     exitCode = -1;
     failed = true;
     errorMessage = errMsg;
@@ -265,7 +268,7 @@ async function callCLIAgent(
     status,
     exitCode,
     durationMs,
-    isError: failed || fullContent.startsWith('[CLI Agent 执行出错'),
+    isError: failed || fullContent.startsWith('[CLI'),
     cwd: ctx.cwd,
     branch: ctx.branchName,
     stageLabel: meta.stageLabel,
@@ -351,7 +354,7 @@ async function prepareExecutionContexts(
 
   if (plan.isolation === 'worktreePerAgent') {
     if (!cwd) {
-      throw new Error('竞争模式需要先设置 workspacePath。');
+      throw new Error(te('errors.raceNeedsWorkspace'));
     }
     let prepared: CLIWorktreePrepareResult | null = null;
     try {
@@ -366,12 +369,12 @@ async function prepareExecutionContexts(
       });
       const json = await res.json();
       if (!json?.success) {
-        throw new Error(json?.message || 'worktree 准备失败');
+        throw new Error(json?.message || te('errors.worktreePrepareFailed'));
       }
       prepared = json.data as CLIWorktreePrepareResult;
     } catch (e: any) {
       // worktree 创建失败：明确报错，不做静默降级
-      throw new Error(`无法为竞争模式创建 worktree: ${e?.message || e}`);
+      throw new Error(te('errors.raceWorktreeFailed', { message: e?.message || String(e) }));
     }
 
     const byId = new Map<string, CLIWorktreeInfo>();
@@ -380,7 +383,7 @@ async function prepareExecutionContexts(
     return agents.map(agent => {
       const wt = byId.get(agent.id);
       if (!wt) {
-        throw new Error(`Agent ${agent.name} 的 worktree 创建失败，请重试。`);
+        throw new Error(te('errors.agentWorktreeFailed', { name: agent.name }));
       }
       return {
         agent,
@@ -395,7 +398,7 @@ async function prepareExecutionContexts(
 
   if (plan.isolation === 'copyPerAgent') {
     if (!cwd) {
-      throw new Error('讨论模式需要先设置 workspacePath。');
+      throw new Error(te('errors.discussionNeedsWorkspace'));
     }
     // V2.5: 为 discussion 准备临时只读目录副本
     try {
@@ -411,7 +414,7 @@ async function prepareExecutionContexts(
       const json = await res.json();
       if (!json?.success) {
         // 如果 temp copy 创建失败，阻止启动 discussion
-        throw new Error(json?.message || '临时只读目录创建失败');
+        throw new Error(json?.message || te('errors.readonlyCopyFailed'));
       }
       const copies: Array<{ agentId: string; path: string }> = json.data?.copies || [];
       const byId = new Map(copies.map(c => [c.agentId, c.path]));
@@ -419,7 +422,7 @@ async function prepareExecutionContexts(
       return agents.map(agent => {
         const copyPath = byId.get(agent.id);
         if (!copyPath) {
-          throw new Error(`Agent ${agent.name} 的只读环境创建失败，请重试。`);
+          throw new Error(te('errors.agentReadonlyFailed', { name: agent.name }));
         }
         return {
           agent,
@@ -430,7 +433,7 @@ async function prepareExecutionContexts(
       });
     } catch (e: any) {
       // 如果只读环境准备失败，阻止启动 discussion 并给出明确错误
-      throw new Error(`无法为讨论模式创建只读环境: ${e?.message || e}`);
+      throw new Error(te('errors.discussionReadonlyFailed', { message: e?.message || String(e) }));
     }
   }
 

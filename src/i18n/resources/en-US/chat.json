@@ -1,0 +1,70 @@
+{
+  "memberPicker": {
+    "defaultPlaceholder": "Select resources...",
+    "cliMemberSuffix": "dev member"
+  },
+  "init": {
+    "loadFailed": "Failed to load. Please refresh and try again.",
+    "groupNotFound": "Group not found or access denied",
+    "initDataFailed": "Failed to initialize data"
+  },
+  "actions": {
+    "backHome": "Back to home"
+  },
+  "systemSender": "System",
+  "confirmExecute": "Run this task with {{names}} in {{path}}?",
+  "confirmExecuteSingle": "Run this task with {{name}} in {{path}}?",
+  "defaultWorkspace": "default directory",
+  "errors": {
+    "memberNotFound": "Dev member not found",
+    "taskNotStarted": "❌ Task did not start: {{message}}",
+    "requestFailed": "Request failed",
+    "streamUnavailable": "Could not read response stream",
+    "timeout": "Response timed out",
+    "serviceUnavailable": "Sorry, the service is temporarily unavailable.",
+    "appendError": "[Error: {{error}}]"
+  },
+  "messages": {
+    "noEnabledCliMembers": "No enabled dev members in this group. Add or enable members in the settings panel.",
+    "readOnlyDiscussionHint": "Read-only discussion runs in a temporary copy and will not modify your workspace. Switch to implement/review or quick response to edit files."
+  },
+  "placeholders": {
+    "cliInput": "Enter a coding task for dev members to run in the workspace...",
+    "aiInput": "Send a message in the character group..."
+  },
+  "status": {
+    "thinking": "Thinking",
+    "running": "Streaming",
+    "executing": "Running",
+    "completed": "✅ Completed",
+    "failed": "❌ Failed",
+    "cancelled": "⏹ Cancelled",
+    "timeout": "⏰ Timed out"
+  },
+  "cliMeta": {
+    "workspaceTitle": "Double-click to edit local workspace path",
+    "settings": "Settings",
+    "stop": "Stop",
+    "retry": "Retry",
+    "workdir": "Working directory",
+    "copyPath": "Copy path",
+    "openPath": "Open path",
+    "branch": "Branch:",
+    "base": "Base:",
+    "adopt": "Mark adopted",
+    "adopted": "✓ Adopted"
+  },
+  "serviceError": "Sorry, something went wrong ({{message}}).",
+  "unknownError": "Unknown error",
+  "agentChat": {
+    "expertCount": "{{count}} experts",
+    "emptyTitle": "Expert group",
+    "loadingLibrary": "Loading library...",
+    "unresolvedMembers": "This group references {{count}} experts, but they were not found in the library.",
+    "unresolvedMembersHint": "Open \"{{library}}\" to check or re-add members.",
+    "strategyMeta": "Strategy: {{strategy}} | Max rounds: {{maxRounds}}",
+    "expertBadge": "Expert",
+    "inputPlaceholder": "Send a message — experts will collaborate per group rules...",
+    "settings": "Settings"
+  }
+}

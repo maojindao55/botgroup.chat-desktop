@@ -1,0 +1,28 @@
+{
+  "categories": {
+    "用途": "Purpose",
+    "能力": "Capability",
+    "风格": "Style"
+  },
+  "items": {
+    "聊天": "Chat",
+    "信息总结": "Summarization",
+    "新闻报道": "News writing",
+    "广告文案": "Ad copy",
+    "需求分析": "Requirements analysis",
+    "产品设计": "Product design",
+    "编码": "Coding",
+    "调试": "Debugging",
+    "重构": "Refactoring",
+    "深度推理": "Deep reasoning",
+    "数学": "Math",
+    "分析数据": "Data analysis",
+    "系统设计": "System design",
+    "编程": "Programming",
+    "技术评审": "Technical review",
+    "协作": "Collaboration",
+    "娱乐": "Entertainment",
+    "文字游戏": "Word games",
+    "学生": "Student"
+  }
+}

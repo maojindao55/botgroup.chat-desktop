@@ -3,6 +3,7 @@
  * Phase 1: 团队模板来自 CLIGroup，任务消息本地持久化，执行走 executeCLIStrategy
  */
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Send,
   PanelLeftOpen,
@@ -593,6 +594,7 @@ const CLITaskUI = ({
   onDeleteCLIGroup,
   initialTaskId,
 }: CLITaskUIProps) => {
+  const { t } = useTranslation(['cli', 'common', 'product', 'settings']);
   const userStore = useUserStore();
   const isMobile = useIsMobile();
   const { styles, cx } = useStyles();
@@ -702,7 +704,7 @@ const CLITaskUI = ({
     ? selectedTask.templateSnapshot.name
     : draftTemplate?.name;
 
-  const userName = userStore.userInfo.nickname || '我';
+  const userName = userStore.userInfo.nickname || t('settings:aiGroup.selfName');
 
   const chatMessages = useMemo(() => {
     if (!selectedTask) return [];
@@ -813,7 +815,7 @@ const CLITaskUI = ({
         id: `sys-${Date.now()}`,
         taskId: developmentTask.id,
         role: 'system',
-        content: '没有启用的开发成员。请在模板设置中添加或开启成员。',
+        content: t('cli:taskUI.system.noAgents'),
         isError: true,
       });
       return;
@@ -826,7 +828,7 @@ const CLITaskUI = ({
         id: `sys-${Date.now()}`,
         taskId: developmentTask.id,
         role: 'system',
-        content: '当前协作方式是"只读讨论"，不会修改 workspace。要写代码请切换到"写完再审"或"快速响应"模板。',
+        content: t('cli:taskUI.system.discussionReadOnly'),
         isError: true,
       });
       return;
@@ -834,7 +836,12 @@ const CLITaskUI = ({
 
     if (snapshot.approvalMode === 'ask') {
       const names = activeAgents.map(a => a.name).join('、');
-      const confirmed = window.confirm(`确认让开发成员 ${names} 在 ${ws || '默认目录'} 协作处理这次任务？`);
+      const confirmed = window.confirm(
+        t('cli:taskUI.system.approvalConfirm', {
+          names,
+          workspace: ws || t('cli:taskUI.system.defaultWorkspace'),
+        }),
+      );
       if (!confirmed) return;
     }
 
@@ -972,7 +979,9 @@ const CLITaskUI = ({
                 ? 'cancelled' as const
                 : 'failed' as const;
             updateMessage(developmentTask.id, msgId, {
-              content: msg?.content ? msg.content + `\n\n[错误: ${error}]` : `[错误: ${error}]`,
+              content: msg?.content
+                ? msg.content + `\n\n${t('cli:taskUI.system.errorPrefix', { error })}`
+                : t('cli:taskUI.system.errorPrefix', { error }),
               status,
               isError: true,
             });
@@ -990,7 +999,7 @@ const CLITaskUI = ({
         id: `sys-${Date.now()}`,
         taskId: developmentTask.id,
         role: 'system',
-        content: `❌ 任务执行未启动：${errMsg}`,
+        content: t('cli:taskUI.system.executionFailed', { error: errMsg }),
         isError: true,
       });
     } finally {
@@ -1027,7 +1036,7 @@ const CLITaskUI = ({
         if (!liveTemplate) return;
         const ws = draftWorkspacePath.trim() || liveTemplate.workspacePath?.trim() || '';
         if (!ws) {
-          toast.error('请先选择 Workspace 目录');
+          toast.error(t('cli:taskUI.toast.workspaceRequired'));
           return;
         }
         writeLastCliWorkspace(ws);
@@ -1074,7 +1083,10 @@ const CLITaskUI = ({
 
   const handleCleanupWorktree = async (path: string, agentName?: string) => {
     const confirmed = window.confirm(
-      `确认清理${agentName ? ` ${agentName} 的` : ''} worktree？\n${path}\n此操作不可恢复。`,
+      t('cli:taskUI.worktree.cleanupConfirm', {
+        agent: agentName ? t('cli:taskUI.worktree.cleanupConfirmAgent', { agentName }) : '',
+        path,
+      }),
     );
     if (!confirmed) return;
     try {
@@ -1084,10 +1096,10 @@ const CLITaskUI = ({
         body: JSON.stringify({ paths: [path] }),
       });
       const json = await res.json();
-      if (!json.success) throw new Error(json.message || '清理失败');
-      toast.success('worktree 已清理');
+      if (!json.success) throw new Error(json.message || t('cli:taskUI.toast.cleanupFailed'));
+      toast.success(t('cli:taskUI.toast.worktreeCleaned'));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : '清理失败');
+      toast.error(err instanceof Error ? err.message : t('cli:taskUI.toast.cleanupFailed'));
     }
   };
 
@@ -1191,24 +1203,24 @@ const CLITaskUI = ({
       setSelectedTemplateId(remaining[0]?.id || '');
     }
 
-    toast.success('团队模板已删除');
+    toast.success(t('cli:taskUI.deleteTemplate.deleted'));
   };
 
   const handleDeleteTemplate = (templateId: string) => {
     if (!onDeleteCLIGroup) return;
-    const template = templates.find(t => t.id === templateId);
+    const template = templates.find(tmpl => tmpl.id === templateId);
     const taskCount = taskCountByTemplate[templateId] || 0;
-    const name = template?.name || '此模板';
+    const name = template?.name || t('cli:taskUI.deleteTemplate.unnamed');
     const description = taskCount > 0
-      ? `已有 ${taskCount} 个开发任务不会受影响（仍保留创建时的快照），但无法再以此模板创建新任务。`
-      : '删除后无法再以此模板创建新任务，此操作不可恢复。';
+      ? t('cli:taskUI.deleteTemplate.descWithTasks', { count: taskCount })
+      : t('cli:taskUI.deleteTemplate.descNoTasks');
 
     Modal.confirm({
-      title: `删除团队模板「${name}」？`,
+      title: t('cli:taskUI.deleteTemplate.title', { name }),
       content: description,
-      okText: '删除',
+      okText: t('common:actions.delete'),
       okType: 'danger',
-      cancelText: '取消',
+      cancelText: t('common:actions.cancel'),
       centered: true,
       zIndex: 2100,
       getContainer: () => document.body,
@@ -1297,24 +1309,24 @@ const CLITaskUI = ({
     const task = tasks.find(t => t.id === taskId);
     if (!task) return;
     if (!canMutateTask(task)) {
-      toast.error('任务运行中，请等待结束后再删除');
+      toast.error(t('cli:taskUI.deleteTask.runningError'));
       return;
     }
 
     Modal.confirm({
-      title: '确认删除任务？',
+      title: t('cli:taskUI.deleteTask.title'),
       content: (
         <div>
-          <p>确定要删除任务「<strong>{task.title}</strong>」吗？</p>
-          <p style={{ margin: 0, color: '#999', fontSize: 12 }}>删除后无法恢复，消息记录将一并清除。</p>
+          <p>{t('cli:taskUI.deleteTask.content', { title: task.title })}</p>
+          <p style={{ margin: 0, color: '#999', fontSize: 12 }}>{t('cli:taskUI.deleteTask.warning')}</p>
         </div>
       ),
-      okText: '确认删除',
+      okText: t('cli:taskUI.deleteTask.ok'),
       okType: 'danger',
-      cancelText: '取消',
+      cancelText: t('common:actions.cancel'),
       onOk: () => {
         if (!deleteTask(taskId)) {
-          toast.error('无法删除该任务');
+          toast.error(t('cli:taskUI.deleteTask.failed'));
           return;
         }
         if (selectedTaskId === taskId) {
@@ -1322,10 +1334,10 @@ const CLITaskUI = ({
           navigateToList();
           setTaskInfoOpen(false);
         }
-        toast.success('任务已删除');
+        toast.success(t('cli:taskUI.deleteTask.success'));
       },
     });
-  }, [tasks, deleteTask, selectedTaskId]);
+  }, [tasks, deleteTask, selectedTaskId, t]);
 
   const handleDeleteTask = () => {
     if (!selectedTask) return;
@@ -1333,17 +1345,17 @@ const CLITaskUI = ({
   };
 
   const statusTag = (status: string) => {
-    const map: Record<string, { color: string; label: string }> = {
-      running: { color: 'processing', label: '运行中' },
-      completed: { color: 'success', label: '已完成' },
-      failed: { color: 'error', label: '失败' },
-      cancelled: { color: 'warning', label: '已取消' },
-      timeout: { color: 'error', label: '超时' },
-      queued: { color: 'default', label: '排队' },
-      archived: { color: 'default', label: '已归档' },
+    const map: Record<string, { color: string; labelKey: string }> = {
+      running: { color: 'processing', labelKey: 'cli:status.running' },
+      completed: { color: 'success', labelKey: 'cli:status.completed' },
+      failed: { color: 'error', labelKey: 'cli:status.failed' },
+      cancelled: { color: 'warning', labelKey: 'cli:status.cancelled' },
+      timeout: { color: 'error', labelKey: 'cli:status.timeout' },
+      queued: { color: 'default', labelKey: 'cli:status.queued' },
+      archived: { color: 'default', labelKey: 'cli:status.archived' },
     };
     const info = map[status] || map.queued;
-    return <Tag color={info.color}>{info.label}</Tag>;
+    return <Tag color={info.color}>{t(info.labelKey)}</Tag>;
   };
 
   const closeManagementPanels = () => {
@@ -1409,15 +1421,15 @@ const CLITaskUI = ({
   return (
     <>
       <Modal
-        title="从此任务创建新任务"
+        title={t('cli:taskUI.forkModal.title')}
         open={forkModalOpen}
         onCancel={() => setForkModalOpen(false)}
         onOk={confirmForkTask}
-        okText="创建新任务"
-        cancelText="取消"
+        okText={t('cli:taskUI.forkModal.ok')}
+        cancelText={t('common:actions.cancel')}
       >
         <p style={{ fontSize: 13, marginBottom: 12, opacity: 0.75 }}>
-          将复制当前任务的需求描述，并使用所选团队模板创建一条隔离的新任务。
+          {t('cli:taskUI.forkModal.desc')}
         </p>
         <Select
           value={forkTemplateId || undefined}
@@ -1511,7 +1523,7 @@ const CLITaskUI = ({
           sessionPolicy={editingCLIGroup.sessionPolicy || 'task'}
           onSessionPolicyChange={(policy) => handleUpdateEditingTemplate({ sessionPolicy: policy })}
           onBack={templateSettingsReturnTo === 'template-list' ? closeTemplateSettings : undefined}
-          backLabel="团队模板"
+          backLabel={t('cli:taskUI.backLabel')}
           linkedTaskCount={taskCountByTemplate[editingCLIGroup.id] || 0}
           onDeleteTemplate={handleDeleteTemplate}
           onSaveTemplate={handleUpdateEditingTemplate}
@@ -1552,12 +1564,12 @@ const CLITaskUI = ({
 
           <div className={styles.rightCol}>
             {!taskSidebarOpen && (
-              <Tooltip title="展开任务列表" placement="right">
+              <Tooltip title={t('cli:taskUI.expandTaskList')} placement="right">
                 <button
                   type="button"
                   className={styles.taskSidebarExpandHandle}
                   onClick={() => setTaskSidebarOpen(true)}
-                  aria-label="展开任务列表"
+                  aria-label={t('cli:taskUI.expandTaskListAria')}
                 >
                   <PanelLeftOpen size={14} />
                 </button>
@@ -1570,14 +1582,14 @@ const CLITaskUI = ({
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <Terminal size={16} color="#ff6600" />
                       <h1 style={{ margin: 0, fontWeight: 600, fontSize: 14 }}>
-                        {selectedTask ? selectedTask.title : '开发任务'}
+                        {selectedTask ? selectedTask.title : t('cli:taskUI.title')}
                       </h1>
                       {selectedTask && statusTag(selectedTask.status)}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2, flexWrap: 'wrap' }}>
                       {headerTemplateName && (
                         <span style={{ fontSize: 11, opacity: 0.6 }}>
-                          模板：{headerTemplateName}
+                          {t('cli:taskUI.templatePrefix')}{headerTemplateName}
                         </span>
                       )}
                       {workspacePath && (
@@ -1623,7 +1635,7 @@ const CLITaskUI = ({
                       icon={Info}
                       size="small"
                       onClick={() => handleToggleTaskInfo(!taskInfoOpen)}
-                      title="任务信息"
+                      title={t('cli:taskUI.taskInfo')}
                     />
                   )}
                   {raceEntries.length > 0 && (
@@ -1631,7 +1643,7 @@ const CLITaskUI = ({
                       icon={GitCompare}
                       size="small"
                       onClick={() => setRaceDrawerOpen(true)}
-                      title="Race 结果对比"
+                      title={t('cli:taskUI.raceCompare')}
                     />
                   )}
                 </div>
@@ -1643,16 +1655,16 @@ const CLITaskUI = ({
                 <div className={styles.creationFormContainer}>
                   <div className={styles.creationFormCard}>
                     <div className={styles.creationHeader}>
-                      <h2 className={styles.creationTitle}>新建开发任务</h2>
-                      <span className={styles.creationSubtitle}>描述需求并选择团队模板以开始执行任务</span>
+                      <h2 className={styles.creationTitle}>{t('cli:taskUI.create.title')}</h2>
+                      <span className={styles.creationSubtitle}>{t('cli:taskUI.create.subtitle')}</span>
                     </div>
 
                     <div className={styles.formField}>
-                      <span className={styles.formLabel}>需求描述</span>
+                      <span className={styles.formLabel}>{t('cli:taskUI.create.promptLabel')}</span>
                       <AntdInput.TextArea
                         value={inputMessage}
                         onChange={(e) => setInputMessage(e.target.value)}
-                        placeholder="描述你的代码任务，开发成员会在 workspace 中协作执行... (例如: 添加一个导出 CSV 的按钮，并且编写对应的测试)"
+                        placeholder={t('cli:taskUI.create.promptPlaceholder')}
                         autoSize={{ minRows: 4, maxRows: 8 }}
                         disabled={isComposeBusy}
                         style={{ borderRadius: 10, padding: '10px 12px' }}
@@ -1661,7 +1673,7 @@ const CLITaskUI = ({
 
                     <div className={styles.formField}>
                       <div className={styles.formFieldHeader}>
-                        <span className={styles.formLabel}>选择团队模板</span>
+                        <span className={styles.formLabel}>{t('cli:taskUI.create.templateLabel')}</span>
                         <div style={{ display: 'flex', gap: 12 }}>
                           <AntdButton
                             type="link"
@@ -1670,7 +1682,7 @@ const CLITaskUI = ({
                             icon={<Plus size={12} />}
                             style={{ padding: 0, height: 'auto', fontSize: 12 }}
                           >
-                            新建模板
+                            {t('cli:taskUI.create.newTemplate')}
                           </AntdButton>
                           {templates.length > 0 && (
                             <AntdButton
@@ -1679,7 +1691,7 @@ const CLITaskUI = ({
                               onClick={openTemplateList}
                               style={{ padding: 0, height: 'auto', fontSize: 12 }}
                             >
-                              管理模板
+                              {t('cli:taskUI.create.manageTemplates')}
                             </AntdButton>
                           )}
                         </div>
@@ -1687,7 +1699,7 @@ const CLITaskUI = ({
 
                       {templates.length === 0 ? (
                         <div className={styles.templateEmpty}>
-                          <span>还没有团队模板，执行需要团队配置。</span>
+                          <span>{t('cli:taskUI.create.emptyTemplates')}</span>
                           <AntdButton
                             type="primary"
                             size="small"
@@ -1695,13 +1707,15 @@ const CLITaskUI = ({
                             icon={<Plus size={14} />}
                             style={{ background: '#ff6600', borderColor: '#ff6600' }}
                           >
-                            新建团队模板
+                            {t('cli:templateList.create')}
                           </AntdButton>
                         </div>
                       ) : (
                         <div className={styles.templateGrid}>
                           {templates.map(tmpl => {
                             const isCardSelected = selectedTemplateId === tmpl.id;
+                            const workflowLabel = getCLIWorkflowLabel(tmpl.strategy, tmpl.workflowTemplateId);
+                            const workflowKey = tmpl.workflowTemplateId;
                             return (
                               <div
                                 key={tmpl.id}
@@ -1710,9 +1724,13 @@ const CLITaskUI = ({
                               >
                                 <div className={styles.templateCardTitle}>{tmpl.name}</div>
                                 <div className={styles.templateCardMeta}>
-                                  <span>{getCLIWorkflowLabel(tmpl.strategy, tmpl.workflowTemplateId)}</span>
+                                  <span>
+                                    {workflowKey
+                                      ? t(`product:cliWorkflowTemplates.${workflowKey}.label`, { defaultValue: workflowLabel })
+                                      : workflowLabel}
+                                  </span>
                                   <span>·</span>
-                                  <span>{tmpl.memberIds.length} 位成员</span>
+                                  <span>{t('cli:taskUI.create.memberCount', { count: tmpl.memberIds.length })}</span>
                                 </div>
                                 {tmpl.description && (
                                   <div className={styles.templateCardDesc} title={tmpl.description}>
@@ -1727,11 +1745,11 @@ const CLITaskUI = ({
                     </div>
 
                     <div className={styles.formField}>
-                      <span className={styles.formLabel}>工作目录 (Workspace)</span>
+                      <span className={styles.formLabel}>{t('cli:taskUI.create.workspaceLabel')}</span>
                       <div className={styles.workspaceRow}>
                         <AntdInput
                           className={styles.workspaceInput}
-                          placeholder="/Users/you/projects/your-repo"
+                          placeholder={t('cli:groupSettings.workspace.placeholder')}
                           value={draftWorkspacePath}
                           onChange={(e) => handleDraftWorkspaceChange(e.target.value)}
                           style={{ borderRadius: 10, height: 36 }}
@@ -1741,7 +1759,7 @@ const CLITaskUI = ({
                           onClick={handleSelectDraftWorkspace}
                           style={{ height: 36, borderRadius: 10 }}
                         >
-                          选择
+                          {t('common:actions.select')}
                         </AntdButton>
                       </div>
                     </div>
@@ -1763,7 +1781,7 @@ const CLITaskUI = ({
                           boxShadow: '0 4px 12px rgba(255, 102, 0, 0.2)',
                         }}
                       >
-                        创建并启动任务
+                        {t('cli:taskUI.create.submit')}
                       </AntdButton>
                     </div>
                   </div>
@@ -1815,7 +1833,7 @@ const CLITaskUI = ({
                             {isStreaming && (
                               <span className={styles.streaming}>
                                 <span className={styles.streamingDot} />
-                                {message.content === '' ? '思考中' : '执行中'}
+                                {message.content === '' ? t('cli:taskUI.message.thinking') : t('cli:taskUI.message.executing')}
                               </span>
                             )}
                           </div>
@@ -1830,13 +1848,13 @@ const CLITaskUI = ({
                                   {message.status === 'running' && (
                                     <>
                                       <span className={styles.spinnerIcon} />
-                                      <span>执行中</span>
+                                      <span>{t('cli:taskUI.message.executing')}</span>
                                     </>
                                   )}
-                                  {message.status === 'completed' && <span style={{ color: '#52c41a' }}>✅ 已完成</span>}
-                                  {message.status === 'failed' && <span style={{ color: '#ff4d4f' }}>❌ 失败</span>}
-                                  {message.status === 'cancelled' && <span style={{ color: '#faad14' }}>⏹ 已取消</span>}
-                                  {message.status === 'timeout' && <span style={{ color: '#ff4d4f' }}>⏰ 超时</span>}
+                                  {message.status === 'completed' && <span style={{ color: '#52c41a' }}>{t('cli:taskUI.message.completed')}</span>}
+                                  {message.status === 'failed' && <span style={{ color: '#ff4d4f' }}>{t('cli:taskUI.message.failed')}</span>}
+                                  {message.status === 'cancelled' && <span style={{ color: '#faad14' }}>{t('cli:taskUI.message.cancelled')}</span>}
+                                  {message.status === 'timeout' && <span style={{ color: '#ff4d4f' }}>{t('cli:taskUI.message.timeout')}</span>}
                                 </span>
                                 <div className={styles.cliTaskActions}>
                                   <button
@@ -1844,7 +1862,7 @@ const CLITaskUI = ({
                                     className={styles.cliActionBtnLog}
                                     onClick={() => openTaskLog(message)}
                                   >
-                                    日志
+                                    {t('cli:taskUI.message.log')}
                                   </button>
                                   {message.status === 'running' && message.taskId && (
                                     <button
@@ -1852,7 +1870,7 @@ const CLITaskUI = ({
                                       className={styles.cliActionBtnCancel}
                                       onClick={() => handleCancelTask(message.taskId!)}
                                     >
-                                      停止
+                                      {t('cli:taskUI.message.stop')}
                                     </button>
                                   )}
                                   {['failed', 'cancelled', 'timeout'].includes(message.status || '') && (
@@ -1861,7 +1879,7 @@ const CLITaskUI = ({
                                       className={styles.cliActionBtnRetry}
                                       onClick={() => handleRetryTask(message)}
                                     >
-                                      重试
+                                      {t('cli:taskUI.message.retry')}
                                     </button>
                                   )}
                                 </div>
@@ -1869,17 +1887,17 @@ const CLITaskUI = ({
                             )}
                             {message.cliCwd && message.cliCwd !== workspacePath && (
                               <div className={styles.cliWorktreeInfo}>
-                                <div style={{ fontWeight: 500 }}>隔离 worktree</div>
+                                <div style={{ fontWeight: 500 }}>{t('cli:taskUI.message.worktreeTitle')}</div>
                                 <div className={styles.cliWorktreePath}>{message.cliCwd}</div>
                                 {message.cliBranch && (
                                   <div>
-                                    <span style={{ fontWeight: 500 }}>分支：</span>
+                                    <span style={{ fontWeight: 500 }}>{t('cli:taskUI.message.branch')}</span>
                                     <span className={styles.cliWorktreePath}>{message.cliBranch}</span>
                                   </div>
                                 )}
                                 {message.baseSha && (
                                   <div>
-                                    <span style={{ fontWeight: 500 }}>基准：</span>
+                                    <span style={{ fontWeight: 500 }}>{t('cli:taskUI.message.base')}</span>
                                     <span className={styles.cliWorktreePath}>{message.baseSha.slice(0, 8)}</span>
                                   </div>
                                 )}
@@ -1889,7 +1907,7 @@ const CLITaskUI = ({
                                     className={styles.cliWorktreeActionBtn}
                                     onClick={() => openPath(message.cliCwd!).catch(() => {})}
                                   >
-                                    打开路径
+                                    {t('cli:taskUI.message.openPath')}
                                   </button>
                                   {message.status === 'completed' && !message.adopted && (
                                     <button
@@ -1898,7 +1916,7 @@ const CLITaskUI = ({
                                       style={{ color: '#52c41a', borderColor: '#b7eb8f' }}
                                       onClick={() => handleAdoptRaceResult(message.id)}
                                     >
-                                      标记采纳
+                                      {t('cli:taskUI.message.markAdopted')}
                                     </button>
                                   )}
                                   <button
@@ -1907,11 +1925,11 @@ const CLITaskUI = ({
                                     style={{ color: '#ff4d4f', borderColor: '#ffccc7' }}
                                     onClick={() => handleCleanupWorktree(message.cliCwd!, message.sender.name)}
                                   >
-                                    清理
+                                    {t('cli:taskUI.message.cleanup')}
                                   </button>
                                   {message.adopted && (
                                     <span style={{ fontSize: 11, color: '#52c41a', fontWeight: 600 }}>
-                                      ✓ 已采纳
+                                      {t('cli:taskUI.message.adopted')}
                                     </span>
                                   )}
                                 </div>
@@ -1941,7 +1959,7 @@ const CLITaskUI = ({
                         handleSendMessage();
                       }
                     }}
-                    placeholder="继续这个任务… 输入 @开发成员名 可指定执行者"
+                    placeholder={t('cli:taskUI.compose.placeholder')}
                     autoSize={{ minRows: 4, maxRows: 12 }}
                     disabled={isComposeBusy}
                     variant="borderless"
@@ -1949,7 +1967,7 @@ const CLITaskUI = ({
                   <div className={styles.composeFooter}>
                     <Tag color="orange">{selectedTask.templateSnapshot.name}</Tag>
                     <span className={styles.composeHint}>
-                      继续此任务 · 配置以创建时快照为准
+                      {t('cli:taskUI.compose.hint')}
                     </span>
                     <div className={styles.composeFooterSpacer} />
                     <AntdButton
@@ -1960,12 +1978,12 @@ const CLITaskUI = ({
                       disabled={isComposeBusy || !inputMessage.trim()}
                       style={{ background: '#ff6600', borderColor: '#ff6600' }}
                     >
-                      发送
+                      {t('cli:taskUI.compose.send')}
                     </AntdButton>
                   </div>
                 </div>
                 <div style={{ fontSize: 10, opacity: 0.5, marginTop: 6 }}>
-                  继续任务会复用此任务的 CLI 会话；输入 @开发成员名 可只让该成员执行。
+                  {t('cli:taskUI.compose.footerHint')}
                 </div>
                 {continueTaskAgents.length > 0 && (
                   <div className={styles.agentChipRow}>

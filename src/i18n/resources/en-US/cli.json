@@ -1,0 +1,340 @@
+{
+  "status": {
+    "queued": "Queued",
+    "running": "Running",
+    "completed": "Completed",
+    "failed": "Failed",
+    "cancelled": "Cancelled",
+    "timeout": "Timed out",
+    "archived": "Archived"
+  },
+  "groupSettings": {
+    "title": "Dev group settings",
+    "templateTitle": "Team template settings",
+    "back": "Back",
+    "discardConfirm": "Discard unsaved template changes?",
+    "tabs": {
+      "config": "Basic settings",
+      "history": "Task history",
+      "worktree": "Worktree"
+    },
+    "templateSnapshot": {
+      "title": "Template snapshot rules",
+      "desc": "Changes take effect after you save; existing tasks still use the snapshot from when they were created.",
+      "linkedTasks": "{{count}} existing tasks",
+      "members": "{{count}} members"
+    },
+    "basicInfo": {
+      "title": "Basic info",
+      "namePlaceholder": "Team template name",
+      "descriptionPlaceholder": "Describe what kinds of dev tasks this template is for"
+    },
+    "workspace": {
+      "title": "Local workspace",
+      "templateTitle": "Default workspace",
+      "desc": "Dev members read and write code in this directory; choose or enter an absolute path",
+      "templateDesc": "New tasks default to this directory; existing tasks are unaffected",
+      "placeholder": "/Users/you/projects/your-repo"
+    },
+    "approval": {
+      "title": "Auto-approve",
+      "desc": "When enabled, dev members run automatically without confirmation"
+    },
+    "sessionPolicy": {
+      "title": "CLI session reuse",
+      "desc": "Controls how CLI tool sessions are shared across dev members.",
+      "templateDesc": "New tasks follow this policy for sharing CLI tool sessions across tasks; existing tasks keep their creation-time snapshot.",
+      "highReuse": "High reuse"
+    },
+    "stderr": {
+      "title": "Show stderr output",
+      "desc": "When off, hides CLI diagnostics and keeps stdout plus error status only"
+    },
+    "timeout": {
+      "title": "Execution timeout",
+      "unit": "seconds"
+    },
+    "collaboration": {
+      "title": "Collaboration mode",
+      "raceWarning": "Requires a git repo with a clean working tree; each dev member runs in an isolated worktree.",
+      "pipelineHint": "Continues on failure by default (later members diagnose); user cancel stops later stages.",
+      "reviewLoopHint": "Plan-implement-review plans first, then implements; failed review triggers fixes and re-review.",
+      "reviewLoopMemberWarning": "Pick at least 2 dev members and assign planner/reviewer and implementer roles."
+    },
+    "strategies": {
+      "router": "Automatically picks the best dev member for one-off requests.",
+      "sequential": "Multiple dev members handle the same task independently; results are shown side by side.",
+      "pipeline": "Members work in sequence; later members see prior stage output.",
+      "race": "Each dev member gets an isolated worktree to finish the same task in parallel.",
+      "review": "Implement, review, and fix in a loop—good for Codex coding with Claude Code review.",
+      "discussion": "Multiple dev members discuss plans and risks in rounds on a read-only copy.",
+      "debate": "Dev members propose independently, critique each other, then synthesize.",
+      "mapreduce": "Run the same task in parallel and compare aggregated results"
+    },
+    "roles": {
+      "title": "Role assignment",
+      "desc": "Assign who plans, who implements, and who reviews. Planner and reviewer can be the same member.",
+      "planner": "Planner",
+      "implementer": "Implementer",
+      "reviewer": "Reviewer",
+      "maxReviewRounds": "Max review rounds",
+      "plannerPlaceholder": "Select planner",
+      "implementerPlaceholder": "Select implementer",
+      "reviewerPlaceholder": "Select reviewer"
+    },
+    "executionDetails": {
+      "title": "Execution details",
+      "failurePolicy": {
+        "title": "Failure handling",
+        "desc": "Whether to continue later stages after a dev member fails",
+        "continue": "Continue",
+        "stopOnFailure": "Stop on failure",
+        "stopOnCancelled": "Stop on cancel"
+      },
+      "maxRounds": {
+        "title": "Discussion rounds",
+        "desc": "Maximum rounds for staged scheduling"
+      },
+      "resultPolicy": {
+        "title": "Result handling",
+        "desc": "How to pick among multiple results (currently show all)",
+        "all": "Show all",
+        "firstSuccess": "First success (planned)",
+        "fastest": "Fastest result (planned)",
+        "manualPick": "Manual pick (planned)"
+      },
+      "hint": "Execution details override collaboration defaults. Older data runs fine without configuring this."
+    },
+    "members": {
+      "manage": "Add / manage dev members",
+      "templateManage": "Template members",
+      "list": "Dev members",
+      "templateList": "Template members",
+      "count": "{{label}} ({{count}})",
+      "pickerPlaceholder": "Select dev members to add...",
+      "templatePickerPlaceholder": "Select template members...",
+      "empty": "No template members yet. Add at least one dev member before new tasks can run.",
+      "checking": "Checking...",
+      "installed": "Installed",
+      "notInstalled": "Not installed",
+      "muted": "Muted",
+      "unmute": "Unmute",
+      "mute": "Mute",
+      "remove": "Remove member"
+    },
+    "deleteTemplate": {
+      "title": "Delete team template",
+      "descNoTasks": "You will no longer be able to create new tasks from this template. This cannot be undone.",
+      "descWithTasks": "You will no longer be able to create new tasks from this template. {{count}} existing dev tasks keep their snapshots.",
+      "button": "Delete this template"
+    },
+    "history": {
+      "title": "Execution history",
+      "empty": "No execution records yet",
+      "log": "Log",
+      "retry": "Retry",
+      "loadMore": "Load more..."
+    },
+    "worktree": {
+      "title": "Race mode worktree management",
+      "hint": "Isolated race creates a separate git worktree per dev member. Worktrees are kept after runs—you can review and clean them here.",
+      "empty": "No worktrees to manage.",
+      "openPath": "Open path",
+      "copyPath": "Copy path",
+      "cleanup": "Clean up",
+      "cleanupConfirm": "Clean up worktree for {{agentName}}? This cannot be undone.",
+      "cleanupAll": "Clean up all worktrees ({{count}})",
+      "cleanupAllConfirm": "Clean up all {{count}} worktrees? This cannot be undone."
+    },
+    "footer": {
+      "dirty": "Unsaved changes",
+      "clean": "No unsaved changes",
+      "revert": "Revert"
+    }
+  },
+  "taskSidebar": {
+    "title": "Dev tasks",
+    "subtitle": "Task queue and history",
+    "newTask": "New task",
+    "teamTemplates": "Team templates",
+    "searchPlaceholder": "Search tasks...",
+    "emptySearch": "No matching tasks",
+    "empty": "No task history yet\nStart a new task on the right",
+    "deleteTask": "Delete task",
+    "deleteTaskRunning": "Task is running and cannot be deleted",
+    "deleteTaskAria": "Delete task"
+  },
+  "taskInfo": {
+    "title": "Task info",
+    "emptyHint": "Select or create a dev task first.",
+    "snapshotHint": "Configuration snapshot saved when this task was created. Editing the team template does not affect this task; fork a new task for a new strategy.",
+    "sectionTask": "Task info",
+    "sectionSnapshot": "Template snapshot (read-only)",
+    "fields": {
+      "title": "Task name",
+      "status": "Status",
+      "workspace": "Workspace",
+      "workspaceUnset": "(not set)",
+      "createdAt": "Created",
+      "updatedAt": "Updated",
+      "template": "Template used",
+      "members": "Members",
+      "noMembers": "(none)",
+      "strategy": "Collaboration mode",
+      "approval": "Approval mode",
+      "timeout": "Execution timeout",
+      "timeoutValue": "{{seconds}} s",
+      "sessionPolicy": "CLI session reuse",
+      "stderr": "stderr display",
+      "stderrOn": "On",
+      "stderrOff": "Off"
+    },
+    "approval": {
+      "auto": "Auto-approve",
+      "ask": "Confirm before run"
+    },
+    "actions": {
+      "fork": "Create new task from this",
+      "restore": "Restore task",
+      "archive": "Archive task",
+      "delete": "Delete task",
+      "runningHint": "Task is running; archive and delete are unavailable."
+    }
+  },
+  "templateList": {
+    "title": "Team templates",
+    "hint": "Team templates are the default config for new tasks. Changes here affect only future tasks; existing tasks keep their creation-time snapshot.",
+    "emptyHint": "No team templates yet. Create one to default members, workspace, and execution strategy for new tasks.",
+    "create": "New team template",
+    "createTitle": "New team template",
+    "settings": "Settings",
+    "deleteTitle": "Delete template",
+    "memberCount": "{{count}} members",
+    "linkedTasks": "{{count}} dev tasks created"
+  },
+  "taskUI": {
+    "title": "Dev tasks",
+    "templatePrefix": "Template:",
+    "taskInfo": "Task info",
+    "raceCompare": "Compare race results",
+    "expandTaskList": "Expand task list",
+    "expandTaskListAria": "Expand task list",
+    "create": {
+      "title": "New dev task",
+      "subtitle": "Describe the request and pick a team template to start",
+      "promptLabel": "Request",
+      "promptPlaceholder": "Describe your coding task; dev members will collaborate in the workspace... (e.g. add an Export CSV button with tests)",
+      "templateLabel": "Team template",
+      "newTemplate": "New template",
+      "manageTemplates": "Manage templates",
+      "emptyTemplates": "No team templates yet—you need team config to run tasks.",
+      "memberCount": "{{count}} members",
+      "workspaceLabel": "Workspace directory",
+      "submit": "Create and start task"
+    },
+    "compose": {
+      "placeholder": "Continue this task… type @dev-member to assign",
+      "hint": "Continue task · config locked to creation snapshot",
+      "send": "Send",
+      "footerHint": "Continuing reuses this task's CLI session; @dev-member runs only that member."
+    },
+    "message": {
+      "thinking": "Thinking",
+      "executing": "Running",
+      "log": "Log",
+      "stop": "Stop",
+      "retry": "Retry",
+      "completed": "✅ Completed",
+      "failed": "❌ Failed",
+      "cancelled": "⏹ Cancelled",
+      "timeout": "⏰ Timed out",
+      "worktreeTitle": "Isolated worktree",
+      "branch": "Branch:",
+      "base": "Base:",
+      "openPath": "Open path",
+      "markAdopted": "Mark adopted",
+      "cleanup": "Clean up",
+      "adopted": "✓ Adopted"
+    },
+    "forkModal": {
+      "title": "Create new task from this",
+      "desc": "Copies this task's request and creates an isolated new task with the selected team template.",
+      "ok": "Create new task"
+    },
+    "deleteTemplate": {
+      "title": "Delete team template \"{{name}}\"?",
+      "unnamed": "this template",
+      "descNoTasks": "You will no longer be able to create new tasks from this template. This cannot be undone.",
+      "descWithTasks": "{{count}} existing dev tasks keep their snapshots, but you cannot create new tasks from this template.",
+      "deleted": "Team template deleted"
+    },
+    "deleteTask": {
+      "title": "Delete this task?",
+      "content": "Delete task \"{{title}}\"?",
+      "warning": "This cannot be undone; messages will be removed.",
+      "ok": "Delete",
+      "success": "Task deleted",
+      "runningError": "Task is running—wait until it finishes before deleting",
+      "failed": "Could not delete task"
+    },
+    "system": {
+      "noAgents": "No enabled dev members. Add or enable members in template settings.",
+      "discussionReadOnly": "Current mode is read-only discussion and will not modify the workspace. Switch to implement-review or quick response to write code.",
+      "approvalConfirm": "Run dev members {{names}} in {{workspace}} for this task?",
+      "defaultWorkspace": "default directory",
+      "executionFailed": "❌ Task did not start: {{error}}",
+      "errorPrefix": "[Error: {{error}}]"
+    },
+    "toast": {
+      "workspaceRequired": "Select a workspace directory first",
+      "worktreeCleaned": "Worktree cleaned up",
+      "cleanupFailed": "Cleanup failed"
+    },
+    "worktree": {
+      "cleanupConfirm": "Clean up{{agent}} worktree?\n{{path}}\nThis cannot be undone.",
+      "cleanupConfirmAgent": " {{agentName}}'s"
+    },
+    "backLabel": "Team templates"
+  },
+  "raceResults": {
+    "title": "Compare race results",
+    "hint": "Compare code changes vs the base commit in each dev member's isolated worktree. Mark adopted records your choice—it does not auto-merge into the main workspace.",
+    "summary": "{{count}} worktree results",
+    "adoptedCount": " · {{count}} adopted",
+    "cleanupAll": "Clean up all",
+    "empty": "No race worktree results. Run a task with the isolated race template first.",
+    "defaultAgent": "Dev member",
+    "adopted": "Adopted",
+    "noPreview": "(no output preview)",
+    "openPath": "Open path",
+    "markAdopted": "Mark adopted",
+    "cleanupOne": "Clean up worktree",
+    "selectHint": "Select a result on the left to view diff",
+    "changeStats": "Change stats",
+    "noChanges": "(no changes)",
+    "noDiffOutput": "(no diff output)",
+    "diffTitle": "Diff",
+    "diffTruncated": "(truncated)",
+    "noDiff": "(no diff)",
+    "missingBaseSha": "Missing base commit; cannot build diff",
+    "fetchDiffFailed": "Failed to fetch diff",
+    "cleanupFailed": "Failed to clean up worktree",
+    "cleanupConfirmOne": "Clean up worktree for {{agentName}}?\n{{path}}",
+    "cleanupConfirmAll": "Clean up all {{count}} worktrees for this task? This cannot be undone.",
+    "cleanupSuccess": "Worktree cleaned up",
+    "cleanupAllSuccess": "All worktrees cleaned up"
+  },
+  "tasks": {
+    "defaultTitle": "New dev task"
+  },
+  "taskLog": {
+    "title": "Task execution log",
+    "statusPrefix": "Status: {{status}}",
+    "promptLabel": "Command / prompt:",
+    "loading": "Loading logs...",
+    "empty": "No log output yet",
+    "stop": "Stop run",
+    "refresh": "Refresh",
+    "close": "Close"
+  }
+}

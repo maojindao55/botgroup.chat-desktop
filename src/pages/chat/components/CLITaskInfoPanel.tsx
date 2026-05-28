@@ -4,20 +4,13 @@
 import { Drawer, Tag, Button } from 'antd';
 import { X } from 'lucide-react';
 import { createStyles } from 'antd-style';
+import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
+import { formatLocaleDateTime } from '@/i18n/formatLocale';
 import { cliWorkflowTemplates } from '@/config/groupProduct';
 import type { CLIDevelopmentTask, CLITaskStatus } from '@/config/cliTasks';
-import { canMutateTask, getTaskDisplayStatus, sessionPolicyLabel } from '@/config/cliTasks';
+import { canMutateTask, getTaskDisplayStatus } from '@/config/cliTasks';
 import type { AIMember } from '@/config/aiMembers';
-
-const statusLabels: Record<CLITaskStatus, { label: string; color: string }> = {
-  queued: { label: '排队', color: 'default' },
-  running: { label: '运行中', color: 'processing' },
-  completed: { label: '已完成', color: 'success' },
-  failed: { label: '失败', color: 'error' },
-  cancelled: { label: '已取消', color: 'warning' },
-  timeout: { label: '超时', color: 'error' },
-  archived: { label: '已归档', color: 'default' },
-};
 
 const useStyles = createStyles(({ token, css }) => ({
   inlinePanel: css`
@@ -142,26 +135,13 @@ interface CLITaskInfoPanelProps {
 }
 
 function formatDateTime(iso: string) {
-  try {
-    return new Date(iso).toLocaleString(undefined, {
-      year: 'numeric',
-      month: 'numeric',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  } catch {
-    return iso;
-  }
-}
-
-function strategyLabel(strategy: string) {
-  const tpl = cliWorkflowTemplates.find(t => t.strategy === strategy);
-  return tpl?.label || strategy;
-}
-
-function approvalLabel(mode: 'auto' | 'ask') {
-  return mode === 'auto' ? '自动审批' : '执行前需确认';
+  return formatLocaleDateTime(iso, {
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 export const CLITaskInfoPanel = ({
@@ -176,18 +156,43 @@ export const CLITaskInfoPanel = ({
   onDeleteTask,
 }: CLITaskInfoPanelProps) => {
   const { styles } = useStyles();
+  const { t, i18n } = useTranslation(['cli', 'product']);
+
+  const statusLabels: Record<CLITaskStatus, { label: string; color: string }> = useMemo(() => ({
+    queued: { label: t('cli:status.queued'), color: 'default' },
+    running: { label: t('cli:status.running'), color: 'processing' },
+    completed: { label: t('cli:status.completed'), color: 'success' },
+    failed: { label: t('cli:status.failed'), color: 'error' },
+    cancelled: { label: t('cli:status.cancelled'), color: 'warning' },
+    timeout: { label: t('cli:status.timeout'), color: 'error' },
+    archived: { label: t('cli:status.archived'), color: 'default' },
+  }), [i18n.language]);
+
+  const strategyLabel = (strategy: string, workflowTemplateId?: string) => {
+    const tpl = workflowTemplateId
+      ? cliWorkflowTemplates.find(item => item.id === workflowTemplateId)
+      : cliWorkflowTemplates.find(item => item.strategy === strategy);
+    const fallback = tpl?.label || strategy;
+    if (tpl?.id) {
+      return t(`product:cliWorkflowTemplates.${tpl.id}.label`, { defaultValue: fallback });
+    }
+    return fallback;
+  };
+
+  const approvalLabel = (mode: 'auto' | 'ask') =>
+    mode === 'auto' ? t('cli:taskInfo.approval.auto') : t('cli:taskInfo.approval.ask');
 
   if (!open || !task) {
     if (inline) return null;
     return (
       <Drawer
-        title="任务信息"
+        title={t('cli:taskInfo.title')}
         placement="right"
         open={open}
         onClose={() => onOpenChange(false)}
         width={420}
       >
-        <div className={styles.hint}>请先选择或创建一个开发任务。</div>
+        <div className={styles.hint}>{t('cli:taskInfo.emptyHint')}</div>
       </Drawer>
     );
   }
@@ -202,94 +207,96 @@ export const CLITaskInfoPanel = ({
   const body = (
     <div className={styles.content}>
       <div className={styles.hint}>
-        以下为本任务创建时保存的配置快照。修改团队模板不会影响此任务；如需新策略处理同一需求，请从此任务创建新任务。
+        {t('cli:taskInfo.snapshotHint')}
       </div>
 
       <div className={styles.section}>
-        <div className={styles.sectionTitle}>任务信息</div>
+        <div className={styles.sectionTitle}>{t('cli:taskInfo.sectionTask')}</div>
         <div className={styles.row}>
-          <span className={styles.label}>任务名</span>
+          <span className={styles.label}>{t('cli:taskInfo.fields.title')}</span>
           <span className={styles.value}>{task.title}</span>
         </div>
         <div className={styles.row}>
-          <span className={styles.label}>状态</span>
+          <span className={styles.label}>{t('cli:taskInfo.fields.status')}</span>
           <Tag color={statusInfo.color} style={{ width: 'fit-content' }}>{statusInfo.label}</Tag>
         </div>
         <div className={styles.row}>
-          <span className={styles.label}>Workspace</span>
-          <span className={styles.value}>{task.workspacePath || '（未指定）'}</span>
+          <span className={styles.label}>{t('cli:taskInfo.fields.workspace')}</span>
+          <span className={styles.value}>{task.workspacePath || t('cli:taskInfo.fields.workspaceUnset')}</span>
         </div>
         <div className={styles.row}>
-          <span className={styles.label}>创建时间</span>
+          <span className={styles.label}>{t('cli:taskInfo.fields.createdAt')}</span>
           <span className={styles.value}>{formatDateTime(task.createdAt)}</span>
         </div>
         <div className={styles.row}>
-          <span className={styles.label}>更新时间</span>
+          <span className={styles.label}>{t('cli:taskInfo.fields.updatedAt')}</span>
           <span className={styles.value}>{formatDateTime(task.updatedAt)}</span>
         </div>
         <div className={styles.row}>
-          <span className={styles.label}>使用模板</span>
+          <span className={styles.label}>{t('cli:taskInfo.fields.template')}</span>
           <span className={styles.value}>{snapshot.name}</span>
         </div>
       </div>
 
       <div className={styles.section}>
-        <div className={styles.sectionTitle}>本任务模板快照（只读）</div>
+        <div className={styles.sectionTitle}>{t('cli:taskInfo.sectionSnapshot')}</div>
         <div className={styles.row}>
-          <span className={styles.label}>成员</span>
+          <span className={styles.label}>{t('cli:taskInfo.fields.members')}</span>
           <div className={styles.memberList}>
             {snapshotMembers.length > 0 ? snapshotMembers.map(m => (
               <span key={m.id} className={styles.memberChip}>{m.name}</span>
             )) : (
-              <span className={styles.value}>（无成员）</span>
+              <span className={styles.value}>{t('cli:taskInfo.fields.noMembers')}</span>
             )}
           </div>
         </div>
         <div className={styles.row}>
-          <span className={styles.label}>协作方式</span>
-          <span className={styles.value}>{strategyLabel(snapshot.strategy)}</span>
+          <span className={styles.label}>{t('cli:taskInfo.fields.strategy')}</span>
+          <span className={styles.value}>{strategyLabel(snapshot.strategy, snapshot.workflowTemplateId)}</span>
         </div>
         <div className={styles.row}>
-          <span className={styles.label}>审批方式</span>
+          <span className={styles.label}>{t('cli:taskInfo.fields.approval')}</span>
           <span className={styles.value}>{approvalLabel(snapshot.approvalMode)}</span>
         </div>
         <div className={styles.row}>
-          <span className={styles.label}>执行超时</span>
-          <span className={styles.value}>{Math.round(snapshot.timeout / 1000)} 秒</span>
+          <span className={styles.label}>{t('cli:taskInfo.fields.timeout')}</span>
+          <span className={styles.value}>{t('cli:taskInfo.fields.timeoutValue', { seconds: Math.round(snapshot.timeout / 1000) })}</span>
         </div>
         <div className={styles.row}>
-          <span className={styles.label}>CLI 会话复用</span>
-          <span className={styles.value}>{sessionPolicyLabel(snapshot.sessionPolicy)}</span>
+          <span className={styles.label}>{t('cli:taskInfo.fields.sessionPolicy')}</span>
+          <span className={styles.value}>
+            {t(`product:cliSessionPolicy.${snapshot.sessionPolicy}.label`, { defaultValue: snapshot.sessionPolicy })}
+          </span>
         </div>
         <div className={styles.row}>
-          <span className={styles.label}>stderr 展示</span>
-          <span className={styles.value}>{snapshot.showStderr ? '开启' : '关闭'}</span>
+          <span className={styles.label}>{t('cli:taskInfo.fields.stderr')}</span>
+          <span className={styles.value}>{snapshot.showStderr ? t('cli:taskInfo.fields.stderrOn') : t('cli:taskInfo.fields.stderrOff')}</span>
         </div>
       </div>
 
       <div className={styles.actionRow}>
         {onCreateTaskFromThis && (
           <button type="button" className={styles.actionBtn} onClick={onCreateTaskFromThis}>
-            从此任务创建新任务
+            {t('cli:taskInfo.actions.fork')}
           </button>
         )}
         {task.status === 'archived' && onRestoreTask && (
           <Button block onClick={onRestoreTask}>
-            恢复任务
+            {t('cli:taskInfo.actions.restore')}
           </Button>
         )}
         {task.status !== 'archived' && onArchiveTask && (
           <Button block disabled={!mutable} onClick={onArchiveTask}>
-            归档任务
+            {t('cli:taskInfo.actions.archive')}
           </Button>
         )}
         {onDeleteTask && (
           <Button block danger disabled={!mutable} onClick={onDeleteTask}>
-            删除任务
+            {t('cli:taskInfo.actions.delete')}
           </Button>
         )}
         {!mutable && (
-          <div className={styles.hint}>任务运行中，暂不可归档或删除。</div>
+          <div className={styles.hint}>{t('cli:taskInfo.actions.runningHint')}</div>
         )}
       </div>
     </div>
@@ -299,7 +306,7 @@ export const CLITaskInfoPanel = ({
     return (
       <div className={styles.inlinePanel} style={{ width: 360, flexShrink: 0 }}>
         <div className={styles.inlineHeader}>
-          <span className={styles.inlineTitle}>任务信息</span>
+          <span className={styles.inlineTitle}>{t('cli:taskInfo.title')}</span>
           <button type="button" className={styles.inlineCloseBtn} onClick={() => onOpenChange(false)}>
             <X size={16} />
           </button>
@@ -311,7 +318,7 @@ export const CLITaskInfoPanel = ({
 
   return (
     <Drawer
-      title="任务信息"
+      title={t('cli:taskInfo.title')}
       placement="right"
       open={open}
       onClose={() => onOpenChange(false)}

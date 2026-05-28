@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { builtinProviders, readLegacyApiKey, type Provider } from '@/config/providers';
+import i18n from '@/i18n';
 
 /** Rust serde camelCase: base_url → baseUrl (not baseURL) */
 interface RustProvider {
@@ -125,10 +126,10 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
   upsert: async (p: Provider) => {
     const existing = get().providers[p.id];
     if (existing?.source === 'builtin') {
-      throw new Error('无法修改内置 Provider，请使用「复制并编辑」。');
+      throw new Error(i18n.t('common:store.provider.cannotEditBuiltin'));
     }
     if (!existing && p.source === 'builtin') {
-      throw new Error('不能从界面创建 builtin Provider。');
+      throw new Error(i18n.t('common:store.provider.cannotCreateBuiltin'));
     }
 
     const updated: Provider = {
@@ -173,7 +174,7 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
 
   clone: async (id: string) => {
     const orig = get().providers[id];
-    if (!orig) throw new Error('Provider 不存在');
+    if (!orig) throw new Error(i18n.t('common:store.provider.notFound'));
     const ts = Date.now();
     const newId = `user-${orig.id}-copy-${ts}`;
     const apiKeyRef = `provider:${newId}`;
@@ -181,7 +182,7 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
       ...JSON.parse(JSON.stringify(orig)),
       id: newId,
       source: 'user',
-      name: `${orig.name} (副本)`,
+      name: `${orig.name}${i18n.t('common:copyNameSuffix')}`,
       apiKeyRef,
     };
     await get().upsert(cloned);

@@ -16,12 +16,21 @@ async function importTsModule(url, transform = (source) => source) {
 
 const adapterModule = await importTsModule(new URL('./cliAdapters.ts', import.meta.url));
 globalThis.__cliTasksTestDeps = adapterModule;
+globalThis.__cliTasksI18n = {
+  t: (_key, opts) => opts?.defaultValue ?? _key,
+  language: 'zh-CN',
+};
 const mod = await importTsModule(
   new URL('./cliTasks.ts', import.meta.url),
-  source => source.replace(
-    "import { adapterUsesOpenCodeSessionTitle } from './cliAdapters';",
-    'const { adapterUsesOpenCodeSessionTitle } = globalThis.__cliTasksTestDeps;',
-  ),
+  source => source
+    .replace(
+      "import { adapterUsesOpenCodeSessionTitle } from './cliAdapters';",
+      'const { adapterUsesOpenCodeSessionTitle } = globalThis.__cliTasksTestDeps;',
+    )
+    .replace(
+      "import i18n from '@/i18n';",
+      'const i18n = globalThis.__cliTasksI18n;',
+    ),
 );
 const sessions = await importTsModule(
   new URL('../engine/cliToolSessions.ts', import.meta.url),

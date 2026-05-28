@@ -3,6 +3,7 @@ import { Edit2 as Edit2Icon, Check as CheckIcon, X as XIcon } from 'lucide-react
 import { Input, Tooltip } from 'antd';
 import { Avatar as LobeAvatar, ActionIcon } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
+import { useTranslation } from 'react-i18next';
 import { request } from '@/utils/request';
 import { useUserStore } from '@/store/userStore';
 import { getAvatarData } from '@/utils/avatar';
@@ -76,6 +77,7 @@ interface UserSectionProps {
 
 export const UserSection: React.FC<UserSectionProps> = ({ isOpen }) => {
   const { styles } = useStyles();
+  const { t } = useTranslation(['user', 'common']);
   const [isLoading, setIsLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [newNickname, setNewNickname] = useState('');
@@ -94,10 +96,10 @@ export const UserSection: React.FC<UserSectionProps> = ({ isOpen }) => {
       });
       const { data } = await response.json();
       userStore.setUserInfo(data);
-      toast.success('更新昵称成功');
+      toast.success(t('toast.nicknameUpdated'));
       setIsEditing(false);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '更新昵称失败');
+      toast.error(error instanceof Error ? error.message : t('toast.nicknameUpdateFailed'));
     } finally {
       setIsLoading(false);
     }
@@ -109,7 +111,7 @@ export const UserSection: React.FC<UserSectionProps> = ({ isOpen }) => {
 
     try {
       setUploadingAvatar(true);
-      toast.info('本地版暂不支持云端头像上传，头像将以昵称首字渲染');
+      toast.info(t('toast.avatarUploadUnsupported'));
     } catch (error) {
       console.error('上传头像失败:', error);
     } finally {
@@ -119,7 +121,7 @@ export const UserSection: React.FC<UserSectionProps> = ({ isOpen }) => {
 
   if (!isOpen || !userStore.userInfo || !userStore.userInfo.status) return null;
 
-  const avatarData = getAvatarData(userStore.userInfo?.nickname || '我');
+  const avatarData = getAvatarData(userStore.userInfo?.nickname || t('avatarFallback'));
 
   return (
     <div className={styles.container}>
@@ -168,7 +170,7 @@ export const UserSection: React.FC<UserSectionProps> = ({ isOpen }) => {
                 size="small"
                 value={newNickname}
                 onChange={(e) => setNewNickname(e.target.value)}
-                placeholder={userStore.userInfo?.nickname || '输入新昵称'}
+                placeholder={userStore.userInfo?.nickname || t('nicknamePlaceholder')}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') updateNickname();
                   if (e.key === 'Escape') setIsEditing(false);
@@ -176,7 +178,7 @@ export const UserSection: React.FC<UserSectionProps> = ({ isOpen }) => {
                 autoFocus
               />
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <Tooltip title="保存">
+                <Tooltip title={t('common:actions.save')}>
                   <ActionIcon
                     icon={CheckIcon}
                     size="small"
@@ -185,7 +187,7 @@ export const UserSection: React.FC<UserSectionProps> = ({ isOpen }) => {
                     title=""
                   />
                 </Tooltip>
-                <Tooltip title="取消">
+                <Tooltip title={t('common:actions.cancel')}>
                   <ActionIcon
                     icon={XIcon}
                     size="small"
@@ -199,7 +201,7 @@ export const UserSection: React.FC<UserSectionProps> = ({ isOpen }) => {
           ) : (
             <>
               <span className={styles.nickname}>
-                {isLoading ? '加载中...' : userStore.userInfo?.nickname || '本地用户'}
+                {isLoading ? t('common:status.loading') : userStore.userInfo?.nickname || t('defaultNickname')}
               </span>
               <Edit2Icon
                 size={12}

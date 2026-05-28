@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Modal, Button, Spin } from 'antd';
 import { createStyles } from 'antd-style';
+import { useTranslation } from 'react-i18next';
 import { request } from '@/utils/request';
 
 export interface CLITaskLogEntry {
@@ -75,6 +76,7 @@ export const CLITaskLogModal = ({
   onCancel,
 }: CLITaskLogModalProps) => {
   const { styles, cx } = useStyles();
+  const { t } = useTranslation(['cli', 'common']);
   const [logEntries, setLogEntries] = useState<CLITaskLogEntry[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [currentStatus, setCurrentStatus] = useState(status || '');
@@ -157,15 +159,18 @@ export const CLITaskLogModal = ({
     }
   };
 
-  const subtitle = [agentName, adapter ? `(${adapter})` : '', currentStatus ? `状态: ${currentStatus}` : '']
-    .filter(Boolean)
-    .join(' ');
+  const subtitleParts = [
+    agentName,
+    adapter ? `(${adapter})` : '',
+    currentStatus ? t('cli:taskLog.statusPrefix', { status: currentStatus }) : '',
+  ].filter(Boolean);
+  const subtitle = subtitleParts.join(' ');
 
   return (
     <Modal
       title={
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingRight: 24 }}>
-          <span>任务执行日志</span>
+          <span>{t('cli:taskLog.title')}</span>
           {subtitle && (
             <span style={{ fontSize: 12, fontWeight: 'normal', color: 'var(--ant-color-text-secondary)' }}>
               {subtitle}
@@ -178,7 +183,7 @@ export const CLITaskLogModal = ({
       footer={[
         currentStatus === 'running' && (
           <Button key="cancel-task" danger onClick={handleCancel}>
-            停止运行
+            {t('cli:taskLog.stop')}
           </Button>
         ),
         <Button
@@ -186,10 +191,10 @@ export const CLITaskLogModal = ({
           onClick={() => agentTaskId && fetchLogs(agentTaskId)}
           loading={loadingLogs}
         >
-          刷新
+          {t('cli:taskLog.refresh')}
         </Button>,
         <Button key="close" type="primary" onClick={handleClose}>
-          关闭
+          {t('cli:taskLog.close')}
         </Button>,
       ]}
       width={700}
@@ -198,7 +203,7 @@ export const CLITaskLogModal = ({
       {currentPrompt && (
         <div style={{ marginBottom: 12 }}>
           <div style={{ fontSize: 12, color: 'var(--ant-color-text-secondary)', marginBottom: 4 }}>
-            <strong>执行命令/提示词:</strong>
+            <strong>{t('cli:taskLog.promptLabel')}</strong>
           </div>
           <div style={{
             fontSize: 12,
@@ -218,12 +223,12 @@ export const CLITaskLogModal = ({
 
       {loadingLogs && logEntries.length === 0 ? (
         <div style={{ padding: '60px 0', textAlign: 'center' }}>
-          <Spin tip="加载日志中..." />
+          <Spin tip={t('cli:taskLog.loading')} />
         </div>
       ) : logEntries.length === 0 ? (
         <div className={styles.logConsole}>
           <div className={cx(styles.logRow, styles.logTypeSystem)}>
-            <span>暂无日志输出</span>
+            <span>{t('cli:taskLog.empty')}</span>
           </div>
         </div>
       ) : (

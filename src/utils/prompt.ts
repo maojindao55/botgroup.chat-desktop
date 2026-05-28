@@ -6,12 +6,18 @@ export interface PromptContext {
   time?: string;
 }
 
+function getPromptLocale(): string {
+  // Always use zh-CN for prompt formatting to avoid leaking UI locale into LLM context.
+  // TODO: Phase 6 - introduce a separate promptLocale setting decoupled from UI locale.
+  return 'zh-CN';
+}
+
 function formatDate(d: Date): string {
-  return d.toLocaleDateString('zh-CN');
+  return d.toLocaleDateString(getPromptLocale());
 }
 
 function formatTime(d: Date): string {
-  return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleTimeString(getPromptLocale(), { hour: '2-digit', minute: '2-digit' });
 }
 
 /**

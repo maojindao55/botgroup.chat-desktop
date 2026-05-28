@@ -1,0 +1,26 @@
+{
+  "workspaceTitle": "Chat Workspace",
+  "section": {
+    "workspace": "Workspace",
+    "groups": "Groups",
+    "resources": "Resources"
+  },
+  "nav": {
+    "devTasks": "Dev Tasks",
+    "createGroup": "New Group",
+    "library": "Library"
+  },
+  "actions": {
+    "editGroup": "Edit Group",
+    "deleteGroup": "Delete Group",
+    "groupMenu": "Group actions"
+  },
+  "preferences": {
+    "title": "Appearance & language",
+    "appearance": "Theme",
+    "language": "Lang",
+    "themeSystem": "Follow system",
+    "themeLight": "Light mode",
+    "themeDark": "Dark mode"
+  }
+}

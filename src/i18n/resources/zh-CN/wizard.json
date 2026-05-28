@@ -1,0 +1,67 @@
+{
+  "typeStep": {
+    "intro": "选择一个群聊场景，把合适的成员拉进来。",
+    "cliHint": "开发群请前往侧边栏「开发任务」新建团队模板。"
+  },
+  "basicStep": {
+    "nameLabel": "群名称 *",
+    "namePlaceholder": "给群聊起个名字",
+    "descriptionLabel": "群描述",
+    "descriptionPlaceholder": "用一两句话描述这个群聊..."
+  },
+  "membersStep": {
+    "pickCharacters": "选择角色加入群聊",
+    "pickCliMembers": "选择开发成员加入群聊",
+    "pickExperts": "选择专家加入群聊",
+    "characterPlaceholder": "选择角色...",
+    "cliPlaceholder": "选择开发成员...",
+    "expertPlaceholder": "选择专家...",
+    "emptyDescription": "暂无{{resource}}，请先在资源库创建",
+    "goLibrary": "去资源库新建",
+    "openLibraryHint": "请从侧边栏打开资源库后新建"
+  },
+  "configStep": {
+    "speechMode": "发言方式",
+    "workspacePath": "Workspace 路径 *",
+    "workspaceHint": "开发成员将在此目录读写代码，支持选择或输入绝对路径",
+    "collaborationMode": "协作方式",
+    "roleAssignment": "角色分工",
+    "roleAssignmentHint": "指定谁负责规划、谁按方案写代码、谁做复审。规划者和评审者可以是同一个开发成员。",
+    "roleAssignmentWarning": "建议至少选择 2 个开发成员，并分别指定规划/评审者与实现者。",
+    "planner": "规划者",
+    "implementer": "实现者",
+    "reviewer": "评审者",
+    "maxReviewRounds": "最大复审轮数",
+    "plannerPlaceholder": "选择规划者",
+    "implementerPlaceholder": "选择实现者",
+    "reviewerPlaceholder": "选择评审者",
+    "cliSessionReuse": "CLI 会话复用",
+    "autoApproval": "自动审批模式",
+    "autoApprovalHint": "开启后开发成员自动执行，无需确认",
+    "timeoutSeconds": "超时时间 (秒)",
+    "agentCollaboration": "群内协作方式",
+    "coordinatorPrompt": "协调者 Prompt",
+    "coordinatorPromptPlaceholder": "定义协调者如何分派任务和汇总结果...",
+    "maxRounds": "最大协作轮数"
+  },
+  "steps": {
+    "type": "选择群聊场景",
+    "basic": "基础信息",
+    "members": "选择成员",
+    "config": "群聊设置",
+    "templateBasic": "模板名称",
+    "templateMembers": "选择开发成员",
+    "templateConfig": "执行策略",
+    "shortType": "类型",
+    "shortBasic": "基础",
+    "shortMembers": "成员",
+    "shortConfig": "配置"
+  },
+  "actions": {
+    "previous": "上一步",
+    "next": "下一步",
+    "createGroup": "创建群聊",
+    "createTemplate": "创建模板"
+  },
+  "templateTitle": "新建团队模板 · {{step}}"
+}

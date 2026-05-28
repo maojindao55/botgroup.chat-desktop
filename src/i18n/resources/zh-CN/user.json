@@ -1,0 +1,10 @@
+{
+  "defaultNickname": "本地用户",
+  "avatarFallback": "我",
+  "nicknamePlaceholder": "输入新昵称",
+  "toast": {
+    "nicknameUpdated": "更新昵称成功",
+    "nicknameUpdateFailed": "更新昵称失败",
+    "avatarUploadUnsupported": "本地版暂不支持云端头像上传，头像将以昵称首字渲染"
+  }
+}

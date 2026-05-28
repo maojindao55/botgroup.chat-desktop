@@ -6,6 +6,7 @@
  * - agent → AgentChatUI
  */
 import { useState, useRef, useEffect } from "react";
+import { useTranslation } from 'react-i18next';
 import { Send, Settings2, ChevronLeft, Bot, Terminal } from "lucide-react";
 import { Tooltip, Input as AntdInput, Button as AntdButton, Modal } from 'antd';
 import { ActionIcon, Avatar as LobeAvatar } from '@lobehub/ui';
@@ -377,6 +378,7 @@ const ChatUI = () => {
   const userStore = useUserStore();
   const isMobile = useIsMobile();
   const { styles, cx } = useStyles();
+  const { t } = useTranslation(['chat', 'common', 'settings']);
 
   const urlParams = new URLSearchParams(window.location.search);
   const id = urlParams.get('id') ? parseInt(urlParams.get('id')!) : 0;
@@ -475,7 +477,7 @@ const ChatUI = () => {
     if (!group) return;
 
     const memberIds = group.memberIds || (group as AIGroup | CLIGroup).members || [];
-    const nickname = userStore.userInfo?.nickname || '我';
+    const nickname = userStore.userInfo?.nickname || t('settings:aiGroup.selfName');
     const avatar_url = userStore.userInfo?.avatar_url || null;
     const currentUser = { id: 1, name: nickname, avatar: avatar_url };
 
@@ -507,7 +509,7 @@ const ChatUI = () => {
     const initData = async () => {
       try {
         const response = await request(`/api/init`);
-        if (!response.ok) throw new Error('初始化数据失败');
+        if (!response.ok) throw new Error(t('chat:init.initDataFailed'));
         const { data } = await response.json();
 
         const resolvedGroups = prepareCLIGroups(data.groups);
@@ -520,7 +522,7 @@ const ChatUI = () => {
         }
 
         if (!currentGroup && !isCLIView) {
-          setInitError('群聊不存在或无权访问');
+          setInitError(t('chat:init.groupNotFound'));
           setIsInitializing(false);
           return;
         }
@@ -534,7 +536,7 @@ const ChatUI = () => {
             const userInfo = await r.json();
             userStore.setUserInfo(userInfo.data);
           } else {
-            userStore.setUserInfo({ id: 0, phone: '', nickname: '我', avatar_url: null, status: 0 });
+            userStore.setUserInfo({ id: 0, phone: '', nickname: t('settings:aiGroup.selfName'), avatar_url: null, status: 0 });
           }
           return;
         }
@@ -559,7 +561,7 @@ const ChatUI = () => {
             const userInfo = await r.json();
             userStore.setUserInfo(userInfo.data);
           } else {
-            userStore.setUserInfo({ id: 0, phone: '', nickname: '我', avatar_url: null, status: 0 });
+            userStore.setUserInfo({ id: 0, phone: '', nickname: t('settings:aiGroup.selfName'), avatar_url: null, status: 0 });
           }
         } else if (currentGroup.type === 'cli') {
           const wsOverride = localStorage.getItem(`workspace:${currentGroup.id}`);
@@ -582,12 +584,12 @@ const ChatUI = () => {
             const userInfo = await r.json();
             userStore.setUserInfo(userInfo.data);
           } else {
-            userStore.setUserInfo({ id: 0, phone: '', nickname: '我', avatar_url: null, status: 0 });
+            userStore.setUserInfo({ id: 0, phone: '', nickname: t('settings:aiGroup.selfName'), avatar_url: null, status: 0 });
           }
         }
       } catch (error) {
         console.error("初始化数据失败:", error);
-        setInitError('加载失败，请刷新重试');
+        setInitError(t('chat:init.loadFailed'));
         setIsInitializing(false);
       }
     };
@@ -677,11 +679,11 @@ const ChatUI = () => {
 
   const confirmDeleteGroup = (targetGroup: Group) => {
     Modal.confirm({
-      title: `删除群聊「${targetGroup.name}」？`,
-      content: '删除后无法恢复，当前会话消息也会清空。',
-      okText: '删除',
+      title: t('common:deleteGroup.confirmTitle', { name: targetGroup.name }),
+      content: t('common:deleteGroup.warning'),
+      okText: t('common:actions.delete'),
       okType: 'danger',
-      cancelText: '取消',
+      cancelText: t('common:actions.cancel'),
       onOk: () => {
         deleteChatGroup(targetGroup.id);
         const deletedIndex = groups.findIndex((g) => g.id === targetGroup.id);
@@ -802,7 +804,7 @@ const ChatUI = () => {
               cursor: 'pointer',
             }}
           >
-            返回首页
+            {t('chat:actions.backHome')}
           </button>
         </div>
       </div>
@@ -890,9 +892,12 @@ const ChatUI = () => {
           localStorage.getItem(cliToolSessionKey((group as CLIGroup).id, baseAgent.id, workspacePath)),
         )
         : undefined;
-      if (!agent) throw new Error('找不到该开发成员');
+      if (!agent) throw new Error(t('chat:errors.memberNotFound'));
       if (approvalMode === 'ask') {
-        const confirmed = window.confirm(`确认让 ${agent.name} 在 ${workspacePath || '默认目录'} 执行这次任务？`);
+        const confirmed = window.confirm(t('chat:confirmExecuteSingle', {
+          name: agent.name,
+          path: workspacePath || t('chat:defaultWorkspace'),
+        }));
         if (!confirmed) return;
       }
 
@@ -963,7 +968,9 @@ const ChatUI = () => {
                     : 'failed';
                 return {
                   ...m,
-                  content: m.content ? m.content + `\n\n[错误: ${error}]` : `[错误: ${error}]`,
+                  content: m.content
+                    ? m.content + `\n\n${t('chat:errors.appendError', { error })}`
+                    : t('chat:errors.appendError', { error }),
                   status,
                   isError: true,
                 };
@@ -1001,8 +1008,8 @@ const ChatUI = () => {
     if (activeAgents.length === 0) {
       const systemMsg = {
         id: `sys-${Date.now()}`,
-        sender: { id: 'sys', name: '系统提示' },
-        content: '群聊中没有启用的开发成员。请在右侧设置面板中添加或开启成员。',
+        sender: { id: 'sys', name: t('chat:systemSender') },
+        content: t('chat:messages.noEnabledCliMembers'),
         isAI: true,
         isError: true,
       };
@@ -1014,8 +1021,8 @@ const ChatUI = () => {
     if (cliStrategy === 'discussion' && isCodeChangeIntent(promptText)) {
       const systemMsg = {
         id: `sys-${Date.now()}`,
-        sender: { id: 'sys', name: '系统提示' },
-        content: '当前协作方式是“只读讨论”，会在临时只读副本中运行，不会修改你设置的 workspace。要写文件或改代码，请先切换到“写完再审”或“快速响应”。',
+        sender: { id: 'sys', name: t('chat:systemSender') },
+        content: t('chat:messages.readOnlyDiscussionHint'),
         isAI: true,
         isError: true,
       };
@@ -1026,7 +1033,10 @@ const ChatUI = () => {
 
     if (approvalMode === 'ask') {
       const names = activeAgents.map(a => a.name).join('、');
-      const confirmed = window.confirm(`确认让 ${names} 在 ${workspacePath || '默认目录'} 执行这次任务？`);
+      const confirmed = window.confirm(t('chat:confirmExecute', {
+        names,
+        path: workspacePath || t('chat:defaultWorkspace'),
+      }));
       if (!confirmed) {
         setIsLoading(false);
         return;
@@ -1101,7 +1111,9 @@ const ChatUI = () => {
                     : 'failed';
                 return {
                   ...m,
-                  content: m.content ? m.content + `\n\n[错误: ${error}]` : `[错误: ${error}]`,
+                  content: m.content
+                    ? m.content + `\n\n${t('chat:errors.appendError', { error })}`
+                    : t('chat:errors.appendError', { error }),
                   status,
                   isError: true,
                 };
@@ -1121,8 +1133,8 @@ const ChatUI = () => {
       const errMsg = err?.message || String(err);
       const systemMsg = {
         id: `sys-${Date.now()}`,
-        sender: { id: 'sys', name: '系统提示' },
-        content: `❌ 任务执行未启动：${errMsg}`,
+        sender: { id: 'sys', name: t('chat:systemSender') },
+        content: t('chat:errors.taskNotStarted', { message: errMsg }),
         isAI: true,
         isError: true,
       };
@@ -1186,11 +1198,11 @@ const ChatUI = () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(requestBody),
         });
-        if (!response.ok) throw new Error('请求失败');
+        if (!response.ok) throw new Error(t('chat:errors.requestFailed'));
 
         const reader = response.body?.getReader();
         const decoder = new TextDecoder();
-        if (!reader) throw new Error('无法获取响应流');
+        if (!reader) throw new Error(t('chat:errors.streamUnavailable'));
 
         let buffer = '';
         let completeResponse = '';
@@ -1200,21 +1212,21 @@ const ChatUI = () => {
           const startTime = Date.now();
           let { done, value } = await Promise.race([
             reader.read(),
-            new Promise<any>((_, reject) => setTimeout(() => reject(new Error('响应超时')), timeout - (Date.now() - startTime))),
+            new Promise<any>((_, reject) => setTimeout(() => reject(new Error(t('chat:errors.timeout'))), timeout - (Date.now() - startTime))),
           ]);
           if (done) break;
 
           if (Date.now() - startTime > timeout) {
             reader.cancel();
             if (completeResponse.trim() === "") {
-              throw new Error('响应超时');
+              throw new Error(t('chat:errors.timeout'));
             }
             done = true;
           }
 
           if (done) {
             if (completeResponse.trim() === "") {
-              completeResponse = "对不起，服务暂时无法响应。";
+              completeResponse = t('chat:errors.serviceUnavailable');
             }
             setMessages(prev => prev.map(msg =>
               msg.id === aiMessage.id ? { ...msg, content: completeResponse } : msg
@@ -1243,7 +1255,7 @@ const ChatUI = () => {
         }
 
         if (!completeResponse.trim()) {
-          completeResponse = "对不起，服务暂时无法响应。";
+          completeResponse = t('chat:errors.serviceUnavailable');
           setMessages(prev => prev.map(msg =>
             msg.id === aiMessage.id ? { ...msg, content: completeResponse } : msg
           ));
@@ -1252,10 +1264,10 @@ const ChatUI = () => {
         messageHistory.push({ role: 'user', content: char.name + '：' + completeResponse, name: char.name });
         if (i < selectedChars.length - 1) await new Promise(r => setTimeout(r, 1000));
       } catch (error: any) {
-        const errMsg = error?.message || '未知错误';
-        messageHistory.push({ role: 'user', content: `${char.name}：[错误: ${errMsg}]`, name: char.name });
+        const errMsg = error?.message || t('chat:unknownError');
+        messageHistory.push({ role: 'user', content: `${char.name}：${t('chat:errors.appendError', { error: errMsg })}`, name: char.name });
         setMessages(prev => prev.map(msg =>
-          msg.id === aiMessage.id ? { ...msg, content: `对不起，服务出错(${errMsg})。`, isError: true } : msg
+          msg.id === aiMessage.id ? { ...msg, content: t('chat:serviceError', { message: errMsg }), isError: true } : msg
         ));
       }
     }
@@ -1286,7 +1298,7 @@ const ChatUI = () => {
 
 
   // ============ RENDER: AI / CLI 群 ============
-  const userName = userStore.userInfo.nickname || '我';
+  const userName = userStore.userInfo.nickname || t('settings:aiGroup.selfName');
   const isCLIGroup = group.type === 'cli';
 
   return (
@@ -1401,7 +1413,7 @@ const ChatUI = () => {
                         <span
                           className={styles.cwdPath}
                           onDoubleClick={() => handleToggleSettings(!showSettings)}
-                          title="双击以修改本地 Workspace 路径"
+                          title={t('chat:cliMeta.workspaceTitle')}
                         >
                           {workspacePath}
                         </span>
@@ -1438,7 +1450,7 @@ const ChatUI = () => {
                     icon={Settings2}
                     size="small"
                     onClick={() => handleToggleSettings(!showSettings)}
-                    title="设置"
+                    title={t('chat:cliMeta.settings')}
                   />
                 </div>
               </div>
@@ -1493,7 +1505,7 @@ const ChatUI = () => {
                           {isStreaming && !message.content.includes('</details>') && (
                             <span className={styles.streaming}>
                               <span className={styles.streamingDot} />
-                              {message.content === '' ? '思考中' : (isCli ? '执行中' : '输出中')}
+                              {message.content === '' ? t('chat:status.thinking') : (isCli ? t('chat:status.executing') : t('chat:status.running'))}
                             </span>
                           )}
                         </div>
@@ -1511,13 +1523,13 @@ const ChatUI = () => {
                                 {message.status === 'running' && (
                                   <>
                                     <span className={styles.spinnerIcon} />
-                                    <span>执行中</span>
+                                    <span>{t('chat:status.executing')}</span>
                                   </>
                                 )}
-                                {message.status === 'completed' && <span style={{ color: '#52c41a' }}>✅ 已完成</span>}
-                                {message.status === 'failed' && <span style={{ color: '#ff4d4f' }}>❌ 运行失败</span>}
-                                {message.status === 'cancelled' && <span style={{ color: '#faad14' }}>⏹ 已取消</span>}
-                                {message.status === 'timeout' && <span style={{ color: '#ff4d4f' }}>⏰ 执行超时</span>}
+                                {message.status === 'completed' && <span style={{ color: '#52c41a' }}>{t('chat:status.completed')}</span>}
+                                {message.status === 'failed' && <span style={{ color: '#ff4d4f' }}>{t('chat:status.failed')}</span>}
+                                {message.status === 'cancelled' && <span style={{ color: '#faad14' }}>{t('chat:status.cancelled')}</span>}
+                                {message.status === 'timeout' && <span style={{ color: '#ff4d4f' }}>{t('chat:status.timeout')}</span>}
                               </span>
                               <div className={styles.cliTaskActions}>
                                 {message.status === 'running' && (
@@ -1525,7 +1537,7 @@ const ChatUI = () => {
                                     onClick={() => handleCancelTask(message.taskId)}
                                     className={styles.cliActionBtnCancel}
                                   >
-                                    停止
+                                    {t('chat:cliMeta.stop')}
                                   </button>
                                 )}
                                 {['failed', 'cancelled', 'timeout'].includes(message.status || '') && (
@@ -1533,7 +1545,7 @@ const ChatUI = () => {
                                     onClick={() => handleRetryTask(message)}
                                     className={styles.cliActionBtnRetry}
                                   >
-                                    重试
+                                    {t('chat:cliMeta.retry')}
                                   </button>
                                 )}
                               </div>
@@ -1542,7 +1554,7 @@ const ChatUI = () => {
                           {message.taskId && (message.cliCwd || message.cliBranch) && message.cliCwd !== workspacePath && (
                             <div className={styles.cliWorktreeInfo}>
                               <div>
-                                <span style={{ fontWeight: 500 }}>工作目录</span>
+                                <span style={{ fontWeight: 500 }}>{t('chat:cliMeta.workdir')}</span>
                                 <button
                                   className={styles.cliWorktreeCopyBtn}
                                   onClick={() => {
@@ -1551,7 +1563,7 @@ const ChatUI = () => {
                                     }
                                   }}
                                 >
-                                  复制路径
+                                  {t('chat:cliMeta.copyPath')}
                                 </button>
                                 <button
                                   className={styles.cliWorktreeCopyBtn}
@@ -1568,19 +1580,19 @@ const ChatUI = () => {
                                     }
                                   }}
                                 >
-                                  打开路径
+                                  {t('chat:cliMeta.openPath')}
                                 </button>
                               </div>
                               <div className={styles.cliWorktreePath}>{message.cliCwd}</div>
                               {message.cliBranch && (
                                 <div>
-                                  <span style={{ fontWeight: 500 }}>分支：</span>
+                                  <span style={{ fontWeight: 500 }}>{t('chat:cliMeta.branch')}</span>
                                   <span className={styles.cliWorktreePath}>{message.cliBranch}</span>
                                 </div>
                               )}
                               {message.baseSha && (
                                 <div>
-                                  <span style={{ fontWeight: 500 }}>基准：</span>
+                                  <span style={{ fontWeight: 500 }}>{t('chat:cliMeta.base')}</span>
                                   <span className={styles.cliWorktreePath}>{message.baseSha.slice(0, 8)}</span>
                                 </div>
                               )}
@@ -1594,12 +1606,12 @@ const ChatUI = () => {
                                     ));
                                   }}
                                 >
-                                  标记采用
+                                  {t('chat:cliMeta.adopt')}
                                 </button>
                               )}
                               {message.adopted && (
                                 <span style={{ marginTop: 4, display: 'inline-block', fontSize: 10, color: '#52c41a', fontWeight: 600 }}>
-                                  ✓ 已采用
+                                  {t('chat:cliMeta.adopted')}
                                 </span>
                               )}
                             </div>
@@ -1637,7 +1649,7 @@ const ChatUI = () => {
                     }
                   }}
                   autoSize={{ minRows: 1, maxRows: 6 }}
-                  placeholder={isCLIGroup ? '输入代码任务，开发成员将在 workspace 中协作执行...' : '在角色群里输入消息...'}
+                  placeholder={isCLIGroup ? t('chat:placeholders.cliInput') : t('chat:placeholders.aiInput')}
                   style={{ flex: 1, borderRadius: 12 }}
                 />
                 <AntdButton

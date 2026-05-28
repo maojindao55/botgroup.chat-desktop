@@ -1,0 +1,100 @@
+{
+  "groupTypes": {
+    "ai": {
+      "label": "角色群",
+      "shortLabel": "角色",
+      "description": "邀请不同角色和模型一起聊天、脑暴、做观点碰撞。"
+    },
+    "agent": {
+      "label": "专家群",
+      "shortLabel": "专家",
+      "description": "邀请具备职责分工的专家群友协作，产出方案、评审和结论。"
+    },
+    "cli": {
+      "label": "开发群",
+      "shortLabel": "开发",
+      "description": "邀请 Codex、Claude Code、OpenCode、KimiCode、PI 等开发成员协作改代码。"
+    }
+  },
+  "aiSpeechModes": {
+    "smart": {
+      "label": "智能点名",
+      "description": "根据消息内容选择最相关的角色发言，适合日常聊天。"
+    },
+    "round_robin": {
+      "label": "轮流发言",
+      "description": "群友按顺序轮流回复，适合长期陪伴式对话。"
+    },
+    "all": {
+      "label": "全员圆桌",
+      "description": "每轮所有角色都发言，适合脑暴和多模型观点对比。"
+    }
+  },
+  "agentWorkflowTemplates": {
+    "expert_consult": {
+      "label": "专家会诊",
+      "description": "多位专家群友独立分析同一问题，再形成综合意见。"
+    },
+    "proposal": {
+      "label": "方案产出",
+      "description": "按调研、起草、审查、定稿的方式协作产出方案。"
+    },
+    "decision_review": {
+      "label": "评审决策",
+      "description": "从多角色视角提出收益、风险、约束和最终建议。"
+    },
+    "relay_edit": {
+      "label": "接力修改",
+      "description": "一个专家起草，一个专家审核，一个专家修订。"
+    },
+    "auto_delegate": {
+      "label": "自动处理",
+      "description": "由协调者多轮分派任务，适合目标明确但步骤未定的问题。"
+    }
+  },
+  "cliWorkflowTemplates": {
+    "quick_response": {
+      "label": "快速响应",
+      "description": "自动选择一位开发成员处理当前代码任务。"
+    },
+    "implement_review": {
+      "label": "规划实现复审",
+      "description": "规划者先拆解方案，实现者按方案改代码；评审不通过时继续修正并复审。"
+    },
+    "review_fix": {
+      "label": "审核修正",
+      "description": "先审查现有改动，再让开发成员按意见修正。"
+    },
+    "multi_solution": {
+      "label": "多人出方案",
+      "description": "多个开发成员分别处理同一任务，结果在群里并列展示。"
+    },
+    "isolated_race": {
+      "label": "隔离竞赛",
+      "description": "多个开发成员在独立 worktree 中并行实现，用户选择采纳。"
+    },
+    "discussion": {
+      "label": "只读讨论",
+      "description": "只分析代码方案和风险，不要求开发成员修改文件。"
+    }
+  },
+  "cliSessionPolicy": {
+    "task": {
+      "label": "按任务隔离",
+      "description": "每个开发任务使用独立 CLI 会话；继续同一任务会复用该任务的会话。"
+    },
+    "workspace": {
+      "label": "按 Workspace 共享",
+      "description": "同一 Workspace 与开发成员下的所有任务共享 CLI 会话。"
+    },
+    "template": {
+      "label": "按模板共享",
+      "description": "使用同一团队模板创建的所有任务共享 CLI 会话，上下文隔离最弱。"
+    }
+  },
+  "memberKinds": {
+    "character": "角色",
+    "cliMember": "开发成员",
+    "expert": "专家"
+  }
+}

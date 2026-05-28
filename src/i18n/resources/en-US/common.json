@@ -1,0 +1,51 @@
+{
+  "locale": {
+    "system": "Follow system",
+    "zhCN": "简体中文",
+    "enUS": "English",
+    "systemShort": "Auto"
+  },
+  "actions": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "select": "Select",
+    "edit": "Edit",
+    "copy": "Copy",
+    "delete": "Delete",
+    "confirmDelete": "Confirm delete",
+    "gotIt": "Got it",
+    "create": "Create",
+    "remove": "Remove",
+    "quickAdd": "Quick add"
+  },
+  "status": {
+    "loading": "Loading...",
+    "disabled": "Disabled",
+    "none": "None"
+  },
+  "badges": {
+    "builtin": "Official default",
+    "userCreated": "Custom",
+    "systemPreset": "System preset",
+    "official": "Official"
+  },
+  "deleteGroup": {
+    "title": "Delete group",
+    "warning": "This cannot be undone. All messages in this group will be cleared.",
+    "confirmTitle": "Delete group \"{{name}}\"?",
+    "button": "Delete this group"
+  },
+  "copyNameSuffix": " (copy)",
+  "store": {
+    "provider": {
+      "cannotEditBuiltin": "Built-in providers cannot be edited. Duplicate and edit instead.",
+      "cannotCreateBuiltin": "Cannot create a built-in provider from the UI.",
+      "notFound": "Provider not found"
+    },
+    "member": {
+      "cannotEditBuiltin": "Built-in members cannot be edited. Clone and edit instead.",
+      "cannotCreateBuiltin": "Cannot create a built-in member from the UI.",
+      "notFound": "Member not found"
+    }
+  }
+}

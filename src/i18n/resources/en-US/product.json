@@ -1,0 +1,100 @@
+{
+  "groupTypes": {
+    "ai": {
+      "label": "Character Group",
+      "shortLabel": "Character",
+      "description": "Invite different characters and models to chat, brainstorm, and compare perspectives."
+    },
+    "agent": {
+      "label": "Expert Group",
+      "shortLabel": "Expert",
+      "description": "Invite experts with clear roles to collaborate on plans, reviews, and conclusions."
+    },
+    "cli": {
+      "label": "Dev Group",
+      "shortLabel": "Dev",
+      "description": "Invite Codex, Claude Code, OpenCode, KimiCode, PI, and other dev members to edit code together."
+    }
+  },
+  "aiSpeechModes": {
+    "smart": {
+      "label": "Smart pick",
+      "description": "Pick the most relevant characters based on the message. Good for everyday chat."
+    },
+    "round_robin": {
+      "label": "Round robin",
+      "description": "Members reply in turn. Good for long-running companion-style conversations."
+    },
+    "all": {
+      "label": "Full roundtable",
+      "description": "Every character speaks each round. Good for brainstorming and model comparison."
+    }
+  },
+  "agentWorkflowTemplates": {
+    "expert_consult": {
+      "label": "Expert consult",
+      "description": "Multiple experts analyze the same problem independently, then synthesize a conclusion."
+    },
+    "proposal": {
+      "label": "Proposal drafting",
+      "description": "Collaborate through research, drafting, review, and finalization."
+    },
+    "decision_review": {
+      "label": "Decision review",
+      "description": "Surface benefits, risks, constraints, and a final recommendation from multiple roles."
+    },
+    "relay_edit": {
+      "label": "Relay editing",
+      "description": "One expert drafts, another reviews, and another revises."
+    },
+    "auto_delegate": {
+      "label": "Auto delegation",
+      "description": "A coordinator delegates across rounds. Good when the goal is clear but steps are not."
+    }
+  },
+  "cliWorkflowTemplates": {
+    "quick_response": {
+      "label": "Quick response",
+      "description": "Automatically assign one dev member to handle the current coding task."
+    },
+    "implement_review": {
+      "label": "Plan, implement, review",
+      "description": "The planner breaks down the work, the implementer edits code, and review loops until approved."
+    },
+    "review_fix": {
+      "label": "Review and fix",
+      "description": "Review existing changes first, then let dev members fix based on feedback."
+    },
+    "multi_solution": {
+      "label": "Multiple solutions",
+      "description": "Multiple dev members handle the same task and show results side by side."
+    },
+    "isolated_race": {
+      "label": "Isolated race",
+      "description": "Dev members implement in parallel worktrees and the user picks the result to adopt."
+    },
+    "discussion": {
+      "label": "Read-only discussion",
+      "description": "Analyze code plans and risks without requiring file changes."
+    }
+  },
+  "cliSessionPolicy": {
+    "task": {
+      "label": "Per task",
+      "description": "Each dev task gets its own CLI session. Continuing the same task reuses that session."
+    },
+    "workspace": {
+      "label": "Per workspace",
+      "description": "All tasks under the same workspace and dev member share one CLI session."
+    },
+    "template": {
+      "label": "Per template",
+      "description": "All tasks created from the same team template share one CLI session with the weakest isolation."
+    }
+  },
+  "memberKinds": {
+    "character": "character",
+    "cliMember": "dev member",
+    "expert": "expert"
+  }
+}

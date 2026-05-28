@@ -1,0 +1,71 @@
+{
+  "aiGroup": {
+    "title": "AI 群聊配置",
+    "basicInfo": "基础信息",
+    "groupNamePlaceholder": "群名称",
+    "groupDescriptionPlaceholder": "群描述（可选）",
+    "speechMode": "发言方式",
+    "pickCharacters": "选择角色",
+    "pickCharactersPlaceholder": "选择角色加入群聊...",
+    "members": "群友（{{count}}）",
+    "quickAddHint": "点击添加到群聊",
+    "muted": "已禁言",
+    "unmute": "取消禁言",
+    "mute": "禁言",
+    "removeMember": "移除成员",
+    "selfName": "我"
+  },
+  "agentGroup": {
+    "title": "专家群配置",
+    "basicInfo": "基础信息",
+    "groupNamePlaceholder": "群名称",
+    "groupDescriptionPlaceholder": "群描述（可选）",
+    "collaboration": "群内协作方式",
+    "advancedStrategy": "高级策略",
+    "coordinatorPrompt": "协调者 Prompt",
+    "coordinatorPromptPlaceholder": "定义协调者如何分派任务...",
+    "maxRounds": "最大轮数",
+    "manageExperts": "添加/管理专家群友",
+    "pickExpertsPlaceholder": "选择专家群友加入群聊...",
+    "libraryHint": "如需新建或编辑专家的模型、职责、工具，请到资源库操作。",
+    "experts": "专家群友（{{count}}）",
+    "supervisorBadge": "👑 监督者",
+    "unmute": "取消禁言",
+    "mute": "禁言",
+    "removeMember": "移除成员"
+  },
+  "strategies": {
+    "sequential": {
+      "label": "顺序执行",
+      "description": "按专家群友顺序依次执行，后者可看到前者的输出"
+    },
+    "router": {
+      "label": "意图路由",
+      "description": "智能分析用户意图，选择最相关的专家群友回答"
+    },
+    "discussion": {
+      "label": "全员讨论",
+      "description": "所有专家群友并行回复同一消息"
+    },
+    "react": {
+      "label": "ReAct",
+      "description": "协调者分析→分派任务→执行→判断是否完成→循环"
+    },
+    "pipeline": {
+      "label": "流水线",
+      "description": "按角色分工形成流水线，每阶段产出作为下一阶段输入"
+    },
+    "debate": {
+      "label": "辩论",
+      "description": "多位专家群友独立回答→互相评论→最终综合裁决"
+    },
+    "mapreduce": {
+      "label": "MapReduce",
+      "description": "自动拆分任务→各专家群友并行处理→汇总合并结果"
+    },
+    "supervisor": {
+      "label": "监督者",
+      "description": "监督者分派任务→审查质量→反馈修改→直到满意"
+    }
+  }
+}

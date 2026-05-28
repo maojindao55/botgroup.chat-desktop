@@ -3,6 +3,7 @@
  * 独立的聊天 UI，使用 agentEngine 策略引擎驱动对话
  */
 import { useState, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Send, Settings2, ChevronLeft, Puzzle } from 'lucide-react';
 import { Tooltip, Input as AntdInput, Button as AntdButton } from 'antd';
 import { ActionIcon, Avatar as LobeAvatar } from '@lobehub/ui';
@@ -218,6 +219,7 @@ const AgentChatUI = ({
   onEditGroup,
   onDeleteGroup,
 }: AgentChatUIProps) => {
+  const { t } = useTranslation(['chat', 'settings', 'library', 'common']);
   const userStore = useUserStore();
   const isMobile = useIsMobile();
   const { styles } = useStyles();
@@ -242,17 +244,8 @@ const AgentChatUI = ({
   const isResolvingMembers =
     membersLoading && currentMemberIds.length > 0 && currentAgents.length === 0;
 
-  // 策略中文标签映射
-  const strategyLabels: Record<string, string> = {
-    sequential: '顺序执行',
-    router: '意图路由',
-    discussion: '全员讨论',
-    react: 'ReAct 循环',
-    pipeline: '流水线',
-    debate: '辩论',
-    mapreduce: 'MapReduce',
-    supervisor: '监督者',
-  };
+  const getStrategyLabel = (strategy: string) =>
+    t(`settings:strategies.${strategy}.label`, { defaultValue: strategy });
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputMessage, setInputMessage] = useState('');
@@ -338,7 +331,7 @@ const AgentChatUI = ({
   const handleSendMessage = async () => {
     if (isLoading || !inputMessage.trim()) return;
 
-    const userName = userStore.userInfo.nickname || '我';
+    const userName = userStore.userInfo.nickname || t('settings:aiGroup.selfName');
     const userMsg: ChatMessage = {
       id: ++msgIdCounter.current,
       sender: { id: 'user', name: userName },
@@ -385,7 +378,7 @@ const AgentChatUI = ({
         if (!msgId) return;
         setMessages(prev =>
           prev.map(m => m.id === msgId
-            ? { ...m, content: `[错误] ${error}`, isError: true }
+            ? { ...m, content: t('chat:errors.appendError', { error }), isError: true }
             : m
           )
         );
@@ -402,7 +395,7 @@ const AgentChatUI = ({
   };
 
 
-  const userName = userStore.userInfo.nickname || '我';
+  const userName = userStore.userInfo.nickname || t('settings:aiGroup.selfName');
 
   return (
     <>
@@ -450,7 +443,7 @@ const AgentChatUI = ({
                       {group.name}
                     </h1>
                     <span style={{ fontSize: 12, opacity: 0.6 }}>
-                      ({currentAgents.length} 位专家)
+                      ({t('chat:agentChat.expertCount', { count: currentAgents.length })})
                     </span>
                   </div>
                 </div>
@@ -477,13 +470,13 @@ const AgentChatUI = ({
                     )}
                   </div>
                   <span className={styles.agentTagPurple}>
-                    {strategyLabels[group.strategy] || group.strategy}
+                    {getStrategyLabel(group.strategy)}
                   </span>
                   <ActionIcon
                     icon={Settings2}
                     size="small"
                     onClick={() => handleToggleSettings(!showSettings)}
-                    title="设置"
+                    title={t('chat:agentChat.settings')}
                   />
                 </div>
               </div>
@@ -495,19 +488,19 @@ const AgentChatUI = ({
               {messages.length === 0 && (
                 <div className={styles.emptyState}>
                   <Puzzle size={48} style={{ opacity: 0.4, marginBottom: 16 }} />
-                  <p style={{ fontSize: 18, fontWeight: 500, margin: 0 }}>专家群</p>
+                  <p style={{ fontSize: 18, fontWeight: 500, margin: 0 }}>{t('chat:agentChat.emptyTitle')}</p>
                   <p style={{ fontSize: 14, marginTop: 8, textAlign: 'center', maxWidth: 480 }}>
                     {group.description}
                   </p>
                   {isResolvingMembers && (
                     <p style={{ fontSize: 13, marginTop: 12, opacity: 0.6 }}>
-                      正在加载资源库...
+                      {t('chat:agentChat.loadingLibrary')}
                     </p>
                   )}
                   {hasUnresolvedMembers && (
                     <p style={{ fontSize: 13, marginTop: 12, color: '#ef4444' }}>
-                      该群引用了 {currentMemberIds.length} 位专家，但当前资源库中找不到。<br />
-                      请到「资源库」检查或重新添加成员。
+                      {t('chat:agentChat.unresolvedMembers', { count: currentMemberIds.length })}<br />
+                      {t('chat:agentChat.unresolvedMembersHint', { library: t('library:title') })}
                     </p>
                   )}
                   <div style={{ marginTop: 16, display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
@@ -518,7 +511,10 @@ const AgentChatUI = ({
                     ))}
                   </div>
                   <p style={{ fontSize: 12, marginTop: 16, opacity: 0.6 }}>
-                    策略: {strategyLabels[group.strategy] || group.strategy} | 最大轮数: {group.maxRounds}
+                    {t('chat:agentChat.strategyMeta', {
+                      strategy: getStrategyLabel(group.strategy),
+                      maxRounds: group.maxRounds,
+                    })}
                   </p>
                 </div>
               )}
@@ -555,7 +551,7 @@ const AgentChatUI = ({
                         <div className={styles.metaRow} style={{ justifyContent: isUser ? 'flex-end' : 'flex-start' }}>
                           {message.sender.name}
                           {!isUser && (
-                            <span className={styles.agentBadge}>专家</span>
+                            <span className={styles.agentBadge}>{t('chat:agentChat.expertBadge')}</span>
                           )}
                         </div>
                         <div className={bubbleClass}>
@@ -596,7 +592,7 @@ const AgentChatUI = ({
                     }
                   }}
                   autoSize={{ minRows: 1, maxRows: 6 }}
-                  placeholder="输入消息，专家群友将按群规协作回复..."
+                  placeholder={t('chat:agentChat.inputPlaceholder')}
                   style={{ flex: 1, borderRadius: 12 }}
                 />
                 <AntdButton

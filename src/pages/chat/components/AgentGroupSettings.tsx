@@ -5,6 +5,7 @@
  * 注意：成员（含 LLM/Prompt/Tools）统一由资源库管理。
  */
 import { Drawer, Input, InputNumber, Tooltip, Button } from 'antd';
+import { useTranslation } from 'react-i18next';
 import { Avatar as LobeAvatar, ActionIcon } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 import { Mic, MicOff, X } from 'lucide-react';
@@ -172,6 +173,7 @@ export const AgentGroupSettings = ({
   canDeleteGroup = true,
   inline,
 }: AgentGroupSettingsProps) => {
+  const { t } = useTranslation(['settings', 'common', 'product']);
   const { styles, cx } = useStyles();
   const { members: allMembers } = useAIMemberStore();
 
@@ -186,25 +188,25 @@ export const AgentGroupSettings = ({
   );
 
   const strategyOptions: { value: AgentStrategy; label: string }[] = [
-    { value: 'sequential', label: '顺序执行' },
-    { value: 'router', label: '意图路由' },
-    { value: 'discussion', label: '全员讨论' },
-    { value: 'react', label: 'ReAct' },
-    { value: 'pipeline', label: '流水线' },
-    { value: 'debate', label: '辩论' },
-    { value: 'mapreduce', label: 'MapReduce' },
-    { value: 'supervisor', label: '监督者' },
+    { value: 'sequential', label: t('settings:strategies.sequential.label', { defaultValue: '顺序执行' }) },
+    { value: 'router', label: t('settings:strategies.router.label', { defaultValue: '意图路由' }) },
+    { value: 'discussion', label: t('settings:strategies.discussion.label', { defaultValue: '全员讨论' }) },
+    { value: 'react', label: t('settings:strategies.react.label', { defaultValue: 'ReAct' }) },
+    { value: 'pipeline', label: t('settings:strategies.pipeline.label', { defaultValue: '流水线' }) },
+    { value: 'debate', label: t('settings:strategies.debate.label', { defaultValue: '辩论' }) },
+    { value: 'mapreduce', label: t('settings:strategies.mapreduce.label', { defaultValue: 'MapReduce' }) },
+    { value: 'supervisor', label: t('settings:strategies.supervisor.label', { defaultValue: '监督者' }) },
   ];
 
   const strategyDescriptions: Record<AgentStrategy, string> = {
-    sequential: '按专家群友顺序依次执行，后者可看到前者的输出',
-    router: '智能分析用户意图，选择最相关的专家群友回答',
-    discussion: '所有专家群友并行回复同一消息',
-    react: '协调者分析→分派任务→执行→判断是否完成→循环',
-    pipeline: '按角色分工形成流水线，每阶段产出作为下一阶段输入',
-    debate: '多位专家群友独立回答→互相评论→最终综合裁决',
-    mapreduce: '自动拆分任务→各专家群友并行处理→汇总合并结果',
-    supervisor: '监督者分派任务→审查质量→反馈修改→直到满意',
+    sequential: t('settings:strategies.sequential.description', { defaultValue: '按专家群友顺序依次执行，后者可看到前者的输出' }),
+    router: t('settings:strategies.router.description', { defaultValue: '智能分析用户意图，选择最相关的专家群友回答' }),
+    discussion: t('settings:strategies.discussion.description', { defaultValue: '所有专家群友并行回复同一消息' }),
+    react: t('settings:strategies.react.description', { defaultValue: '协调者分析→分派任务→执行→判断是否完成→循环' }),
+    pipeline: t('settings:strategies.pipeline.description', { defaultValue: '按角色分工形成流水线，每阶段产出作为下一阶段输入' }),
+    debate: t('settings:strategies.debate.description', { defaultValue: '多位专家群友独立回答→互相评论→最终综合裁决' }),
+    mapreduce: t('settings:strategies.mapreduce.description', { defaultValue: '自动拆分任务→各专家群友并行处理→汇总合并结果' }),
+    supervisor: t('settings:strategies.supervisor.description', { defaultValue: '监督者分派任务→审查质量→反馈修改→直到满意' }),
   };
 
   const showCoordinatorPrompt = ['router', 'react', 'discussion', 'supervisor', 'debate', 'mapreduce'].includes(
@@ -214,18 +216,18 @@ export const AgentGroupSettings = ({
   const settingsContent = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <label style={{ fontSize: 14, fontWeight: 500 }}>基础信息</label>
+        <label style={{ fontSize: 14, fontWeight: 500 }}>{t('settings:agentGroup.basicInfo')}</label>
         <Input
           value={group.name}
           onChange={(e) => onUpdateGroup({ name: e.target.value })}
-          placeholder="群名称"
+          placeholder={t('settings:agentGroup.groupNamePlaceholder')}
           maxLength={30}
           showCount
         />
         <Input.TextArea
           value={group.description || ''}
           onChange={(e) => onUpdateGroup({ description: e.target.value })}
-          placeholder="群描述（可选）"
+          placeholder={t('settings:agentGroup.groupDescriptionPlaceholder')}
           maxLength={100}
           showCount
           autoSize={{ minRows: 2, maxRows: 4 }}
@@ -233,7 +235,7 @@ export const AgentGroupSettings = ({
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <label style={{ fontSize: 14, fontWeight: 500 }}>群内协作方式</label>
+        <label style={{ fontSize: 14, fontWeight: 500 }}>{t('settings:agentGroup.collaboration')}</label>
         {agentWorkflowTemplates.map((item) => (
           <button
             key={item.id}
@@ -249,15 +251,19 @@ export const AgentGroupSettings = ({
             )}
           >
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 500 }}>{item.label}</div>
-              <div style={{ fontSize: 11, opacity: 0.65, marginTop: 2 }}>{item.description}</div>
+              <div style={{ fontSize: 13, fontWeight: 500 }}>
+                {t(`product:agentWorkflowTemplates.${item.id}.label`, { defaultValue: item.label })}
+              </div>
+              <div style={{ fontSize: 11, opacity: 0.65, marginTop: 2 }}>
+                {t(`product:agentWorkflowTemplates.${item.id}.description`, { defaultValue: item.description })}
+              </div>
             </div>
           </button>
         ))}
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <label style={{ fontSize: 14, fontWeight: 500 }}>高级策略</label>
+        <label style={{ fontSize: 14, fontWeight: 500 }}>{t('settings:agentGroup.advancedStrategy')}</label>
         <div className={styles.strategyGrid}>
           {strategyOptions.map((item) => (
             <button
@@ -279,10 +285,10 @@ export const AgentGroupSettings = ({
       {/* 协调者 Prompt */}
       {showCoordinatorPrompt && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <label style={{ fontSize: 14, fontWeight: 500 }}>协调者 Prompt</label>
+          <label style={{ fontSize: 14, fontWeight: 500 }}>{t('settings:agentGroup.coordinatorPrompt')}</label>
           <Input.TextArea
             autoSize={{ minRows: 3, maxRows: 6 }}
-            placeholder="定义协调者如何分派任务..."
+            placeholder={t('settings:agentGroup.coordinatorPromptPlaceholder')}
             value={group.coordinatorPrompt || ''}
             onChange={(e) => onUpdateGroup({ coordinatorPrompt: e.target.value })}
           />
@@ -291,7 +297,7 @@ export const AgentGroupSettings = ({
 
       {/* 最大轮数 */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <label style={{ fontSize: 14, fontWeight: 500, whiteSpace: 'nowrap' }}>最大轮数</label>
+        <label style={{ fontSize: 14, fontWeight: 500, whiteSpace: 'nowrap' }}>{t('settings:agentGroup.maxRounds')}</label>
         <InputNumber
           value={group.maxRounds}
           min={1}
@@ -303,20 +309,20 @@ export const AgentGroupSettings = ({
 
       <div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-          <span style={{ fontSize: 14, fontWeight: 500 }}>添加/管理专家群友</span>
+          <span style={{ fontSize: 14, fontWeight: 500 }}>{t('settings:agentGroup.manageExperts')}</span>
           <MemberPicker
             kind="agent"
             value={currentMemberIds}
             onChange={(newIds) => onUpdateGroup({ memberIds: newIds })}
-            placeholder="选择专家群友加入群聊..."
+            placeholder={t('settings:agentGroup.pickExpertsPlaceholder')}
           />
           <div style={{ fontSize: 11, color: 'rgba(0,0,0,0.45)', marginTop: -4 }}>
-            如需新建或编辑专家的模型、职责、工具，请到资源库操作。
+            {t('settings:agentGroup.libraryHint')}
           </div>
         </div>
 
         <div style={{ marginBottom: 12 }}>
-          <span style={{ fontSize: 14, fontWeight: 500 }}>专家群友（{currentAgents.length}）</span>
+          <span style={{ fontSize: 14, fontWeight: 500 }}>{t('settings:agentGroup.experts', { count: currentAgents.length })}</span>
         </div>
 
         {/* 成员列表 */}
@@ -350,7 +356,7 @@ export const AgentGroupSettings = ({
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {agent.name}
                       </span>
-                      {isSupervisor && <span className={styles.supervisorBadge}>👑 监督者</span>}
+                      {isSupervisor && <span className={styles.supervisorBadge}>{t('settings:agentGroup.supervisorBadge')}</span>}
                     </div>
                     {agent.description && (
                       <div
@@ -369,7 +375,7 @@ export const AgentGroupSettings = ({
                 </div>
 
                 <div style={{ display: 'flex', gap: 4 }}>
-                  <Tooltip title={muted ? '取消禁言' : '禁言'}>
+                  <Tooltip title={muted ? t('settings:agentGroup.unmute') : t('settings:agentGroup.mute')}>
                     <ActionIcon
                       icon={muted ? MicOff : Mic}
                       size="small"
@@ -378,7 +384,7 @@ export const AgentGroupSettings = ({
                       title=""
                     />
                   </Tooltip>
-                  <Tooltip title="移除成员">
+                  <Tooltip title={t('settings:agentGroup.removeMember')}>
                     <ActionIcon
                       icon={X}
                       size="small"
@@ -404,12 +410,12 @@ export const AgentGroupSettings = ({
           flexDirection: 'column',
           gap: 8,
         }}>
-          <div style={{ fontSize: 14, fontWeight: 500, color: '#ff4d4f' }}>删除群聊</div>
+          <div style={{ fontSize: 14, fontWeight: 500, color: '#ff4d4f' }}>{t('common:deleteGroup.title')}</div>
           <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>
-            删除后无法恢复，当前会话消息也会清空。
+            {t('common:deleteGroup.warning')}
           </div>
           <Button danger onClick={onDeleteGroup} style={{ alignSelf: 'flex-start' }}>
-            删除此群聊
+            {t('common:deleteGroup.button')}
           </Button>
         </div>
       )}
@@ -421,7 +427,7 @@ export const AgentGroupSettings = ({
     return (
           <div className={styles.inlinePanel}>
         <div className={styles.inlineHeader}>
-          <span className={styles.inlineTitle}>专家群配置</span>
+          <span className={styles.inlineTitle}>{t('settings:agentGroup.title')}</span>
           <button className={styles.inlineCloseBtn} onClick={() => onOpenChange(false)}>
             <X size={16} />
           </button>
@@ -435,7 +441,7 @@ export const AgentGroupSettings = ({
 
   return (
     <Drawer
-      title="专家群配置"
+      title={t('settings:agentGroup.title')}
       placement="right"
       open={open}
       onClose={() => onOpenChange(false)}

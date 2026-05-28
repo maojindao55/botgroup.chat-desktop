@@ -1,0 +1,51 @@
+{
+  "locale": {
+    "system": "跟随系统",
+    "zhCN": "简体中文",
+    "enUS": "English",
+    "systemShort": "系统"
+  },
+  "actions": {
+    "save": "保存",
+    "cancel": "取消",
+    "select": "选择",
+    "edit": "编辑",
+    "copy": "复制",
+    "delete": "删除",
+    "confirmDelete": "确认删除",
+    "gotIt": "知道了",
+    "create": "创建",
+    "remove": "移除",
+    "quickAdd": "快速添加"
+  },
+  "status": {
+    "loading": "加载中...",
+    "disabled": "已禁用",
+    "none": "无"
+  },
+  "badges": {
+    "builtin": "官方默认",
+    "userCreated": "自建",
+    "systemPreset": "系统预设",
+    "official": "官方"
+  },
+  "deleteGroup": {
+    "title": "删除群聊",
+    "warning": "删除后无法恢复，当前会话消息也会清空。",
+    "confirmTitle": "删除群聊「{{name}}」？",
+    "button": "删除此群聊"
+  },
+  "copyNameSuffix": " (副本)",
+  "store": {
+    "provider": {
+      "cannotEditBuiltin": "无法修改内置 Provider，请使用「复制并编辑」。",
+      "cannotCreateBuiltin": "不能从界面创建 builtin Provider。",
+      "notFound": "Provider 不存在"
+    },
+    "member": {
+      "cannotEditBuiltin": "无法修改内置成员，请使用「克隆并编辑」。",
+      "cannotCreateBuiltin": "不能从界面创建 builtin 成员。",
+      "notFound": "成员不存在"
+    }
+  }
+}

@@ -4,9 +4,9 @@
 import { Button, Drawer } from 'antd';
 import { Plus, Settings2, Trash2, X } from 'lucide-react';
 import { createStyles } from 'antd-style';
+import { useTranslation } from 'react-i18next';
 import { getCLIWorkflowLabel } from '@/config/groupProduct';
 import type { CLITeamTemplate } from '@/config/cliTasks';
-import { sessionPolicyLabel } from '@/config/cliTasks';
 
 const useStyles = createStyles(({ token, css }) => ({
   inlinePanel: css`
@@ -140,6 +140,19 @@ export const CLITemplateListPanel = ({
   inline,
 }: CLITemplateListPanelProps) => {
   const { styles } = useStyles();
+  const { t } = useTranslation(['cli', 'product']);
+
+  const workflowLabel = (template: CLITeamTemplate) => {
+    const fallback = getCLIWorkflowLabel(template.strategy, template.workflowTemplateId);
+    const id = template.workflowTemplateId;
+    if (id) {
+      return t(`product:cliWorkflowTemplates.${id}.label`, { defaultValue: fallback });
+    }
+    return fallback;
+  };
+
+  const sessionPolicyText = (policy: CLITeamTemplate['sessionPolicy']) =>
+    t(`product:cliSessionPolicy.${policy}.label`, { defaultValue: policy });
 
   if (!open) {
     if (inline) return null;
@@ -149,11 +162,11 @@ export const CLITemplateListPanel = ({
   const body = (
     <div className={styles.content}>
       <div className={styles.hint}>
-        团队模板是新任务的默认配置来源。在此修改成员、群规或默认 Workspace 后，只影响之后创建的新任务，已有任务仍使用创建时的快照。
+        {t('cli:templateList.hint')}
       </div>
       {templates.length === 0 && (
         <div className={styles.hint}>
-          还没有团队模板。创建后可作为新任务的默认配置（成员、Workspace、执行策略）。
+          {t('cli:templateList.emptyHint')}
         </div>
       )}
       {onCreateTemplate && (
@@ -164,7 +177,7 @@ export const CLITemplateListPanel = ({
           onClick={onCreateTemplate}
           style={{ background: '#ff6600', borderColor: '#ff6600', height: 36, borderRadius: 10 }}
         >
-          新建团队模板
+          {t('cli:templateList.create')}
         </Button>
       )}
       {templates.map(template => (
@@ -181,7 +194,7 @@ export const CLITemplateListPanel = ({
                 onClick={() => onOpenTemplateSettings(template.id)}
               >
                 <Settings2 size={14} />
-                设置
+                {t('cli:templateList.settings')}
               </button>
               {onDeleteTemplate && (
                 <button
@@ -191,7 +204,7 @@ export const CLITemplateListPanel = ({
                     event.stopPropagation();
                     onDeleteTemplate(template.id);
                   }}
-                  title="删除模板"
+                  title={t('cli:templateList.deleteTitle')}
                 >
                   <Trash2 size={14} />
                 </button>
@@ -199,11 +212,11 @@ export const CLITemplateListPanel = ({
             </div>
           </div>
           <div className={styles.meta}>
-            {getCLIWorkflowLabel(template.strategy, template.workflowTemplateId)} · {template.memberIds.length} 位成员
-            {` · ${sessionPolicyLabel(template.sessionPolicy)}`}
+            {workflowLabel(template)} · {t('cli:templateList.memberCount', { count: template.memberIds.length })}
+            {` · ${sessionPolicyText(template.sessionPolicy)}`}
           </div>
           <div className={styles.meta}>
-            已有 {taskCountByTemplate[template.id] || 0} 个开发任务
+            {t('cli:templateList.linkedTasks', { count: taskCountByTemplate[template.id] || 0 })}
           </div>
         </div>
       ))}
@@ -214,14 +227,14 @@ export const CLITemplateListPanel = ({
     return (
       <div className={styles.inlinePanel} style={{ width: 360, flexShrink: 0 }}>
         <div className={styles.inlineHeader}>
-          <span className={styles.inlineTitle}>团队模板</span>
+          <span className={styles.inlineTitle}>{t('cli:templateList.title')}</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             {onCreateTemplate && (
               <button
                 type="button"
                 className={styles.inlineCloseBtn}
                 onClick={onCreateTemplate}
-                title="新建团队模板"
+                title={t('cli:templateList.createTitle')}
               >
                 <Plus size={16} />
               </button>
@@ -238,7 +251,7 @@ export const CLITemplateListPanel = ({
 
   return (
     <Drawer
-      title="团队模板"
+      title={t('cli:templateList.title')}
       placement="right"
       open={open}
       onClose={() => onOpenChange(false)}

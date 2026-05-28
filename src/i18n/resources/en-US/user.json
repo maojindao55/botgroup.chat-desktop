@@ -1,0 +1,10 @@
+{
+  "defaultNickname": "Local User",
+  "avatarFallback": "Me",
+  "nicknamePlaceholder": "Enter a new nickname",
+  "toast": {
+    "nicknameUpdated": "Nickname updated",
+    "nicknameUpdateFailed": "Failed to update nickname",
+    "avatarUploadUnsupported": "Cloud avatar upload is not supported in the desktop app. Your avatar uses the first letter of your nickname."
+  }
+}

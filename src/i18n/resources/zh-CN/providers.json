@@ -1,0 +1,12 @@
+{
+  "builtin": {
+    "qwen": "通义千问",
+    "volcengine": "火山引擎",
+    "hunyuan": "腾讯混元",
+    "glm": "智谱 GLM",
+    "deepseek": "DeepSeek",
+    "kimi": "Moonshot Kimi",
+    "baidu": "百度千帆",
+    "ollama": "Ollama 本地"
+  }
+}

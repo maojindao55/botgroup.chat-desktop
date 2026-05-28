@@ -1,0 +1,70 @@
+{
+  "memberPicker": {
+    "defaultPlaceholder": "选择资源...",
+    "cliMemberSuffix": "开发成员"
+  },
+  "init": {
+    "loadFailed": "加载失败，请刷新重试",
+    "groupNotFound": "群聊不存在或无权访问",
+    "initDataFailed": "初始化数据失败"
+  },
+  "actions": {
+    "backHome": "返回首页"
+  },
+  "systemSender": "系统提示",
+  "confirmExecute": "确认让 {{names}} 在 {{path}} 执行这次任务？",
+  "confirmExecuteSingle": "确认让 {{name}} 在 {{path}} 执行这次任务？",
+  "defaultWorkspace": "默认目录",
+  "errors": {
+    "memberNotFound": "找不到该开发成员",
+    "taskNotStarted": "❌ 任务执行未启动：{{message}}",
+    "requestFailed": "请求失败",
+    "streamUnavailable": "无法获取响应流",
+    "timeout": "响应超时",
+    "serviceUnavailable": "对不起，服务暂时无法响应。",
+    "appendError": "[错误: {{error}}]"
+  },
+  "messages": {
+    "noEnabledCliMembers": "群聊中没有启用的开发成员。请在右侧设置面板中添加或开启成员。",
+    "readOnlyDiscussionHint": "当前协作方式是“只读讨论”，会在临时只读副本中运行，不会修改你设置的 workspace。要写文件或改代码，请先切换到“写完再审”或“快速响应”。"
+  },
+  "placeholders": {
+    "cliInput": "输入代码任务，开发成员将在 workspace 中协作执行...",
+    "aiInput": "在角色群里输入消息..."
+  },
+  "status": {
+    "thinking": "思考中",
+    "running": "输出中",
+    "executing": "执行中",
+    "completed": "✅ 已完成",
+    "failed": "❌ 运行失败",
+    "cancelled": "⏹ 已取消",
+    "timeout": "⏰ 执行超时"
+  },
+  "cliMeta": {
+    "workspaceTitle": "双击以修改本地 Workspace 路径",
+    "settings": "设置",
+    "stop": "停止",
+    "retry": "重试",
+    "workdir": "工作目录",
+    "copyPath": "复制路径",
+    "openPath": "打开路径",
+    "branch": "分支：",
+    "base": "基准：",
+    "adopt": "标记采用",
+    "adopted": "✓ 已采用"
+  },
+  "serviceError": "对不起，服务出错({{message}})。",
+  "unknownError": "未知错误",
+  "agentChat": {
+    "expertCount": "{{count}} 位专家",
+    "emptyTitle": "专家群",
+    "loadingLibrary": "正在加载资源库...",
+    "unresolvedMembers": "该群引用了 {{count}} 位专家，但当前资源库中找不到。",
+    "unresolvedMembersHint": "请到「{{library}}」检查或重新添加成员。",
+    "strategyMeta": "策略: {{strategy}} | 最大轮数: {{maxRounds}}",
+    "expertBadge": "专家",
+    "inputPlaceholder": "输入消息，专家群友将按群规协作回复...",
+    "settings": "设置"
+  }
+}
