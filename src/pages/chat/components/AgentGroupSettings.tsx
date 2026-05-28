@@ -181,10 +181,11 @@ export const AgentGroupSettings = ({
   const currentAgents = currentMemberIds
     .map((id) => allMembers[id])
     .filter((m) => m && m.kind === 'agent');
+  // 模板匹配逻辑放宽：只要 strategy 和 maxRounds 匹配即高亮模板
+  // 用户修改 coordinatorPrompt 不应导致模板高亮消失
   const activeTemplate = agentWorkflowTemplates.find((item) =>
     item.strategy === group.strategy &&
-    item.maxRounds === group.maxRounds &&
-    (item.coordinatorPrompt ? item.coordinatorPrompt === group.coordinatorPrompt : !group.coordinatorPrompt)
+    item.maxRounds === group.maxRounds
   );
 
   const strategyOptions: { value: AgentStrategy; label: string }[] = [

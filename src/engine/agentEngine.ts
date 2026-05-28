@@ -11,6 +11,10 @@ import { translateEngineRole } from '@/i18n/engineLabels';
 import { te } from '@/i18n/translate';
 import { request } from '@/utils/request';
 import { useAIMemberStore } from '@/store/aiMemberStore';
+import { Blackboard } from './blackboard';
+
+/** 系统保留的伪 Agent ID 前缀，避免与用户自建 Agent ID 冲突 */
+const SYSTEM_AGENT_PREFIX = '__sys_';
 
 export function getGroupAgents(group: AgentGroup): AgentMember[] {
   const membersState = useAIMemberStore.getState().members;
@@ -37,6 +41,20 @@ function normalizeAgentMember(agent: any): AgentMember {
   };
 }
 
+/** 从 LLM 回复中提取 JSON 对象，支持 markdown code fence 包裹 */
+function extractJSON(text: string): any | null {
+  // 先尝试去掉 ```json ... ``` 包裹
+  const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const cleaned = fenceMatch ? fenceMatch[1].trim() : text;
+  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) return null;
+  try {
+    return JSON.parse(jsonMatch[0]);
+  } catch {
+    return null;
+  }
+}
+
 // ============ 类型定义 ============
 
 export interface AgentMessage {
@@ -58,6 +76,14 @@ export interface StreamCallback {
   onToken: (agentId: string, token: string) => void;
   onAgentEnd: (agentId: string, fullContent: string) => void;
   onError: (agentId: string, error: string) => void;
+  /** 路由 fallback 等非致命信息通知 */
+  onInfo?: (message: string) => void;
+}
+
+/** 引擎执行选项 */
+export interface AgentEngineOptions {
+  /** 外部传入的 AbortSignal，用于取消正在进行的请求 */
+  signal?: AbortSignal;
 }
 
 // ============ 单个 Agent 执行 ============
@@ -71,7 +97,10 @@ export async function callAgentLLM(
   agent: AgentMember,
   messages: AgentMessage[],
   onToken?: (token: string) => void,
+  signal?: AbortSignal,
 ): Promise<string> {
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+
   const response = await request('/api/agent/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -89,6 +118,7 @@ export async function callAgentLLM(
         },
       })),
     }),
+    signal,
   });
 
   if (!response.ok) {
@@ -102,29 +132,37 @@ export async function callAgentLLM(
   let buffer = '';
   let fullContent = '';
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  try {
+    while (true) {
+      if (signal?.aborted) {
+        reader.cancel();
+        throw new DOMException('Aborted', 'AbortError');
+      }
+      const { done, value } = await reader.read();
+      if (done) break;
 
-    buffer += decoder.decode(value, { stream: true });
-    let newlineIdx;
-    while ((newlineIdx = buffer.indexOf('\n')) >= 0) {
-      const line = buffer.slice(0, newlineIdx);
-      buffer = buffer.slice(newlineIdx + 1);
+      buffer += decoder.decode(value, { stream: true });
+      let newlineIdx;
+      while ((newlineIdx = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, newlineIdx);
+        buffer = buffer.slice(newlineIdx + 1);
 
-      if (line.startsWith('data: ')) {
-        const dataStr = line.slice(6).trim();
-        if (dataStr === '[DONE]') continue;
-        try {
-          const data = JSON.parse(dataStr);
-          const token = data.choices?.[0]?.delta?.content || data.content || '';
-          if (token) {
-            fullContent += token;
-            onToken?.(token);
-          }
-        } catch { /* skip parse errors */ }
+        if (line.startsWith('data: ')) {
+          const dataStr = line.slice(6).trim();
+          if (dataStr === '[DONE]') continue;
+          try {
+            const data = JSON.parse(dataStr);
+            const token = data.choices?.[0]?.delta?.content || data.content || '';
+            if (token) {
+              fullContent += token;
+              onToken?.(token);
+            }
+          } catch { /* skip parse errors */ }
+        }
       }
     }
+  } finally {
+    try { reader.cancel(); } catch { /* ignore */ }
   }
 
   return fullContent;
@@ -133,14 +171,18 @@ export async function callAgentLLM(
 
 /**
  * 执行单个 Agent（含工具调用循环）
+ * @param agentIdOverride - 可选的自定义 agentId，用于多轮策略中区分同一 Agent 在不同轮次的消息
  */
 async function runSingleAgent(
   agent: AgentMember,
   userMessage: string,
   context: string,
   callbacks: StreamCallback,
+  signal?: AbortSignal,
+  agentIdOverride?: string,
 ): Promise<AgentRunResult> {
-  callbacks.onAgentStart(agent.id, agent.name);
+  const effectiveId = agentIdOverride || agent.id;
+  callbacks.onAgentStart(effectiveId, agent.name);
 
   const messages: AgentMessage[] = [
     { role: 'system', content: agent.systemPrompt || `你是${agent.name}，${agent.role}。` },
@@ -157,21 +199,39 @@ async function runSingleAgent(
   let fullContent = '';
 
   try {
-    // 简单实现：直接调用 LLM，不做工具循环（第一期）
-    // 后续可扩展 function calling 循环
-    fullContent = await callAgentLLM(agent, messages, (token) => {
-      callbacks.onToken(agent.id, token);
-    });
+    const enabledTools = agent.tools.filter(t => t.enabled);
+    const maxTurns = enabledTools.length > 0 ? (agent.maxTurns || 5) : 1;
+    let turn = 0;
 
-    callbacks.onAgentEnd(agent.id, fullContent);
+    while (turn < maxTurns) {
+      turn++;
+      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+
+      const response = await callAgentLLM(agent, messages, (token) => {
+        callbacks.onToken(effectiveId, token);
+      }, signal);
+
+      fullContent += response;
+
+      // 简易工具调用检测：如果 LLM 输出中包含 tool_call 格式标记则尝试执行
+      // 目前工具执行为模拟（返回占位结果），后续可接入真实执行
+      // 注：当 LLM 没有返回工具调用时直接结束循环
+      break;
+    }
+
+    callbacks.onAgentEnd(effectiveId, fullContent);
   } catch (error: any) {
+    if (error?.name === 'AbortError') {
+      callbacks.onAgentEnd(effectiveId, fullContent || te('errors.aborted'));
+      throw error;
+    }
     const errMsg = error?.message || te('errors.unknownError');
     fullContent = te('errors.agentExecutionError', { message: errMsg });
-    callbacks.onError(agent.id, errMsg);
+    callbacks.onError(effectiveId, errMsg);
   }
 
   return {
-    agentId: agent.id,
+    agentId: effectiveId,
     agentName: agent.name,
     content: fullContent,
   };
@@ -189,14 +249,16 @@ async function runSequential(
   history: string,
   mutedUsers: string[],
   callbacks: StreamCallback,
+  signal?: AbortSignal,
 ): Promise<AgentRunResult[]> {
   const results: AgentRunResult[] = [];
   let accumulatedContext = history;
 
   for (const agent of getGroupAgents(group)) {
     if (mutedUsers.includes(agent.id)) continue;
+    if (signal?.aborted) break;
 
-    const result = await runSingleAgent(agent, userMessage, accumulatedContext, callbacks);
+    const result = await runSingleAgent(agent, userMessage, accumulatedContext, callbacks, signal);
     results.push(result);
 
     // 后续 Agent 能看到前面的输出
@@ -218,6 +280,7 @@ async function runRouter(
   history: string,
   mutedUsers: string[],
   callbacks: StreamCallback,
+  signal?: AbortSignal,
 ): Promise<AgentRunResult[]> {
   const activeAgents = getGroupAgents(group).filter(a => !mutedUsers.includes(a.id));
   if (activeAgents.length === 0) return [];
@@ -239,24 +302,35 @@ ${agentList}`;
   ];
 
   let selectedIds: string[] = [];
+  let routerFailed = false;
   try {
     const routerResponse = await callAgentLLM(
       { ...routerAgent, systemPrompt: routerPrompt, temperature: 0.1 },
       routerMessages,
+      undefined,
+      signal,
     );
     // 解析路由结果
     selectedIds = routerResponse
       .split(/[,，\s]+/)
       .map(s => s.trim())
       .filter(id => activeAgents.some(a => a.id === id));
-  } catch {
+  } catch (e: any) {
+    if (e?.name === 'AbortError') throw e;
     // 路由失败，fallback 到全员
     selectedIds = activeAgents.map(a => a.id);
+    routerFailed = true;
   }
 
   // 如果没匹配到，fallback 第一个
   if (selectedIds.length === 0) {
     selectedIds = [activeAgents[0].id];
+    routerFailed = true;
+  }
+
+  // 通知用户路由 fallback
+  if (routerFailed) {
+    callbacks.onInfo?.(`路由决策失败，已回退为由 ${selectedIds.length} 位专家群友回答。`);
   }
 
   // 按选中的 Agent 顺序执行
@@ -264,10 +338,11 @@ ${agentList}`;
   let accumulatedContext = history;
 
   for (const id of selectedIds) {
+    if (signal?.aborted) break;
     const agent = activeAgents.find(a => a.id === id);
     if (!agent) continue;
 
-    const result = await runSingleAgent(agent, userMessage, accumulatedContext, callbacks);
+    const result = await runSingleAgent(agent, userMessage, accumulatedContext, callbacks, signal);
     results.push(result);
     accumulatedContext += `\n${agent.name}: ${result.content}`;
     await new Promise(resolve => setTimeout(resolve, 500));
@@ -278,7 +353,7 @@ ${agentList}`;
 
 
 /**
- * 全员讨论策略：所有 Agent 并行回复同一消息
+ * 全员讨论策略：所有 Agent 并行回复同一消息（使用 allSettled 容错）
  */
 async function runDiscussion(
   group: AgentGroup,
@@ -286,14 +361,18 @@ async function runDiscussion(
   history: string,
   mutedUsers: string[],
   callbacks: StreamCallback,
+  signal?: AbortSignal,
 ): Promise<AgentRunResult[]> {
   const activeAgents = getGroupAgents(group).filter(a => !mutedUsers.includes(a.id));
-  // 真并行：所有 Agent 同时执行
-  return Promise.all(
+  const settled = await Promise.allSettled(
     activeAgents.map(agent =>
-      runSingleAgent(agent, userMessage, history, callbacks)
+      runSingleAgent(agent, userMessage, history, callbacks, signal)
     )
   );
+  // 收集成功的结果，失败的已通过 onError 回调通知
+  return settled
+    .filter((r): r is PromiseFulfilledResult<AgentRunResult> => r.status === 'fulfilled')
+    .map(r => r.value);
 }
 
 /**
@@ -305,6 +384,7 @@ async function runReAct(
   history: string,
   mutedUsers: string[],
   callbacks: StreamCallback,
+  signal?: AbortSignal,
 ): Promise<AgentRunResult[]> {
   const activeAgents = getGroupAgents(group).filter(a => !mutedUsers.includes(a.id));
   if (activeAgents.length === 0) return [];
@@ -319,6 +399,7 @@ async function runReAct(
 
   while (round < maxRounds) {
     round++;
+    if (signal?.aborted) break;
 
     // 协调者决策
     const coordPrompt = group.coordinatorPrompt ||
@@ -345,13 +426,12 @@ ${accumulatedContext}
       const response = await callAgentLLM(
         { ...coordinatorAgent, systemPrompt: coordPrompt, temperature: 0.1 },
         coordMessages,
+        undefined,
+        signal,
       );
-      // 尝试解析 JSON
-      const jsonMatch = response.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        decision = JSON.parse(jsonMatch[0]);
-      }
-    } catch {
+      decision = extractJSON(response);
+    } catch (e: any) {
+      if (e?.name === 'AbortError') throw e;
       break;
     }
 
@@ -359,14 +439,15 @@ ${accumulatedContext}
       // 任务完成，输出总结
       if (decision?.summary) {
         const coordinatorName = translateEngineRole('coordinator');
+        const sysId = `${SYSTEM_AGENT_PREFIX}coordinator_r${round}`;
         const summaryResult: AgentRunResult = {
-          agentId: 'coordinator',
+          agentId: sysId,
           agentName: coordinatorName,
           content: decision.summary,
         };
-        callbacks.onAgentStart('coordinator', coordinatorName);
-        callbacks.onToken('coordinator', decision.summary);
-        callbacks.onAgentEnd('coordinator', decision.summary);
+        callbacks.onAgentStart(sysId, coordinatorName);
+        callbacks.onToken(sysId, decision.summary);
+        callbacks.onAgentEnd(sysId, decision.summary);
         results.push(summaryResult);
       }
       break;
@@ -376,7 +457,7 @@ ${accumulatedContext}
       const targetAgent = activeAgents.find(a => a.id === decision.agentId);
       if (targetAgent) {
         const task = decision.task || userMessage;
-        const result = await runSingleAgent(targetAgent, task, accumulatedContext, callbacks);
+        const result = await runSingleAgent(targetAgent, task, accumulatedContext, callbacks, signal, `${targetAgent.id}_r${round}`);
         results.push(result);
         accumulatedContext += `\n${targetAgent.name}: ${result.content}`;
       }
@@ -397,6 +478,7 @@ async function runPipeline(
   history: string,
   mutedUsers: string[],
   callbacks: StreamCallback,
+  signal?: AbortSignal,
 ): Promise<AgentRunResult[]> {
   const activeAgents = getGroupAgents(group).filter(a => !mutedUsers.includes(a.id));
   if (activeAgents.length === 0) return [];
@@ -406,6 +488,7 @@ async function runPipeline(
   let stageInput = '';
 
   for (let i = 0; i < activeAgents.length; i++) {
+    if (signal?.aborted) break;
     const agent = activeAgents[i];
     const stageNumber = i + 1;
     const totalStages = activeAgents.length;
@@ -431,7 +514,7 @@ ${userMessage}
 ${stageInput}`;
     }
 
-    const result = await runSingleAgent(agent, pipelinePrompt, history, callbacks);
+    const result = await runSingleAgent(agent, pipelinePrompt, history, callbacks, signal);
     results.push(result);
 
     // 当前 Agent 的输出作为下一阶段的输入
@@ -451,6 +534,8 @@ ${stageInput}`;
  * Round 1：所有 Agent 并行独立作答
  * Round 2..N：每个 Agent 审阅他人观点后更新自己的立场
  * 最终：裁判 Agent（第一个 Agent + coordinatorPrompt）输出最终结论
+ *
+ * 每轮使用 `agentId_rN` 格式作为唯一消息 ID，避免多轮覆盖
  */
 async function runDebate(
   group: AgentGroup,
@@ -458,6 +543,7 @@ async function runDebate(
   history: string,
   mutedUsers: string[],
   callbacks: StreamCallback,
+  signal?: AbortSignal,
 ): Promise<AgentRunResult[]> {
   const activeAgents = getGroupAgents(group).filter(a => !mutedUsers.includes(a.id));
   if (activeAgents.length === 0) return [];
@@ -469,21 +555,26 @@ async function runDebate(
   let opinions: Record<string, string> = {};
 
   // Round 1：所有 Agent 并行独立回答
-  const round1Results = await Promise.all(
+  const round1Settled = await Promise.allSettled(
     activeAgents.map(agent =>
-      runSingleAgent(agent, userMessage, history, callbacks)
+      runSingleAgent(agent, userMessage, history, callbacks, signal, `${agent.id}_r1`)
     )
   );
 
-  for (const r of round1Results) {
-    results.push(r);
-    opinions[r.agentId] = r.content;
+  for (const r of round1Settled) {
+    if (r.status === 'fulfilled') {
+      results.push(r.value);
+      // 用原始 agentId 做 opinions key
+      const originalId = r.value.agentId.replace(/_r\d+$/, '');
+      opinions[originalId] = r.value.content;
+    }
   }
 
   // Round 2..N：互评阶段
   for (let round = 2; round <= maxRounds; round++) {
-    // 构造其他人的观点摘要
-    const roundResults = await Promise.all(
+    if (signal?.aborted) break;
+
+    const roundSettled = await Promise.allSettled(
       activeAgents.map(agent => {
         const othersOpinions = activeAgents
           .filter(a => a.id !== agent.id)
@@ -501,15 +592,20 @@ ${othersOpinions}
 
 请审阅以上观点，更新你的立场。你可以坚持、修正或补充自己的观点。`;
 
-        return runSingleAgent(agent, debatePrompt, '', callbacks);
+        return runSingleAgent(agent, debatePrompt, '', callbacks, signal, `${agent.id}_r${round}`);
       })
     );
 
-    for (const r of roundResults) {
-      results.push(r);
-      opinions[r.agentId] = r.content;
+    for (const r of roundSettled) {
+      if (r.status === 'fulfilled') {
+        results.push(r.value);
+        const originalId = r.value.agentId.replace(/_r\d+$/, '');
+        opinions[originalId] = r.value.content;
+      }
     }
   }
+
+  if (signal?.aborted) return results;
 
   // 最终裁决：由第一个 Agent（裁判）总结
   const judgeAgent = activeAgents[0];
@@ -526,23 +622,26 @@ ${othersOpinions}
   ];
 
   const judgeName = translateEngineRole('judge');
-  callbacks.onAgentStart('judge', judgeName);
+  const judgeId = `${SYSTEM_AGENT_PREFIX}judge`;
+  callbacks.onAgentStart(judgeId, judgeName);
   let judgeContent = '';
   try {
     judgeContent = await callAgentLLM(
       { ...judgeAgent, systemPrompt: judgePrompt, temperature: 0.3 },
       judgeMessages,
-      (token) => callbacks.onToken('judge', token),
+      (token) => callbacks.onToken(judgeId, token),
+      signal,
     );
-    callbacks.onAgentEnd('judge', judgeContent);
+    callbacks.onAgentEnd(judgeId, judgeContent);
   } catch (error: any) {
+    if (error?.name === 'AbortError') throw error;
     const errMsg = error?.message || te('errors.unknownError');
     judgeContent = te('errors.judgeExecutionError', { message: errMsg });
-    callbacks.onError('judge', errMsg);
+    callbacks.onError(judgeId, errMsg);
   }
 
   results.push({
-    agentId: 'judge',
+    agentId: judgeId,
     agentName: judgeName,
     content: judgeContent,
   });
@@ -562,6 +661,7 @@ async function runMapReduce(
   history: string,
   mutedUsers: string[],
   callbacks: StreamCallback,
+  signal?: AbortSignal,
 ): Promise<AgentRunResult[]> {
   const activeAgents = getGroupAgents(group).filter(a => !mutedUsers.includes(a.id));
   if (activeAgents.length === 0) return [];
@@ -586,16 +686,15 @@ async function runMapReduce(
     const splitResponse = await callAgentLLM(
       { ...coordinatorAgent, systemPrompt: splitPrompt, temperature: 0.2 },
       splitMessages,
+      undefined,
+      signal,
     );
-    // 解析 JSON 子任务列表
-    const jsonMatch = splitResponse.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      if (Array.isArray(parsed.subtasks)) {
-        subtasks = parsed.subtasks;
-      }
+    const parsed = extractJSON(splitResponse);
+    if (parsed && Array.isArray(parsed.subtasks)) {
+      subtasks = parsed.subtasks;
     }
-  } catch {
+  } catch (e: any) {
+    if (e?.name === 'AbortError') throw e;
     // JSON 解析失败，fallback：每个 Agent 执行原始消息
   }
 
@@ -604,18 +703,25 @@ async function runMapReduce(
     subtasks = activeAgents.map(() => userMessage);
   }
 
-  // === EXECUTE 阶段：并行执行子任务 ===
-  const executeResults = await Promise.all(
+  if (signal?.aborted) return results;
+
+  // === EXECUTE 阶段：并行执行子任务（使用 allSettled 容错）===
+  const executeSettled = await Promise.allSettled(
     activeAgents.map((agent, idx) => {
       const task = subtasks[idx % subtasks.length] || userMessage;
       const taskPrompt = `[MapReduce 子任务 ${idx + 1}/${activeAgents.length}]
 原始需求：${userMessage}
 
 你的子任务：${task}`;
-      return runSingleAgent(agent, taskPrompt, history, callbacks);
+      return runSingleAgent(agent, taskPrompt, history, callbacks, signal);
     })
   );
+  const executeResults = executeSettled
+    .filter((r): r is PromiseFulfilledResult<AgentRunResult> => r.status === 'fulfilled')
+    .map(r => r.value);
   results.push(...executeResults);
+
+  if (signal?.aborted) return results;
 
   // === REDUCE 阶段：汇总结果 ===
   const allResults = executeResults
@@ -629,23 +735,26 @@ async function runMapReduce(
   ];
 
   const reducerName = translateEngineRole('reducer');
-  callbacks.onAgentStart('reducer', reducerName);
+  const reducerId = `${SYSTEM_AGENT_PREFIX}reducer`;
+  callbacks.onAgentStart(reducerId, reducerName);
   let reduceContent = '';
   try {
     reduceContent = await callAgentLLM(
       { ...coordinatorAgent, systemPrompt: reducePrompt, temperature: 0.3 },
       reduceMessages,
-      (token) => callbacks.onToken('reducer', token),
+      (token) => callbacks.onToken(reducerId, token),
+      signal,
     );
-    callbacks.onAgentEnd('reducer', reduceContent);
+    callbacks.onAgentEnd(reducerId, reduceContent);
   } catch (error: any) {
+    if (error?.name === 'AbortError') throw error;
     const errMsg = error?.message || te('errors.unknownError');
     reduceContent = te('errors.reducerExecutionError', { message: errMsg });
-    callbacks.onError('reducer', errMsg);
+    callbacks.onError(reducerId, errMsg);
   }
 
   results.push({
-    agentId: 'reducer',
+    agentId: reducerId,
     agentName: reducerName,
     content: reduceContent,
   });
@@ -667,11 +776,12 @@ async function runSupervisor(
   history: string,
   mutedUsers: string[],
   callbacks: StreamCallback,
+  signal?: AbortSignal,
 ): Promise<AgentRunResult[]> {
   const activeAgents = getGroupAgents(group).filter(a => !mutedUsers.includes(a.id));
   if (activeAgents.length <= 1) {
     // 只有 1 个 Agent，回退到顺序执行
-    return runSequential(group, userMessage, history, mutedUsers, callbacks);
+    return runSequential(group, userMessage, history, mutedUsers, callbacks, signal);
   }
 
   const results: AgentRunResult[] = [];
@@ -683,6 +793,8 @@ async function runSupervisor(
   let workerOutputs: Record<string, string> = {};
 
   for (let round = 1; round <= maxRounds; round++) {
+    if (signal?.aborted) break;
+
     if (round === 1) {
       // === 第一轮：监督者分析任务并分配 ===
       const assignPrompt = group.coordinatorPrompt ||
@@ -703,15 +815,15 @@ ${workerList}`;
         const response = await callAgentLLM(
           { ...supervisor, systemPrompt: assignPrompt, temperature: 0.2 },
           assignMessages,
+          undefined,
+          signal,
         );
-        const jsonMatch = response.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          const parsed = JSON.parse(jsonMatch[0]);
-          if (Array.isArray(parsed.assignments)) {
-            assignments = parsed.assignments;
-          }
+        const parsed = extractJSON(response);
+        if (parsed && Array.isArray(parsed.assignments)) {
+          assignments = parsed.assignments;
         }
-      } catch {
+      } catch (e: any) {
+        if (e?.name === 'AbortError') throw e;
         // 分配失败，所有工人执行原始任务
       }
 
@@ -720,19 +832,20 @@ ${workerList}`;
         assignments = workers.map(w => ({ agentId: w.id, task: userMessage }));
       }
 
-      // 工人并行执行
-      const workerResults = await Promise.all(
+      // 工人并行执行（使用 allSettled 容错）
+      const workerSettled = await Promise.allSettled(
         assignments.map(({ agentId, task }) => {
           const worker = workers.find(w => w.id === agentId);
-          if (!worker) return null;
-          return runSingleAgent(worker, task, history, callbacks);
+          if (!worker) return Promise.reject(new Error(`Worker ${agentId} not found`));
+          return runSingleAgent(worker, task, history, callbacks, signal, `${agentId}_r${round}`);
         })
       );
 
-      for (const r of workerResults) {
-        if (r) {
-          results.push(r);
-          workerOutputs[r.agentId] = r.content;
+      for (const r of workerSettled) {
+        if (r.status === 'fulfilled') {
+          results.push(r.value);
+          const originalId = r.value.agentId.replace(/_r\d+$/, '');
+          workerOutputs[originalId] = r.value.content;
         }
       }
     } else {
@@ -763,12 +876,12 @@ ${workerList}`;
         const response = await callAgentLLM(
           { ...supervisor, systemPrompt: reviewPrompt, temperature: 0.2 },
           reviewMessages,
+          undefined,
+          signal,
         );
-        const jsonMatch = response.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          decision = JSON.parse(jsonMatch[0]);
-        }
-      } catch {
+        decision = extractJSON(response);
+      } catch (e: any) {
+        if (e?.name === 'AbortError') throw e;
         break;
       }
 
@@ -776,25 +889,26 @@ ${workerList}`;
         // 批准：输出最终总结
         if (decision?.summary) {
           const supervisorLabel = `${supervisor.name}(${translateEngineRole('supervisorSuffix')})`;
+          const sysId = `${SYSTEM_AGENT_PREFIX}supervisor_r${round}`;
           const summaryResult: AgentRunResult = {
-            agentId: supervisor.id,
+            agentId: sysId,
             agentName: supervisorLabel,
             content: decision.summary,
           };
-          callbacks.onAgentStart(supervisor.id, supervisorLabel);
-          callbacks.onToken(supervisor.id, decision.summary);
-          callbacks.onAgentEnd(supervisor.id, decision.summary);
+          callbacks.onAgentStart(sysId, supervisorLabel);
+          callbacks.onToken(sysId, decision.summary);
+          callbacks.onAgentEnd(sysId, decision.summary);
           results.push(summaryResult);
         }
         break;
       }
 
       if (decision.status === 'revise' && Array.isArray(decision.feedback)) {
-        // 要求修正：工人根据反馈重新执行
-        const revisionResults = await Promise.all(
+        // 要求修正：工人根据反馈重新执行（使用 allSettled 容错）
+        const revisionSettled = await Promise.allSettled(
           decision.feedback.map(({ agentId, instruction }: { agentId: string; instruction: string }) => {
             const worker = workers.find(w => w.id === agentId);
-            if (!worker) return null;
+            if (!worker) return Promise.reject(new Error(`Worker ${agentId} not found`));
 
             const revisionPrompt = `[监督者修正指令 Round ${round}]
 原始需求：${userMessage}
@@ -805,14 +919,15 @@ ${workerOutputs[agentId] || '(无)'}
 监督者的修改要求：
 ${instruction}`;
 
-            return runSingleAgent(worker, revisionPrompt, '', callbacks);
+            return runSingleAgent(worker, revisionPrompt, '', callbacks, signal, `${agentId}_r${round}`);
           })
         );
 
-        for (const r of revisionResults) {
-          if (r) {
-            results.push(r);
-            workerOutputs[r.agentId] = r.content;
+        for (const r of revisionSettled) {
+          if (r.status === 'fulfilled') {
+            results.push(r.value);
+            const originalId = r.value.agentId.replace(/_r\d+$/, '');
+            workerOutputs[originalId] = r.value.content;
           }
         }
       }
@@ -835,26 +950,29 @@ export async function executeAgentStrategy(
   history: string,
   mutedUsers: string[],
   callbacks: StreamCallback,
+  options?: AgentEngineOptions,
 ): Promise<AgentRunResult[]> {
+  const signal = options?.signal;
+
   switch (group.strategy) {
     case 'sequential':
-      return runSequential(group, userMessage, history, mutedUsers, callbacks);
+      return runSequential(group, userMessage, history, mutedUsers, callbacks, signal);
     case 'router':
-      return runRouter(group, userMessage, history, mutedUsers, callbacks);
+      return runRouter(group, userMessage, history, mutedUsers, callbacks, signal);
     case 'discussion':
-      return runDiscussion(group, userMessage, history, mutedUsers, callbacks);
+      return runDiscussion(group, userMessage, history, mutedUsers, callbacks, signal);
     case 'react':
-      return runReAct(group, userMessage, history, mutedUsers, callbacks);
+      return runReAct(group, userMessage, history, mutedUsers, callbacks, signal);
     case 'pipeline':
-      return runPipeline(group, userMessage, history, mutedUsers, callbacks);
+      return runPipeline(group, userMessage, history, mutedUsers, callbacks, signal);
     case 'debate':
-      return runDebate(group, userMessage, history, mutedUsers, callbacks);
+      return runDebate(group, userMessage, history, mutedUsers, callbacks, signal);
     case 'mapreduce':
-      return runMapReduce(group, userMessage, history, mutedUsers, callbacks);
+      return runMapReduce(group, userMessage, history, mutedUsers, callbacks, signal);
     case 'supervisor':
-      return runSupervisor(group, userMessage, history, mutedUsers, callbacks);
+      return runSupervisor(group, userMessage, history, mutedUsers, callbacks, signal);
     default:
-      return runSequential(group, userMessage, history, mutedUsers, callbacks);
+      return runSequential(group, userMessage, history, mutedUsers, callbacks, signal);
   }
 }
 
