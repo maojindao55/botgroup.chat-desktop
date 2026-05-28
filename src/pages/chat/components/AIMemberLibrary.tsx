@@ -432,7 +432,7 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
             {member.description || t('library:meta.noDescription')}
           </div>
 
-          {member.tags && member.tags.length > 0 && (
+          {member.kind === 'llm' && member.tags && member.tags.length > 0 && (
             <div className={styles.tagContainer}>
               {member.tags.map((tag) => (
                 <Tag key={tag} style={{ borderRadius: 4 }}>{tag}</Tag>

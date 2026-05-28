@@ -16,23 +16,23 @@ async function importTsModule(url, transform = (source) => source) {
 
 const groupsModule = await importTsModule(new URL('../config/groups.ts', import.meta.url));
 
-function createAgent(id, name, tags, adapter = 'generic') {
+function createAgent(id, name, description, adapter = 'generic') {
   return {
     id,
     name,
     personality: `${id}-personality`,
+    description,
     model: 'qwen-plus',
     avatar: '',
-    tags,
     runtime: 'cli',
     cli: { adapter },
   };
 }
 
 const agents = [
-  createAgent('cli-codex', 'Codex', ['编码', '重构', '深度推理'], 'codex'),
-  createAgent('cli-claude', 'ClaudeCode', ['调试', '分析数据'], 'claude'),
-  createAgent('cli-opencode', 'OpenCode', ['编程', '测试'], 'opencode'),
+  createAgent('cli-codex', 'Codex', '擅长编码、重构与深度推理', 'codex'),
+  createAgent('cli-claude', 'ClaudeCode', '擅长调试与数据分析', 'claude'),
+  createAgent('cli-opencode', 'OpenCode', '编程与测试', 'opencode'),
 ];
 
 function baseGroup(strategy, executionPlan = undefined) {

@@ -137,7 +137,7 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
       name: values.name as string,
       avatar: (values.avatar as string) || '',
       description: (values.description as string) || '',
-      tags: (values.tags as string[]) || [],
+      tags: values.kind === 'llm' ? ((values.tags as string[]) || []) : [],
       source: (memberId ? get(memberId)?.source : 'user') || 'user',
       enabled: values.enabled !== false,
     };
@@ -279,9 +279,11 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
           <Input.TextArea autoSize={{ minRows: 2 }} placeholder={t('member.fields.descriptionPlaceholder')} />
         </Form.Item>
 
-        <Form.Item label={t('member.fields.tags')} name="tags">
-          <TagPicker />
-        </Form.Item>
+        {kind === 'llm' && (
+          <Form.Item label={t('member.fields.tags')} name="tags">
+            <TagPicker />
+          </Form.Item>
+        )}
 
         <Divider style={{ margin: '16px 0' }} />
 

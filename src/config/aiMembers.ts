@@ -60,7 +60,6 @@ export const builtinAIMembers: AIMember[] = [
     name: 'Codex',
     avatar: '/img/codex.webp?v=1779334925',
     description: 'Codex CLI Agent，擅长自动编码及代码重构',
-    tags: ['编码', '重构', '调试', '编程', '深度推理'],
     source: 'builtin',
     enabled: true,
     cli: {
@@ -76,7 +75,6 @@ export const builtinAIMembers: AIMember[] = [
     name: 'ClaudeCode',
     avatar: '/img/claude.webp?v=1779334925',
     description: 'Claude Code CLI Agent，擅长代码库分析及复杂调试',
-    tags: ['编码', '重构', '调试', '编程', '分析数据', '深度推理'],
     source: 'builtin',
     enabled: true,
     cli: {
@@ -91,7 +89,6 @@ export const builtinAIMembers: AIMember[] = [
     name: 'OpenCode',
     avatar: '/img/opencode.webp?v=1779334925',
     description: 'OpenCode 开源编码助手',
-    tags: ['编码', '重构', '调试', '编程'],
     source: 'builtin',
     enabled: true,
     cli: {
@@ -106,7 +103,6 @@ export const builtinAIMembers: AIMember[] = [
     name: 'Cursor',
     avatar: 'lobehub:Cursor',
     description: 'Cursor Agent CLI，基于 Composer 模型的本地编码助手',
-    tags: ['编码', '重构', '调试', '编程', '深度推理'],
     source: 'builtin',
     enabled: true,
     cli: {

@@ -282,7 +282,7 @@ async function callCLIAgent(
 /**
  * 根据 plan.selection 选择参与执行的 Agent。
  * - all: 全部
- * - router: 标签 + 名字关键词匹配，分高者优先
+ * - router: 描述/名字关键词匹配，分高者优先
  * - manual: 直接使用传入列表（兼容外层已过滤的情况）
  */
 function selectAgents(
@@ -298,30 +298,32 @@ function selectAgents(
       return agents;
 
     case 'router': {
-      const keywordTagMap: Record<string, string[]> = {
+      const keywordHintMap: Record<string, string[]> = {
         '重构': ['重构'], 'refactor': ['重构'],
         '调试': ['调试'], 'debug': ['调试'],
         '编码': ['编码', '编程'], 'code': ['编码', '编程'],
         '编程': ['编程', '编码'], 'program': ['编程', '编码'],
-        '分析': ['分析数据'], 'analyze': ['分析数据'], 'analysis': ['分析数据'],
-        '推理': ['深度推理'], 'reason': ['深度推理'],
-        '修复': ['调试'], 'fix': ['调试'], 'bug': ['调试'],
-        '测试': ['编码', '调试'], 'test': ['编码', '调试'],
-        '优化': ['重构', '深度推理'], 'optimize': ['重构', '深度推理'],
+        '分析': ['分析'], 'analyze': ['分析'], 'analysis': ['分析'],
+        '推理': ['推理'], 'reason': ['推理'],
+        '修复': ['调试', '修复'], 'fix': ['调试', '修复'], 'bug': ['调试', 'bug'],
+        '测试': ['测试'], 'test': ['测试'],
+        '优化': ['重构', '优化'], 'optimize': ['重构', '优化'],
       };
       const promptLower = prompt.toLowerCase();
       const scored = agents.map(agent => {
         let score = 0;
-        const tags = agent.tags || [];
-        for (const [keyword, mappedTags] of Object.entries(keywordTagMap)) {
+        const searchable = [agent.name, agent.description, agent.personality]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        for (const [keyword, hints] of Object.entries(keywordHintMap)) {
           if (promptLower.includes(keyword)) {
-            for (const tag of mappedTags) {
-              if (tags.includes(tag)) score += 2;
+            for (const hint of hints) {
+              if (searchable.includes(hint.toLowerCase())) score += 2;
             }
           }
         }
         if (promptLower.includes(agent.name.toLowerCase())) score += 10;
-        score += tags.length * 0.1;
         return { agent, score };
       });
       scored.sort((a, b) => b.score - a.score);

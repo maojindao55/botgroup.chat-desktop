@@ -127,7 +127,7 @@ export const MemberPicker: React.FC<MemberPickerProps> = ({
                 </span>
               )}
             </div>
-            {data.tags?.slice(0, 2).map((t: string) => (
+            {kind === 'llm' && data.tags?.slice(0, 2).map((t: string) => (
               <Tag key={t} style={{ margin: 0 }}>
                 {t}
               </Tag>

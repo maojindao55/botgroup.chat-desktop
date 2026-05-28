@@ -545,6 +545,29 @@ const useStyles = createStyles(({ token, css }) => ({
     align-items: center;
     gap: 6px;
   `,
+  templateMemberRow: css`
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 2px;
+  `,
+  templateMemberChip: css`
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px 2px 4px;
+    border-radius: 999px;
+    background: ${token.colorFillSecondary};
+    font-size: 10px;
+    color: ${token.colorTextSecondary};
+    max-width: 100%;
+  `,
+  templateMemberName: css`
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 88px;
+  `,
   templateCardDesc: css`
     font-size: 11px;
     color: ${token.colorTextSecondary};
@@ -1716,6 +1739,9 @@ const CLITaskUI = ({
                             const isCardSelected = selectedTemplateId === tmpl.id;
                             const workflowLabel = getCLIWorkflowLabel(tmpl.strategy, tmpl.workflowTemplateId);
                             const workflowKey = tmpl.workflowTemplateId;
+                            const templateMembers = tmpl.memberIds
+                              .map((id) => resolveEffectiveMember(aiMembers, id))
+                              .filter((member) => member && member.kind === 'cli');
                             return (
                               <div
                                 key={tmpl.id}
@@ -1729,8 +1755,35 @@ const CLITaskUI = ({
                                       ? t(`product:cliWorkflowTemplates.${workflowKey}.label`, { defaultValue: workflowLabel })
                                       : workflowLabel}
                                   </span>
-                                  <span>·</span>
-                                  <span>{t('cli:taskUI.create.memberCount', { count: tmpl.memberIds.length })}</span>
+                                </div>
+                                <div className={styles.templateMemberRow}>
+                                  {templateMembers.length > 0 ? (
+                                    templateMembers.map((member) => {
+                                      const avatar = getAvatarData(member.name);
+                                      const url = resolveAvatarByName(member.name, member.avatar, 16);
+                                      return (
+                                        <span
+                                          key={member.id}
+                                          className={styles.templateMemberChip}
+                                          title={member.name}
+                                        >
+                                          <LobeAvatar
+                                            avatar={url || avatar.text}
+                                            background={avatar.backgroundColor}
+                                            shape="circle"
+                                            size={16}
+                                            title={member.name}
+                                            style={{ flexShrink: 0 }}
+                                          />
+                                          <span className={styles.templateMemberName}>{member.name}</span>
+                                        </span>
+                                      );
+                                    })
+                                  ) : (
+                                    <span className={styles.templateCardMeta}>
+                                      {t('cli:taskUI.create.memberCount', { count: tmpl.memberIds.length })}
+                                    </span>
+                                  )}
                                 </div>
                                 {tmpl.description && (
                                   <div className={styles.templateCardDesc} title={tmpl.description}>
