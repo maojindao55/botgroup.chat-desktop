@@ -2,10 +2,10 @@
  * 专家群聊对话组件
  * 独立的聊天 UI，使用 agentEngine 策略引擎驱动对话
  */
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Send, Settings2, ChevronLeft, Puzzle } from 'lucide-react';
-import { Tooltip, Input as AntdInput, Button as AntdButton } from 'antd';
+import { Send, Square, Settings2, ChevronLeft, Puzzle } from 'lucide-react';
+import { Tooltip, Input as AntdInput, Button as AntdButton, message as antdMessage } from 'antd';
 import { ActionIcon, Avatar as LobeAvatar } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 import { ChatMarkdown } from '@/components/Markdown';
@@ -21,13 +21,25 @@ import { isBuiltinGroupId } from '@/config/groupStorage';
 import { useAIMemberStore } from '@/store/aiMemberStore';
 import { AIMemberLibrary, AI_MEMBER_LIBRARY_INLINE_WIDTH } from './AIMemberLibrary';
 
+/** 生成唯一消息 ID */
+let _globalMsgId = Date.now();
+function nextMsgId(): string {
+  return `msg_${++_globalMsgId}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/** localStorage key for persisting chat messages per group */
+function chatStorageKey(groupId: string): string {
+  return `agent_chat_messages:${groupId}`;
+}
 
 interface ChatMessage {
-  id: number;
+  id: string;
   sender: { id: string; name: string; avatar?: string };
   content: string;
   isAI: boolean;
   isError?: boolean;
+  /** 该消息是否仍在流式生成中 */
+  isStreaming?: boolean;
 }
 
 interface AgentChatUIProps {
@@ -247,11 +259,48 @@ const AgentChatUI = ({
   const getStrategyLabel = (strategy: string) =>
     t(`settings:strategies.${strategy}.label`, { defaultValue: strategy });
 
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  // === 消息持久化：从 localStorage 加载历史消息 ===
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    try {
+      const stored = localStorage.getItem(chatStorageKey(group.id));
+      if (stored) {
+        const parsed = JSON.parse(stored) as ChatMessage[];
+        // 恢复时清除遗留的 streaming 标记
+        return parsed.map(m => ({ ...m, isStreaming: false }));
+      }
+    } catch { /* ignore parse errors */ }
+    return [];
+  });
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
+
+  /** 当前请求的 AbortController，用于取消正在进行的 Agent 策略执行 */
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  // 持久化消息到 localStorage（去除 isStreaming 标记）
+  useEffect(() => {
+    try {
+      const toStore = messages.map(({ isStreaming: _, ...rest }) => rest);
+      localStorage.setItem(chatStorageKey(group.id), JSON.stringify(toStore.slice(-100)));
+    } catch { /* quota exceeded etc */ }
+  }, [messages, group.id]);
+
+  // 群切换时重新加载消息
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(chatStorageKey(group.id));
+      if (stored) {
+        const parsed = JSON.parse(stored) as ChatMessage[];
+        setMessages(parsed.map(m => ({ ...m, isStreaming: false })));
+      } else {
+        setMessages([]);
+      }
+    } catch {
+      setMessages([]);
+    }
+  }, [group.id]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -309,7 +358,6 @@ const AgentChatUI = ({
   const [mutedUsers, setMutedUsers] = useState<string[]>([]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const msgIdCounter = useRef(0);
 
   useEffect(() => {
     if (isMobile !== undefined) setSidebarOpen(!isMobile);
@@ -327,39 +375,60 @@ const AgentChatUI = ({
     );
   };
 
+  /** 取消正在进行的请求 */
+  const handleAbort = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setIsLoading(false);
+    // 标记所有 streaming 消息为已完成
+    setMessages(prev => prev.map(m => m.isStreaming ? { ...m, isStreaming: false } : m));
+  }, []);
 
   const handleSendMessage = async () => {
     if (isLoading || !inputMessage.trim()) return;
 
     const userName = userStore.userInfo.nickname || t('settings:aiGroup.selfName');
+    const capturedInput = inputMessage;
     const userMsg: ChatMessage = {
-      id: ++msgIdCounter.current,
+      id: nextMsgId(),
       sender: { id: 'user', name: userName },
-      content: inputMessage,
+      content: capturedInput,
       isAI: false,
     };
     setMessages(prev => [...prev, userMsg]);
     setInputMessage('');
     setIsLoading(true);
 
-    // 构建历史上下文
-    const history = messages
-      .slice(-20)
-      .map(m => `${m.sender.name}: ${m.content}`)
-      .join('\n');
+    // 创建 AbortController
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
-    // Agent 消息 ID 映射
-    const agentMsgIds: Record<string, number> = {};
+    // 修复闭包问题：使用 setMessages 的 updater 获取最新 messages 构建 history
+    // 同时将当前用户消息包含在内
+    let history = '';
+    setMessages(prev => {
+      history = prev
+        .slice(-20)
+        .map(m => `${m.sender.name}: ${m.content}`)
+        .join('\n');
+      return prev; // 不修改 state，仅读取
+    });
+
+    // Agent 消息 ID 映射（支持多轮：每次 onAgentStart 都分配唯一 ID）
+    const agentMsgIds: Record<string, string> = {};
 
     const callbacks: StreamCallback = {
       onAgentStart: (agentId, agentName) => {
-        const id = ++msgIdCounter.current;
+        const id = nextMsgId();
         agentMsgIds[agentId] = id;
         const agentMsg: ChatMessage = {
           id,
           sender: { id: agentId, name: agentName },
           content: '',
           isAI: true,
+          isStreaming: true,
         };
         setMessages(prev => [...prev, agentMsg]);
       },
@@ -370,28 +439,57 @@ const AgentChatUI = ({
           prev.map(m => m.id === msgId ? { ...m, content: m.content + token } : m)
         );
       },
-      onAgentEnd: (_agentId, _fullContent) => {
-        // 消息已通过 onToken 逐步更新完毕
+      onAgentEnd: (agentId, _fullContent) => {
+        const msgId = agentMsgIds[agentId];
+        if (!msgId) return;
+        setMessages(prev =>
+          prev.map(m => m.id === msgId ? { ...m, isStreaming: false } : m)
+        );
       },
       onError: (agentId, error) => {
         const msgId = agentMsgIds[agentId];
         if (!msgId) return;
         setMessages(prev =>
           prev.map(m => m.id === msgId
-            ? { ...m, content: t('chat:errors.appendError', { error }), isError: true }
+            ? { ...m, content: t('chat:errors.appendError', { error }), isError: true, isStreaming: false }
             : m
           )
         );
       },
+      onInfo: (infoMsg) => {
+        antdMessage.info(infoMsg);
+      },
     };
 
     try {
-      await executeAgentStrategy(group, inputMessage, history, mutedUsers, callbacks);
+      await executeAgentStrategy(group, capturedInput, history, mutedUsers, callbacks, {
+        signal: controller.signal,
+      });
     } catch (error: any) {
-      console.error('Agent strategy execution failed:', error);
+      if (error?.name === 'AbortError') {
+        // 用户主动取消，不需要报错
+        antdMessage.info(t('chat:agentChat.aborted', { defaultValue: '已停止生成' }));
+      } else {
+        console.error('Agent strategy execution failed:', error);
+        // 顶层错误提示用户
+        const errorMsg = error?.message || t('chat:errors.unknownError', { defaultValue: '未知错误' });
+        antdMessage.error(t('chat:errors.strategyFailed', { defaultValue: `策略执行失败: ${errorMsg}` }));
+        // 同时在聊天中添加错误消息
+        const errChatMsg: ChatMessage = {
+          id: nextMsgId(),
+          sender: { id: '__system__', name: t('chat:agentChat.system', { defaultValue: '系统' }) },
+          content: t('chat:errors.strategyFailed', { defaultValue: `策略执行失败: ${errorMsg}` }),
+          isAI: true,
+          isError: true,
+        };
+        setMessages(prev => [...prev, errChatMsg]);
+      }
+    } finally {
+      abortControllerRef.current = null;
+      setIsLoading(false);
+      // 确保所有消息的 streaming 状态被清除
+      setMessages(prev => prev.map(m => m.isStreaming ? { ...m, isStreaming: false } : m));
     }
-
-    setIsLoading(false);
   };
 
 
@@ -524,8 +622,7 @@ const AgentChatUI = ({
                   const isUser = message.sender.name === userName;
                   const a = getAvatarData(message.sender.name);
                   const url = resolveAvatarByName(message.sender.name, message.sender.avatar, 32);
-                  const isLatest = messages[messages.length - 1]?.id === message.id;
-                  const isStreaming = !!message.isAI && isLoading && isLatest;
+                  const isStreaming = !!message.isStreaming;
 
                   let bubbleClass = styles.bubbleAI;
                   if (isUser) bubbleClass = styles.bubbleUser;
@@ -594,14 +691,25 @@ const AgentChatUI = ({
                   autoSize={{ minRows: 1, maxRows: 6 }}
                   placeholder={t('chat:agentChat.inputPlaceholder')}
                   style={{ flex: 1, borderRadius: 12 }}
+                  disabled={isLoading}
                 />
-                <AntdButton
-                  type="primary"
-                  onClick={handleSendMessage}
-                  loading={isLoading}
-                  icon={isLoading ? undefined : <Send size={16} />}
-                  style={{ background: '#ff6600', borderColor: '#ff6600', height: 36, borderRadius: 12 }}
-                />
+                {isLoading ? (
+                  <AntdButton
+                    danger
+                    onClick={handleAbort}
+                    icon={<Square size={16} />}
+                    style={{ height: 36, borderRadius: 12 }}
+                  >
+                    {t('chat:agentChat.stop', { defaultValue: '停止' })}
+                  </AntdButton>
+                ) : (
+                  <AntdButton
+                    type="primary"
+                    onClick={handleSendMessage}
+                    icon={<Send size={16} />}
+                    style={{ background: '#ff6600', borderColor: '#ff6600', height: 36, borderRadius: 12 }}
+                  />
+                )}
               </div>
             </div>
           </div>
