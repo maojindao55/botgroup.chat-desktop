@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Modal, Input, Button, Spin } from 'antd';
+import { useTranslation } from 'react-i18next';
 import { llmChatComplete } from '@/utils/llmClient';
 import { resolveLlmCredentials } from '@/utils/resolveLlmCredentials';
 import { applyPromptTemplate } from '@/utils/prompt';
@@ -20,7 +21,9 @@ interface DryRunModalProps {
 }
 
 export const DryRunModal: React.FC<DryRunModalProps> = ({ open, onClose, params }) => {
-  const [prompt, setPrompt] = useState('你好，做个自我介绍');
+  const { t } = useTranslation('editor');
+  const defaultPrompt = t('member.dryRunModal.defaultPrompt');
+  const [prompt, setPrompt] = useState(defaultPrompt);
   const [output, setOutput] = useState('');
   const [loading, setLoading] = useState(false);
   const [elapsedMs, setElapsedMs] = useState<number | null>(null);
@@ -28,7 +31,7 @@ export const DryRunModal: React.FC<DryRunModalProps> = ({ open, onClose, params 
 
   const handleRun = async () => {
     if (!params?.providerId || !params.model) {
-      setError('请先选择 Provider 和 Model');
+      setError(t('member.dryRunModal.selectProviderFirst'));
       return;
     }
     setLoading(true);
@@ -39,8 +42,8 @@ export const DryRunModal: React.FC<DryRunModalProps> = ({ open, onClose, params 
       const creds = await resolveLlmCredentials(params.model, params.providerId);
       const system = applyPromptTemplate(params.systemPrompt, {
         aiName: params.name,
-        groupName: '试运行群',
-        userName: '本地用户',
+        groupName: t('member.dryRunModal.groupName'),
+        userName: t('member.dryRunModal.userName'),
       });
       const text = await llmChatComplete({
         ...creds,
@@ -61,16 +64,16 @@ export const DryRunModal: React.FC<DryRunModalProps> = ({ open, onClose, params 
 
   return (
     <Modal
-      title="试运行一句"
+      title={t('member.dryRunModal.title')}
       open={open}
       onCancel={onClose}
       width={520}
       footer={[
         <Button key="cancel" onClick={onClose}>
-          关闭
+          {t('member.dryRunModal.close')}
         </Button>,
         <Button key="run" type="primary" loading={loading} onClick={handleRun}>
-          发送
+          {t('member.dryRunModal.send')}
         </Button>,
       ]}
       destroyOnClose
@@ -78,19 +81,19 @@ export const DryRunModal: React.FC<DryRunModalProps> = ({ open, onClose, params 
         setOutput('');
         setError(null);
         setElapsedMs(null);
-        setPrompt('你好，做个自我介绍');
+        setPrompt(defaultPrompt);
       }}
     >
       <Input.TextArea
         rows={2}
         value={prompt}
         onChange={(e) => setPrompt(e.target.value)}
-        placeholder="输入测试消息"
+        placeholder={t('member.dryRunModal.inputPlaceholder')}
         style={{ marginBottom: 12 }}
       />
       {loading && (
         <div style={{ textAlign: 'center', padding: 24 }}>
-          <Spin tip="正在调用模型..." />
+          <Spin tip={t('member.dryRunModal.loadingTip')} />
         </div>
       )}
       {error && (
@@ -113,7 +116,7 @@ export const DryRunModal: React.FC<DryRunModalProps> = ({ open, onClose, params 
       )}
       {elapsedMs != null && (
         <div style={{ fontSize: 11, color: 'rgba(0,0,0,0.45)', marginTop: 8 }}>
-          耗时 {elapsedMs}ms
+          {t('member.dryRunModal.elapsed', { ms: elapsedMs })}
         </div>
       )}
     </Modal>

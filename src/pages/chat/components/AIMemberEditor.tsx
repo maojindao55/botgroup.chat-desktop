@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Drawer, Form, Input, Select, Radio, Checkbox, InputNumber, Button, Space, Divider, Switch, Tooltip } from 'antd';
+import { useTranslation } from 'react-i18next';
 import { useAIMemberStore } from '@/store/aiMemberStore';
 import { useProviderStore } from '@/store/providerStore';
 import type { AIMember, LLMMember, AgentMember_v2, CLIMember } from '@/config/aiMembers';
@@ -10,14 +11,12 @@ import { Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cliAdapterDefinitions } from '@/config/cliAdapters';
 
-const AVAILABLE_TOOLS = [
-  { name: 'web_search', description: '联网搜索获取实时信息' },
-  { name: 'code_interpreter', description: '执行代码片段并返回结果' },
-  { name: 'http_request', description: '发起 HTTP 请求调用外部 API' },
-  { name: 'memory', description: '存储和召回上下文信息' },
+const BUILTIN_TOOLS = [
+  { name: 'web_search' },
+  { name: 'code_interpreter' },
+  { name: 'http_request' },
+  { name: 'memory' },
 ];
-
-const PROMPT_PLACEHOLDER_HINT = '可用占位符：{{groupName}} {{aiName}} {{date}} {{time}} {{userName}}';
 
 interface AIMemberEditorProps {
   open: boolean;
@@ -34,6 +33,7 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
   onClose,
   onSave,
 }) => {
+  const { t } = useTranslation(['editor', 'common']);
   const [form] = Form.useForm();
   const { get, upsert } = useAIMemberStore();
   const { providers: providersRecord, load: loadProviders } = useProviderStore();
@@ -88,7 +88,7 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
               model: member.model,
               temperature: member.temperature,
               maxTurns: member.maxTurns,
-              tools: member.tools?.filter((t) => t.enabled).map((t) => t.name) || [],
+              tools: member.tools?.filter((tool) => tool.enabled).map((tool) => tool.name) || [],
             });
           } else {
             form.setFieldsValue({
@@ -156,10 +156,10 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
       } as LLMMember;
     } else if (values.kind === 'agent') {
       const selectedTools = (values.tools as string[]) || [];
-      const toolConfigs = AVAILABLE_TOOLS.map((t) => ({
-        name: t.name,
-        description: t.description,
-        enabled: selectedTools.includes(t.name),
+      const toolConfigs = BUILTIN_TOOLS.map((tool) => ({
+        name: tool.name,
+        description: t(`member.tools.${tool.name}`),
+        enabled: selectedTools.includes(tool.name),
       }));
 
       updatedMember = {
@@ -192,7 +192,7 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
       onClose();
       onSave?.();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : '保存失败');
+      toast.error(e instanceof Error ? e.message : t('member.saveFailed'));
     }
   };
 
@@ -200,7 +200,7 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
     kind === 'llm' || kind === 'agent'
       ? {
           kind,
-          name: name || '试运行',
+          name: name || t('member.dryRunName'),
           providerId: providerId || '',
           model: model || '',
           systemPrompt: (kind === 'llm' ? customPrompt : systemPrompt) || '',
@@ -211,27 +211,27 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
   const providerSelect = (
     <>
       <Form.Item
-        label="模型服务 (Provider)"
+        label={t('member.fields.provider')}
         name="providerId"
-        rules={[{ required: true, message: '请选择 Provider' }]}
-        extra={providerId?.startsWith('unmapped-') ? '⚠️ 未绑定 Provider，请重新选择' : undefined}
+        rules={[{ required: true, message: t('member.fields.providerRequired') }]}
+        extra={providerId?.startsWith('unmapped-') ? t('member.fields.providerUnbound') : undefined}
       >
-        <Select placeholder="选择模型服务" onChange={handleProviderChange}>
+        <Select placeholder={t('member.fields.providerPlaceholder')} onChange={handleProviderChange}>
           {providers.map((p) => (
             <Select.Option key={p.id} value={p.id}>
               {p.name}
-              {p.source === 'builtin' ? ' (内置)' : ''}
+              {p.source === 'builtin' ? t('member.fields.providerBuiltinSuffix') : ''}
             </Select.Option>
           ))}
         </Select>
       </Form.Item>
 
       <Form.Item
-        label="模型 (Model)"
+        label={t('member.fields.model')}
         name="model"
-        rules={[{ required: true, message: '请选择模型' }]}
+        rules={[{ required: true, message: t('member.fields.modelRequired') }]}
       >
-        <Select placeholder="选择模型" disabled={!providerId}>
+        <Select placeholder={t('member.fields.modelPlaceholder')} disabled={!providerId}>
           {modelOptions.map((m) => (
             <Select.Option key={m} value={m}>
               {m}
@@ -244,42 +244,42 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
 
   return (
     <Drawer
-      title={memberId ? '编辑资源' : '新建资源'}
+      title={memberId ? t('member.titleEdit') : t('member.titleCreate')}
       width={460}
       open={open}
       onClose={onClose}
       destroyOnClose
       extra={
         <Space>
-          <Button onClick={onClose}>取消</Button>
+          <Button onClick={onClose}>{t('common:actions.cancel')}</Button>
           <Button type="primary" onClick={() => form.submit()}>
-            保存
+            {t('common:actions.save')}
           </Button>
         </Space>
       }
     >
       <Form form={form} layout="vertical" onFinish={handleFinish}>
-        <Form.Item label="资源类型" name="kind">
+        <Form.Item label={t('member.fields.kind')} name="kind">
           <Radio.Group disabled={!!memberId}>
-            <Radio.Button value="llm">角色</Radio.Button>
-            <Radio.Button value="agent">专家</Radio.Button>
-            <Radio.Button value="cli">开发成员</Radio.Button>
+            <Radio.Button value="llm">{t('member.kinds.llm')}</Radio.Button>
+            <Radio.Button value="agent">{t('member.kinds.agent')}</Radio.Button>
+            <Radio.Button value="cli">{t('member.kinds.cli')}</Radio.Button>
           </Radio.Group>
         </Form.Item>
 
-        <Form.Item label="资源名称" name="name" rules={[{ required: true, message: '请输入资源名称' }]}>
-          <Input placeholder="名称" />
+        <Form.Item label={t('member.fields.name')} name="name" rules={[{ required: true, message: t('member.fields.nameRequired') }]}>
+          <Input placeholder={t('member.fields.namePlaceholder')} />
         </Form.Item>
 
-        <Form.Item label="头像（LobeHub Icons）" name="avatar">
+        <Form.Item label={t('member.fields.avatar')} name="avatar">
           <AvatarPicker />
         </Form.Item>
 
-        <Form.Item label="描述" name="description">
-          <Input.TextArea autoSize={{ minRows: 2 }} placeholder="描述该资源的功能或定位" />
+        <Form.Item label={t('member.fields.description')} name="description">
+          <Input.TextArea autoSize={{ minRows: 2 }} placeholder={t('member.fields.descriptionPlaceholder')} />
         </Form.Item>
 
-        <Form.Item label="标签" name="tags">
+        <Form.Item label={t('member.fields.tags')} name="tags">
           <TagPicker />
         </Form.Item>
 
@@ -291,24 +291,24 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
 
             <Form.Item
               label={
-                <Tooltip title="仅供消息调度分类，不影响运行；可留空">
-                  <span>调度标签（高级）</span>
+                <Tooltip title={t('member.fields.schedulerTagTooltip')}>
+                  <span>{t('member.fields.schedulerTag')}</span>
                 </Tooltip>
               }
               name="schedulerTag"
             >
-              <Input placeholder="例如：SpyMaster, qianwen（可选）" />
+              <Input placeholder={t('member.fields.schedulerTagPlaceholder')} />
             </Form.Item>
 
             <Form.Item
-              label="自定义提示词 (System Prompt)"
+              label={t('member.fields.systemPrompt')}
               name="customPrompt"
-              extra={<span style={{ fontSize: 11, opacity: 0.6 }}>{PROMPT_PLACEHOLDER_HINT}</span>}
+              extra={<span style={{ fontSize: 11, opacity: 0.6 }}>{t('member.fields.promptPlaceholderHint')}</span>}
             >
-              <Input.TextArea autoSize={{ minRows: 3, maxRows: 10 }} placeholder="定义该角色的 System Prompt" />
+              <Input.TextArea autoSize={{ minRows: 3, maxRows: 10 }} placeholder={t('member.fields.systemPromptPlaceholder')} />
             </Form.Item>
 
-            <Form.Item label="游戏阶段提示词 (可选)" style={{ marginBottom: 0 }}>
+            <Form.Item label={t('member.fields.gameStages')} style={{ marginBottom: 0 }}>
               <Form.List name="stages">
                 {(fields, { add, remove }) => (
                   <>
@@ -317,25 +317,25 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
                         <Form.Item
                           {...restField}
                           name={[name, 'name']}
-                          rules={[{ required: true, message: '阶段名' }]}
+                          rules={[{ required: true, message: t('member.fields.stageNameRequired') }]}
                           style={{ marginBottom: 0 }}
                         >
-                          <Input placeholder="阶段名" style={{ width: 100 }} />
+                          <Input placeholder={t('member.fields.stageName')} style={{ width: 100 }} />
                         </Form.Item>
                         <Form.Item
                           {...restField}
                           name={[name, 'prompt']}
-                          rules={[{ required: true, message: '提示词' }]}
+                          rules={[{ required: true, message: t('member.fields.stagePromptRequired') }]}
                           style={{ marginBottom: 0 }}
                         >
-                          <Input.TextArea autoSize placeholder="该阶段下的 prompt" style={{ width: 240 }} />
+                          <Input.TextArea autoSize placeholder={t('member.fields.stagePromptPlaceholder')} style={{ width: 240 }} />
                         </Form.Item>
                         <Button type="text" danger icon={<Trash2 size={16} />} onClick={() => remove(name)} />
                       </Space>
                     ))}
                     <Form.Item>
                       <Button type="dashed" onClick={() => add()} block icon={<Plus size={14} />}>
-                        添加阶段提示词
+                        {t('member.fields.addStagePrompt')}
                       </Button>
                     </Form.Item>
                   </>
@@ -347,44 +347,46 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
 
         {kind === 'agent' && (
           <>
-            <Form.Item label="专家定位 (Role)" name="role">
-              <Input placeholder="例如：负责需求分析、方案评审、用户体验把控" />
+            <Form.Item label={t('member.fields.agentRole')} name="role">
+              <Input placeholder={t('member.fields.agentRolePlaceholder')} />
             </Form.Item>
 
             <Form.Item
-              label="系统设定 (System Prompt)"
+              label={t('member.fields.agentSystemPrompt')}
               name="systemPrompt"
-              extra={<span style={{ fontSize: 11, opacity: 0.6 }}>{PROMPT_PLACEHOLDER_HINT}</span>}
+              extra={<span style={{ fontSize: 11, opacity: 0.6 }}>{t('member.fields.promptPlaceholderHint')}</span>}
             >
-              <Input.TextArea autoSize={{ minRows: 4 }} placeholder="详细定义专家的职责、知识背景和输出风格" />
+              <Input.TextArea autoSize={{ minRows: 4 }} placeholder={t('member.fields.agentSystemPromptPlaceholder')} />
             </Form.Item>
 
             <Divider orientation={'left' as const} style={{ fontSize: 13, margin: '12px 0' }}>
-              大模型配置
+              {t('member.fields.llmConfigSection')}
             </Divider>
 
             {providerSelect}
 
             <Divider orientation={'left' as const} style={{ fontSize: 13, margin: '12px 0' }}>
-              参数与工具
+              {t('member.fields.paramsToolsSection')}
             </Divider>
 
             <div style={{ display: 'flex', gap: 16 }}>
               <Form.Item label="Temperature" name="temperature" style={{ flex: 1 }}>
                 <InputNumber min={0} max={2} step={0.1} style={{ width: '100%' }} />
               </Form.Item>
-              <Form.Item label="最大思考轮数" name="maxTurns" style={{ flex: 1 }}>
+              <Form.Item label={t('member.fields.maxTurns')} name="maxTurns" style={{ flex: 1 }}>
                 <InputNumber min={1} max={20} style={{ width: '100%' }} />
               </Form.Item>
             </div>
 
-            <Form.Item label="启用工具" name="tools">
+            <Form.Item label={t('member.fields.enabledTools')} name="tools">
               <Checkbox.Group style={{ width: '100%' }}>
                 <Space direction="vertical" style={{ width: '100%' }}>
-                  {AVAILABLE_TOOLS.map((t) => (
-                    <Checkbox key={t.name} value={t.name}>
-                      <span style={{ fontSize: 13, fontWeight: 500 }}>{t.name}</span>
-                      <span style={{ fontSize: 11, opacity: 0.6, marginLeft: 8 }}>{t.description}</span>
+                  {BUILTIN_TOOLS.map((tool) => (
+                    <Checkbox key={tool.name} value={tool.name}>
+                      <span style={{ fontSize: 13, fontWeight: 500 }}>{tool.name}</span>
+                      <span style={{ fontSize: 11, opacity: 0.6, marginLeft: 8 }}>
+                        {t(`member.tools.${tool.name}`)}
+                      </span>
                     </Checkbox>
                   ))}
                 </Space>
@@ -395,8 +397,8 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
 
         {kind === 'cli' && (
           <>
-            <Form.Item label="开发工具适配器 (Adapter)" name="cliAdapter" rules={[{ required: true, message: '请选择适配器' }]}>
-              <Select placeholder="选择适配器">
+            <Form.Item label={t('member.fields.cliAdapter')} name="cliAdapter" rules={[{ required: true, message: t('member.fields.cliAdapterRequired') }]}>
+              <Select placeholder={t('member.fields.cliAdapterPlaceholder')}>
                 {cliAdapterDefinitions.map((adapter) => (
                   <Select.Option key={adapter.id} value={adapter.id}>
                     {adapter.label}
@@ -405,29 +407,29 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
               </Select>
             </Form.Item>
 
-            <Form.Item label="可执行路径 (Binary Path)" name="cliBinary">
-              <Input placeholder="不填则使用系统全局安装命令 (如 `claudecode`, `aider` 等)" />
+            <Form.Item label={t('member.fields.cliBinary')} name="cliBinary">
+              <Input placeholder={t('member.fields.cliBinaryPlaceholder')} />
             </Form.Item>
 
-            <Form.Item label="额外运行参数 (Extra Args)" name="cliExtraArgs">
-              <Select mode="tags" placeholder="在命令行后添加的参数" tokenSeparators={[' ']} />
+            <Form.Item label={t('member.fields.cliExtraArgs')} name="cliExtraArgs">
+              <Select mode="tags" placeholder={t('member.fields.cliExtraArgsPlaceholder')} tokenSeparators={[' ']} />
             </Form.Item>
 
-            <Form.Item label="自动执行审批" name="cliApprovalMode">
+            <Form.Item label={t('member.fields.cliApproval')} name="cliApprovalMode">
               <Radio.Group>
-                <Radio value="ask">人工确认审批 (推荐)</Radio>
-                <Radio value="auto">完全自动运行 (高危)</Radio>
+                <Radio value="ask">{t('member.fields.cliApprovalAsk')}</Radio>
+                <Radio value="auto">{t('member.fields.cliApprovalAuto')}</Radio>
               </Radio.Group>
             </Form.Item>
 
-            <Form.Item label="输出错误日志 (Stderr)" name="cliShowStderr" valuePropName="checked">
-              <Switch checkedChildren="显示" unCheckedChildren="隐藏" />
+            <Form.Item label={t('member.fields.cliStderr')} name="cliShowStderr" valuePropName="checked">
+              <Switch checkedChildren={t('member.fields.cliStderrShow')} unCheckedChildren={t('member.fields.cliStderrHide')} />
             </Form.Item>
           </>
         )}
         {(kind === 'llm' || kind === 'agent') && (
           <Button block style={{ marginTop: 8 }} onClick={() => setDryRunOpen(true)}>
-            试运行一句
+            {t('member.dryRun')}
           </Button>
         )}
       </Form>

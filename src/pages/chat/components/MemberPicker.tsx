@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo } from 'react';
 import { Select, Tag } from 'antd';
+import { useTranslation } from 'react-i18next';
 import { Avatar as LobeAvatar } from '@lobehub/ui';
 import { useAIMemberStore } from '@/store/aiMemberStore';
 import { useProviderStore } from '@/store/providerStore';
@@ -15,26 +16,32 @@ interface MemberPickerProps {
   disabled?: boolean;
 }
 
-function memberMetaLine(member: AIMember, providerName?: string): string {
+function memberMetaLine(
+  member: AIMember,
+  providerName: string | undefined,
+  t: (key: string, options?: { defaultValue?: string }) => string,
+): string {
   if (member.kind === 'llm') {
     const unmapped = member.providerId?.startsWith('unmapped-');
     return `${member.model} · ${providerName || member.providerId}${unmapped ? ' ⚠️' : ''}`;
   }
   if (member.kind === 'agent') {
-    const tools = member.tools?.filter((t) => t.enabled).length ?? 0;
+    const tools = member.tools?.filter((tool) => tool.enabled).length ?? 0;
     const unmapped = member.providerId?.startsWith('unmapped-');
     return `${providerName || member.providerId} · ${member.model} · 🛠 ${tools} tools${unmapped ? ' ⚠️' : ''}`;
   }
-  return `${member.cli?.adapter || 'cli'} · 开发成员`;
+  return `${member.cli?.adapter || 'cli'} · ${t('chat:memberPicker.cliMemberSuffix', { defaultValue: '开发成员' })}`;
 }
 
 export const MemberPicker: React.FC<MemberPickerProps> = ({
   kind,
   value,
   onChange,
-  placeholder = '选择资源...',
+  placeholder,
   disabled = false,
 }) => {
+  const { t } = useTranslation(['chat', 'common']);
+  const defaultPlaceholder = t('chat:memberPicker.defaultPlaceholder', { defaultValue: '选择资源...' });
   const members = useAIMemberStore((state) => state.members);
   const { load } = useAIMemberStore();
   const { providers, load: loadProviders } = useProviderStore();
@@ -57,7 +64,7 @@ export const MemberPicker: React.FC<MemberPickerProps> = ({
     desc: m.description || '',
     avatar: m.avatar,
     tags: m.tags || [],
-    meta: memberMetaLine(m, providerMap[m.providerId!]?.name),
+    meta: memberMetaLine(m, providerMap[m.providerId!]?.name, t),
     member: m,
   }));
 
@@ -65,7 +72,7 @@ export const MemberPicker: React.FC<MemberPickerProps> = ({
     <Select
       mode="multiple"
       style={{ width: '100%' }}
-      placeholder={placeholder}
+      placeholder={placeholder ?? defaultPlaceholder}
       value={value}
       onChange={onChange}
       disabled={disabled}
@@ -149,7 +156,7 @@ export const MemberPicker: React.FC<MemberPickerProps> = ({
               title={displayName}
               style={{ flexShrink: 0 }}
             />
-            <span>{displayName}{isLegacyBuiltin ? ' (官方)' : ''}</span>
+            <span>{displayName}{isLegacyBuiltin ? ` (${t('common:badges.official')})` : ''}</span>
           </Tag>
         );
       }}

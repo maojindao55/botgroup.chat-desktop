@@ -1,0 +1,48 @@
+{
+  "roles": {
+    "coordinator": "Coordinator",
+    "judge": "Judge",
+    "reducer": "Reducer",
+    "supervisorSuffix": "Supervisor"
+  },
+  "errors": {
+    "cliRequestFailed": "CLI request failed: {{status}}",
+    "streamUnavailable": "Could not read response stream",
+    "cliExecutionError": "CLI execution error",
+    "cliNonZeroExit": "CLI exited with code {{code}}",
+    "cliExecutionFailed": "CLI execution failed",
+    "unknownError": "Unknown error",
+    "cliAgentExecutionError": "[CLI agent error: {{message}}]",
+    "agentLlmRequestFailed": "Agent LLM request failed: {{status}}",
+    "agentExecutionError": "[Agent error: {{message}}]",
+    "judgeExecutionError": "[Judge error: {{message}}]",
+    "reducerExecutionError": "[Reducer error: {{message}}]",
+    "raceNeedsWorkspace": "Race mode requires a workspace path first.",
+    "worktreePrepareFailed": "Failed to prepare worktree",
+    "raceWorktreeFailed": "Could not create worktree for race mode: {{message}}",
+    "agentWorktreeFailed": "Worktree creation failed for agent {{name}}. Please retry.",
+    "discussionNeedsWorkspace": "Discussion mode requires a workspace path first.",
+    "readonlyCopyFailed": "Failed to create temporary read-only copy",
+    "agentReadonlyFailed": "Read-only environment failed for agent {{name}}. Please retry.",
+    "discussionReadonlyFailed": "Could not create read-only environment for discussion: {{message}}"
+  },
+  "cliStageLabels": {
+    "规划": "Planning",
+    "实现": "Implementation",
+    "评审": "Review",
+    "实现+自检": "Implement + self-check",
+    "规划实现自评": "Plan, implement & self-review",
+    "生成代码": "Generate code",
+    "审查/修改": "Review / modify",
+    "测试": "Test",
+    "优化": "Optimize",
+    "验证": "Verify",
+    "继续": "Continue",
+    "reviewRound": "Review #{{round}}",
+    "fixRound": "Fix #{{round}}",
+    "selfReviewStage": "Self-review stage {{index}}",
+    "selfCheckStage": "Self-check stage {{index}}",
+    "reviewStage": "Review stage {{index}}",
+    "genericStage": "Stage {{index}}"
+  }
+}

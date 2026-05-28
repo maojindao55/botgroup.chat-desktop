@@ -32,14 +32,13 @@ for (const hiddenStrategy of ['discussion', 'debate', 'mapreduce']) {
   assert.doesNotMatch(wizardCliConfigBlock, new RegExp(`value: '${hiddenStrategy}' as const, label:`));
 }
 
-assert.match(engine, /REVIEW_STAGE_LABELS = \['规划', '实现', '评审'\]/);
-assert.match(engine, /REVIEW_TWO_AGENT_STAGE_LABELS = \['规划', '实现\+自检'\]/);
-assert.match(engine, /REVIEW_ONE_AGENT_STAGE_LABELS = \['规划实现自评'\]/);
+assert.match(engine, /translateCliStageLabel/);
+assert.match(engine, /te\('errors\./);
 assert.match(engine, /你负责规划阶段/);
 assert.match(engine, /你负责实现阶段/);
 assert.match(engine, /你负责评审阶段/);
 assert.match(engine, /你负责完整的规划、实现和自评闭环/);
-assert.match(settings, /建议至少选择 2 个开发成员/);
+assert.match(settings, /cli:groupSettings\.collaboration\.reviewLoopHint/);
 assert.match(chatUI, /buildCliUserPrompt/);
 assert.match(cliSendBlock, /const taskPrompt = buildCliUserPrompt\(promptText, workspacePath\)/);
 assert.doesNotMatch(cliSendBlock, /const cleanHistory = messageHistory\.slice\(-6\)/);

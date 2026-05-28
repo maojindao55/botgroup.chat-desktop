@@ -1,3 +1,5 @@
+import i18n from '@/i18n';
+
 export interface PromptContext {
   groupName?: string;
   aiName?: string;
@@ -6,12 +8,16 @@ export interface PromptContext {
   time?: string;
 }
 
+function getPromptLocale(): string {
+  return i18n.language || 'zh-CN';
+}
+
 function formatDate(d: Date): string {
-  return d.toLocaleDateString('zh-CN');
+  return d.toLocaleDateString(getPromptLocale());
 }
 
 function formatTime(d: Date): string {
-  return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleTimeString(getPromptLocale(), { hour: '2-digit', minute: '2-digit' });
 }
 
 /**

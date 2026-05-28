@@ -1,0 +1,12 @@
+{
+  "builtin": {
+    "qwen": "Qwen (DashScope)",
+    "volcengine": "Volcengine Ark",
+    "hunyuan": "Tencent Hunyuan",
+    "glm": "Zhipu GLM",
+    "deepseek": "DeepSeek",
+    "kimi": "Moonshot Kimi",
+    "baidu": "Baidu Qianfan",
+    "ollama": "Ollama (local)"
+  }
+}

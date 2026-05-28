@@ -1,0 +1,26 @@
+{
+  "workspaceTitle": "群聊空间",
+  "section": {
+    "workspace": "工作区",
+    "groups": "群聊",
+    "resources": "资源"
+  },
+  "nav": {
+    "devTasks": "开发任务",
+    "createGroup": "创建新群聊",
+    "library": "资源库"
+  },
+  "actions": {
+    "editGroup": "编辑群聊",
+    "deleteGroup": "删除群聊",
+    "groupMenu": "群聊操作"
+  },
+  "preferences": {
+    "title": "外观与语言",
+    "appearance": "外观",
+    "language": "语言",
+    "themeSystem": "跟随系统",
+    "themeLight": "浅色模式",
+    "themeDark": "深色模式"
+  }
+}

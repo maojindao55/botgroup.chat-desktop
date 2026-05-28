@@ -1,5 +1,6 @@
 import type { CLIGroup, CLIStrategy, CLIExecutionPlan, CLISessionPolicy, CLIReviewLoopRoles } from './groups';
 import { adapterUsesOpenCodeSessionTitle } from './cliAdapters';
+import i18n from '@/i18n';
 
 export type CLITaskStatus =
   | 'queued'
@@ -35,7 +36,10 @@ export const cliSessionPolicyOptions: Array<{
 ];
 
 export function sessionPolicyLabel(policy: CLISessionPolicy): string {
-  return cliSessionPolicyOptions.find(item => item.value === policy)?.label ?? policy;
+  const item = cliSessionPolicyOptions.find((entry) => entry.value === policy);
+  return i18n.t(`product:cliSessionPolicy.${policy}.label`, {
+    defaultValue: item?.label ?? policy,
+  });
 }
 
 /** 解析输入开头的 @开发成员，用于指定单个 agent 执行任务 */
@@ -178,7 +182,8 @@ export function templateSnapshotToCLIGroup(template: CLITeamTemplate): CLIGroup 
 }
 
 export function truncateTaskTitle(prompt: string, maxLen = 48): string {
-  const line = prompt.trim().split('\n')[0] || '新开发任务';
+  const line = prompt.trim().split('\n')[0]
+    || i18n.t('cli:tasks.defaultTitle', { defaultValue: '新开发任务' });
   if (line.length <= maxLen) return line;
   return `${line.slice(0, maxLen - 1)}…`;
 }

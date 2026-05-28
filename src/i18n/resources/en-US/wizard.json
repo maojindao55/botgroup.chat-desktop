@@ -1,0 +1,67 @@
+{
+  "typeStep": {
+    "intro": "Pick a group scenario and invite the right members.",
+    "cliHint": "To create a dev group, go to Dev Tasks in the sidebar and create a team template."
+  },
+  "basicStep": {
+    "nameLabel": "Group name *",
+    "namePlaceholder": "Give this group a name",
+    "descriptionLabel": "Description",
+    "descriptionPlaceholder": "Describe this group in one or two sentences..."
+  },
+  "membersStep": {
+    "pickCharacters": "Choose characters to join the group",
+    "pickCliMembers": "Choose dev members to join the group",
+    "pickExperts": "Choose experts to join the group",
+    "characterPlaceholder": "Select characters...",
+    "cliPlaceholder": "Select dev members...",
+    "expertPlaceholder": "Select experts...",
+    "emptyDescription": "No {{resource}} yet. Create one in the library first.",
+    "goLibrary": "Create in library",
+    "openLibraryHint": "Open the library from the sidebar to create one"
+  },
+  "configStep": {
+    "speechMode": "Speaking mode",
+    "workspacePath": "Workspace path *",
+    "workspaceHint": "Dev members read and write code in this directory. You can pick a folder or enter an absolute path.",
+    "collaborationMode": "Collaboration mode",
+    "roleAssignment": "Role assignment",
+    "roleAssignmentHint": "Choose who plans, who implements from the plan, and who reviews. Planner and reviewer can be the same dev member.",
+    "roleAssignmentWarning": "Select at least 2 dev members and assign planner/reviewer and implementer separately.",
+    "planner": "Planner",
+    "implementer": "Implementer",
+    "reviewer": "Reviewer",
+    "maxReviewRounds": "Max review rounds",
+    "plannerPlaceholder": "Select planner",
+    "implementerPlaceholder": "Select implementer",
+    "reviewerPlaceholder": "Select reviewer",
+    "cliSessionReuse": "CLI session reuse",
+    "autoApproval": "Auto approval",
+    "autoApprovalHint": "When enabled, dev members run automatically without confirmation.",
+    "timeoutSeconds": "Timeout (seconds)",
+    "agentCollaboration": "In-group collaboration",
+    "coordinatorPrompt": "Coordinator prompt",
+    "coordinatorPromptPlaceholder": "Define how the coordinator delegates tasks and summarizes results...",
+    "maxRounds": "Max collaboration rounds"
+  },
+  "steps": {
+    "type": "Choose scenario",
+    "basic": "Basic info",
+    "members": "Choose members",
+    "config": "Group settings",
+    "templateBasic": "Template name",
+    "templateMembers": "Choose dev members",
+    "templateConfig": "Execution strategy",
+    "shortType": "Type",
+    "shortBasic": "Basic",
+    "shortMembers": "Members",
+    "shortConfig": "Config"
+  },
+  "actions": {
+    "previous": "Previous",
+    "next": "Next",
+    "createGroup": "Create group",
+    "createTemplate": "Create template"
+  },
+  "templateTitle": "New team template · {{step}}"
+}

@@ -1,0 +1,71 @@
+{
+  "aiGroup": {
+    "title": "Character group settings",
+    "basicInfo": "Basic info",
+    "groupNamePlaceholder": "Group name",
+    "groupDescriptionPlaceholder": "Description (optional)",
+    "speechMode": "Speaking mode",
+    "pickCharacters": "Choose characters",
+    "pickCharactersPlaceholder": "Select characters to join...",
+    "members": "Members ({{count}})",
+    "quickAddHint": "Click to add to the group",
+    "muted": "Muted",
+    "unmute": "Unmute",
+    "mute": "Mute",
+    "removeMember": "Remove member",
+    "selfName": "Me"
+  },
+  "agentGroup": {
+    "title": "Expert group settings",
+    "basicInfo": "Basic info",
+    "groupNamePlaceholder": "Group name",
+    "groupDescriptionPlaceholder": "Description (optional)",
+    "collaboration": "In-group collaboration",
+    "advancedStrategy": "Advanced strategy",
+    "coordinatorPrompt": "Coordinator prompt",
+    "coordinatorPromptPlaceholder": "Define how the coordinator delegates tasks...",
+    "maxRounds": "Max rounds",
+    "manageExperts": "Add / manage experts",
+    "pickExpertsPlaceholder": "Select experts to join...",
+    "libraryHint": "Create or edit expert models, roles, and tools in the library.",
+    "experts": "Experts ({{count}})",
+    "supervisorBadge": "👑 Supervisor",
+    "unmute": "Unmute",
+    "mute": "Mute",
+    "removeMember": "Remove member"
+  },
+  "strategies": {
+    "sequential": {
+      "label": "Sequential",
+      "description": "Experts run in order; later steps can see earlier output"
+    },
+    "router": {
+      "label": "Intent routing",
+      "description": "Analyze intent and pick the most relevant expert"
+    },
+    "discussion": {
+      "label": "Full discussion",
+      "description": "All experts reply to the same message in parallel"
+    },
+    "react": {
+      "label": "ReAct",
+      "description": "Coordinator analyzes → delegates → executes → loops until done"
+    },
+    "pipeline": {
+      "label": "Pipeline",
+      "description": "Role-based stages where each output feeds the next"
+    },
+    "debate": {
+      "label": "Debate",
+      "description": "Independent answers → cross-review → final synthesis"
+    },
+    "mapreduce": {
+      "label": "MapReduce",
+      "description": "Split tasks → parallel work → merge results"
+    },
+    "supervisor": {
+      "label": "Supervisor",
+      "description": "Supervisor delegates → reviews quality → feedback loop"
+    }
+  }
+}

@@ -4,6 +4,7 @@ import { AIMember, AIMemberKind, builtinAIMembers } from '../config/aiMembers';
 import { resolveEffectiveMember } from '../utils/aiMemberDisplay';
 import { lookupProviderByEnvName, lookupProviderByModel } from '../config/providers';
 import { normalizeTags } from '../config/tagTaxonomy';
+import i18n from '@/i18n';
 
 interface RustAIMember {
   id: string;
@@ -162,7 +163,7 @@ function suggestClonedName(orig: AIMember, members: Record<string, AIMember>): s
     const candidate = `${orig.name} ${i}`;
     if (!userNames.has(candidate)) return candidate;
   }
-  return `${orig.name} (副本)`;
+  return `${orig.name}${i18n.t('common:copyNameSuffix')}`;
 }
 
 interface AIMemberStore {
@@ -241,10 +242,10 @@ export const useAIMemberStore = create<AIMemberStore>((set, get) => ({
   upsert: async (member: AIMember) => {
     const existing = get().members[member.id];
     if (existing?.source === 'builtin') {
-      throw new Error('无法修改内置成员，请使用「克隆并编辑」。');
+      throw new Error(i18n.t('common:store.member.cannotEditBuiltin'));
     }
     if (!existing && member.source === 'builtin') {
-      throw new Error('不能从界面创建 builtin 成员。');
+      throw new Error(i18n.t('common:store.member.cannotCreateBuiltin'));
     }
 
     const updated: AIMember = {
@@ -277,14 +278,14 @@ export const useAIMemberStore = create<AIMemberStore>((set, get) => ({
   clone: async (id: string, options?: CloneMemberOptions) => {
     const orig = get().members[id];
     if (!orig) {
-      throw new Error('成员不存在');
+      throw new Error(i18n.t('common:store.member.notFound'));
     }
     const ts = Date.now();
     const cloned = JSON.parse(JSON.stringify(orig)) as AIMember;
     cloned.id = `${orig.id}-copy-${ts}`;
     cloned.source = 'user';
     cloned.name = options?.name
-      ?? (options?.smartName ? suggestClonedName(orig, get().members) : `${orig.name} (副本)`);
+      ?? (options?.smartName ? suggestClonedName(orig, get().members) : `${orig.name}${i18n.t('common:copyNameSuffix')}`);
     if (options?.forkedFrom) {
       cloned.forkedFrom = options.forkedFrom;
     }
@@ -297,7 +298,7 @@ export const useAIMemberStore = create<AIMemberStore>((set, get) => ({
   ensurePersonalCopy: async (templateId: string) => {
     const template = get().members[templateId];
     if (!template) {
-      throw new Error('成员不存在');
+      throw new Error(i18n.t('common:store.member.notFound'));
     }
     if (template.source === 'user') {
       return template;

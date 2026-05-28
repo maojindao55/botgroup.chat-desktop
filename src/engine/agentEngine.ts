@@ -7,6 +7,8 @@
  */
 import type { AgentGroup, AgentMember } from '@/config/groups';
 import { lookupProviderByEnvName } from '@/config/providers';
+import { translateEngineRole } from '@/i18n/engineLabels';
+import { te } from '@/i18n/translate';
 import { request } from '@/utils/request';
 import { useAIMemberStore } from '@/store/aiMemberStore';
 
@@ -90,11 +92,11 @@ export async function callAgentLLM(
   });
 
   if (!response.ok) {
-    throw new Error(`Agent LLM 请求失败: ${response.status}`);
+    throw new Error(te('errors.agentLlmRequestFailed', { status: response.status }));
   }
 
   const reader = response.body?.getReader();
-  if (!reader) throw new Error('无法获取响应流');
+  if (!reader) throw new Error(te('errors.streamUnavailable'));
 
   const decoder = new TextDecoder();
   let buffer = '';
@@ -163,8 +165,8 @@ async function runSingleAgent(
 
     callbacks.onAgentEnd(agent.id, fullContent);
   } catch (error: any) {
-    const errMsg = error?.message || '未知错误';
-    fullContent = `[Agent 执行出错: ${errMsg}]`;
+    const errMsg = error?.message || te('errors.unknownError');
+    fullContent = te('errors.agentExecutionError', { message: errMsg });
     callbacks.onError(agent.id, errMsg);
   }
 
@@ -356,12 +358,13 @@ ${accumulatedContext}
     if (!decision || decision.action === 'done') {
       // 任务完成，输出总结
       if (decision?.summary) {
+        const coordinatorName = translateEngineRole('coordinator');
         const summaryResult: AgentRunResult = {
           agentId: 'coordinator',
-          agentName: '协调者',
+          agentName: coordinatorName,
           content: decision.summary,
         };
-        callbacks.onAgentStart('coordinator', '协调者');
+        callbacks.onAgentStart('coordinator', coordinatorName);
         callbacks.onToken('coordinator', decision.summary);
         callbacks.onAgentEnd('coordinator', decision.summary);
         results.push(summaryResult);
@@ -522,7 +525,8 @@ ${othersOpinions}
     { role: 'user', content: `原始问题：${userMessage}\n\n各方观点：\n${allOpinions}\n\n请给出最终裁决和总结。` },
   ];
 
-  callbacks.onAgentStart('judge', '裁判');
+  const judgeName = translateEngineRole('judge');
+  callbacks.onAgentStart('judge', judgeName);
   let judgeContent = '';
   try {
     judgeContent = await callAgentLLM(
@@ -532,13 +536,14 @@ ${othersOpinions}
     );
     callbacks.onAgentEnd('judge', judgeContent);
   } catch (error: any) {
-    judgeContent = `[裁判出错: ${error?.message || '未知错误'}]`;
-    callbacks.onError('judge', error?.message || '未知错误');
+    const errMsg = error?.message || te('errors.unknownError');
+    judgeContent = te('errors.judgeExecutionError', { message: errMsg });
+    callbacks.onError('judge', errMsg);
   }
 
   results.push({
     agentId: 'judge',
-    agentName: '裁判',
+    agentName: judgeName,
     content: judgeContent,
   });
 
@@ -623,7 +628,8 @@ async function runMapReduce(
     { role: 'user', content: `原始需求：${userMessage}\n\n各子任务结果：\n${allResults}\n\n请汇总为最终答案。` },
   ];
 
-  callbacks.onAgentStart('reducer', '汇总者');
+  const reducerName = translateEngineRole('reducer');
+  callbacks.onAgentStart('reducer', reducerName);
   let reduceContent = '';
   try {
     reduceContent = await callAgentLLM(
@@ -633,13 +639,14 @@ async function runMapReduce(
     );
     callbacks.onAgentEnd('reducer', reduceContent);
   } catch (error: any) {
-    reduceContent = `[汇总出错: ${error?.message || '未知错误'}]`;
-    callbacks.onError('reducer', error?.message || '未知错误');
+    const errMsg = error?.message || te('errors.unknownError');
+    reduceContent = te('errors.reducerExecutionError', { message: errMsg });
+    callbacks.onError('reducer', errMsg);
   }
 
   results.push({
     agentId: 'reducer',
-    agentName: '汇总者',
+    agentName: reducerName,
     content: reduceContent,
   });
 
@@ -768,12 +775,13 @@ ${workerList}`;
       if (!decision || decision.status === 'approved') {
         // 批准：输出最终总结
         if (decision?.summary) {
+          const supervisorLabel = `${supervisor.name}(${translateEngineRole('supervisorSuffix')})`;
           const summaryResult: AgentRunResult = {
             agentId: supervisor.id,
-            agentName: `${supervisor.name}(监督者)`,
+            agentName: supervisorLabel,
             content: decision.summary,
           };
-          callbacks.onAgentStart(supervisor.id, `${supervisor.name}(监督者)`);
+          callbacks.onAgentStart(supervisor.id, supervisorLabel);
           callbacks.onToken(supervisor.id, decision.summary);
           callbacks.onAgentEnd(supervisor.id, decision.summary);
           results.push(summaryResult);

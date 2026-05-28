@@ -1,10 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Button, Tag, Tooltip, Modal, Empty } from 'antd';
 import { useProviderStore } from '@/store/providerStore';
 import type { Provider } from '@/config/providers';
 import { Plus, Edit2, Trash2, Server, CheckCircle2, AlertTriangle, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import { createStyles } from 'antd-style';
+import { useLocale } from '@/hooks/use-locale';
+import { getTranslatedProviderName } from '@/i18n/providerLabels';
 
 const useStyles = createStyles(({ token, css }) => ({
   toolbar: css`
@@ -129,6 +132,8 @@ function truncateUrl(url: string, max = 48): string {
 }
 
 export const ProviderLibrary: React.FC<ProviderLibraryProps> = ({ onCreate, onEdit }) => {
+  const { t } = useTranslation(['library', 'common', 'product']);
+  const { resolvedLocale } = useLocale();
   const { styles } = useStyles();
   const { providers, remove, clone, hasSecret } = useProviderStore();
   const [secretStatus, setSecretStatus] = useState<Record<string, boolean>>({});
@@ -137,9 +142,9 @@ export const ProviderLibrary: React.FC<ProviderLibraryProps> = ({ onCreate, onEd
     return Object.values(providers).sort((a, b) => {
       if (a.source === 'user' && b.source === 'builtin') return -1;
       if (a.source === 'builtin' && b.source === 'user') return 1;
-      return a.name.localeCompare(b.name, 'zh-CN');
+      return a.name.localeCompare(b.name, resolvedLocale);
     });
-  }, [providers]);
+  }, [providers, resolvedLocale]);
 
   useEffect(() => {
     let cancelled = false;
@@ -172,13 +177,18 @@ export const ProviderLibrary: React.FC<ProviderLibraryProps> = ({ onCreate, onEd
     };
   }, [providerList, hasSecret]);
 
+  const displayProviderName = (provider: Provider) =>
+    provider.source === 'builtin'
+      ? getTranslatedProviderName(provider.id, provider.name)
+      : provider.name;
+
   const handleDelete = (provider: Provider) => {
     Modal.confirm({
-      title: '确认删除模型服务？',
-      content: `确定要删除「${provider.name}」吗？此操作不可撤销。`,
-      okText: '确认删除',
+      title: t('library:deleteProvider.confirmTitle'),
+      content: t('library:deleteProvider.confirmContent', { name: displayProviderName(provider) }),
+      okText: t('common:actions.confirmDelete'),
       okType: 'danger',
-      cancelText: '取消',
+      cancelText: t('common:actions.cancel'),
       onOk: async () => {
         await remove(provider.id);
       },
@@ -196,11 +206,13 @@ export const ProviderLibrary: React.FC<ProviderLibraryProps> = ({ onCreate, onEd
 
         <div className={styles.infoSection}>
           <div className={styles.headerRow}>
-            <span className={styles.name}>{provider.name}</span>
+            <span className={styles.name}>{displayProviderName(provider)}</span>
             <Tag className={provider.source === 'builtin' ? styles.badgeBuiltin : styles.badgeUser}>
-              {provider.source === 'builtin' ? '系统预设' : '自建'}
+              {provider.source === 'builtin'
+                ? t('common:badges.systemPreset')
+                : t('common:badges.userCreated')}
             </Tag>
-            {provider.enabled === false && <Tag color="default">已禁用</Tag>}
+            {provider.enabled === false && <Tag color="default">{t('common:status.disabled')}</Tag>}
           </div>
 
           {provider.description && (
@@ -209,25 +221,26 @@ export const ProviderLibrary: React.FC<ProviderLibraryProps> = ({ onCreate, onEd
 
           <div className={styles.metaDetails}>
             <div className={styles.metaItem}>
-              <strong>地址:</strong>
+              <strong>{t('library:meta.baseUrl')}</strong>
               <Tooltip title={provider.baseURL}>
                 <span className={styles.baseUrl}>{truncateUrl(provider.baseURL)}</span>
               </Tooltip>
             </div>
             <div className={styles.metaItem}>
-              <strong>模型:</strong> {provider.models?.length || 0} 个
+              <strong>{t('library:meta.models')}</strong>{' '}
+              {t('library:meta.modelsCount', { count: provider.models?.length || 0 })}
             </div>
             <div className={styles.metaItem}>
-              <strong>密钥:</strong>
+              <strong>{t('library:meta.secret')}</strong>
               {configured ? (
                 <span className={styles.secretOk}>
                   <CheckCircle2 size={14} />
-                  已配置
+                  {t('library:meta.secretConfigured')}
                 </span>
               ) : (
                 <span className={styles.secretWarn}>
                   <AlertTriangle size={14} />
-                  未配置
+                  {t('library:meta.secretMissing')}
                 </span>
               )}
             </div>
@@ -241,14 +254,14 @@ export const ProviderLibrary: React.FC<ProviderLibraryProps> = ({ onCreate, onEd
             onClick={async () => {
               try {
                 const copied = await clone(provider.id);
-                toast.success(`已复制为「${copied.name}」`);
+                toast.success(t('library:provider.copiedToast', { name: copied.name }));
               } catch (e) {
-                toast.error(e instanceof Error ? e.message : '复制失败');
+                toast.error(e instanceof Error ? e.message : t('library:provider.copyFailed'));
               }
             }}
             style={{ padding: '4px 8px', height: 'auto' }}
           >
-            复制
+            {t('common:actions.copy')}
           </Button>
           <Button
             type="text"
@@ -256,7 +269,7 @@ export const ProviderLibrary: React.FC<ProviderLibraryProps> = ({ onCreate, onEd
             onClick={() => onEdit(provider)}
             style={{ padding: '4px 8px', height: 'auto' }}
           >
-            编辑
+            {t('common:actions.edit')}
           </Button>
           {provider.source !== 'builtin' ? (
             <Button
@@ -266,17 +279,17 @@ export const ProviderLibrary: React.FC<ProviderLibraryProps> = ({ onCreate, onEd
               onClick={() => handleDelete(provider)}
               style={{ padding: '4px 8px', height: 'auto' }}
             >
-              删除
+              {t('common:actions.delete')}
             </Button>
           ) : (
-            <Tooltip title="内置预设服务无法删除">
+            <Tooltip title={t('library:provider.builtinDeleteTooltip')}>
               <Button
                 type="text"
                 disabled
                 icon={<Trash2 size={14} />}
                 style={{ padding: '4px 8px', height: 'auto', opacity: 0.4 }}
               >
-                删除
+                {t('common:actions.delete')}
               </Button>
             </Tooltip>
           )}
@@ -289,13 +302,13 @@ export const ProviderLibrary: React.FC<ProviderLibraryProps> = ({ onCreate, onEd
     <>
       <div className={styles.toolbar}>
         <Button type="primary" icon={<Plus size={16} />} onClick={onCreate}>
-          新增模型服务
+          {t('library:create.provider')}
         </Button>
       </div>
 
       {providerList.length === 0 ? (
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '300px' }}>
-          <Empty description="暂无模型服务，点击上方按钮添加" />
+          <Empty description={t('library:empty.providers')} />
         </div>
       ) : (
         <div className={styles.listContainer}>{providerList.map(renderProviderItem)}</div>

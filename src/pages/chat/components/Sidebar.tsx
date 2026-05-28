@@ -3,27 +3,26 @@ import {
   Bot,
   Menu as MenuIcon,
   MessageSquare as MessageSquareIcon,
-  Monitor,
-  Moon,
   MoreHorizontal,
   PanelLeftClose as PanelLeftCloseIcon,
   PlusCircle as PlusCircleIcon,
   Puzzle,
-  Sun,
   Terminal,
   Users as UsersIcon,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Dropdown, Tooltip } from 'antd';
 import type { MenuProps } from 'antd';
-import { ActionIcon, Segmented } from '@lobehub/ui';
+import { ActionIcon } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 import GitHubButton from 'react-github-btn';
 import '@fontsource/audiowide';
 
+import { SidebarPreferences } from './SidebarPreferences';
 import { UserSection } from './UserSection';
 import { useTheme } from '@/hooks/use-theme';
 import CreateGroupWizard from './CreateGroupWizard';
-import { getProductGroupType } from '@/config/groupProduct';
+import { getTranslatedGroupTypeShortLabel } from '@/i18n/productLabels';
 import { isBuiltinGroupId } from '@/config/groupStorage';
 import type { Group, GroupType } from '@/config/groups';
 
@@ -208,18 +207,6 @@ const useStyles = createStyles(({ token, css }) => ({
     background: rgba(59, 130, 246, 0.12);
     color: ${token.colorInfo};
   `,
-  themeBar: css`
-    padding: 8px 12px;
-    border-top: 1px solid ${token.colorBorderSecondary};
-    background: ${token.colorBgContainer};
-    flex: none;
-  `,
-  themeBarCollapsed: css`
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-  `,
   starWrapper: css`
     padding: 12px;
     background: ${token.colorFillQuaternary};
@@ -257,16 +244,15 @@ const renderGroupTag = (
   type: string,
   styles: ReturnType<typeof useStyles>['styles'],
   cx: ReturnType<typeof useStyles>['cx'],
+  shortLabel: string,
 ) => {
-  const label = getProductGroupType(type as Group['type']).shortLabel;
-
   switch (type) {
     case 'ai':
-      return <span className={cx(styles.tag, styles.tagAi)}>{label}</span>;
+      return <span className={cx(styles.tag, styles.tagAi)}>{shortLabel}</span>;
     case 'cli':
-      return <span className={cx(styles.tag, styles.tagCli)}>{label}</span>;
+      return <span className={cx(styles.tag, styles.tagCli)}>{shortLabel}</span>;
     case 'agent':
-      return <span className={cx(styles.tag, styles.tagAgent)}>{label}</span>;
+      return <span className={cx(styles.tag, styles.tagAgent)}>{shortLabel}</span>;
     default:
       return null;
   }
@@ -304,7 +290,8 @@ const Sidebar = ({
   const { styles, cx } = useStyles();
   const [showCreateWizard, setShowCreateWizard] = useState(false);
   const [version, setVersion] = useState('');
-  const { theme, resolvedTheme, setTheme } = useTheme();
+  const { t } = useTranslation(['sidebar', 'common', 'product']);
+  const { resolvedTheme } = useTheme();
 
   const colorScheme =
     resolvedTheme === 'dark'
@@ -352,7 +339,7 @@ const Sidebar = ({
         )}
       >
         <div className={styles.headerRow}>
-          {isOpen && <span className={styles.workspaceTitle}>群聊空间</span>}
+          {isOpen && <span className={styles.workspaceTitle}>{t('sidebar:workspaceTitle')}</span>}
           <ActionIcon
             icon={isOpen ? PanelLeftCloseIcon : MenuIcon}
             size="small"
@@ -363,7 +350,7 @@ const Sidebar = ({
 
         <nav className={styles.navList}>
           <div className={styles.navSection}>
-            {isOpen && <div className={styles.sectionLabel}>工作区</div>}
+            {isOpen && <div className={styles.sectionLabel}>{t('sidebar:section.workspace')}</div>}
             {(() => {
               const isCliActive = activeView === 'cli-tasks';
               const devTasksBtn = (
@@ -394,13 +381,13 @@ const Sidebar = ({
                       style={{ color: isCliActive ? '#ff6600' : undefined, flexShrink: 0 }}
                     />
                     {isOpen && (
-                      <span className={styles.navItemLabel}>开发任务</span>
+                      <span className={styles.navItemLabel}>{t('sidebar:nav.devTasks')}</span>
                     )}
                   </div>
                 </a>
               );
               return !isOpen ? (
-                <Tooltip title="开发任务" placement="right" mouseEnterDelay={0.15}>
+                <Tooltip title={t('sidebar:nav.devTasks')} placement="right" mouseEnterDelay={0.15}>
                   {devTasksBtn}
                 </Tooltip>
               ) : (
@@ -412,7 +399,7 @@ const Sidebar = ({
           <div className={styles.sectionDivider} />
 
           <div className={styles.navScrollSection}>
-            {isOpen && <div className={styles.sectionLabel}>群聊</div>}
+            {isOpen && <div className={styles.sectionLabel}>{t('sidebar:section.groups')}</div>}
 
             {filteredGroups.map(({ group, originalIndex }) => {
             const Icon = getGroupIcon(group);
@@ -421,12 +408,12 @@ const Sidebar = ({
             const menuItems: MenuProps['items'] = [
               {
                 key: 'edit',
-                label: '编辑群聊',
+                label: t('sidebar:actions.editGroup'),
                 onClick: () => onEditGroup?.(originalIndex),
               },
               {
                 key: 'delete',
-                label: '删除群聊',
+                label: t('sidebar:actions.deleteGroup'),
                 danger: true,
                 onClick: () => onDeleteGroup?.(group, originalIndex),
               },
@@ -467,14 +454,19 @@ const Sidebar = ({
                       <span className={styles.navItemLabel}>{group.name}</span>
                     )}
                   </div>
-                  {isOpen && renderGroupTag(group.type || 'ai', styles, cx)}
+                  {isOpen && renderGroupTag(
+                    group.type || 'ai',
+                    styles,
+                    cx,
+                    getTranslatedGroupTypeShortLabel(t, group.type || 'ai'),
+                  )}
                 </a>
                 {isOpen && canManage && (onEditGroup || onDeleteGroup) && (
                   <Dropdown menu={{ items: menuItems }} trigger={['click']} placement="bottomRight">
                     <button
                       type="button"
                       className={cx(styles.navMenuBtn, 'nav-menu-btn')}
-                      aria-label="群聊操作"
+                      aria-label={t('sidebar:actions.groupMenu')}
                       onClick={(e) => e.stopPropagation()}
                     >
                       <MoreHorizontal size={16} />
@@ -526,14 +518,14 @@ const Sidebar = ({
                     style={{ color: '#f59e0b', flexShrink: 0 }}
                   />
                   {isOpen && (
-                    <span className={styles.navItemLabel}>创建新群聊</span>
+                    <span className={styles.navItemLabel}>{t('sidebar:nav.createGroup')}</span>
                   )}
                 </div>
               </a>
             );
             return !isOpen ? (
               <Tooltip
-                title="创建新群聊"
+                title={t('sidebar:nav.createGroup')}
                 placement="right"
                 mouseEnterDelay={0.15}
               >
@@ -548,7 +540,7 @@ const Sidebar = ({
           <div className={styles.sectionDivider} />
 
           <div className={styles.navSection}>
-            {isOpen && <div className={styles.sectionLabel}>资源</div>}
+            {isOpen && <div className={styles.sectionLabel}>{t('sidebar:section.resources')}</div>}
             {(() => {
               const libraryBtn = (
                 <a
@@ -577,14 +569,14 @@ const Sidebar = ({
                       style={{ color: '#ff6600', flexShrink: 0 }}
                     />
                     {isOpen && (
-                      <span className={styles.navItemLabel}>资源库</span>
+                      <span className={styles.navItemLabel}>{t('sidebar:nav.library')}</span>
                     )}
                   </div>
                 </a>
               );
               return !isOpen ? (
                 <Tooltip
-                  title="资源库"
+                  title={t('sidebar:nav.library')}
                   placement="right"
                   mouseEnterDelay={0.15}
                 >
@@ -599,47 +591,7 @@ const Sidebar = ({
 
         <UserSection isOpen={isOpen} />
 
-        <div
-          className={cx(
-            styles.themeBar,
-            !isOpen && styles.themeBarCollapsed,
-          )}
-        >
-          {isOpen ? (
-            <Segmented
-              className="theme-switcher-segmented"
-              value={theme}
-              onChange={(v) => setTheme(v as 'system' | 'light' | 'dark')}
-              options={[
-                { value: 'system', icon: <Monitor size={14} /> },
-                { value: 'light', icon: <Sun size={14} /> },
-                { value: 'dark', icon: <Moon size={14} /> },
-              ]}
-              size="small"
-              shape="round"
-              block
-            />
-          ) : (
-            <>
-              {(
-                [
-                  ['system', Monitor],
-                  ['light', Sun],
-                  ['dark', Moon],
-                ] as const
-              ).map(([key, IconCmp]) => (
-                <ActionIcon
-                  key={key}
-                  icon={IconCmp}
-                  size="small"
-                  onClick={() => setTheme(key)}
-                  active={theme === key}
-                  title=""
-                />
-              ))}
-            </>
-          )}
-        </div>
+        <SidebarPreferences isOpen={isOpen} />
 
         <div className={styles.starWrapper}>
           <a href="/" className={styles.brandRow}>

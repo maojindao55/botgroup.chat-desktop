@@ -1,0 +1,48 @@
+{
+  "roles": {
+    "coordinator": "协调者",
+    "judge": "裁判",
+    "reducer": "汇总者",
+    "supervisorSuffix": "监督者"
+  },
+  "errors": {
+    "cliRequestFailed": "CLI 请求失败: {{status}}",
+    "streamUnavailable": "无法获取响应流",
+    "cliExecutionError": "CLI 执行出错",
+    "cliNonZeroExit": "CLI 非 0 退出: {{code}}",
+    "cliExecutionFailed": "CLI 执行失败",
+    "unknownError": "未知错误",
+    "cliAgentExecutionError": "[CLI Agent 执行出错: {{message}}]",
+    "agentLlmRequestFailed": "Agent LLM 请求失败: {{status}}",
+    "agentExecutionError": "[Agent 执行出错: {{message}}]",
+    "judgeExecutionError": "[裁判出错: {{message}}]",
+    "reducerExecutionError": "[汇总出错: {{message}}]",
+    "raceNeedsWorkspace": "竞争模式需要先设置 workspacePath。",
+    "worktreePrepareFailed": "worktree 准备失败",
+    "raceWorktreeFailed": "无法为竞争模式创建 worktree: {{message}}",
+    "agentWorktreeFailed": "Agent {{name}} 的 worktree 创建失败，请重试。",
+    "discussionNeedsWorkspace": "讨论模式需要先设置 workspacePath。",
+    "readonlyCopyFailed": "临时只读目录创建失败",
+    "agentReadonlyFailed": "Agent {{name}} 的只读环境创建失败，请重试。",
+    "discussionReadonlyFailed": "无法为讨论模式创建只读环境: {{message}}"
+  },
+  "cliStageLabels": {
+    "规划": "规划",
+    "实现": "实现",
+    "评审": "评审",
+    "实现+自检": "实现+自检",
+    "规划实现自评": "规划实现自评",
+    "生成代码": "生成代码",
+    "审查/修改": "审查/修改",
+    "测试": "测试",
+    "优化": "优化",
+    "验证": "验证",
+    "继续": "继续",
+    "reviewRound": "复审 #{{round}}",
+    "fixRound": "修正 #{{round}}",
+    "selfReviewStage": "自评阶段 {{index}}",
+    "selfCheckStage": "自检阶段 {{index}}",
+    "reviewStage": "评审阶段 {{index}}",
+    "genericStage": "阶段 {{index}}"
+  }
+}

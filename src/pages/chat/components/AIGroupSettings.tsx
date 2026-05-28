@@ -2,6 +2,7 @@
  * 角色群设置面板 - 管理群友和发言方式
  */
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Drawer, Button, Tooltip, Input } from 'antd';
 import { Avatar as LobeAvatar, ActionIcon } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
@@ -186,6 +187,7 @@ export const AIGroupSettings = ({
   onRemoveMember,
   inline,
 }: AIGroupSettingsProps) => {
+  const { t } = useTranslation(['settings', 'common', 'product']);
   const { styles, cx } = useStyles();
   const [showAddMember, setShowAddMember] = useState(false);
   const allMembers = useAIMemberStore((s) => s.members);
@@ -224,18 +226,18 @@ export const AIGroupSettings = ({
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {onUpdateGroup && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <label style={{ fontSize: 14, fontWeight: 500 }}>基础信息</label>
+          <label style={{ fontSize: 14, fontWeight: 500 }}>{t('settings:aiGroup.basicInfo')}</label>
           <Input
             value={group.name}
             onChange={(e) => onUpdateGroup({ name: e.target.value })}
-            placeholder="群名称"
+            placeholder={t('settings:aiGroup.groupNamePlaceholder')}
             maxLength={30}
             showCount
           />
           <Input.TextArea
             value={group.description || ''}
             onChange={(e) => onUpdateGroup({ description: e.target.value })}
-            placeholder="群描述（可选）"
+            placeholder={t('settings:aiGroup.groupDescriptionPlaceholder')}
             maxLength={100}
             showCount
             autoSize={{ minRows: 2, maxRows: 4 }}
@@ -244,7 +246,7 @@ export const AIGroupSettings = ({
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <label style={{ fontSize: 14, fontWeight: 500 }}>发言方式</label>
+        <label style={{ fontSize: 14, fontWeight: 500 }}>{t('settings:aiGroup.speechMode')}</label>
         {aiSpeechModes.map((item) => (
           <button
             key={item.value}
@@ -261,8 +263,12 @@ export const AIGroupSettings = ({
             )}
           >
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 12, fontWeight: 500 }}>{item.label}</div>
-              <div style={{ fontSize: 10, opacity: 0.6 }}>{item.description}</div>
+              <div style={{ fontSize: 12, fontWeight: 500 }}>
+                {t(`product:aiSpeechModes.${item.value}.label`, { defaultValue: item.label })}
+              </div>
+              <div style={{ fontSize: 10, opacity: 0.6 }}>
+                {t(`product:aiSpeechModes.${item.value}.description`, { defaultValue: item.description })}
+              </div>
             </div>
             {speechMode === item.value && (
               <Check size={14} style={{ color: '#ff6600' }} />
@@ -275,12 +281,12 @@ export const AIGroupSettings = ({
       <div>
         {onMembersChange && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-            <span style={{ fontSize: 14, fontWeight: 500 }}>选择角色</span>
+            <span style={{ fontSize: 14, fontWeight: 500 }}>{t('settings:aiGroup.pickCharacters')}</span>
             <MemberPicker
               kind="llm"
               value={currentMemberIds}
               onChange={(newIds) => onMembersChange(newIds)}
-              placeholder="选择角色加入群聊..."
+              placeholder={t('settings:aiGroup.pickCharactersPlaceholder')}
             />
           </div>
         )}
@@ -293,14 +299,14 @@ export const AIGroupSettings = ({
             marginBottom: 12,
           }}
         >
-          <span style={{ fontSize: 14, fontWeight: 500 }}>群友（{users.length}）</span>
+          <span style={{ fontSize: 14, fontWeight: 500 }}>{t('settings:aiGroup.members', { count: users.length })}</span>
           {availableToAdd.length > 0 && (
             <Button
               size="small"
               icon={<UserPlus size={14} />}
               onClick={() => setShowAddMember(!showAddMember)}
             >
-              快速添加
+              {t('common:actions.quickAdd')}
             </Button>
           )}
         </div>
@@ -308,7 +314,7 @@ export const AIGroupSettings = ({
         {/* 快速添加面板 */}
         {showAddMember && availableToAdd.length > 0 && (
           <div className={styles.addMemberBox}>
-            <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 8 }}>点击添加到群聊</div>
+            <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 8 }}>{t('settings:aiGroup.quickAddHint')}</div>
             <div className={styles.addScrollList}>
               {availableToAdd.map((char) => {
                 const a = getAvatarData(char.name);
@@ -353,13 +359,13 @@ export const AIGroupSettings = ({
                   <div style={{ display: 'flex', flexDirection: 'column' }}>
                     <span style={{ fontSize: 14 }}>{user.name}</span>
                     {muted && (
-                      <span style={{ fontSize: 10, color: '#ef4444', marginTop: 4 }}>已禁言</span>
+                      <span style={{ fontSize: 10, color: '#ef4444', marginTop: 4 }}>{t('settings:aiGroup.muted')}</span>
                     )}
                   </div>
                 </div>
                 {user.name !== '我' && (
                   <div style={{ display: 'flex', gap: 4 }}>
-                    <Tooltip title={muted ? '取消禁言' : '禁言'}>
+                    <Tooltip title={muted ? t('settings:aiGroup.unmute') : t('settings:aiGroup.mute')}>
                       <ActionIcon
                         icon={muted ? MicOff : Mic}
                         size="small"
@@ -369,7 +375,7 @@ export const AIGroupSettings = ({
                       />
                     </Tooltip>
                     {isAI && (
-                      <Tooltip title="移除成员">
+                      <Tooltip title={t('settings:aiGroup.removeMember')}>
                         <ActionIcon
                           icon={X}
                           size="small"
@@ -394,12 +400,12 @@ export const AIGroupSettings = ({
           flexDirection: 'column',
           gap: 8,
         }}>
-          <div style={{ fontSize: 14, fontWeight: 500, color: '#ff4d4f' }}>删除群聊</div>
+          <div style={{ fontSize: 14, fontWeight: 500, color: '#ff4d4f' }}>{t('common:deleteGroup.title')}</div>
           <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>
-            删除后无法恢复，当前会话消息也会清空。
+            {t('common:deleteGroup.warning')}
           </div>
           <Button danger onClick={onDeleteGroup} style={{ alignSelf: 'flex-start' }}>
-            删除此群聊
+            {t('common:deleteGroup.button')}
           </Button>
         </div>
       )}
@@ -411,7 +417,7 @@ export const AIGroupSettings = ({
     return (
       <div className={styles.inlinePanel}>
         <div className={styles.inlineHeader}>
-          <span className={styles.inlineTitle}>AI 群聊配置</span>
+          <span className={styles.inlineTitle}>{t('settings:aiGroup.title')}</span>
           <button className={styles.inlineCloseBtn} onClick={() => onOpenChange(false)}>
             <X size={16} />
           </button>
@@ -425,7 +431,7 @@ export const AIGroupSettings = ({
 
   return (
     <Drawer
-      title="AI 群聊配置"
+      title={t('settings:aiGroup.title')}
       placement="right"
       open={open}
       onClose={() => onOpenChange(false)}

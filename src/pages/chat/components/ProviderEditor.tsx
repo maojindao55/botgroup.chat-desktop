@@ -11,6 +11,7 @@ import {
   Tag,
   message,
 } from 'antd';
+import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { useProviderStore, type ProviderTestResult } from '@/store/providerStore';
 import { readLegacyApiKey, type Provider } from '@/config/providers';
@@ -40,6 +41,7 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
   onSave,
   onCloneEdit,
 }) => {
+  const { t } = useTranslation(['editor', 'common']);
   const [form] = Form.useForm();
   const { get, upsert, hasSecret, ensureSecret, testConnection, clone } = useProviderStore();
   const [secretConfigured, setSecretConfigured] = useState<boolean | null>(null);
@@ -109,25 +111,24 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
     try {
       const id = providerId || `user-${Date.now()}`;
       if (readOnly) {
-        // Builtin provider: only api key can be configured
         const apiKey = (values.apiKey as string)?.trim();
         if (apiKey) {
           await ensureSecret(id, apiKey);
           setSecretConfigured(true);
-          message.success('API 密钥保存成功');
+          message.success(t('provider.secretSaved'));
         } else {
-          message.info('未输入新密钥');
+          message.info(t('provider.secretEmpty'));
         }
         onClose();
         onSave?.();
       } else {
         await persistProvider(values, id);
-        message.success('保存成功');
+        message.success(t('provider.saveSuccess'));
         onClose();
         onSave?.();
       }
     } catch {
-      message.error('保存失败，请重试');
+      message.error(t('provider.saveFailed'));
     } finally {
       setSaving(false);
     }
@@ -144,11 +145,11 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
       const name = (formValues.name as string)?.trim() || provider?.name;
 
       if (!baseURL) {
-        message.warning('请填写 API 地址 (Base URL)');
+        message.warning(t('provider.validation.baseUrlRequired'));
         return;
       }
       if (!models.length) {
-        message.warning('请至少添加一个可用模型（如 qwen-plus）');
+        message.warning(t('provider.validation.modelsRequired'));
         return;
       }
 
@@ -162,17 +163,21 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
       if (!apiKey) {
         const configured = await hasSecret(id);
         if (!configured) {
-          message.warning('未配置 API 密钥：请在下方输入 API Key');
+          message.warning(t('provider.validation.secretRequired'));
           return;
         }
-        // Key in vault only — use provider_test path (reads vault server-side)
         const result = await invoke<ProviderTestResult>('provider_test', {
           providerId: id,
         });
         if (result.ok) {
-          message.success(`连接成功 (${result.latencyMs}ms${result.modelEcho ? ` · ${result.modelEcho}` : ''})`);
+          message.success(
+            t('editor:provider.testSuccess', {
+              latency: result.latencyMs,
+              model: result.modelEcho ? ` · ${result.modelEcho}` : '',
+            }),
+          );
         } else {
-          message.error(result.message || `连接失败 (${result.errorClass || 'unknown'})`);
+          message.error(result.message || t('provider.testFailedDetail', { errorClass: result.errorClass || 'unknown' }));
         }
         return;
       }
@@ -185,17 +190,21 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
       });
 
       if (result.ok) {
-        // Persist key to vault after successful ping
         await ensureSecret(id, apiKey);
         setSecretConfigured(true);
-        message.success(`连接成功 (${result.latencyMs}ms${result.modelEcho ? ` · ${result.modelEcho}` : ''})`);
+        message.success(
+          t('editor:provider.testSuccess', {
+            latency: result.latencyMs,
+            model: result.modelEcho ? ` · ${result.modelEcho}` : '',
+          }),
+        );
       } else {
-        message.error(result.message || `连接失败 (${result.errorClass || 'unknown'})`);
+        message.error(result.message || t('provider.testFailedDetail', { errorClass: result.errorClass || 'unknown' }));
       }
     } catch (e) {
       if (e && typeof e === 'object' && 'errorFields' in e) return;
       console.error('[ProviderEditor] test connection failed:', e);
-      message.error(formatInvokeError(e) || '测试连接失败，请检查配置');
+      message.error(formatInvokeError(e) || t('provider.testFailed'));
     } finally {
       setTesting(false);
     }
@@ -207,11 +216,11 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
     setCloning(true);
     try {
       const copied = await clone(providerId);
-      message.success('已创建副本，可继续编辑');
+      message.success(t('provider.cloneSuccess'));
       onCloneEdit?.(copied.id);
       onSave?.();
     } catch (e) {
-      message.error(formatInvokeError(e) || '复制失败，请重试');
+      message.error(formatInvokeError(e) || t('provider.cloneFailed'));
     } finally {
       setCloning(false);
     }
@@ -219,7 +228,7 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
 
   return (
     <Drawer
-      title={providerId ? '编辑模型服务' : '新建模型服务'}
+      title={providerId ? t('provider.titleEdit') : t('provider.titleCreate')}
       width={460}
       open={open}
       onClose={onClose}
@@ -228,62 +237,62 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
         <Space>
           {isBuiltin && (
             <Button icon={<Copy size={14} />} loading={cloning} onClick={handleClone}>
-              复制并编辑
+              {t('provider.cloneEdit')}
             </Button>
           )}
-          <Button onClick={onClose}>取消</Button>
+          <Button onClick={onClose}>{t('common:actions.cancel')}</Button>
           <Button type="primary" loading={saving} onClick={() => form.submit()}>
-            保存
+            {t('common:actions.save')}
           </Button>
         </Space>
       }
     >
       <Form form={form} layout="vertical" onFinish={handleFinish}>
         <Form.Item
-          label="服务名称"
+          label={t('provider.fields.name')}
           name="name"
-          rules={[{ required: true, message: '请输入服务名称' }]}
+          rules={[{ required: true, message: t('provider.fields.nameRequired') }]}
         >
-          <Input placeholder="例如：DeepSeek" disabled={readOnly} />
+          <Input placeholder={t('provider.fields.namePlaceholder')} disabled={readOnly} />
         </Form.Item>
 
         <Form.Item
-          label="API 地址 (Base URL)"
+          label={t('provider.fields.baseUrl')}
           name="baseURL"
-          rules={[{ required: true, message: '请输入 API 地址' }]}
+          rules={[{ required: true, message: t('provider.fields.baseUrlRequired') }]}
         >
-          <Input placeholder="例如：https://api.deepseek.com/v1" disabled={readOnly} />
+          <Input placeholder={t('provider.fields.baseUrlPlaceholder')} disabled={readOnly} />
         </Form.Item>
 
-        <Form.Item label="可用模型" name="models">
+        <Form.Item label={t('provider.fields.models')} name="models">
           <Select
             mode="tags"
-            placeholder="输入模型 ID，回车添加"
+            placeholder={t('provider.fields.modelsPlaceholder')}
             tokenSeparators={[',', ' ']}
             disabled={readOnly}
           />
         </Form.Item>
 
-        <Form.Item label="描述" name="description">
+        <Form.Item label={t('provider.fields.description')} name="description">
           <Input.TextArea
             autoSize={{ minRows: 2 }}
-            placeholder="可选，描述该模型服务的用途"
+            placeholder={t('provider.fields.descriptionPlaceholder')}
             disabled={readOnly}
           />
         </Form.Item>
 
-        <Form.Item label="启用" name="enabled" valuePropName="checked">
-          <Switch checkedChildren="启用" unCheckedChildren="禁用" disabled={readOnly} />
+        <Form.Item label={t('provider.fields.enabled')} name="enabled" valuePropName="checked">
+          <Switch checkedChildren={t('provider.fields.enabledOn')} unCheckedChildren={t('provider.fields.enabledOff')} disabled={readOnly} />
         </Form.Item>
 
         <Divider orientation={'left' as 'left'} style={{ fontSize: 13, margin: '12px 0' }}>
-          API 密钥
+          {t('provider.fields.secretSection')}
           {secretConfigured !== null && (
             <Tag
               color={secretConfigured ? 'success' : 'warning'}
               style={{ marginLeft: 8, fontWeight: 400 }}
             >
-              {secretConfigured ? '已配置' : '未配置'}
+              {secretConfigured ? t('provider.fields.secretConfigured') : t('provider.fields.secretMissing')}
             </Tag>
           )}
         </Divider>
@@ -291,10 +300,10 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
         <Form.Item
           label="API Key"
           name="apiKey"
-          extra={readOnly ? '系统预设服务的密钥可在此单独配置（不会修改预设的地址和模型列表）' : undefined}
+          extra={readOnly ? t('provider.fields.secretBuiltinHint') : undefined}
         >
           <Input.Password
-            placeholder={secretConfigured ? '留空则保留现有密钥' : '输入 API Key'}
+            placeholder={secretConfigured ? t('provider.fields.secretPlaceholderConfigured') : t('provider.fields.secretPlaceholderEmpty')}
           />
         </Form.Item>
 
@@ -305,7 +314,7 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
             onClick={handleTest}
             disabled={readOnly && !providerId}
           >
-            测试连接
+            {t('provider.fields.testConnection')}
           </Button>
         </Space>
       </Form>

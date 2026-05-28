@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Popover } from 'antd';
+import { useTranslation } from 'react-i18next';
 
 interface AdSectionProps {
   isOpen: boolean;
@@ -12,17 +13,37 @@ interface AdBannerProps {
   closeAd: () => void;
 }
 
-const wechatQrCode = (
-  <div className="flex flex-col items-center">
-    <img
-      src="https://assets.monica.cn/home-web/_next/static/media/wechatQrcode.29848e06.png"
-      alt="公众号二维码"
-      className="w-40 h-40"
-    />
-  </div>
-);
+function WechatQrCode() {
+  const { t } = useTranslation('ad');
+  return (
+    <div className="flex flex-col items-center">
+      <img
+        src="https://assets.monica.cn/home-web/_next/static/media/wechatQrcode.29848e06.png"
+        alt={t('wechatQrAlt')}
+        className="w-40 h-40"
+      />
+    </div>
+  );
+}
+
+function AdBadge({ compact = false }: { compact?: boolean }) {
+  const { t } = useTranslation('ad');
+  if (compact) {
+    return (
+      <div className="absolute top-0 left-0 bg-gray-300/40 text-gray-400 text-[8px] px-1 py-1.5 rounded">
+        {t('badgeShort')}
+      </div>
+    );
+  }
+  return (
+    <div className="absolute top-0 left-0 bg-gray-300/40 text-gray-400 text-[10px] px-1.5 py-0.5 rounded">
+      {t('badge')}
+    </div>
+  );
+}
 
 const AdSection: React.FC<AdSectionProps> = ({ isOpen }) => {
+  const { t } = useTranslation('ad');
   const [isMobile, setIsMobile] = useState(false);
 
   React.useEffect(() => {
@@ -46,17 +67,17 @@ const AdSection: React.FC<AdSectionProps> = ({ isOpen }) => {
           backgroundImage: "url('https://files.monica.cn/assets/botgroup/background.png')",
         }}
       >
-        <div className="absolute top-0 left-0 bg-gray-300/40 text-gray-400 text-[10px] px-1.5 py-0.5 rounded">
-          广告
-        </div>
+        <AdBadge />
         <div className="relative z-10">
           <div className="flex flex-col items-center gap-2">
             <div className="flex items-center justify-center px-6">
-              <img src="https://files.monica.cn/assets/botgroup/monica.png" />
+              <img src="https://files.monica.cn/assets/botgroup/monica.png" alt="" />
             </div>
-            <div className="text-sm font-medium text-center text-gray-400">万能的助手, 懂你的伙伴</div>
+            <div className="text-sm font-medium text-center text-gray-400">{t('tagline')}</div>
             <div className="text-[10px] font-medium text-center text-gray-400 flex items-center justify-center gap-1">
-              由 <img src="https://files.monica.cn/assets/botgroup/deepseek.png" className="inline-block w-16" /> 驱动
+              {t('poweredByPrefix')}
+              <img src="https://files.monica.cn/assets/botgroup/deepseek.png" className="inline-block w-16" alt="DeepSeek" />
+              {t('poweredBySuffix')}
             </div>
             <div className="flex flex-col items-center justify-center gap-2 mt-3">
               {isMobile ? (
@@ -67,15 +88,15 @@ const AdSection: React.FC<AdSectionProps> = ({ isOpen }) => {
                   className="p-1 bg-white rounded-full text-xs font-medium text-blue-500 font-bold hover:bg-gray-50 transition-colors shadow-sm flex items-center gap-1 group"
                 >
                   <img src="https://files.monica.cn/assets/botgroup/wechat.png" className="w-4 h-4" alt="WeChat" />
-                  在微信中使用
-                  <img src="https://files.monica.cn/assets/botgroup/arrow-up.png" className="w-4 h-4" alt="WeChat" />
+                  {t('useInWechat')}
+                  <img src="https://files.monica.cn/assets/botgroup/arrow-up.png" className="w-4 h-4" alt="" />
                 </button>
               ) : (
-                <Popover trigger="click" placement="top" content={wechatQrCode}>
+                <Popover trigger="click" placement="top" content={<WechatQrCode />}>
                   <button className="p-2 bg-white rounded-full text-xs font-medium text-blue-500 font-bold hover:bg-gray-50 transition-colors shadow-sm flex items-center gap-1 group">
                     <img src="https://files.monica.cn/assets/botgroup/wechat.png" className="w-4 h-4" alt="WeChat" />
-                    在微信中使用
-                    <img src="https://files.monica.cn/assets/botgroup/arrow-up.png" className="w-4 h-4" alt="WeChat" />
+                    {t('useInWechat')}
+                    <img src="https://files.monica.cn/assets/botgroup/arrow-up.png" className="w-4 h-4" alt="" />
                   </button>
                 </Popover>
               )}
@@ -91,8 +112,8 @@ const AdSection: React.FC<AdSectionProps> = ({ isOpen }) => {
                   className="p-2 bg-white rounded-full text-xs font-medium text-blue-500 font-bold hover:bg-gray-50 transition-colors shadow-sm flex items-center gap-1"
                 >
                   <img src="https://files.monica.cn/assets/botgroup/mobile-banner-mobile.png" className="w-4 h-4" alt="Mobile" />
-                  下载APP
-                  <img src="https://files.monica.cn/assets/botgroup/arrow-up.png" className="w-4 h-4" alt="Arrow" />
+                  {t('downloadApp')}
+                  <img src="https://files.monica.cn/assets/botgroup/arrow-up.png" className="w-4 h-4" alt="" />
                 </button>
               ) : (
                 <button
@@ -102,8 +123,8 @@ const AdSection: React.FC<AdSectionProps> = ({ isOpen }) => {
                   className="p-2 bg-white rounded-full text-xs font-medium text-blue-500 font-bold hover:bg-gray-50 transition-colors shadow-sm flex items-center gap-1"
                 >
                   <img src="https://files.monica.cn/assets/botgroup/computer.png" className="w-4 h-4" alt="Computer" />
-                  在网页中对话
-                  <img src="https://files.monica.cn/assets/botgroup/arrow-up.png" className="w-4 h-4" alt="Arrow" />
+                  {t('chatOnWeb')}
+                  <img src="https://files.monica.cn/assets/botgroup/arrow-up.png" className="w-4 h-4" alt="" />
                 </button>
               )}
             </div>
@@ -115,27 +136,26 @@ const AdSection: React.FC<AdSectionProps> = ({ isOpen }) => {
 };
 
 const AdBanner: React.FC<AdBannerProps> = ({ show, closeAd }) => {
+  const { t } = useTranslation('ad');
   if (!show) return null;
   return (
     <div
       className="rounded-lg text-center relative overflow-hidden py-2 pl-1 h-8 mr-2 flex flex-col justify-center transition-all duration-200 bg-cover bg-center bg-no-repeat"
       style={{ backgroundImage: "url('https://files.monica.cn/assets/botgroup/banner-background.png')" }}
     >
-      <div className="absolute top-0 left-0 bg-gray-300/40 text-gray-400 text-[8px] px-1 py-1.5 rounded">
-        广<br />告
-      </div>
+      <AdBadge compact />
       <div className="relative z-10">
         <div className="flex items-center gap-0 justify-center">
           <div className="flex items-center justify-center w-20 pl-2">
-            <img src="https://files.monica.cn/assets/botgroup/monica.png" />
+            <img src="https://files.monica.cn/assets/botgroup/monica.png" alt="" />
           </div>
           <div className="flex items-center justify-between gap-3 px-2 flex-1">
             <div className="flex items-center gap-3">
-              <Popover trigger="click" placement="top" content={wechatQrCode}>
+              <Popover trigger="click" placement="top" content={<WechatQrCode />}>
                 <button className="p-1 bg-white rounded-full text-xs font-medium text-blue-500 font-bold hover:bg-gray-50 transition-colors shadow-sm flex items-center gap-1 group">
                   <img src="https://files.monica.cn/assets/botgroup/wechat.png" className="w-4 h-4" alt="WeChat" />
-                  在微信中使用
-                  <img src="https://files.monica.cn/assets/botgroup/arrow-up.png" className="w-4 h-4" alt="WeChat" />
+                  {t('useInWechat')}
+                  <img src="https://files.monica.cn/assets/botgroup/arrow-up.png" className="w-4 h-4" alt="" />
                 </button>
               </Popover>
               <button
@@ -145,8 +165,8 @@ const AdBanner: React.FC<AdBannerProps> = ({ show, closeAd }) => {
                 className="p-1 bg-white rounded-full text-xs font-medium text-blue-500 font-bold hover:bg-gray-50 transition-colors shadow-sm flex items-center gap-1"
               >
                 <img src="https://files.monica.cn/assets/botgroup/computer.png" className="w-4 h-4" alt="Computer" />
-                在网页中对话
-                <img src="https://files.monica.cn/assets/botgroup/arrow-up.png" className="w-4 h-4" alt="Arrow" />
+                {t('chatOnWeb')}
+                <img src="https://files.monica.cn/assets/botgroup/arrow-up.png" className="w-4 h-4" alt="" />
               </button>
             </div>
             <button onClick={closeAd} className="flex items-center">
@@ -160,19 +180,18 @@ const AdBanner: React.FC<AdBannerProps> = ({ show, closeAd }) => {
 };
 
 const AdBannerMobile: React.FC<AdBannerProps> = ({ show, closeAd }) => {
+  const { t } = useTranslation('ad');
   if (!show) return null;
   return (
     <div
       className="w-full relative overflow-hidden py-2 pl-2 h-8 flex flex-col justify-center transition-all duration-200 bg-cover bg-center bg-no-repeat"
       style={{ backgroundImage: "url('https://files.monica.cn/assets/botgroup/mobile-banner-background.png')" }}
     >
-      <div className="absolute top-0 left-0 bg-gray-300/40 text-gray-400 text-[8px] px-1 py-1.5">
-        广<br />告
-      </div>
+      <AdBadge compact />
       <div className="relative z-10">
         <div className="flex items-center gap-1 justify-center">
           <div className="flex items-center justify-center w-20 pl-2">
-            <img src="https://files.monica.cn/assets/botgroup/monica.png" />
+            <img src="https://files.monica.cn/assets/botgroup/monica.png" alt="" />
           </div>
           <div className="flex items-center justify-between gap-3 px-2 flex-1">
             <div className="flex items-center gap-3">
@@ -183,8 +202,8 @@ const AdBannerMobile: React.FC<AdBannerProps> = ({ show, closeAd }) => {
                 className="p-1 bg-white rounded-full text-xs font-medium text-blue-500 font-bold hover:bg-gray-50 transition-colors shadow-sm flex items-center gap-1 group"
               >
                 <img src="https://files.monica.cn/assets/botgroup/wechat.png" className="w-4 h-4" alt="WeChat" />
-                在微信中使用
-                <img src="https://files.monica.cn/assets/botgroup/arrow-up.png" className="w-4 h-4" alt="WeChat" />
+                {t('useInWechat')}
+                <img src="https://files.monica.cn/assets/botgroup/arrow-up.png" className="w-4 h-4" alt="" />
               </button>
               <button
                 onClick={() => {
@@ -196,8 +215,8 @@ const AdBannerMobile: React.FC<AdBannerProps> = ({ show, closeAd }) => {
                 className="p-1 bg-white rounded-full text-xs font-medium text-blue-500 font-bold hover:bg-gray-50 transition-colors shadow-sm flex items-center gap-1"
               >
                 <img src="https://files.monica.cn/assets/botgroup/mobile-banner-mobile.png" className="w-4 h-4" alt="Mobile" />
-                下载APP
-                <img src="https://files.monica.cn/assets/botgroup/arrow-up.png" className="w-4 h-4" alt="Arrow" />
+                {t('downloadApp')}
+                <img src="https://files.monica.cn/assets/botgroup/arrow-up.png" className="w-4 h-4" alt="" />
               </button>
             </div>
             <button onClick={closeAd} className="flex items-center">

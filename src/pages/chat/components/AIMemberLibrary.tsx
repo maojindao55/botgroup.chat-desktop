@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Drawer, Tabs, Button, Tag, Modal, Empty } from 'antd';
 import { Avatar as LobeAvatar } from '@lobehub/ui';
 import { useAIMemberStore } from '@/store/aiMemberStore';
@@ -219,6 +220,7 @@ interface AIMemberLibraryProps {
 }
 
 export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose, groups, inline }) => {
+  const { t } = useTranslation(['library', 'common', 'product']);
   const { styles } = useStyles();
   const members = useAIMemberStore((state) => state.members);
   const { load, remove, ensurePersonalCopy, findReferencingGroups } = useAIMemberStore();
@@ -260,7 +262,7 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
       setEditorKind(target.kind);
       setEditorOpen(true);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : '无法打开编辑');
+      toast.error(e instanceof Error ? e.message : t('library:toast.editOpenFailed'));
     }
   };
 
@@ -278,33 +280,33 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
     const referencing = findReferencingGroups(member.id, groups);
     if (referencing.length > 0) {
       Modal.confirm({
-        title: '无法直接删除',
+        title: t('library:deleteMember.blockedTitle'),
         icon: <ShieldAlert style={{ color: '#ff4d4f' }} />,
         content: (
           <div>
-            <p>资源 <strong>{member.name}</strong> 正在被以下群聊使用：</p>
+            <p>{t('library:deleteMember.inUseIntro', { name: member.name })}</p>
             <ul>
               {referencing.map(g => (
                 <li key={g.id}>{g.name}</li>
               ))}
             </ul>
-            <p>请先在上述群设置中移除该资源后再进行删除。</p>
+            <p>{t('library:deleteMember.inUseHint')}</p>
           </div>
         ),
-        okText: '知道了',
+        okText: t('common:actions.gotIt'),
         cancelButtonProps: { style: { display: 'none' } }
       });
       return;
     }
 
     Modal.confirm({
-      title: '确认删除资源？',
+      title: t('library:deleteMember.confirmTitle'),
       content: member.forkedFrom
-        ? `确定要删除「${member.name}」吗？删除后将恢复对应的官方默认配置。`
-        : `确定要删除资源「${member.name}」吗？此操作不可撤销。`,
-      okText: '确认删除',
+        ? t('library:deleteMember.confirmForked', { name: member.name })
+        : t('library:deleteMember.confirmDefault', { name: member.name }),
+      okText: t('common:actions.confirmDelete'),
       okType: 'danger',
-      cancelText: '取消',
+      cancelText: t('common:actions.cancel'),
       onOk: async () => {
         await remove(member.id);
       }
@@ -314,11 +316,11 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
   const getKindLabel = (kind: AIMemberKind) => {
     switch (kind) {
       case 'llm':
-        return { label: '角色', icon: Cpu, color: 'blue' };
+        return { label: t('product:memberKinds.character'), icon: Cpu, color: 'blue' };
       case 'agent':
-        return { label: '专家', icon: Sparkles, color: 'purple' };
+        return { label: t('product:memberKinds.expert'), icon: Sparkles, color: 'purple' };
       case 'cli':
-        return { label: '开发成员', icon: Terminal, color: 'green' };
+        return { label: t('product:memberKinds.cliMember'), icon: Terminal, color: 'green' };
     }
   };
 
@@ -333,10 +335,10 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
 
   const memberSourceTag = (member: AIMember) => {
     if (member.source === 'builtin') {
-      return <Tag className={styles.badgeBuiltin}>官方默认</Tag>;
+      return <Tag className={styles.badgeBuiltin}>{t('common:badges.builtin')}</Tag>;
     }
     if (!member.forkedFrom) {
-      return <Tag className={styles.badgeUser}>自建</Tag>;
+      return <Tag className={styles.badgeUser}>{t('common:badges.userCreated')}</Tag>;
     }
     return null;
   };
@@ -346,14 +348,14 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
       {member.kind === 'llm' && (
         <>
           <div className={styles.metaItem}>
-            <strong>模型:</strong> {member.model}
+            <strong>{t('library:meta.model')}</strong> {member.model}
             {member.providerId?.startsWith('unmapped-') && (
-              <span style={{ color: '#ef4444', marginLeft: 6 }}>⚠️ 未绑定 Provider</span>
+              <span style={{ color: '#ef4444', marginLeft: 6 }}>{t('library:meta.unboundProvider')}</span>
             )}
           </div>
           {member.schedulerTag && (
             <div className={styles.metaItem}>
-              <strong>调度标签:</strong> {member.schedulerTag}
+              <strong>{t('library:meta.schedulerTag')}</strong> {member.schedulerTag}
             </div>
           )}
         </>
@@ -361,31 +363,35 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
       {member.kind === 'agent' && (
         <>
           <div className={styles.metaItem}>
-            <strong>角色:</strong> {member.role || '无'}
+            <strong>{t('library:meta.role')}</strong> {member.role || t('common:status.none')}
           </div>
           <div className={styles.metaItem}>
-            <strong>模型:</strong> {member.model}
+            <strong>{t('library:meta.model')}</strong> {member.model}
             {member.providerId?.startsWith('unmapped-') && (
-              <span style={{ color: '#ef4444', marginLeft: 6 }}>⚠️ 未绑定 Provider</span>
+              <span style={{ color: '#ef4444', marginLeft: 6 }}>{t('library:meta.unboundProvider')}</span>
             )}
           </div>
           <div className={styles.metaItem}>
-            <strong>工具:</strong> {member.tools?.filter(t => t.enabled).length || 0} 个已启用
+            <strong>{t('library:meta.tools')}</strong>{' '}
+            {t('library:meta.toolsEnabled', { count: member.tools?.filter((tool) => tool.enabled).length || 0 })}
           </div>
         </>
       )}
       {member.kind === 'cli' && (
         <>
           <div className={styles.metaItem}>
-            <strong>执行适配器:</strong> {member.cli?.adapter}
+            <strong>{t('library:meta.adapter')}</strong> {member.cli?.adapter}
           </div>
           {member.cli?.binary && (
             <div className={styles.metaItem}>
-              <strong>二进制路径:</strong> {member.cli.binary}
+              <strong>{t('library:meta.binaryPath')}</strong> {member.cli.binary}
             </div>
           )}
           <div className={styles.metaItem}>
-            <strong>运行审批:</strong> {member.cli?.approvalMode === 'auto' ? '自动运行' : '人工审批'}
+            <strong>{t('library:meta.approvalMode')}</strong>{' '}
+            {member.cli?.approvalMode === 'auto'
+              ? t('library:meta.autoRun')
+              : t('library:meta.manualApproval')}
           </div>
         </>
       )}
@@ -419,17 +425,17 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
               {kindInfo.label}
             </Tag>
             {memberSourceTag(member)}
-            {!member.enabled && <Tag color="default">已禁用</Tag>}
+            {!member.enabled && <Tag color="default">{t('common:status.disabled')}</Tag>}
           </div>
 
           <div className={styles.description}>
-            {member.description || '暂无描述信息'}
+            {member.description || t('library:meta.noDescription')}
           </div>
 
           {member.tags && member.tags.length > 0 && (
             <div className={styles.tagContainer}>
-              {member.tags.map(t => (
-                <Tag key={t} style={{ borderRadius: 4 }}>{t}</Tag>
+              {member.tags.map((tag) => (
+                <Tag key={tag} style={{ borderRadius: 4 }}>{tag}</Tag>
               ))}
             </div>
           )}
@@ -446,7 +452,7 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
             onClick={() => handleEdit(member)}
             style={{ padding: '4px 8px', height: 'auto' }}
           >
-            {isBuiltin ? '复制' : '编辑'}
+            {isBuiltin ? t('common:actions.copy') : t('common:actions.edit')}
           </Button>
           {canDelete && (
             <Button
@@ -456,7 +462,7 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
               onClick={() => handleDelete(member)}
               style={{ padding: '4px 8px', height: 'auto' }}
             >
-              删除
+              {t('common:actions.delete')}
             </Button>
           )}
         </div>
@@ -467,11 +473,11 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
   const createLabelForKind = (kind: AIMemberKind) => {
     switch (kind) {
       case 'cli':
-        return '新增开发成员';
+        return t('library:create.cli');
       case 'llm':
-        return '新增角色';
+        return t('library:create.llm');
       case 'agent':
-        return '新增专家';
+        return t('library:create.agent');
     }
   };
 
@@ -487,7 +493,7 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
         </div>
         {list.length === 0 ? (
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '300px' }}>
-            <Empty description="暂无资源" />
+            <Empty description={t('library:empty.resources')} />
           </div>
         ) : (
           <div className={styles.listContainer}>
@@ -502,16 +508,16 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
     <div className={styles.drawerBody}>
       <div className={styles.tabContainer}>
         <Tabs activeKey={activeTab} onChange={setActiveTab}>
-          <Tabs.TabPane tab="开发成员" key="cli">
+          <Tabs.TabPane tab={t('library:tabs.cli')} key="cli">
             {renderTabContent('cli')}
           </Tabs.TabPane>
-          <Tabs.TabPane tab="模型服务" key="providers">
+          <Tabs.TabPane tab={t('library:tabs.providers')} key="providers">
             <ProviderLibrary onCreate={handleCreateProvider} onEdit={handleEditProvider} />
           </Tabs.TabPane>
-          <Tabs.TabPane tab="角色" key="llm">
+          <Tabs.TabPane tab={t('library:tabs.llm')} key="llm">
             {renderTabContent('llm')}
           </Tabs.TabPane>
-          <Tabs.TabPane tab="专家" key="agent">
+          <Tabs.TabPane tab={t('library:tabs.agent')} key="agent">
             {renderTabContent('agent')}
           </Tabs.TabPane>
         </Tabs>
@@ -554,9 +560,9 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
           <div className={styles.inlineHeader}>
             <span className={styles.inlineTitleWrap}>
               <Users size={18} style={{ color: '#ff6600' }} />
-              资源库
+              {t('library:title')}
             </span>
-            <button className={styles.inlineCloseBtn} onClick={onClose} aria-label="关闭资源库">
+            <button className={styles.inlineCloseBtn} onClick={onClose} aria-label={t('library:closeAria')}>
               <X size={16} />
             </button>
           </div>
@@ -574,7 +580,7 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
         title={
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Users size={20} style={{ color: '#ff6600' }} />
-            <span>资源库</span>
+            <span>{t('library:title')}</span>
           </div>
         }
         width={AI_MEMBER_LIBRARY_INLINE_WIDTH}

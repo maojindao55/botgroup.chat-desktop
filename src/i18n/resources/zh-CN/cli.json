@@ -1,0 +1,340 @@
+{
+  "status": {
+    "queued": "排队中",
+    "running": "运行中",
+    "completed": "已完成",
+    "failed": "失败",
+    "cancelled": "已取消",
+    "timeout": "超时",
+    "archived": "已归档"
+  },
+  "groupSettings": {
+    "title": "开发群配置",
+    "templateTitle": "团队模板设置",
+    "back": "返回",
+    "discardConfirm": "放弃未保存的模板修改？",
+    "tabs": {
+      "config": "基本设置",
+      "history": "任务历史",
+      "worktree": "Worktree"
+    },
+    "templateSnapshot": {
+      "title": "模板快照规则",
+      "desc": "修改后需点击保存才会生效；已有任务仍使用创建时保存的模板快照。",
+      "linkedTasks": "已有任务 {{count}}",
+      "members": "成员 {{count}}"
+    },
+    "basicInfo": {
+      "title": "基础信息",
+      "namePlaceholder": "团队模板名称",
+      "descriptionPlaceholder": "说明这个模板适合处理什么类型的开发任务"
+    },
+    "workspace": {
+      "title": "本地 Workspace",
+      "templateTitle": "默认 Workspace",
+      "desc": "开发成员将在此目录下读写代码，支持选择或输入绝对路径",
+      "templateDesc": "新任务将默认使用此目录；已有任务不受影响",
+      "placeholder": "/Users/you/projects/your-repo"
+    },
+    "approval": {
+      "title": "自动审批",
+      "desc": "开启后开发成员自动执行，无需确认"
+    },
+    "sessionPolicy": {
+      "title": "CLI 会话复用",
+      "desc": "决定开发成员 CLI tool session 的复用范围。",
+      "templateDesc": "新任务将按此策略决定 CLI tool session 是否跨任务共享；已有任务仍使用创建时的快照。",
+      "highReuse": "高复用"
+    },
+    "stderr": {
+      "title": "显示 stderr 输出",
+      "desc": "关闭后隐藏 CLI 诊断信息，仅保留标准输出和错误状态"
+    },
+    "timeout": {
+      "title": "执行超时",
+      "unit": "秒"
+    },
+    "collaboration": {
+      "title": "协作方式",
+      "raceWarning": "需要 git 仓库，且当前工作区不能有未提交改动；每位开发成员在独立 worktree 中执行。",
+      "pipelineHint": "默认失败继续（让后续开发成员诊断）；用户取消会停止后续阶段。",
+      "reviewLoopHint": "规划实现复审会先规划、再实现；评审不通过时，按反馈修正并再次复审。",
+      "reviewLoopMemberWarning": "建议至少选择 2 个开发成员，并分别指定规划/评审者与实现者。"
+    },
+    "strategies": {
+      "router": "自动选择最合适的开发成员处理当前任务，适合大多数一次性请求。",
+      "sequential": "多个开发成员独立处理同一任务，结果并列展示，适合比较不同方案。",
+      "pipeline": "按成员顺序接力开发，后续开发成员会看到上一阶段输出。",
+      "race": "为每位开发成员创建独立 worktree 并行完成同一任务，适合隔离对比代码结果。",
+      "review": "实现、审核、修正形成闭环，适合 Codex 写代码、Claude Code 审核这类开发协作。",
+      "discussion": "多位开发成员分轮讨论方案和风险，在临时只读副本中执行。",
+      "debate": "多位开发成员独立提案、互评，再形成最终建议。",
+      "mapreduce": "并行执行同一任务，汇总所有结果对比查看"
+    },
+    "roles": {
+      "title": "角色分工",
+      "desc": "指定谁负责规划、谁按方案写代码、谁做复审。规划者和评审者可以是同一个开发成员。",
+      "planner": "规划者",
+      "implementer": "实现者",
+      "reviewer": "评审者",
+      "maxReviewRounds": "最大复审轮数",
+      "plannerPlaceholder": "选择规划者",
+      "implementerPlaceholder": "选择实现者",
+      "reviewerPlaceholder": "选择评审者"
+    },
+    "executionDetails": {
+      "title": "执行细节",
+      "failurePolicy": {
+        "title": "失败处理",
+        "desc": "开发成员失败后是否继续执行后续阶段",
+        "continue": "继续执行",
+        "stopOnFailure": "失败停止",
+        "stopOnCancelled": "取消停止"
+      },
+      "maxRounds": {
+        "title": "协作轮数",
+        "desc": "staged 调度的最大轮次数"
+      },
+      "resultPolicy": {
+        "title": "结果处理",
+        "desc": "多结果时如何取舍（当前仅展示全部）",
+        "all": "全部展示",
+        "firstSuccess": "首个成功（规划中）",
+        "fastest": "最快结果（规划中）",
+        "manualPick": "手动选择（规划中）"
+      },
+      "hint": "执行细节会覆盖协作方式的默认值。老数据不需要配置即可正常运行。"
+    },
+    "members": {
+      "manage": "添加/管理开发成员",
+      "templateManage": "模板成员",
+      "list": "开发成员",
+      "templateList": "模板成员",
+      "count": "{{label}}（{{count}}）",
+      "pickerPlaceholder": "选择开发成员加入群聊...",
+      "templatePickerPlaceholder": "选择模板成员...",
+      "empty": "还没有模板成员。添加至少 1 位开发成员后，新任务才能执行。",
+      "checking": "检测中...",
+      "installed": "已安装",
+      "notInstalled": "未安装",
+      "muted": "已禁言",
+      "unmute": "取消禁言",
+      "mute": "禁言",
+      "remove": "移除成员"
+    },
+    "deleteTemplate": {
+      "title": "删除团队模板",
+      "descNoTasks": "删除后无法再以此模板创建新任务。此操作不可恢复。",
+      "descWithTasks": "删除后无法再以此模板创建新任务。已有 {{count}} 个开发任务不受影响，仍保留创建时的快照。",
+      "button": "删除此模板"
+    },
+    "history": {
+      "title": "历史执行记录",
+      "empty": "暂无执行记录",
+      "log": "日志",
+      "retry": "重试",
+      "loadMore": "加载更多..."
+    },
+    "worktree": {
+      "title": "竞争模式 Worktree 管理",
+      "hint": "隔离竞赛会为每位开发成员创建独立的 git worktree。执行完成后 worktree 默认保留，你可以在此处查看和清理。",
+      "empty": "暂无可管理的 worktree 记录。",
+      "openPath": "打开路径",
+      "copyPath": "复制路径",
+      "cleanup": "清理",
+      "cleanupConfirm": "确认清理 {{agentName}} 的 worktree？此操作不可恢复。",
+      "cleanupAll": "清理所有 Worktree ({{count}})",
+      "cleanupAllConfirm": "确认清理所有 {{count}} 个 worktree？此操作不可恢复。"
+    },
+    "footer": {
+      "dirty": "有未保存修改",
+      "clean": "暂无未保存修改",
+      "revert": "撤销"
+    }
+  },
+  "taskSidebar": {
+    "title": "开发任务",
+    "subtitle": "任务队列与历史记录",
+    "newTask": "新建任务",
+    "teamTemplates": "团队模板",
+    "searchPlaceholder": "搜索任务...",
+    "emptySearch": "未找到匹配任务",
+    "empty": "还没有历史任务\n直接在右侧开始新建任务",
+    "deleteTask": "删除任务",
+    "deleteTaskRunning": "任务运行中，无法删除",
+    "deleteTaskAria": "删除任务"
+  },
+  "taskInfo": {
+    "title": "任务信息",
+    "emptyHint": "请先选择或创建一个开发任务。",
+    "snapshotHint": "以下为本任务创建时保存的配置快照。修改团队模板不会影响此任务；如需新策略处理同一需求，请从此任务创建新任务。",
+    "sectionTask": "任务信息",
+    "sectionSnapshot": "本任务模板快照（只读）",
+    "fields": {
+      "title": "任务名",
+      "status": "状态",
+      "workspace": "Workspace",
+      "workspaceUnset": "（未指定）",
+      "createdAt": "创建时间",
+      "updatedAt": "更新时间",
+      "template": "使用模板",
+      "members": "成员",
+      "noMembers": "（无成员）",
+      "strategy": "协作方式",
+      "approval": "审批方式",
+      "timeout": "执行超时",
+      "timeoutValue": "{{seconds}} 秒",
+      "sessionPolicy": "CLI 会话复用",
+      "stderr": "stderr 展示",
+      "stderrOn": "开启",
+      "stderrOff": "关闭"
+    },
+    "approval": {
+      "auto": "自动审批",
+      "ask": "执行前需确认"
+    },
+    "actions": {
+      "fork": "从此任务创建新任务",
+      "restore": "恢复任务",
+      "archive": "归档任务",
+      "delete": "删除任务",
+      "runningHint": "任务运行中，暂不可归档或删除。"
+    }
+  },
+  "templateList": {
+    "title": "团队模板",
+    "hint": "团队模板是新任务的默认配置来源。在此修改成员、群规或默认 Workspace 后，只影响之后创建的新任务，已有任务仍使用创建时的快照。",
+    "emptyHint": "还没有团队模板。创建后可作为新任务的默认配置（成员、Workspace、执行策略）。",
+    "create": "新建团队模板",
+    "createTitle": "新建团队模板",
+    "settings": "设置",
+    "deleteTitle": "删除模板",
+    "memberCount": "{{count}} 位成员",
+    "linkedTasks": "已有 {{count}} 个开发任务"
+  },
+  "taskUI": {
+    "title": "开发任务",
+    "templatePrefix": "模板：",
+    "taskInfo": "任务信息",
+    "raceCompare": "Race 结果对比",
+    "expandTaskList": "展开任务列表",
+    "expandTaskListAria": "展开任务列表",
+    "create": {
+      "title": "新建开发任务",
+      "subtitle": "描述需求并选择团队模板以开始执行任务",
+      "promptLabel": "需求描述",
+      "promptPlaceholder": "描述你的代码任务，开发成员会在 workspace 中协作执行... (例如: 添加一个导出 CSV 的按钮，并且编写对应的测试)",
+      "templateLabel": "选择团队模板",
+      "newTemplate": "新建模板",
+      "manageTemplates": "管理模板",
+      "emptyTemplates": "还没有团队模板，执行需要团队配置。",
+      "memberCount": "{{count}} 位成员",
+      "workspaceLabel": "工作目录 (Workspace)",
+      "submit": "创建并启动任务"
+    },
+    "compose": {
+      "placeholder": "继续这个任务… 输入 @开发成员名 可指定执行者",
+      "hint": "继续此任务 · 配置以创建时快照为准",
+      "send": "发送",
+      "footerHint": "继续任务会复用此任务的 CLI 会话；输入 @开发成员名 可只让该成员执行。"
+    },
+    "message": {
+      "thinking": "思考中",
+      "executing": "执行中",
+      "log": "日志",
+      "stop": "停止",
+      "retry": "重试",
+      "completed": "✅ 已完成",
+      "failed": "❌ 失败",
+      "cancelled": "⏹ 已取消",
+      "timeout": "⏰ 超时",
+      "worktreeTitle": "隔离 worktree",
+      "branch": "分支：",
+      "base": "基准：",
+      "openPath": "打开路径",
+      "markAdopted": "标记采纳",
+      "cleanup": "清理",
+      "adopted": "✓ 已采纳"
+    },
+    "forkModal": {
+      "title": "从此任务创建新任务",
+      "desc": "将复制当前任务的需求描述，并使用所选团队模板创建一条隔离的新任务。",
+      "ok": "创建新任务"
+    },
+    "deleteTemplate": {
+      "title": "删除团队模板「{{name}}」？",
+      "unnamed": "此模板",
+      "descNoTasks": "删除后无法再以此模板创建新任务，此操作不可恢复。",
+      "descWithTasks": "已有 {{count}} 个开发任务不会受影响（仍保留创建时的快照），但无法再以此模板创建新任务。",
+      "deleted": "团队模板已删除"
+    },
+    "deleteTask": {
+      "title": "确认删除任务？",
+      "content": "确定要删除任务「{{title}}」吗？",
+      "warning": "删除后无法恢复，消息记录将一并清除。",
+      "ok": "确认删除",
+      "success": "任务已删除",
+      "runningError": "任务运行中，请等待结束后再删除",
+      "failed": "无法删除该任务"
+    },
+    "system": {
+      "noAgents": "没有启用的开发成员。请在模板设置中添加或开启成员。",
+      "discussionReadOnly": "当前协作方式是「只读讨论」，不会修改 workspace。要写代码请切换到「规划实现复审」或「快速响应」模板。",
+      "approvalConfirm": "确认让开发成员 {{names}} 在 {{workspace}} 协作处理这次任务？",
+      "defaultWorkspace": "默认目录",
+      "executionFailed": "❌ 任务执行未启动：{{error}}",
+      "errorPrefix": "[错误: {{error}}]"
+    },
+    "toast": {
+      "workspaceRequired": "请先选择 Workspace 目录",
+      "worktreeCleaned": "worktree 已清理",
+      "cleanupFailed": "清理失败"
+    },
+    "worktree": {
+      "cleanupConfirm": "确认清理{{agent}} worktree？\n{{path}}\n此操作不可恢复。",
+      "cleanupConfirmAgent": " {{agentName}} 的"
+    },
+    "backLabel": "团队模板"
+  },
+  "raceResults": {
+    "title": "Race 结果对比",
+    "hint": "对比各开发成员在独立 worktree 中相对基准 commit 的代码变更。标记采纳仅记录你的选择，不会自动 merge 到主 workspace。",
+    "summary": "{{count}} 个 worktree 结果",
+    "adoptedCount": " · 已采纳 {{count}}",
+    "cleanupAll": "清理全部",
+    "empty": "暂无 race worktree 结果。请使用「隔离竞赛」模板运行任务后再查看。",
+    "defaultAgent": "开发成员",
+    "adopted": "已采纳",
+    "noPreview": "（无输出摘要）",
+    "openPath": "打开路径",
+    "markAdopted": "标记采纳",
+    "cleanupOne": "清理 worktree",
+    "selectHint": "请选择左侧结果查看 diff",
+    "changeStats": "变更统计",
+    "noChanges": "（无变更）",
+    "noDiffOutput": "（无 diff 输出）",
+    "diffTitle": "Diff",
+    "diffTruncated": "（已截断）",
+    "noDiff": "（无 diff）",
+    "missingBaseSha": "缺少基准 commit，无法生成 diff",
+    "fetchDiffFailed": "获取 diff 失败",
+    "cleanupFailed": "清理 worktree 失败",
+    "cleanupConfirmOne": "确认清理 {{agentName}} 的 worktree？\n{{path}}",
+    "cleanupConfirmAll": "确认清理此任务的全部 {{count}} 个 worktree？此操作不可恢复。",
+    "cleanupSuccess": "worktree 已清理",
+    "cleanupAllSuccess": "全部 worktree 已清理"
+  },
+  "tasks": {
+    "defaultTitle": "新开发任务"
+  },
+  "taskLog": {
+    "title": "任务执行日志",
+    "statusPrefix": "状态: {{status}}",
+    "promptLabel": "执行命令/提示词:",
+    "loading": "加载日志中...",
+    "empty": "暂无日志输出",
+    "stop": "停止运行",
+    "refresh": "刷新",
+    "close": "关闭"
+  }
+}

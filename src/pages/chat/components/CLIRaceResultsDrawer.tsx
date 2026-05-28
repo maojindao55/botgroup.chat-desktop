@@ -3,7 +3,8 @@ import { Button, Drawer, Spin, Tag } from 'antd';
 import { createStyles } from 'antd-style';
 import { GitCompare, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import type { CLIDevelopmentTask, CLIRaceWorktreeEntry } from '@/config/cliTasks';
+import { useTranslation } from 'react-i18next';
+import type { CLIDevelopmentTask, CLIRaceWorktreeEntry, CLITaskStatus } from '@/config/cliTasks';
 import { getRaceWorktreeEntries } from '@/config/cliTasks';
 import { request } from '@/utils/request';
 import { openPath } from '@tauri-apps/plugin-opener';
@@ -114,7 +115,7 @@ async function fetchWorktreeDiff(cwd: string, baseSha: string) {
   });
   const json = await res.json();
   if (!json.success) {
-    throw new Error(json.message || '获取 diff 失败');
+    throw new Error(json.message || 'fetch diff failed');
   }
   return json.data as { stat: string; diff: string; truncated: boolean };
 }
@@ -127,7 +128,7 @@ async function cleanupWorktrees(paths: string[]) {
   });
   const json = await res.json();
   if (!json.success) {
-    throw new Error(json.message || '清理 worktree 失败');
+    throw new Error(json.message || 'cleanup failed');
   }
 }
 
@@ -139,6 +140,7 @@ export const CLIRaceResultsDrawer = ({
   onAdopt,
 }: CLIRaceResultsDrawerProps) => {
   const { styles, cx } = useStyles();
+  const { t } = useTranslation(['cli']);
   const entries = useMemo(
     () => (task ? getRaceWorktreeEntries(task, workspacePath) : []),
     [task, workspacePath],
@@ -153,6 +155,14 @@ export const CLIRaceResultsDrawer = ({
 
   const selected = entries.find(entry => entry.messageId === selectedId) || entries[0] || null;
 
+  const statusLabel = (status?: string) => {
+    const key = status as CLITaskStatus | undefined;
+    if (key && t(`cli:status.${key}`, { defaultValue: '' })) {
+      return t(`cli:status.${key}`);
+    }
+    return status || 'unknown';
+  };
+
   useEffect(() => {
     if (!open || entries.length === 0) return;
     setSelectedId(prev => (prev && entries.some(entry => entry.messageId === prev) ? prev : entries[0].messageId));
@@ -162,7 +172,7 @@ export const CLIRaceResultsDrawer = ({
     if (!open || !selected?.baseSha) {
       setDiffStat('');
       setDiffText('');
-      setDiffError(selected && !selected.baseSha ? '缺少基准 commit，无法生成 diff' : null);
+      setDiffError(selected && !selected.baseSha ? t('cli:raceResults.missingBaseSha') : null);
       return;
     }
 
@@ -173,15 +183,16 @@ export const CLIRaceResultsDrawer = ({
     fetchWorktreeDiff(selected.cliCwd, selected.baseSha)
       .then(data => {
         if (cancelled) return;
-        setDiffStat(data.stat || '（无变更）');
-        setDiffText(data.diff || '（无 diff 输出）');
+        setDiffStat(data.stat || t('cli:raceResults.noChanges'));
+        setDiffText(data.diff || t('cli:raceResults.noDiffOutput'));
         setDiffTruncated(Boolean(data.truncated));
       })
       .catch(err => {
         if (cancelled) return;
         setDiffStat('');
         setDiffText('');
-        setDiffError(err instanceof Error ? err.message : String(err));
+        const message = err instanceof Error ? err.message : String(err);
+        setDiffError(message === 'fetch diff failed' ? t('cli:raceResults.fetchDiffFailed') : message);
       })
       .finally(() => {
         if (!cancelled) setDiffLoading(false);
@@ -190,17 +201,23 @@ export const CLIRaceResultsDrawer = ({
     return () => {
       cancelled = true;
     };
-  }, [open, selected?.messageId, selected?.cliCwd, selected?.baseSha]);
+  }, [open, selected?.messageId, selected?.cliCwd, selected?.baseSha, t]);
 
   const handleCleanupOne = async (entry: CLIRaceWorktreeEntry) => {
-    const confirmed = window.confirm(`确认清理 ${entry.agentName || '该开发成员'} 的 worktree？\n${entry.cliCwd}`);
+    const confirmed = window.confirm(
+      t('cli:raceResults.cleanupConfirmOne', {
+        agentName: entry.agentName || t('cli:raceResults.defaultAgent'),
+        path: entry.cliCwd,
+      }),
+    );
     if (!confirmed) return;
     setCleaning(true);
     try {
       await cleanupWorktrees([entry.cliCwd]);
-      toast.success('worktree 已清理');
+      toast.success(t('cli:raceResults.cleanupSuccess'));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : '清理失败');
+      const message = err instanceof Error ? err.message : String(err);
+      toast.error(message === 'cleanup failed' ? t('cli:raceResults.cleanupFailed') : message);
     } finally {
       setCleaning(false);
     }
@@ -208,25 +225,28 @@ export const CLIRaceResultsDrawer = ({
 
   const handleCleanupAll = async () => {
     if (entries.length === 0) return;
-    const confirmed = window.confirm(`确认清理此任务的全部 ${entries.length} 个 worktree？此操作不可恢复。`);
+    const confirmed = window.confirm(t('cli:raceResults.cleanupConfirmAll', { count: entries.length }));
     if (!confirmed) return;
     setCleaning(true);
     try {
       await cleanupWorktrees(entries.map(entry => entry.cliCwd));
-      toast.success('全部 worktree 已清理');
+      toast.success(t('cli:raceResults.cleanupAllSuccess'));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : '清理失败');
+      const message = err instanceof Error ? err.message : String(err);
+      toast.error(message === 'cleanup failed' ? t('cli:raceResults.cleanupFailed') : message);
     } finally {
       setCleaning(false);
     }
   };
+
+  const adoptedCount = entries.filter(entry => entry.adopted).length;
 
   return (
     <Drawer
       title={
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <GitCompare size={18} color="#ff6600" />
-          <span>Race 结果对比</span>
+          <span>{t('cli:raceResults.title')}</span>
         </div>
       }
       open={open}
@@ -235,13 +255,13 @@ export const CLIRaceResultsDrawer = ({
       destroyOnClose
     >
       <div className={styles.hint}>
-        对比各开发成员在独立 worktree 中相对基准 commit 的代码变更。标记采纳仅记录你的选择，不会自动 merge 到主 workspace。
+        {t('cli:raceResults.hint')}
       </div>
 
       <div className={styles.topBar}>
         <span style={{ fontSize: 12, opacity: 0.7 }}>
-          {entries.length} 个 worktree 结果
-          {entries.some(entry => entry.adopted) ? ` · 已采纳 ${entries.filter(entry => entry.adopted).length}` : ''}
+          {t('cli:raceResults.summary', { count: entries.length })}
+          {adoptedCount > 0 ? t('cli:raceResults.adoptedCount', { count: adoptedCount }) : ''}
         </span>
         {entries.length > 0 && (
           <Button
@@ -251,14 +271,14 @@ export const CLIRaceResultsDrawer = ({
             loading={cleaning}
             onClick={handleCleanupAll}
           >
-            清理全部
+            {t('cli:raceResults.cleanupAll')}
           </Button>
         )}
       </div>
 
       {entries.length === 0 ? (
         <div style={{ padding: 24, textAlign: 'center', opacity: 0.6, fontSize: 13 }}>
-          暂无 race worktree 结果。请使用「隔离竞赛」模板运行任务后再查看。
+          {t('cli:raceResults.empty')}
         </div>
       ) : (
         <div className={styles.layout}>
@@ -273,15 +293,15 @@ export const CLIRaceResultsDrawer = ({
                 onClick={() => setSelectedId(entry.messageId)}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                  <strong style={{ fontSize: 13 }}>{entry.agentName || entry.agentId || '开发成员'}</strong>
+                  <strong style={{ fontSize: 13 }}>{entry.agentName || entry.agentId || t('cli:raceResults.defaultAgent')}</strong>
                   <Tag color={statusColor[entry.status || 'queued'] || 'default'} style={{ margin: 0 }}>
-                    {entry.status || 'unknown'}
+                    {statusLabel(entry.status)}
                   </Tag>
                 </div>
-                {entry.adopted && <Tag color="success" style={{ width: 'fit-content', margin: 0 }}>已采纳</Tag>}
+                {entry.adopted && <Tag color="success" style={{ width: 'fit-content', margin: 0 }}>{t('cli:raceResults.adopted')}</Tag>}
                 <div className={styles.pathText}>{entry.cliBranch || entry.cliCwd}</div>
                 <div style={{ fontSize: 11, opacity: 0.65, lineHeight: 1.4 }}>
-                  {entry.contentPreview || '（无输出摘要）'}
+                  {entry.contentPreview || t('cli:raceResults.noPreview')}
                 </div>
               </div>
             ))}
@@ -297,11 +317,11 @@ export const CLIRaceResultsDrawer = ({
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                     <Button size="small" onClick={() => openPath(selected.cliCwd).catch(() => {})}>
-                      打开路径
+                      {t('cli:raceResults.openPath')}
                     </Button>
                     {selected.status === 'completed' && !selected.adopted && (
                       <Button size="small" type="primary" onClick={() => onAdopt(selected.messageId)}>
-                        标记采纳
+                        {t('cli:raceResults.markAdopted')}
                       </Button>
                     )}
                     <Button
@@ -310,7 +330,7 @@ export const CLIRaceResultsDrawer = ({
                       loading={cleaning}
                       onClick={() => handleCleanupOne(selected)}
                     >
-                      清理 worktree
+                      {t('cli:raceResults.cleanupOne')}
                     </Button>
                   </div>
                 </div>
@@ -321,18 +341,18 @@ export const CLIRaceResultsDrawer = ({
                     <div style={{ color: '#ff4d4f', fontSize: 12 }}>{diffError}</div>
                   ) : (
                     <>
-                      <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>变更统计</div>
-                      <pre className={styles.diffPre}>{diffStat || '（无）'}</pre>
+                      <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>{t('cli:raceResults.changeStats')}</div>
+                      <pre className={styles.diffPre}>{diffStat || t('cli:raceResults.noChanges')}</pre>
                       <div style={{ fontSize: 12, fontWeight: 600, margin: '12px 0 8px' }}>
-                        Diff {diffTruncated ? '（已截断）' : ''}
+                        {t('cli:raceResults.diffTitle')} {diffTruncated ? t('cli:raceResults.diffTruncated') : ''}
                       </div>
-                      <pre className={styles.diffPre}>{diffText || '（无 diff）'}</pre>
+                      <pre className={styles.diffPre}>{diffText || t('cli:raceResults.noDiff')}</pre>
                     </>
                   )}
                 </div>
               </>
             ) : (
-              <div style={{ padding: 24, opacity: 0.6 }}>请选择左侧结果查看 diff</div>
+              <div style={{ padding: 24, opacity: 0.6 }}>{t('cli:raceResults.selectHint')}</div>
             )}
           </div>
         </div>
