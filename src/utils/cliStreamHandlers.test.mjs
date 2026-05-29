@@ -66,6 +66,9 @@ const { createCLIStreamHandler } = await importTsModule(
   renderCursorCommandGroupEnd,
   renderCursorCommandGroupStart,
   renderCursorCommandStarted,
+  renderCursorThinking,
+  renderCursorToolCompleted,
+  shouldEmitCursorSummary,
 } from './cursorStream';`,
       `const {
   parseCursorJsonLine,
@@ -73,6 +76,9 @@ const { createCLIStreamHandler } = await importTsModule(
   renderCursorCommandGroupEnd,
   renderCursorCommandGroupStart,
   renderCursorCommandStarted,
+  renderCursorThinking,
+  renderCursorToolCompleted,
+  shouldEmitCursorSummary,
 } = globalThis.__cliStreamHandlersTestDeps;`,
     )
     .replace(

@@ -230,6 +230,17 @@
       "emptyTemplates": "还没有团队模板，执行需要团队配置。",
       "memberCount": "{{count}} 位成员",
       "workspaceLabel": "工作目录 (Workspace)",
+      "selectWorkspace": "选择",
+      "createWorkspace": "新建目录",
+      "createWorkspaceModal": {
+        "title": "新建 Workspace 目录",
+        "parentLabel": "父目录",
+        "parentPlaceholder": "选择或输入父目录的绝对路径",
+        "nameLabel": "目录名",
+        "namePlaceholder": "例如 my-project",
+        "previewLabel": "完整路径",
+        "create": "创建并使用"
+      },
       "submit": "创建并启动任务"
     },
     "compose": {
@@ -287,6 +298,11 @@
     },
     "toast": {
       "workspaceRequired": "请先选择 Workspace 目录",
+      "workspaceCreated": "Workspace 目录已创建",
+      "workspaceCreateFailed": "创建 Workspace 目录失败",
+      "workspaceParentRequired": "请先选择父目录",
+      "workspaceNameRequired": "请输入目录名",
+      "workspaceNameInvalid": "目录名不能包含 / 或 \\",
       "worktreeCleaned": "worktree 已清理",
       "cleanupFailed": "清理失败"
     },

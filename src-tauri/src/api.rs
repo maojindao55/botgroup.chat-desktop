@@ -352,6 +352,77 @@ pub fn select_directory() -> Result<Option<String>, String> {
     }
 }
 
+#[tauri::command]
+pub fn create_workspace_directory(parent: String, name: String) -> Result<String, String> {
+    let trimmed_name = name.trim();
+    if trimmed_name.is_empty() {
+        return Err("directory name is required".to_string());
+    }
+    if trimmed_name.contains('/') || trimmed_name.contains('\\') {
+        return Err("directory name must not contain path separators".to_string());
+    }
+    if trimmed_name == "." || trimmed_name == ".." {
+        return Err("invalid directory name".to_string());
+    }
+
+    let parent_path = std::path::PathBuf::from(parent.trim());
+    if !parent_path.is_dir() {
+        return Err(format!("parent directory does not exist: {}", parent_path.display()));
+    }
+
+    let target = parent_path.join(trimmed_name);
+    if target.exists() {
+        return Err(format!("directory already exists: {}", target.display()));
+    }
+
+    std::fs::create_dir(&target).map_err(|e| e.to_string())?;
+    Ok(target.to_string_lossy().to_string())
+}
+
+#[cfg(test)]
+mod workspace_directory_tests {
+    use super::create_workspace_directory;
+
+    #[test]
+    fn create_workspace_directory_creates_folder_under_parent() {
+        let parent = std::env::temp_dir().join(format!(
+            "botgroup-create-workspace-parent-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&parent).expect("create temp parent");
+
+        let created = create_workspace_directory(
+            parent.to_string_lossy().to_string(),
+            "new-dev-task".to_string(),
+        )
+        .expect("create workspace directory");
+
+        let created_path = std::path::PathBuf::from(&created);
+        assert!(created_path.is_dir());
+        assert_eq!(created_path.file_name().and_then(|s| s.to_str()), Some("new-dev-task"));
+
+        let _ = std::fs::remove_dir_all(&parent);
+    }
+
+    #[test]
+    fn create_workspace_directory_rejects_existing_path() {
+        let parent = std::env::temp_dir().join(format!(
+            "botgroup-create-workspace-existing-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&parent).expect("create temp parent");
+
+        let err = create_workspace_directory(
+            parent.to_string_lossy().to_string(),
+            ".".to_string(),
+        )
+        .expect_err("reject invalid directory name");
+        assert!(err.contains("invalid"));
+
+        let _ = std::fs::remove_dir_all(&parent);
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct AIMember {
     pub id: String,

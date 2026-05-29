@@ -11,6 +11,7 @@ import {
   Info,
   GitCompare,
   FolderOpen,
+  FolderPlus,
   Plus,
 } from 'lucide-react';
 import { Input as AntdInput, Button as AntdButton, Tag, Modal, Select, Tooltip } from 'antd';
@@ -45,6 +46,7 @@ import {
   cliTaskMemberSnapshotToAgent,
   createCLITaskMemberSnapshots,
   parseAgentMention,
+  inferCliModelFromArgs,
   isRaceTask,
   getRaceWorktreeEntries,
   canMutateTask,
@@ -67,6 +69,8 @@ import {
   readLastCliWorkspace,
   writeLastCliWorkspace,
   resolveDraftCliWorkspace,
+  parentDirectoryPath,
+  defaultNewWorkspaceFolderName,
 } from '@/utils/cliWorkspaceStorage';
 import { getCLIWorkflowLabel } from '@/config/groupProduct';
 import { adapterUsesOpenCodeSessionTitle, supportsCliToolSession } from '@/config/cliAdapters';
@@ -85,6 +89,22 @@ interface CLITaskUIProps {
 const DRAFT_COMPOSE_KEY = '__draft__';
 
 const resolveComposeKey = (taskId: string | null) => taskId ?? DRAFT_COMPOSE_KEY;
+
+const splitAgentDisplayName = (name: string, stageLabel?: string) => {
+  const marker = stageLabel ? ` · ${stageLabel}` : '';
+  if (marker && name.endsWith(marker)) {
+    return { baseName: name.slice(0, -marker.length), stageName: stageLabel };
+  }
+  const parts = name.split(' · ');
+  return parts.length > 1
+    ? { baseName: parts[0], stageName: parts.slice(1).join(' · ') }
+    : { baseName: name, stageName: stageLabel };
+};
+
+const appendCliModelHint = (baseName: string, modelHint?: string) => {
+  if (!modelHint || baseName.includes(` · ${modelHint}`)) return baseName;
+  return `${baseName} · ${modelHint}`;
+};
 
 const useStyles = createStyles(({ token, css }) => ({
   page: css`
@@ -555,11 +575,13 @@ const useStyles = createStyles(({ token, css }) => ({
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    padding: 2px 8px 2px 4px;
+    padding: 2px 8px 2px 3px;
     border-radius: 999px;
-    background: ${token.colorFillSecondary};
+    border: 1px solid ${token.colorBorderSecondary};
+    background: ${token.colorBgContainer};
     font-size: 10px;
-    color: ${token.colorTextSecondary};
+    font-weight: 500;
+    color: ${token.colorText};
     max-width: 100%;
   `,
   templateMemberName: css`
@@ -637,6 +659,10 @@ const CLITaskUI = ({
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(initialTaskId || null);
   const [selectedTemplateId, setSelectedTemplateId] = useState(templates[0]?.id || '');
   const [draftWorkspacePath, setDraftWorkspacePath] = useState(() => readLastCliWorkspace());
+  const [createWorkspaceOpen, setCreateWorkspaceOpen] = useState(false);
+  const [createWorkspaceParent, setCreateWorkspaceParent] = useState('');
+  const [createWorkspaceName, setCreateWorkspaceName] = useState('');
+  const [creatingWorkspace, setCreatingWorkspace] = useState(false);
   const [inputMessage, setInputMessage] = useState('');
   const [executingTaskIds, setExecutingTaskIds] = useState<Set<string>>(() => new Set());
   const [sidebarOpen, setSidebarOpen] = useState(!isMobile);
@@ -692,6 +718,59 @@ const CLITaskUI = ({
       console.error('Failed to select directory:', e);
     }
   };
+
+  const openCreateWorkspaceModal = () => {
+    const current = draftWorkspacePath.trim();
+    const parent = parentDirectoryPath(current) || current;
+    setCreateWorkspaceParent(parent);
+    setCreateWorkspaceName(defaultNewWorkspaceFolderName());
+    setCreateWorkspaceOpen(true);
+  };
+
+  const handleSelectCreateWorkspaceParent = async () => {
+    try {
+      const selected = await invoke<string | null>('select_directory');
+      if (selected) setCreateWorkspaceParent(selected);
+    } catch (e) {
+      console.error('Failed to select parent directory:', e);
+    }
+  };
+
+  const handleCreateWorkspaceDirectory = async () => {
+    const parent = createWorkspaceParent.trim();
+    const name = createWorkspaceName.trim();
+    if (!parent) {
+      toast.error(t('cli:taskUI.toast.workspaceParentRequired'));
+      return;
+    }
+    if (!name) {
+      toast.error(t('cli:taskUI.toast.workspaceNameRequired'));
+      return;
+    }
+    if (/[\\/]/.test(name)) {
+      toast.error(t('cli:taskUI.toast.workspaceNameInvalid'));
+      return;
+    }
+
+    setCreatingWorkspace(true);
+    try {
+      const created = await invoke<string>('create_workspace_directory', { parent, name });
+      handleDraftWorkspaceChange(created);
+      setCreateWorkspaceOpen(false);
+      toast.success(t('cli:taskUI.toast.workspaceCreated'));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t('cli:taskUI.toast.workspaceCreateFailed'));
+    } finally {
+      setCreatingWorkspace(false);
+    }
+  };
+
+  const createWorkspacePreview = useMemo(() => {
+    const parent = createWorkspaceParent.trim().replace(/\\/g, '/').replace(/\/+$/, '');
+    const name = createWorkspaceName.trim();
+    if (!parent || !name) return '';
+    return `${parent}/${name}`;
+  }, [createWorkspaceParent, createWorkspaceName]);
 
   const beginTaskExecution = useCallback((key: string) => {
     setExecutingTaskIds(prev => {
@@ -981,7 +1060,11 @@ const CLITaskUI = ({
           onAgentEnd: (agentTaskId, fullContent) => {
             const msgId = messageIdByAgentTask.get(agentTaskId);
             if (!msgId) return;
-            let finalContent = fullContent;
+            const task = useCLITaskStore.getState().getTask(developmentTask.id);
+            const msg = task?.messages.find(m => m.id === msgId);
+            let finalContent = (msg?.content?.length || 0) > fullContent.length
+              ? msg.content
+              : fullContent;
             if (finalContent.includes('<details open>')) {
               finalContent = finalContent.replace(/<details open>/g, '<details>');
             }
@@ -1462,6 +1545,56 @@ const CLITaskUI = ({
         />
       </Modal>
 
+      <Modal
+        title={t('cli:taskUI.create.createWorkspaceModal.title')}
+        open={createWorkspaceOpen}
+        onCancel={() => setCreateWorkspaceOpen(false)}
+        onOk={handleCreateWorkspaceDirectory}
+        okText={t('cli:taskUI.create.createWorkspaceModal.create')}
+        cancelText={t('common:actions.cancel')}
+        confirmLoading={creatingWorkspace}
+        destroyOnClose
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 6 }}>
+              {t('cli:taskUI.create.createWorkspaceModal.parentLabel')}
+            </div>
+            <div className={styles.workspaceRow}>
+              <AntdInput
+                className={styles.workspaceInput}
+                placeholder={t('cli:taskUI.create.createWorkspaceModal.parentPlaceholder')}
+                value={createWorkspaceParent}
+                onChange={(e) => setCreateWorkspaceParent(e.target.value)}
+              />
+              <AntdButton
+                icon={<FolderOpen size={14} />}
+                onClick={handleSelectCreateWorkspaceParent}
+                style={{ height: 36, borderRadius: 10, flexShrink: 0 }}
+              >
+                {t('cli:taskUI.create.selectWorkspace')}
+              </AntdButton>
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 6 }}>
+              {t('cli:taskUI.create.createWorkspaceModal.nameLabel')}
+            </div>
+            <AntdInput
+              placeholder={t('cli:taskUI.create.createWorkspaceModal.namePlaceholder')}
+              value={createWorkspaceName}
+              onChange={(e) => setCreateWorkspaceName(e.target.value)}
+            />
+          </div>
+          {createWorkspacePreview && (
+            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.55)' }}>
+              <span style={{ fontWeight: 500 }}>{t('cli:taskUI.create.createWorkspaceModal.previewLabel')}：</span>
+              <span style={{ fontFamily: 'monospace' }}>{createWorkspacePreview}</span>
+            </div>
+          )}
+        </div>
+      </Modal>
+
       <CreateGroupWizard
         open={createTemplateOpen}
         onOpenChange={setCreateTemplateOpen}
@@ -1812,7 +1945,14 @@ const CLITaskUI = ({
                           onClick={handleSelectDraftWorkspace}
                           style={{ height: 36, borderRadius: 10 }}
                         >
-                          {t('common:actions.select')}
+                          {t('cli:taskUI.create.selectWorkspace')}
+                        </AntdButton>
+                        <AntdButton
+                          icon={<FolderPlus size={14} />}
+                          onClick={openCreateWorkspaceModal}
+                          style={{ height: 36, borderRadius: 10 }}
+                        >
+                          {t('cli:taskUI.create.createWorkspace')}
                         </AntdButton>
                       </div>
                     </div>
@@ -1851,6 +1991,18 @@ const CLITaskUI = ({
                     const cliAgentInfo = cliMember?.kind === 'cli'
                       ? mapAIMemberToLegacy(cliMember) as CLIAgent
                       : undefined;
+                    const snapshotMember = selectedTask.memberSnapshots?.find(member => member.id === message.sender.id);
+                    const modelHint = snapshotMember?.modelHint
+                      || (cliMember?.kind === 'cli' ? inferCliModelFromArgs(cliMember.cli?.extraArgs) : undefined);
+                    const displayNameParts = splitAgentDisplayName(message.sender.name, message.stageLabel);
+                    const senderDisplayName = isUser
+                      ? message.sender.name
+                      : modelHint && message.sender.name.includes(` · ${modelHint}`)
+                        ? message.sender.name
+                        : [
+                            appendCliModelHint(displayNameParts.baseName, modelHint),
+                            displayNameParts.stageName,
+                          ].filter(Boolean).join(' · ');
                     const avatarName = cliAgentInfo?.name || message.sender.name;
                     const a = getAvatarData(avatarName);
                     const url = resolveAvatarByName(avatarName, cliAgentInfo?.avatar, 40);
@@ -1882,7 +2034,7 @@ const CLITaskUI = ({
                         )}
                         <div style={{ maxWidth: '75%' }}>
                           <div className={styles.metaRow}>
-                            {message.sender.name}
+                            {senderDisplayName}
                             {isStreaming && (
                               <span className={styles.streaming}>
                                 <span className={styles.streamingDot} />

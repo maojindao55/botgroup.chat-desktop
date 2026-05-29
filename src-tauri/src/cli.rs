@@ -10,6 +10,7 @@
 use std::collections::HashMap;
 use std::process::Stdio;
 use std::sync::Arc;
+use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State, Manager};
@@ -319,11 +320,12 @@ pub async fn cli_run(
             "ts": chrono::Utc::now().to_rfc3339(),
             "type": "system",
             "content": format!(
-                "Starting task execution. Adapter: {}, Cwd: {:?}, Approval: {:?}, Show stderr: {:?}",
+                "Starting task execution. Adapter: {}, Cwd: {:?}, Approval: {:?}, Show stderr: {:?}, TimeoutMs: {:?}",
                 args.adapter,
                 args.cwd,
                 args.approval_mode,
-                args.show_stderr
+                args.show_stderr,
+                args.timeout_ms
             )
         });
         if let Ok(serialized) = serde_json::to_string(&log_entry) {
@@ -408,6 +410,8 @@ pub async fn cli_run(
     let app_out = app.clone();
     let evt_out = event_name.clone();
     let log_path_out = log_path.clone();
+    let last_activity = Arc::new(Mutex::new(Instant::now()));
+    let last_activity_out = last_activity.clone();
     let stdout_task = tokio::spawn(async move {
         let mut lines = BufReader::new(stdout).lines();
         let mut file = std::fs::OpenOptions::new()
@@ -418,6 +422,7 @@ pub async fn cli_run(
         loop {
             match lines.next_line().await {
                 Ok(Some(line)) => {
+                    *last_activity_out.lock().await = Instant::now();
                     let _ = app_out.emit(&evt_out, CliEvent::Stdout { content: line.clone() });
                     if let Some(ref mut f) = file {
                         let log_entry = serde_json::json!({
@@ -448,6 +453,7 @@ pub async fn cli_run(
     let app_err = app.clone();
     let evt_err = event_name.clone();
     let log_path_err = log_path.clone();
+    let last_activity_err = last_activity.clone();
     let stderr_task = tokio::spawn(async move {
         let mut lines = BufReader::new(stderr).lines();
         let mut file = std::fs::OpenOptions::new()
@@ -458,6 +464,7 @@ pub async fn cli_run(
         loop {
             match lines.next_line().await {
                 Ok(Some(line)) => {
+                    *last_activity_err.lock().await = Instant::now();
                     let _ = app_err.emit(&evt_err, CliEvent::Stderr { content: line.clone() });
                     if let Some(ref mut f) = file {
                         let log_entry = serde_json::json!({
@@ -496,15 +503,29 @@ pub async fn cli_run(
     let adapter_for_task = adapter_for_status.clone();
 
     let supervisor = tokio::spawn(async move {
-        let timeout_duration = timeout_ms.map(std::time::Duration::from_millis);
+        let wait_result = if let Some(ms) = timeout_ms {
+            let base_timeout = Duration::from_millis(ms);
+            // 无输出 idle 超时 = 配置值；有持续输出时最多跑到 hard_cap
+            let idle_limit = base_timeout;
+            let hard_cap = base_timeout.saturating_mul(3).min(Duration::from_secs(3600));
+            let started = Instant::now();
 
-        let wait_result = if let Some(dur) = timeout_duration {
-            match tokio::time::timeout(dur, child.wait()).await {
-                Ok(Ok(status)) => Ok(status.code().unwrap_or(-1)),
-                Ok(Err(e)) => Err(format!("wait failed: {}", e)),
-                Err(_) => {
-                    let _ = child.kill().await;
-                    Err("timeout".to_string())
+            'wait: loop {
+                tokio::select! {
+                    result = child.wait() => {
+                        break 'wait match result {
+                            Ok(status) => Ok(status.code().unwrap_or(-1)),
+                            Err(e) => Err(format!("wait failed: {}", e)),
+                        };
+                    }
+                    _ = sleep(Duration::from_millis(500)) => {
+                        let idle = last_activity.lock().await.elapsed();
+                        let elapsed = started.elapsed();
+                        if idle >= idle_limit || elapsed >= hard_cap {
+                            let _ = child.kill().await;
+                            break 'wait Err("timeout".to_string());
+                        }
+                    }
                 }
             }
         } else {

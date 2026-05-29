@@ -12,6 +12,9 @@ import {
   renderCursorCommandGroupEnd,
   renderCursorCommandGroupStart,
   renderCursorCommandStarted,
+  renderCursorThinking,
+  renderCursorToolCompleted,
+  shouldEmitCursorSummary,
 } from './cursorStream';
 import {
   parseCodexJsonLine,
@@ -247,6 +250,8 @@ export function createCLIStreamHandler(
     let sessionId: string | null = null;
     let commandGroupOpen = false;
     let commandIndex = 0;
+    let thinkingBuffer = '';
+    let lastSummaryText = '';
 
     const ensureCommandGroupOpen = () => {
       if (!commandGroupOpen) {
@@ -263,12 +268,28 @@ export function createCLIStreamHandler(
       }
     };
 
+    const flushThinking = () => {
+      if (!thinkingBuffer.trim()) return;
+      ensureCommandGroupOpen();
+      emitters.enqueueChunk(renderCursorThinking(thinkingBuffer));
+      thinkingBuffer = '';
+    };
+
+    const enqueueSummary = (text: string) => {
+      if (!shouldEmitCursorSummary(text, lastSummaryText)) return;
+      lastSummaryText = text.trim();
+      closeCommandGroups();
+      emitters.enqueueChunk(text.endsWith('\n') ? text : `${text}\n\n`);
+    };
+
     return {
       streamMode,
       usesJsonModeStderr: false,
       hasCommandGroupOpen: () => commandGroupOpen,
       closeCommandGroups,
-      flushDone: () => {},
+      flushDone: () => {
+        flushThinking();
+      },
       handleStdoutLine: (line) => {
         const parsed = parseCursorJsonLine(line);
         if (parsed?.sessionId && parsed.sessionId !== sessionId) {
@@ -276,6 +297,7 @@ export function createCLIStreamHandler(
           emitters.enqueueEvent({ type: 'tool_session', adapter, sessionId: parsed.sessionId });
         }
         if (parsed?.error) {
+          flushThinking();
           closeCommandGroups();
           emitters.enqueueEvent({
             type: 'error',
@@ -283,17 +305,31 @@ export function createCLIStreamHandler(
             error: parsed.error,
           });
         }
+        if (parsed?.thinking) {
+          if (parsed.thinking.phase === 'delta' && parsed.thinking.text) {
+            thinkingBuffer += parsed.thinking.text;
+          } else if (parsed.thinking.phase === 'completed') {
+            flushThinking();
+          }
+        }
         if (parsed?.content) {
-          closeCommandGroups();
-          emitters.enqueueChunk(parsed.content);
+          flushThinking();
+          enqueueSummary(parsed.content);
+        }
+        if (parsed?.resultContent) {
+          flushThinking();
+          enqueueSummary(parsed.resultContent);
         }
         if (parsed?.command) {
           if (parsed.command.phase === 'started') {
+            flushThinking();
             ensureCommandGroupOpen();
             commandIndex++;
             emitters.enqueueChunk(renderCursorCommandStarted(parsed.command.command, commandIndex));
-          } else if (commandGroupOpen) {
+          } else if (parsed.command.phase === 'completed' && commandGroupOpen) {
             emitters.enqueueChunk(renderCursorCommandCompleted(parsed.command.exitCode, parsed.command.output));
+          } else if (parsed.command.phase === 'tool_completed' && commandGroupOpen) {
+            emitters.enqueueChunk(renderCursorToolCompleted(parsed.command.label));
           }
         } else if (!parsed && !line.startsWith('{')) {
           closeCommandGroups();

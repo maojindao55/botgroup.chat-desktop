@@ -882,7 +882,7 @@ export const CLIGroupSettings = ({
                   if (isTemplateMode) updateDraftGroup({ timeout: next });
                   else onTimeoutChange(next);
                 }}
-                min={30}
+                min={120}
                 max={600}
                 style={{ width: 100 }}
               />

@@ -90,6 +90,7 @@ export interface CLITaskMemberSnapshot {
   name: string;
   avatar?: string;
   tags?: string[];
+  modelHint?: string;
   cli: {
     adapter: string;
     binary?: string;
@@ -253,6 +254,35 @@ export function normalizeOpenCodeSessionTitle(title: string): string | null {
   return trimmed;
 }
 
+function normalizeCliModelValue(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed || trimmed.startsWith('-')) return undefined;
+  return trimmed;
+}
+
+export function inferCliModelFromArgs(extraArgs?: string[] | null): string | undefined {
+  if (!extraArgs?.length) return undefined;
+  for (let index = 0; index < extraArgs.length; index += 1) {
+    const arg = extraArgs[index]?.trim();
+    if (!arg) continue;
+    if (arg === '--model' || arg === '-m') {
+      const value = normalizeCliModelValue(extraArgs[index + 1]);
+      if (value) return value;
+      continue;
+    }
+    if (arg.startsWith('--model=')) {
+      const value = normalizeCliModelValue(arg.slice('--model='.length));
+      if (value) return value;
+      continue;
+    }
+    if (arg.startsWith('-m=')) {
+      const value = normalizeCliModelValue(arg.slice('-m='.length));
+      if (value) return value;
+    }
+  }
+  return undefined;
+}
+
 export function createCLITaskMemberSnapshots(
   members: Array<{
     id?: string;
@@ -277,6 +307,7 @@ export function createCLITaskMemberSnapshots(
       name: member.name as string,
       avatar: member.avatar,
       tags: member.tags ? [...member.tags] : undefined,
+      modelHint: inferCliModelFromArgs(member.cli!.extraArgs),
       cli: {
         adapter: member.cli!.adapter as string,
         binary: member.cli!.binary,
@@ -297,6 +328,7 @@ export function cloneCLITaskMemberSnapshots(
     tags: snapshot.tags ? [...snapshot.tags] : undefined,
     cli: {
       ...snapshot.cli,
+      modelHint: snapshot.modelHint,
       extraArgs: snapshot.cli.extraArgs ? [...snapshot.cli.extraArgs] : undefined,
       env: snapshot.cli.env ? { ...snapshot.cli.env } : undefined,
     },

@@ -614,7 +614,7 @@ export const CreateGroupWizard = ({
       </div>
       <div>
         <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 6 }}>{t('wizard:configStep.timeoutSeconds')}</label>
-        <InputNumber value={timeout / 1000} min={30} max={600}
+        <InputNumber value={timeout / 1000} min={120} max={600}
           onChange={(v) => setTimeout_(Number(v) * 1000)} style={{ width: 120 }} />
       </div>
     </div>

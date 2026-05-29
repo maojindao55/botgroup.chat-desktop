@@ -230,6 +230,17 @@
       "emptyTemplates": "No team templates yet—you need team config to run tasks.",
       "memberCount": "{{count}} members",
       "workspaceLabel": "Workspace directory",
+      "selectWorkspace": "Browse",
+      "createWorkspace": "New folder",
+      "createWorkspaceModal": {
+        "title": "Create workspace folder",
+        "parentLabel": "Parent directory",
+        "parentPlaceholder": "Pick or enter the absolute path of the parent folder",
+        "nameLabel": "Folder name",
+        "namePlaceholder": "e.g. my-project",
+        "previewLabel": "Full path",
+        "create": "Create and use"
+      },
       "submit": "Create and start task"
     },
     "compose": {
@@ -287,6 +298,11 @@
     },
     "toast": {
       "workspaceRequired": "Select a workspace directory first",
+      "workspaceCreated": "Workspace folder created",
+      "workspaceCreateFailed": "Failed to create workspace folder",
+      "workspaceParentRequired": "Select a parent directory first",
+      "workspaceNameRequired": "Enter a folder name",
+      "workspaceNameInvalid": "Folder name cannot contain / or \\",
       "worktreeCleaned": "Worktree cleaned up",
       "cleanupFailed": "Cleanup failed"
     },

@@ -80,6 +80,14 @@ assert.equal(task.messages.length, 1);
 assert.equal(task.messages[0].role, 'user');
 assert.equal(task.messages[0].content, 'Fix login page validation');
 
+assert.equal(mod.inferCliModelFromArgs(['--model', 'gpt-5-codex']), 'gpt-5-codex');
+assert.equal(mod.inferCliModelFromArgs(['--model=gpt-5-codex']), 'gpt-5-codex');
+assert.equal(mod.inferCliModelFromArgs(['-m', 'claude-sonnet-4.5']), 'claude-sonnet-4.5');
+assert.equal(mod.inferCliModelFromArgs(['-m=claude-sonnet-4.5']), 'claude-sonnet-4.5');
+assert.equal(mod.inferCliModelFromArgs(['--model']), undefined);
+assert.equal(mod.inferCliModelFromArgs(['--model', '--sandbox']), undefined);
+assert.equal(mod.inferCliModelFromArgs(['--json']), undefined);
+
 {
   const sourceMembers = [
     {
@@ -91,7 +99,7 @@ assert.equal(task.messages[0].content, 'Fix login page validation');
       cli: {
         adapter: 'codex',
         binary: '/usr/local/bin/codex',
-        extraArgs: ['--json'],
+        extraArgs: ['--json', '--model', 'gpt-5-codex'],
         env: { CODEX_HOME: '/tmp/codex-home' },
         approvalMode: 'auto',
         showStderr: true,
@@ -115,23 +123,26 @@ assert.equal(task.messages[0].content, 'Fix login page validation');
   assert.equal(snapshotTask.memberSnapshots[0].name, 'Codex Stable');
   assert.equal(snapshotTask.memberSnapshots[0].cli.adapter, 'codex');
   assert.equal(snapshotTask.memberSnapshots[0].cli.binary, '/usr/local/bin/codex');
-  assert.deepEqual(snapshotTask.memberSnapshots[0].cli.extraArgs, ['--json']);
+  assert.deepEqual(snapshotTask.memberSnapshots[0].cli.extraArgs, ['--json', '--model', 'gpt-5-codex']);
   assert.deepEqual(snapshotTask.memberSnapshots[0].cli.env, { CODEX_HOME: '/tmp/codex-home' });
+  assert.equal(snapshotTask.memberSnapshots[0].modelHint, 'gpt-5-codex');
 
   sourceMembers[0].cli.adapter = 'opencode';
   sourceMembers[0].cli.extraArgs.push('--mutated');
   sourceMembers[0].cli.env.CODEX_HOME = '/tmp/mutated';
 
   assert.equal(snapshotTask.memberSnapshots[0].cli.adapter, 'codex');
-  assert.deepEqual(snapshotTask.memberSnapshots[0].cli.extraArgs, ['--json']);
+  assert.deepEqual(snapshotTask.memberSnapshots[0].cli.extraArgs, ['--json', '--model', 'gpt-5-codex']);
   assert.deepEqual(snapshotTask.memberSnapshots[0].cli.env, { CODEX_HOME: '/tmp/codex-home' });
+  assert.equal(snapshotTask.memberSnapshots[0].modelHint, 'gpt-5-codex');
 
   const restoredAgent = mod.cliTaskMemberSnapshotToAgent(snapshotTask.memberSnapshots[0]);
   assert.equal(restoredAgent.id, 'cli-codex');
   assert.equal(restoredAgent.name, 'Codex Stable');
   assert.equal(restoredAgent.runtime, 'cli');
   assert.equal(restoredAgent.cli.adapter, 'codex');
-  assert.deepEqual(restoredAgent.cli.extraArgs, ['--json']);
+  assert.deepEqual(restoredAgent.cli.extraArgs, ['--json', '--model', 'gpt-5-codex']);
+  assert.equal(restoredAgent.cli.modelHint, 'gpt-5-codex');
 }
 
 const task2 = mod.createDevelopmentTask({
