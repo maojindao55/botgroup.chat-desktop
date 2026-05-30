@@ -57,17 +57,13 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      # macOS: Use ad-hoc signing when no Apple certificate is configured.
+      # This avoids the "damaged app" error on Apple Silicon builds.
+      # Users will need to run: xattr -cr /Applications/BotGroup.Chat.app
       - name: Build and release with Tauri
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # macOS signing (optional, configure in repo secrets)
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'BotGroup.Chat ${{ github.ref_name }}'
@@ -79,6 +75,12 @@ jobs:
             - **macOS (Intel)**: `.dmg` file with `x64` in the name
             - **Windows**: `.msi` or `.exe` installer
             - **Linux**: `.deb` or `.AppImage`
+
+            ## macOS 安装提示
+            如果提示"已损坏，无法打开"，请在终端执行：
+            ```bash
+            xattr -cr /Applications/BotGroup.Chat.app
+            ```
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
