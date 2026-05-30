@@ -2151,10 +2151,49 @@ pub struct CliTempCopyCleanupArgs {
 /// Directory names excluded from temp copies (heavy or derived artifacts).
 const TEMPCOPY_EXCLUDES: &[&str] = &[".git", "node_modules", "target", ".next", "dist"];
 
+/// Recursively removes any entry whose name matches `TEMPCOPY_EXCLUDES` from a
+/// freshly copied tree. Unlike `cp -a` (which has no exclude support), this
+/// matches at any depth — mirroring `rsync --exclude` — so a `.git` file from a
+/// Git worktree/submodule (which points at the original repo) can't survive in
+/// the isolated copy and let git commands touch the real checkout. Symlinked
+/// directories are not descended into (so we never escape the copy).
+#[cfg(not(windows))]
+fn prune_copied_excludes(dest: &std::path::Path) {
+    let mut stack = vec![dest.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let entries = match std::fs::read_dir(&dir) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let file_type = match entry.file_type() {
+                Ok(t) => t,
+                Err(_) => continue,
+            };
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if TEMPCOPY_EXCLUDES.iter().any(|ex| *ex == name) {
+                // `.git` (and the rest) may be either a file or a directory.
+                if file_type.is_dir() {
+                    let _ = std::fs::remove_dir_all(entry.path());
+                } else {
+                    let _ = std::fs::remove_file(entry.path());
+                }
+                continue;
+            }
+            // `is_dir()` is false for symlinks, so we don't follow them.
+            if file_type.is_dir() {
+                stack.push(entry.path());
+            }
+        }
+    }
+}
+
 /// Copies the contents of `src` into `dest`, skipping `TEMPCOPY_EXCLUDES`.
 ///
 /// Unix: prefers `rsync -a --exclude ...` (fast, preserves symlinks), falling
-/// back to `cp -a` when rsync is unavailable.
+/// back to `cp -a` (which has no exclude support) followed by an explicit
+/// prune of the excluded entries when rsync is unavailable.
 #[cfg(not(windows))]
 fn copy_workspace(src: &str, dest: &std::path::Path, dest_str: &str) -> Result<(), String> {
     let _ = std::fs::create_dir_all(dest);
@@ -2176,14 +2215,18 @@ fn copy_workspace(src: &str, dest: &std::path::Path, dest_str: &str) -> Result<(
         return Ok(());
     }
 
-    // rsync missing or failed → fall back to `cp -a`.
+    // rsync missing or failed → fall back to `cp -a`, then prune excludes
+    // (cp has no --exclude, so it copies .git etc. that we must remove).
     let _ = std::fs::create_dir_all(dest);
     let cp_source = format!("{}/.", src.trim_end_matches('/'));
     match std::process::Command::new("cp")
         .args(["-a", &cp_source, dest_str])
         .output()
     {
-        Ok(co) if co.status.success() => Ok(()),
+        Ok(co) if co.status.success() => {
+            prune_copied_excludes(dest);
+            Ok(())
+        }
         Ok(co) => Err(format!("cp failed: {}", String::from_utf8_lossy(&co.stderr))),
         Err(e) => Err(format!("cp spawn failed: {}", e)),
     }
