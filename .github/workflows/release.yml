@@ -8,7 +8,41 @@ permissions:
   contents: write
 
 jobs:
+  # Create a single draft release first; the build jobs upload assets to it.
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create draft release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Create the draft release if it does not already exist for this tag.
+          if ! gh release view "${{ github.ref_name }}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release create "${{ github.ref_name }}" \
+              --repo "${{ github.repository }}" \
+              --title "BotGroup.Chat ${{ github.ref_name }}" \
+              --draft \
+              --notes "## 下载安装包
+
+          | 平台 | 文件 | 说明 |
+          |------|------|------|
+          | 🍎 macOS (Apple Silicon) | \`BotGroup.Chat_macOS-Apple-Silicon.dmg\` | M1/M2/M3/M4 芯片 Mac |
+          | 🍎 macOS (Intel) | \`BotGroup.Chat_macOS-Intel.dmg\` | 2020 年前的 Intel 芯片 Mac |
+          | 🪟 Windows | \`BotGroup.Chat_Windows_x64.exe\` | Windows 10/11 64位 |
+          | 🐧 Linux | \`BotGroup.Chat_Linux_amd64.deb\` | Ubuntu / Debian |
+
+          ## macOS 安装提示
+          如果提示\"已损坏，无法打开\"，请在终端执行：
+          \`\`\`bash
+          xattr -cr /Applications/BotGroup.Chat.app
+          \`\`\`
+
+          ## Windows 安装提示
+          如果 SmartScreen 弹出警告，点击\"更多信息\" → \"仍要运行\"即可。"
+          fi
+
   build:
+    needs: create-release
     strategy:
       fail-fast: false
       matrix:
@@ -16,19 +50,23 @@ jobs:
           - platform: macos-latest
             args: --target aarch64-apple-darwin
             rust_targets: aarch64-apple-darwin
-            label: macOS-Apple-Silicon
+            asset_name: BotGroup.Chat_macOS-Apple-Silicon.dmg
+            find_pattern: '*.dmg'
           - platform: macos-latest
             args: --target x86_64-apple-darwin
             rust_targets: x86_64-apple-darwin
-            label: macOS-Intel
+            asset_name: BotGroup.Chat_macOS-Intel.dmg
+            find_pattern: '*.dmg'
           - platform: ubuntu-22.04
             args: ''
             rust_targets: ''
-            label: Linux
+            asset_name: BotGroup.Chat_Linux_amd64.deb
+            find_pattern: '*.deb'
           - platform: windows-latest
             args: ''
             rust_targets: ''
-            label: Windows
+            asset_name: BotGroup.Chat_Windows_x64.exe
+            find_pattern: '*-setup.exe'
 
     runs-on: ${{ matrix.platform }}
 
@@ -61,80 +99,41 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      # Build only — no tagName/releaseName here, so tauri-action does NOT
+      # upload its default-named artifacts. We upload renamed files ourselves.
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'BotGroup.Chat ${{ github.ref_name }}'
-          releaseBody: |
-            ## 下载安装包
-
-            | 平台 | 文件 | 说明 |
-            |------|------|------|
-            | 🍎 macOS (Apple Silicon) | `BotGroup.Chat_macOS-Apple-Silicon.dmg` | M1/M2/M3/M4 芯片 Mac |
-            | 🍎 macOS (Intel) | `BotGroup.Chat_macOS-Intel.dmg` | 2020 年前的 Intel 芯片 Mac |
-            | 🪟 Windows | `BotGroup.Chat_Windows_x64.exe` | Windows 10/11 64位 |
-            | 🐧 Linux | `BotGroup.Chat_Linux_amd64.deb` | Ubuntu / Debian |
-
-            ## macOS 安装提示
-            如果提示"已损坏，无法打开"，请在终端执行：
-            ```bash
-            xattr -cr /Applications/BotGroup.Chat.app
-            ```
-
-            ## Windows 安装提示
-            如果 SmartScreen 弹出警告，点击"更多信息" → "仍要运行"即可。
-          releaseDraft: true
-          prerelease: false
           args: ${{ matrix.args }}
 
-      # Rename artifacts to user-friendly names that clearly indicate the platform
-      - name: Rename artifacts (macOS)
-        if: startsWith(matrix.platform, 'macos')
+      # Find the built artifact and upload it under a clear, platform-specific name.
+      - name: Upload renamed asset (Unix)
+        if: matrix.platform != 'windows-latest'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          DMG=$(find src-tauri/target -name "*.dmg" | head -1)
-          if [ -n "$DMG" ]; then
-            cp "$DMG" "BotGroup.Chat_${{ matrix.label }}.dmg"
+          FILE=$(find src-tauri/target -name "${{ matrix.find_pattern }}" | head -1)
+          if [ -z "$FILE" ]; then
+            echo "No artifact matching ${{ matrix.find_pattern }} found"
+            exit 1
           fi
+          cp "$FILE" "${{ matrix.asset_name }}"
+          gh release upload "${{ github.ref_name }}" "${{ matrix.asset_name }}" \
+            --repo "${{ github.repository }}" --clobber
 
-      - name: Rename artifacts (Windows)
+      - name: Upload renamed asset (Windows)
         if: matrix.platform == 'windows-latest'
         shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $exe = Get-ChildItem -Path src-tauri/target -Recurse -Filter "*-setup.exe" | Select-Object -First 1
-          if ($exe) {
-            Copy-Item $exe.FullName "BotGroup.Chat_Windows_x64.exe"
+          $file = Get-ChildItem -Path src-tauri/target -Recurse -Filter "${{ matrix.find_pattern }}" | Select-Object -First 1
+          if (-not $file) {
+            Write-Error "No artifact matching ${{ matrix.find_pattern }} found"
+            exit 1
           }
-
-      - name: Rename artifacts (Linux)
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          DEB=$(find src-tauri/target -name "*.deb" | head -1)
-          if [ -n "$DEB" ]; then
-            cp "$DEB" "BotGroup.Chat_Linux_amd64.deb"
-          fi
-
-      # Upload renamed artifacts to the release
-      - name: Upload release asset (macOS)
-        if: startsWith(matrix.platform, 'macos')
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release upload ${{ github.ref_name }} "BotGroup.Chat_${{ matrix.label }}.dmg" --clobber
-
-      - name: Upload release asset (Windows)
-        if: matrix.platform == 'windows-latest'
-        shell: pwsh
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release upload ${{ github.ref_name }} "BotGroup.Chat_Windows_x64.exe" --clobber
-
-      - name: Upload release asset (Linux)
-        if: matrix.platform == 'ubuntu-22.04'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release upload ${{ github.ref_name }} "BotGroup.Chat_Linux_amd64.deb" --clobber
+          Copy-Item $file.FullName "${{ matrix.asset_name }}"
+          gh release upload "${{ github.ref_name }}" "${{ matrix.asset_name }}" `
+            --repo "${{ github.repository }}" --clobber
