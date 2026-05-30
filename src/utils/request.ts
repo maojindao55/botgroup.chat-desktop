@@ -729,7 +729,7 @@ export async function request(url: string, options: RequestInit = {}) {
             await invoke('cli_run', {
               args: {
                 sessionId: finalSessionId,
-                groupId: groupId || 'group-coding',
+                groupId: groupId || 'default',
                 agentId: agentId || 'cli-generic',
                 agentName: agentName || 'CLI Agent',
                 adapter,

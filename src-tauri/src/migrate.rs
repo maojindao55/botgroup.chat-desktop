@@ -327,6 +327,7 @@ fn migrate_agent_config(
                 icon_url: None,
                 description: None,
                 enabled: true,
+                params: None,
                 created_at: None,
                 updated_at: None,
             };

@@ -74,6 +74,10 @@ pub struct LlmChatStreamArgs {
     pub messages: Vec<ChatMessage>,
     pub temperature: Option<f64>,
     pub tools: Option<serde_json::Value>,
+    /// Default model params (JSON object) for the inline/legacy path.
+    /// For the provider path these are resolved server-side from the DB.
+    #[serde(default)]
+    pub params: Option<serde_json::Value>,
     /// Legacy path (PR2): frontend passes plaintext key from localStorage
     pub base_url: Option<String>,
     pub api_key: Option<String>,
@@ -142,12 +146,50 @@ pub fn resolve_endpoint_with_provider(
     resolve_endpoint_inline(args)
 }
 
-pub fn build_chat_body(args: &LlmChatStreamArgs) -> serde_json::Value {
+/// Resolve default model params: from the provider DB (provider path) or from
+/// inline args (legacy path). Returns a JSON object or `None`.
+pub fn resolve_provider_params(
+    app: &AppHandle,
+    args: &LlmChatStreamArgs,
+) -> Option<serde_json::Value> {
+    if !inline_credentials_provided(args) {
+        if let Some(provider_id) = &args.provider_id {
+            let db_path = get_db_path(app);
+            if let Ok(conn) = Connection::open(&db_path) {
+                if let Some(params) = provider::load_provider_params(&conn, provider_id) {
+                    return Some(params);
+                }
+            }
+        }
+    }
+    args.params
+        .as_ref()
+        .filter(|v| v.is_object())
+        .cloned()
+}
+
+/// Keys that callers must never override via params (managed by the proxy).
+const RESERVED_BODY_KEYS: [&str; 4] = ["model", "messages", "stream", "tools"];
+
+pub fn build_chat_body(
+    args: &LlmChatStreamArgs,
+    provider_params: Option<&serde_json::Value>,
+) -> serde_json::Value {
     let mut body = serde_json::json!({
         "model": args.model,
         "messages": args.messages,
         "stream": true,
     });
+    // Provider/default params act as a baseline and are merged first.
+    if let Some(serde_json::Value::Object(map)) = provider_params {
+        for (k, v) in map {
+            if v.is_null() || RESERVED_BODY_KEYS.contains(&k.as_str()) {
+                continue;
+            }
+            body[k] = v.clone();
+        }
+    }
+    // An explicit per-call temperature (e.g. agent setting) overrides the default.
     if let Some(t) = args.temperature {
         body["temperature"] = serde_json::json!(t);
     }
@@ -168,7 +210,8 @@ pub async fn stream_chat_completions(
     let event_name = format!("llm://{}", args.session_id);
     let (base_url, api_key) = resolve_endpoint_with_provider(&app, &args)?;
     let url = format!("{}/chat/completions", base_url);
-    let body = build_chat_body(&args);
+    let provider_params = resolve_provider_params(&app, &args);
+    let body = build_chat_body(&args, provider_params.as_ref());
 
     let client = Client::builder()
         .timeout(STREAM_TIMEOUT)
@@ -311,6 +354,71 @@ mod tests {
         assert_eq!(extract_delta_content("not-json"), None);
     }
 
+    fn args_with_params(
+        temperature: Option<f64>,
+        params: Option<serde_json::Value>,
+    ) -> LlmChatStreamArgs {
+        LlmChatStreamArgs {
+            session_id: "s".into(),
+            model: "m".into(),
+            messages: vec![ChatMessage {
+                role: "user".into(),
+                content: "hi".into(),
+                name: None,
+            }],
+            temperature,
+            tools: None,
+            params,
+            base_url: Some("http://x".into()),
+            api_key: Some("k".into()),
+            provider_id: None,
+        }
+    }
+
+    #[test]
+    fn build_chat_body_merges_provider_params() {
+        let args = args_with_params(None, None);
+        let provider_params = serde_json::json!({
+            "temperature": 0.3,
+            "top_p": 0.9,
+            "top_k": 40,
+            "max_tokens": 256,
+            "repetition_penalty": 1.1
+        });
+        let body = build_chat_body(&args, Some(&provider_params));
+        assert_eq!(body["temperature"], 0.3);
+        assert_eq!(body["top_p"], 0.9);
+        assert_eq!(body["top_k"], 40);
+        assert_eq!(body["max_tokens"], 256);
+        assert_eq!(body["repetition_penalty"], 1.1);
+        assert_eq!(body["stream"], true);
+    }
+
+    #[test]
+    fn explicit_temperature_overrides_provider_default() {
+        let args = args_with_params(Some(1.5), None);
+        let provider_params = serde_json::json!({ "temperature": 0.2, "top_p": 0.8 });
+        let body = build_chat_body(&args, Some(&provider_params));
+        assert_eq!(body["temperature"], 1.5);
+        assert_eq!(body["top_p"], 0.8);
+    }
+
+    #[test]
+    fn provider_params_cannot_override_reserved_keys() {
+        let args = args_with_params(None, None);
+        let provider_params = serde_json::json!({
+            "model": "evil",
+            "messages": [],
+            "stream": false,
+            "top_p": 0.7
+        });
+        let body = build_chat_body(&args, Some(&provider_params));
+        assert_eq!(body["model"], "m");
+        assert_eq!(body["stream"], true);
+        assert!(body["messages"].as_array().unwrap().len() == 1);
+        assert_eq!(body["top_p"], 0.7);
+    }
+
     #[test]
     fn utf8_multibyte_line_decodes_from_byte_chunks() {
         let line = "data: {\"choices\":[{\"delta\":{\"content\":\"你好\"}}]}";
@@ -362,6 +470,7 @@ mod tests {
             icon_url: None,
             description: None,
             enabled: true,
+            params: None,
             created_at: None,
             updated_at: None,
         };
@@ -398,6 +507,7 @@ mod tests {
             }],
             temperature: None,
             tools: None,
+            params: None,
             base_url: Some(server.uri()),
             api_key: Some("sk-test".into()),
             provider_id: None,
@@ -406,7 +516,7 @@ mod tests {
         let (base, key) = resolve_endpoint_inline(&args).unwrap();
         assert_eq!(base, server.uri());
         assert_eq!(key, "sk-test");
-        let body = build_chat_body(&args);
+        let body = build_chat_body(&args, None);
         assert_eq!(body["stream"], true);
     }
 }

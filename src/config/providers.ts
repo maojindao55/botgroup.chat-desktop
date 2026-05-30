@@ -1,3 +1,19 @@
+/**
+ * 模型服务的默认采样/生成参数。
+ * 键名采用 OpenAI 兼容接口的原生命名（snake_case），便于直接合并进请求体；
+ * 这些参数会作为该 Provider 下所有调用的默认值（成员级显式参数可覆盖）。
+ * 允许任意自定义键，以透传各厂商专有参数（如 repetition_penalty、enable_thinking 等）。
+ */
+export interface ProviderParams {
+  temperature?: number;
+  top_p?: number;
+  top_k?: number;
+  max_tokens?: number;
+  frequency_penalty?: number;
+  presence_penalty?: number;
+  [key: string]: unknown;
+}
+
 export interface Provider {
   id: string;
   name: string;
@@ -8,6 +24,8 @@ export interface Provider {
   enabled?: boolean;
   iconUrl?: string;
   description?: string;
+  /** 默认模型参数，会合并进每次请求体（如 temperature、top_p、top_k、max_tokens 等） */
+  params?: ProviderParams;
 }
 
 /**
@@ -116,5 +134,6 @@ export function mapProviderToRust(p: Provider) {
     iconUrl: p.iconUrl ?? null,
     description: p.description ?? null,
     enabled: p.enabled !== false,
+    params: p.params ?? null,
   };
 }

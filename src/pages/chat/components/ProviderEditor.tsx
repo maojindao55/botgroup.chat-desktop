@@ -3,6 +3,7 @@ import {
   Drawer,
   Form,
   Input,
+  InputNumber,
   Select,
   Switch,
   Button,
@@ -15,7 +16,7 @@ import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { brandPrimaryButtonProps } from '@/lib/theme';
 import { useProviderStore, type ProviderTestResult } from '@/store/providerStore';
-import { providerPresets, readLegacyApiKey, type Provider } from '@/config/providers';
+import { providerPresets, readLegacyApiKey, type Provider, type ProviderParams } from '@/config/providers';
 import { getTranslatedProviderName } from '@/i18n/providerLabels';
 import { Copy, Zap } from 'lucide-react';
 
@@ -34,6 +35,66 @@ function formatInvokeError(e: unknown): string {
     return (e as { message: string }).message;
   }
   return String(e);
+}
+
+/**
+ * 结构化参数表单字段 ↔ OpenAI 兼容接口的原生参数键（snake_case）映射。
+ * 其余未列出的键会被归入 customParams（自定义 JSON）以便透传厂商专有参数。
+ */
+const STRUCTURED_PARAM_MAP: Array<{ field: string; apiKey: string }> = [
+  { field: 'temperature', apiKey: 'temperature' },
+  { field: 'topP', apiKey: 'top_p' },
+  { field: 'topK', apiKey: 'top_k' },
+  { field: 'maxTokens', apiKey: 'max_tokens' },
+  { field: 'frequencyPenalty', apiKey: 'frequency_penalty' },
+  { field: 'presencePenalty', apiKey: 'presence_penalty' },
+];
+
+/** 将已存储的 params 拆分为结构化表单字段 + 自定义 JSON 文本。 */
+function paramsToFormValues(params?: ProviderParams): Record<string, unknown> {
+  const values: Record<string, unknown> = {};
+  const extra: Record<string, unknown> = {};
+  if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      const mapping = STRUCTURED_PARAM_MAP.find((m) => m.apiKey === k);
+      if (mapping) {
+        values[mapping.field] = v;
+      } else {
+        extra[k] = v;
+      }
+    }
+  }
+  for (const { field } of STRUCTURED_PARAM_MAP) {
+    if (!(field in values)) values[field] = undefined;
+  }
+  values.customParams = Object.keys(extra).length ? JSON.stringify(extra, null, 2) : '';
+  return values;
+}
+
+/**
+ * 将表单值组装为 params 对象。结构化字段使用原生键名，自定义 JSON 合并在后。
+ * 自定义 JSON 解析失败时忽略（调用方应先执行表单校验，保存/测试路径都会拦截）。
+ */
+function formValuesToParams(values: Record<string, unknown>): ProviderParams | undefined {
+  const params: ProviderParams = {};
+  for (const { field, apiKey } of STRUCTURED_PARAM_MAP) {
+    const v = values[field];
+    if (v !== undefined && v !== null && v !== '') {
+      params[apiKey] = v as number;
+    }
+  }
+  const customStr = (values.customParams as string)?.trim();
+  if (customStr) {
+    try {
+      const parsed = JSON.parse(customStr);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        Object.assign(params, parsed);
+      }
+    } catch {
+      /* ignored: callers validate form fields before persisting */
+    }
+  }
+  return Object.keys(params).length ? params : undefined;
 }
 
 export const ProviderEditor: React.FC<ProviderEditorProps> = ({
@@ -71,6 +132,7 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
           description: p.description || '',
           enabled: p.enabled !== false,
           apiKey: '',
+          ...paramsToFormValues(p.params),
         });
         hasSecret(providerId)
           .then(setSecretConfigured)
@@ -82,6 +144,7 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
         enabled: true,
         models: [],
         apiKey: '',
+        ...paramsToFormValues(undefined),
       });
       setSecretConfigured(null);
     }
@@ -95,6 +158,7 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
     source: provider?.source === 'builtin' && provider.id === id ? 'builtin' : 'user',
     enabled: values.enabled !== false,
     description: (values.description as string) || '',
+    params: formValuesToParams(values),
   });
 
   const persistProvider = async (values: Record<string, unknown>, id: string) => {
@@ -143,6 +207,7 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
       setTesting(true);
 
       const id = providerId || `user-${Date.now()}`;
+      await form.validateFields(['customParams']);
       const formValues = form.getFieldsValue();
       const baseURL = (formValues.baseURL as string)?.trim() || provider?.baseURL;
       const models = (formValues.models as string[]) || provider?.models || [];
@@ -158,6 +223,15 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
       }
 
       if (!readOnly) {
+        // Validate custom params before persisting: getFieldsValue() bypasses
+        // Form validators, so an invalid customParams JSON would otherwise be
+        // silently dropped (deleting previously stored params) on Test.
+        try {
+          await form.validateFields(['customParams']);
+        } catch {
+          message.error(t('provider.fields.customParamsInvalid'));
+          return;
+        }
         await persistProvider({ ...formValues, name, baseURL, models }, id);
       }
 
@@ -319,6 +393,70 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
 
         <Form.Item label={t('provider.fields.enabled')} name="enabled" valuePropName="checked">
           <Switch checkedChildren={t('provider.fields.enabledOn')} unCheckedChildren={t('provider.fields.enabledOff')} disabled={readOnly} />
+        </Form.Item>
+
+        <Divider orientation={'left' as 'left'} style={{ fontSize: 13, margin: '12px 0' }}>
+          {t('provider.fields.paramsSection')}
+        </Divider>
+        <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 12 }}>
+          {t('provider.fields.paramsHint')}
+        </div>
+
+        <div style={{ display: 'flex', gap: 16 }}>
+          <Form.Item label={t('provider.fields.temperature')} name="temperature" style={{ flex: 1 }}>
+            <InputNumber min={0} max={2} step={0.1} style={{ width: '100%' }} placeholder={t('provider.fields.paramDefault')} disabled={readOnly} />
+          </Form.Item>
+          <Form.Item label={t('provider.fields.topP')} name="topP" style={{ flex: 1 }}>
+            <InputNumber min={0} max={1} step={0.05} style={{ width: '100%' }} placeholder={t('provider.fields.paramDefault')} disabled={readOnly} />
+          </Form.Item>
+        </div>
+
+        <div style={{ display: 'flex', gap: 16 }}>
+          <Form.Item label={t('provider.fields.topK')} name="topK" style={{ flex: 1 }}>
+            <InputNumber min={0} step={1} precision={0} style={{ width: '100%' }} placeholder={t('provider.fields.paramDefault')} disabled={readOnly} />
+          </Form.Item>
+          <Form.Item label={t('provider.fields.maxTokens')} name="maxTokens" style={{ flex: 1 }}>
+            <InputNumber min={1} step={1} precision={0} style={{ width: '100%' }} placeholder={t('provider.fields.paramDefault')} disabled={readOnly} />
+          </Form.Item>
+        </div>
+
+        <div style={{ display: 'flex', gap: 16 }}>
+          <Form.Item label={t('provider.fields.frequencyPenalty')} name="frequencyPenalty" style={{ flex: 1 }}>
+            <InputNumber min={-2} max={2} step={0.1} style={{ width: '100%' }} placeholder={t('provider.fields.paramDefault')} disabled={readOnly} />
+          </Form.Item>
+          <Form.Item label={t('provider.fields.presencePenalty')} name="presencePenalty" style={{ flex: 1 }}>
+            <InputNumber min={-2} max={2} step={0.1} style={{ width: '100%' }} placeholder={t('provider.fields.paramDefault')} disabled={readOnly} />
+          </Form.Item>
+        </div>
+
+        <Form.Item
+          label={t('provider.fields.customParams')}
+          name="customParams"
+          extra={<span style={{ fontSize: 11, opacity: 0.6 }}>{t('provider.fields.customParamsHint')}</span>}
+          rules={[
+            {
+              validator: (_rule, value: string) => {
+                const trimmed = (value || '').trim();
+                if (!trimmed) return Promise.resolve();
+                try {
+                  const parsed = JSON.parse(trimmed);
+                  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+                    return Promise.reject(new Error(t('provider.fields.customParamsInvalid')));
+                  }
+                  return Promise.resolve();
+                } catch {
+                  return Promise.reject(new Error(t('provider.fields.customParamsInvalid')));
+                }
+              },
+            },
+          ]}
+        >
+          <Input.TextArea
+            autoSize={{ minRows: 2, maxRows: 8 }}
+            placeholder={'{\n  "repetition_penalty": 1.1\n}'}
+            disabled={readOnly}
+            style={{ fontFamily: 'monospace', fontSize: 12 }}
+          />
         </Form.Item>
 
         <Divider orientation={'left' as 'left'} style={{ fontSize: 13, margin: '12px 0' }}>

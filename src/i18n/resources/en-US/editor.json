@@ -146,7 +146,19 @@
       "secretBuiltinHint": "Built-in presets can store a key here without changing URL or model list.",
       "secretPlaceholderConfigured": "Leave empty to keep the existing key",
       "secretPlaceholderEmpty": "Enter API key",
-      "testConnection": "Test connection"
+      "testConnection": "Test connection",
+      "paramsSection": "Model parameters",
+      "paramsHint": "Optional. Used as defaults for every model call through this provider (per-member settings can override). Leave empty to omit the parameter and let the server use its default.",
+      "paramDefault": "Default",
+      "temperature": "Temperature",
+      "topP": "Top P",
+      "topK": "Top K",
+      "maxTokens": "Max tokens",
+      "frequencyPenalty": "Frequency penalty",
+      "presencePenalty": "Presence penalty",
+      "customParams": "Custom parameters (JSON)",
+      "customParamsHint": "Advanced: pass other vendor-specific parameters as a JSON object, e.g. {\"repetition_penalty\": 1.1}. Merged with the fields above.",
+      "customParamsInvalid": "Enter a valid JSON object"
     }
   }
 }
