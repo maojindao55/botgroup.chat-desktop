@@ -1,5 +1,3 @@
-import { modelConfigs } from './aiCharacters';
-
 export interface Provider {
   id: string;
   name: string;
@@ -12,61 +10,35 @@ export interface Provider {
   description?: string;
 }
 
-const API_KEY_TO_PROVIDER: Record<string, { id: string; name: string }> = {
-  DASHSCOPE_API_KEY: { id: 'qwen', name: '通义千问' },
-  ARK_API_KEY: { id: 'volcengine', name: '火山引擎' },
-  ARK_API_KEY1: { id: 'volcengine', name: '火山引擎' },
-  HUNYUAN_API_KEY1: { id: 'hunyuan', name: '腾讯混元' },
-  GLM_API_KEY: { id: 'glm', name: '智谱 GLM' },
-  DEEPSEEK_API_KEY: { id: 'deepseek', name: 'DeepSeek' },
-  KIMI_API_KEY: { id: 'kimi', name: 'Moonshot Kimi' },
-  BAIDU_API_KEY: { id: 'baidu', name: '百度千帆' },
-};
-
-function buildFromModelConfigs(): Provider[] {
-  const byKey = new Map<string, Provider>();
-
-  for (const cfg of modelConfigs) {
-    const meta = API_KEY_TO_PROVIDER[cfg.apiKey];
-    if (!meta) continue;
-
-    const apiKeyRef = `provider:${meta.id}`;
-    const key = `${cfg.baseURL}\0${apiKeyRef}`;
-
-    let provider = byKey.get(key);
-    if (!provider) {
-      provider = {
-        id: meta.id,
-        name: meta.name,
-        baseURL: cfg.baseURL,
-        apiKeyRef,
-        models: [],
-        source: 'builtin',
-        enabled: true,
-      };
-      byKey.set(key, provider);
-    }
-
-    if (!provider.models.includes(cfg.model)) {
-      provider.models.push(cfg.model);
-    }
-  }
-
-  return Array.from(byKey.values());
+/**
+ * 服务商类型预设（仅用于「新建模型服务」时快速填入 API 地址）。
+ * 注意：这里只提供 name + baseURL，**不预设任何模型**，模型需用户自行填写。
+ * id 与 i18n `providers:builtin.*` 对齐，便于展示本地化名称。
+ */
+export interface ProviderPreset {
+  id: string;
+  name: string;
+  baseURL: string;
 }
 
-export const builtinProviders: Provider[] = [
-  ...buildFromModelConfigs(),
-  {
-    id: 'ollama',
-    name: 'Ollama 本地',
-    baseURL: 'http://localhost:11434/v1',
-    apiKeyRef: 'provider:ollama',
-    models: [],
-    source: 'builtin',
-    enabled: true,
-  },
+export const providerPresets: ProviderPreset[] = [
+  { id: 'deepseek', name: 'DeepSeek', baseURL: 'https://api.deepseek.com/v1' },
+  { id: 'qwen', name: '通义千问', baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1' },
+  { id: 'volcengine', name: '火山引擎', baseURL: 'https://ark.cn-beijing.volces.com/api/v3' },
+  { id: 'hunyuan', name: '腾讯混元', baseURL: 'https://api.hunyuan.cloud.tencent.com/v1' },
+  { id: 'glm', name: '智谱 GLM', baseURL: 'https://open.bigmodel.cn/api/paas/v4/' },
+  { id: 'kimi', name: 'Moonshot Kimi', baseURL: 'https://api.moonshot.cn/v1' },
+  { id: 'baidu', name: '百度千帆', baseURL: 'https://qianfan.baidubce.com/v2' },
+  { id: 'openai', name: 'OpenAI', baseURL: 'https://api.openai.com/v1' },
+  { id: 'ollama', name: 'Ollama 本地', baseURL: 'http://localhost:11434/v1' },
+  { id: 'custom', name: '自定义', baseURL: '' },
 ];
+
+/**
+ * 不再内置任何模型服务预设（资源库默认为空，仅展示用户自建）。
+ * 新建时可通过 {@link providerPresets} 选择服务商类型来快速填入 API 地址。
+ */
+export const builtinProviders: Provider[] = [];
 
 /** 通过 model 反查 builtin Provider（多命中时取 builtin 字母序最小 id） */
 export function lookupProviderByModel(

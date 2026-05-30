@@ -7,6 +7,8 @@
     "deepseek": "DeepSeek",
     "kimi": "Moonshot Kimi",
     "baidu": "百度千帆",
-    "ollama": "Ollama 本地"
+    "ollama": "Ollama 本地",
+    "openai": "OpenAI",
+    "custom": "自定义"
   }
 }

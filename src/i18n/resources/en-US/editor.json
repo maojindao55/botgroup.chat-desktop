@@ -119,6 +119,9 @@
     },
     "fields": {
       "name": "Provider name",
+      "presetType": "Provider type",
+      "presetTypePlaceholder": "Pick a provider type to auto-fill the API URL (optional)",
+      "presetTypeHint": "Only the API base URL is filled in. Enter the models yourself.",
       "nameRequired": "Enter a provider name",
       "namePlaceholder": "e.g. DeepSeek",
       "baseUrl": "API base URL",
