@@ -1567,6 +1567,8 @@ const ChatUI = () => {
 
   // ============ RENDER: AI / CLI 群 ============
   const userName = userStore.userInfo.nickname || t('settings:aiGroup.selfName');
+  // 当前用户头像从全局解析（不随消息持久化，避免 base64 撑爆存储）；历史消息也据此渲染
+  const selfAvatar = userStore.avatarDisplaySrc || userStore.userInfo?.avatar_url || undefined;
   const isCLIGroup = group.type === 'cli';
 
   return (
@@ -1766,7 +1768,9 @@ const ChatUI = () => {
                     ? (mapAIMemberToLegacy(cliMember) as CLIAgent)
                     : undefined;
                   const avatarName = cliAgentInfo?.name || message.sender.name;
-                  const avatarSource = cliAgentInfo?.avatar || message.sender.avatar;
+                  const avatarSource = isUser
+                    ? (selfAvatar || message.sender.avatar)
+                    : (cliAgentInfo?.avatar || message.sender.avatar);
                   const a = getAvatarData(avatarName);
                   const url = resolveAvatarByName(avatarName, avatarSource, 40);
                   const isLatest = messages[messages.length - 1]?.id === message.id;
