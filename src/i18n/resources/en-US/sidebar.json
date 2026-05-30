@@ -23,5 +23,13 @@
     "themeSystem": "Follow system",
     "themeLight": "Light mode",
     "themeDark": "Dark mode"
+  },
+  "version": {
+    "check": "Check updates",
+    "checking": "Checking…",
+    "latest": "You're on the latest version",
+    "available": "New version v{{version}} available",
+    "updateAction": "Download",
+    "error": "Update check failed, please try again"
   }
 }
