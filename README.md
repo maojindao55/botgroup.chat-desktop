@@ -50,6 +50,23 @@
 | **LLM** | OpenAI 兼容 SDK + Rust 流式代理 |
 | **Markdown** | @lobehub/ui Markdown（KaTeX 公式 / Mermaid 图表 / shiki 高亮） |
 
+## 💻 支持的系统
+
+每次发版由 GitHub Actions 自动构建并在 [Releases](https://github.com/maojindao55/botgroup.chat-desktop/releases) 提供以下安装包:
+
+| 平台 | 架构 | 安装包 | 说明 |
+|------|------|--------|------|
+| 🍎 **macOS (Apple Silicon)** | aarch64 | `.dmg` | M1 / M2 / M3 / M4 芯片 Mac |
+| 🍎 **macOS (Intel)** | x86_64 | `.dmg` | Intel 芯片 Mac |
+| 🪟 **Windows** | x64 | `.exe` (NSIS) | Windows 10 / 11 64 位 |
+| 🐧 **Linux** | amd64 | `.deb` | Ubuntu / Debian |
+
+> **macOS 安装提示**:若提示「已损坏，无法打开」，在终端执行 `xattr -cr /Applications/BotGroup.Chat.app` 后重试。
+>
+> **Windows 安装提示**:若 SmartScreen 弹出警告，点击「更多信息」→「仍要运行」即可。
+
+> Linux 当前仅打包 `.deb`(amd64);其他发行版 / 架构(如 Linux ARM、Windows ARM)可参考下方步骤自行从源码构建。
+
 ## 🚀 快速开始
 
 ### 环境要求
