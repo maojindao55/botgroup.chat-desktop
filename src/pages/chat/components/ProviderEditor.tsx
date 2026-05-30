@@ -222,6 +222,15 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
       }
 
       if (!readOnly) {
+        // Validate custom params before persisting: getFieldsValue() bypasses
+        // Form validators, so an invalid customParams JSON would otherwise be
+        // silently dropped (deleting previously stored params) on Test.
+        try {
+          await form.validateFields(['customParams']);
+        } catch {
+          message.error(t('provider.fields.customParamsInvalid'));
+          return;
+        }
         await persistProvider({ ...formValues, name, baseURL, models }, id);
       }
 
