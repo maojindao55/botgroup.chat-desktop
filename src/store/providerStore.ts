@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
-import { builtinProviders, readLegacyApiKey, type Provider } from '@/config/providers';
+import { builtinProviders, readLegacyApiKey, type Provider, type ProviderParams } from '@/config/providers';
 import i18n from '@/i18n';
 
 /** Rust serde camelCase: base_url → baseUrl (not baseURL) */
@@ -14,6 +14,7 @@ interface RustProvider {
   iconUrl?: string | null;
   description?: string | null;
   enabled: boolean;
+  params?: ProviderParams | null;
   createdAt?: string | null;
   updatedAt?: string | null;
 }
@@ -29,6 +30,7 @@ export function mapFromRust(r: RustProvider): Provider {
     enabled: r.enabled,
     iconUrl: r.iconUrl ?? undefined,
     description: r.description ?? undefined,
+    params: r.params ?? undefined,
   };
 }
 
@@ -43,6 +45,7 @@ export function mapToRust(p: Provider): RustProvider {
     iconUrl: p.iconUrl ?? null,
     description: p.description ?? null,
     enabled: p.enabled !== false,
+    params: p.params ?? null,
   };
 }
 

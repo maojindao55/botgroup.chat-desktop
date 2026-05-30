@@ -146,7 +146,19 @@
       "secretBuiltinHint": "系统预设服务的密钥可在此单独配置（不会修改预设的地址和模型列表）",
       "secretPlaceholderConfigured": "留空则保留现有密钥",
       "secretPlaceholderEmpty": "输入 API Key",
-      "testConnection": "测试连接"
+      "testConnection": "测试连接",
+      "paramsSection": "模型参数",
+      "paramsHint": "可选。设置后将作为该服务下所有模型调用的默认参数（成员单独设置的参数可覆盖）。留空则不传该参数，由服务端使用默认值。",
+      "paramDefault": "默认",
+      "temperature": "Temperature（随机性）",
+      "topP": "Top P（核采样）",
+      "topK": "Top K",
+      "maxTokens": "最大 Tokens",
+      "frequencyPenalty": "频率惩罚 (frequency_penalty)",
+      "presencePenalty": "存在惩罚 (presence_penalty)",
+      "customParams": "自定义参数 (JSON)",
+      "customParamsHint": "高级：以 JSON 对象透传其他厂商专有参数，例如 {\"repetition_penalty\": 1.1}。会与上方参数合并。",
+      "customParamsInvalid": "请输入合法的 JSON 对象"
     }
   }
 }

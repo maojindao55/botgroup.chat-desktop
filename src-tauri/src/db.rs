@@ -328,11 +328,21 @@ pub fn init_db_schemas(conn: &Connection) -> Result<()> {
             icon_url    TEXT,
             description TEXT,
             enabled     INTEGER NOT NULL DEFAULT 1,
+            params      TEXT,                              -- JSON object of default model params
             created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );",
         [],
     )?;
+
+    // Migration: add `params` column to providers for databases created before
+    // default-model-parameter support was introduced.
+    let providers_has_params: bool = conn
+        .prepare("SELECT 1 FROM pragma_table_info('providers') WHERE name = 'params'")?
+        .exists([])?;
+    if !providers_has_params {
+        conn.execute("ALTER TABLE providers ADD COLUMN params TEXT", [])?;
+    }
 
     // Create indices
     conn.execute("CREATE INDEX IF NOT EXISTS idx_cli_tasks_group_created ON cli_tasks(group_id, created_at DESC);", [])?;

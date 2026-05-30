@@ -18,6 +18,9 @@ pub struct Provider {
     pub icon_url: Option<String>,
     pub description: Option<String>,
     pub enabled: bool,
+    /// Default model params (JSON object) merged into chat request bodies.
+    #[serde(default)]
+    pub params: Option<serde_json::Value>,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
 }
@@ -26,7 +29,7 @@ pub(crate) mod db {
     use super::*;
 
     const SELECT_COLS: &str =
-        "id, name, base_url, api_key_ref, models, source, icon_url, description, enabled, created_at, updated_at";
+        "id, name, base_url, api_key_ref, models, source, icon_url, description, enabled, params, created_at, updated_at";
 
     fn row_to_provider(row: &rusqlite::Row<'_>) -> rusqlite::Result<Provider> {
     let models_json: String = row.get(4)?;
@@ -38,6 +41,20 @@ pub(crate) mod db {
         )
     })?;
     let enabled_int: i32 = row.get(8)?;
+    let params_json: Option<String> = row.get(9)?;
+    let params = params_json
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| serde_json::from_str::<serde_json::Value>(s))
+        .transpose()
+        .map_err(|e| {
+            rusqlite::Error::FromSqlConversionFailure(
+                9,
+                rusqlite::types::Type::Text,
+                Box::new(e),
+            )
+        })?;
     Ok(Provider {
         id: row.get(0)?,
         name: row.get(1)?,
@@ -48,8 +65,9 @@ pub(crate) mod db {
         icon_url: row.get(6)?,
         description: row.get(7)?,
         enabled: enabled_int != 0,
-        created_at: row.get(9)?,
-        updated_at: row.get(10)?,
+        params,
+        created_at: row.get(10)?,
+        updated_at: row.get(11)?,
     })
     }
 
@@ -89,10 +107,14 @@ pub(crate) mod db {
     pub fn upsert_provider(conn: &Connection, p: &Provider) -> Result<(), String> {
     let models_json = serde_json::to_string(&p.models).map_err(|e| e.to_string())?;
     let enabled_int: i32 = if p.enabled { 1 } else { 0 };
+    let params_json: Option<String> = match &p.params {
+        Some(v) if !v.is_null() => Some(serde_json::to_string(v).map_err(|e| e.to_string())?),
+        _ => None,
+    };
 
     conn.execute(
-        "INSERT INTO providers (id, name, base_url, api_key_ref, models, source, icon_url, description, enabled, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, CURRENT_TIMESTAMP)
+        "INSERT INTO providers (id, name, base_url, api_key_ref, models, source, icon_url, description, enabled, params, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, CURRENT_TIMESTAMP)
          ON CONFLICT(id) DO UPDATE SET
             name = excluded.name,
             base_url = excluded.base_url,
@@ -102,6 +124,7 @@ pub(crate) mod db {
             icon_url = excluded.icon_url,
             description = excluded.description,
             enabled = excluded.enabled,
+            params = excluded.params,
             updated_at = CURRENT_TIMESTAMP",
         params![
             p.id,
@@ -113,6 +136,7 @@ pub(crate) mod db {
             p.icon_url,
             p.description,
             enabled_int,
+            params_json,
         ],
     )
     .map_err(|e| e.to_string())?;
@@ -162,9 +186,13 @@ pub(crate) mod db {
         for p in providers {
             let models_json = serde_json::to_string(&p.models).map_err(|e| e.to_string())?;
             let enabled_int: i32 = if p.enabled { 1 } else { 0 };
+            let params_json: Option<String> = match &p.params {
+                Some(v) if !v.is_null() => Some(serde_json::to_string(v).map_err(|e| e.to_string())?),
+                _ => None,
+            };
             tx.execute(
-                "INSERT OR IGNORE INTO providers (id, name, base_url, api_key_ref, models, source, icon_url, description, enabled)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                "INSERT OR IGNORE INTO providers (id, name, base_url, api_key_ref, models, source, icon_url, description, enabled, params)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                 params![
                     p.id,
                     p.name,
@@ -175,6 +203,7 @@ pub(crate) mod db {
                     p.icon_url,
                     p.description,
                     enabled_int,
+                    params_json,
                 ],
             )
             .map_err(|e| e.to_string())?;
@@ -204,6 +233,18 @@ pub(crate) fn load_provider_endpoint(
         .unwrap_or_default();
 
     Ok((base_url, api_key))
+}
+
+/// Load default model params (JSON object) for a provider, if any.
+pub(crate) fn load_provider_params(
+    conn: &Connection,
+    provider_id: &str,
+) -> Option<serde_json::Value> {
+    db::get_provider(conn, provider_id)
+        .ok()
+        .flatten()
+        .and_then(|p| p.params)
+        .filter(|v| v.is_object())
 }
 
 #[derive(Serialize)]
@@ -418,6 +459,7 @@ mod tests {
             icon_url: None,
             description: Some("Test provider".to_string()),
             enabled: true,
+            params: None,
             created_at: None,
             updated_at: None,
         }
@@ -499,6 +541,32 @@ mod tests {
 
         let got = get_provider(&conn, "volcengine").unwrap().unwrap();
         assert_eq!(got.models, p.models);
+    }
+
+    #[test]
+    fn params_roundtrip_and_loader() {
+        let conn = test_conn();
+        let mut p = sample_provider("with-params");
+        p.params = Some(serde_json::json!({
+            "temperature": 0.6,
+            "top_p": 0.9,
+            "top_k": 50,
+            "max_tokens": 1024
+        }));
+        upsert_provider(&conn, &p).unwrap();
+
+        let got = get_provider(&conn, "with-params").unwrap().unwrap();
+        assert_eq!(got.params, p.params);
+
+        let loaded = super::load_provider_params(&conn, "with-params").unwrap();
+        assert_eq!(loaded["temperature"], 0.6);
+        assert_eq!(loaded["top_k"], 50);
+
+        // Provider without params yields None
+        let plain = sample_provider("no-params");
+        upsert_provider(&conn, &plain).unwrap();
+        assert!(get_provider(&conn, "no-params").unwrap().unwrap().params.is_none());
+        assert!(super::load_provider_params(&conn, "no-params").is_none());
     }
 
     use wiremock::matchers::{header, method, path};
