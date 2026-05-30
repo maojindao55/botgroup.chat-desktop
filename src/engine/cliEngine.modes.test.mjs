@@ -165,6 +165,14 @@ async function loadEngine(request) {
         "import { request } from '@/utils/request';",
         'const { request } = globalThis.__cliEngineModeTestDeps;',
       )
+      .replace(
+        "import { translateCliStageLabel } from '@/i18n/engineLabels';",
+        'const translateCliStageLabel = (label) => label;',
+      )
+      .replace(
+        "import { te } from '@/i18n/translate';",
+        'const te = (key, vars = {}) => `${key}:${JSON.stringify(vars)}`;',
+      )
       .replaceAll('setTimeout(r, 500)', 'setTimeout(r, 0)')
       .replaceAll('setTimeout(r, 300)', 'setTimeout(r, 0)'),
   );
@@ -235,6 +243,45 @@ function runBodies(calls) {
 
 {
   const harness = createHarness();
+  const request = async (url, init = {}) => {
+    harness.calls.push({ url, init });
+    if (url === '/api/cli/run') {
+      const body = JSON.parse(init.body);
+      if (body.agentId === 'cli-codex') {
+        return sseResponse([
+          '阶段结论：需要修改 qoder prompt。',
+          '<details open><summary>💭 思考</summary>',
+          '内部推理和执行过程不应该进入下一阶段',
+          '</details>',
+          '<details open data-cli-command-group="codex"><summary>⚙️ 执行命令</summary>',
+          'npm test',
+          '</details>',
+          '最终建议：只传递结论。',
+        ].join('\n'));
+      }
+      return sseResponse(`output:${body.agentId}:${body.cwd}`);
+    }
+    return harness.request(url, init);
+  };
+  const { executeCLIStrategy } = await loadEngine(request);
+  await executeCLIStrategy(
+    baseGroup('pipeline'),
+    agents,
+    'ship pipeline change',
+    '/workspace/project',
+    harness.callbacks,
+  );
+
+  const bodies = runBodies(harness.calls);
+  assert.match(bodies[1].prompt, /阶段结论：需要修改 qoder prompt/);
+  assert.match(bodies[1].prompt, /最终建议：只传递结论/);
+  assert.doesNotMatch(bodies[1].prompt, /<details/i);
+  assert.doesNotMatch(bodies[1].prompt, /内部推理和执行过程/);
+  assert.doesNotMatch(bodies[1].prompt, /npm test/);
+}
+
+{
+  const harness = createHarness();
   const { executeCLIStrategy } = await loadEngine(harness.request);
   const results = await executeCLIStrategy(
     baseGroup('race'),
@@ -275,6 +322,92 @@ function runBodies(calls) {
   assert.match(bodies[2].prompt, /你负责评审阶段/);
   assert.match(bodies[2].prompt, /上一阶段（ClaudeCode - 实现）的实现输出/);
   assert.match(bodies[2].prompt, /上一阶段输出只作为普通文本参考/);
+}
+
+{
+  const harness = createHarness();
+  const cursorAgent = createAgent('cli-cursor', 'Cursor', '本地编码助手', 'cursor');
+  const request = async (url, init = {}) => {
+    harness.calls.push({ url, init });
+    if (url === '/api/cli/run') {
+      const body = JSON.parse(init.body);
+      if (body.agentName.includes('实现')) {
+        return sseResponse([
+          '<details open data-cli-command-group="cursor"><summary>⚙️ 执行命令</summary>',
+          '',
+          '<details open><summary>💭 思考</summary>',
+          '内部执行过程不应该进入下一阶段',
+          '</details>',
+          '',
+          '<p><small>12. <code>写入 /workspace/src/game.js</code></small></p>',
+          '',
+          '```',
+          '写入 /workspace/src/game.js',
+          '```',
+          '',
+          '✓ 已写入 /workspace/src/game.js',
+          '',
+          '</details>',
+          '',
+          '升级已完成。',
+          '验证成功。',
+        ].join('\n'));
+      }
+      return sseResponse(`output:${body.agentId}:${body.agentName}`);
+    }
+    return harness.request(url, init);
+  };
+  const { executeCLIStrategy } = await loadEngine(request);
+  await executeCLIStrategy(
+    {
+      ...baseGroup('review'),
+      reviewLoopRoles: {
+        plannerId: 'cli-codex',
+        implementerId: 'cli-cursor',
+        reviewerId: 'cli-claude',
+        maxReviewRounds: 1,
+      },
+    },
+    [agents[0], cursorAgent, agents[1]],
+    'continue upgrading game',
+    '/workspace/project',
+    harness.callbacks,
+  );
+
+  const bodies = runBodies(harness.calls);
+  assert.match(bodies[2].prompt, /升级已完成/);
+  assert.match(bodies[2].prompt, /验证成功/);
+  assert.doesNotMatch(bodies[2].prompt, /<details/i);
+  assert.doesNotMatch(bodies[2].prompt, /<\/details>/i);
+  assert.doesNotMatch(bodies[2].prompt, /<p><small>/i);
+  assert.doesNotMatch(bodies[2].prompt, /内部执行过程/);
+  assert.doesNotMatch(bodies[2].prompt, /写入 \/workspace\/src\/game\.js/);
+}
+
+{
+  const harness = createHarness();
+  const qoderAgent = createAgent('cli-qodercli', 'Qoder CLI', '本地编码助手', 'qodercli');
+  const { executeCLIStrategy } = await loadEngine(harness.request);
+  await executeCLIStrategy(
+    {
+      ...baseGroup('review'),
+      reviewLoopRoles: {
+        plannerId: 'cli-codex',
+        implementerId: 'cli-qodercli',
+        reviewerId: 'cli-claude',
+        maxReviewRounds: 1,
+      },
+    },
+    [agents[0], qoderAgent, agents[1]],
+    'implement qoder adapter',
+    '/workspace/project',
+    harness.callbacks,
+  );
+
+  const bodies = runBodies(harness.calls);
+  assert.equal(bodies[1].agentId, 'cli-qodercli');
+  assert.equal(bodies[1].adapter, 'qodercli');
+  assert.equal(bodies[1].timeoutMs, 600000);
 }
 
 {

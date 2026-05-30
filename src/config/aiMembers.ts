@@ -115,4 +115,18 @@ export const builtinAIMembers: AIMember[] = [
       showStderr: false,
     }
   },
+  {
+    id: 'cli-qodercli',
+    kind: 'cli',
+    name: 'Qoder CLI',
+    avatar: 'lobehub:Qoder',
+    description: 'Qoder CLI Agent，支持本地项目分析和自动编码任务',
+    source: 'builtin',
+    enabled: true,
+    cli: {
+      adapter: 'qodercli',
+      approvalMode: 'auto',
+      showStderr: false,
+    }
+  },
 ];

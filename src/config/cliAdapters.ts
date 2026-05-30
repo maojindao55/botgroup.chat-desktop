@@ -3,6 +3,7 @@ export type CLIAdapterId =
   | 'claude'
   | 'opencode'
   | 'cursor'
+  | 'qodercli'
   | (string & {});
 
 export type CLIStreamMode =
@@ -10,6 +11,7 @@ export type CLIStreamMode =
   | 'claude-json'
   | 'opencode-json'
   | 'cursor-json'
+  | 'qoder-json'
   | 'raw';
 
 export interface CLIAdapterDefinition {
@@ -64,6 +66,16 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     commandGroup: 'cursor',
     capabilities: { toolSession: true },
     toolSessionArgs: ['--resume', '--continue'],
+    toolSessionArgPrefixes: ['--resume='],
+  },
+  {
+    id: 'qodercli',
+    label: 'Qoder CLI',
+    defaultBinary: 'qodercli',
+    streamMode: 'qoder-json',
+    commandGroup: 'qoder',
+    capabilities: { toolSession: true },
+    toolSessionArgs: ['-r', '--resume', '-c', '--continue'],
     toolSessionArgPrefixes: ['--resume='],
   },
 ];

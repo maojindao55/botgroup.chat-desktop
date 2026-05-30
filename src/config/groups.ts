@@ -277,7 +277,7 @@ export const defaultGroups: Group[] = [
     type: 'cli',
     name: 'AI Coding 工作组',
     description: '多 CLI Agent 协作编码：你给需求，Agent 直接在本地 workspace 里执行修改。请先在群设置里指定 workspacePath。',
-    memberIds: ['cli-codex', 'cli-claude-code', 'cli-opencode', 'cli-cursor'],
+    memberIds: ['cli-codex', 'cli-claude-code', 'cli-opencode', 'cli-cursor', 'cli-qodercli'],
     workspacePath: '',
     approvalMode: 'auto',
     timeout: 300000,

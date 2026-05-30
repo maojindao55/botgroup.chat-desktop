@@ -23,6 +23,10 @@ assert.equal(mod.supportsCliToolSession('codex'), true);
 assert.equal(mod.supportsCliToolSession('claude'), true);
 assert.equal(mod.supportsCliToolSession('opencode'), true);
 assert.equal(mod.supportsCliToolSession('cursor'), true);
+assert.equal(mod.getCLIAdapterDefinition('qodercli').label, 'Qoder CLI');
+assert.equal(mod.getCLIAdapterDefinition('qodercli').defaultBinary, 'qodercli');
+assert.equal(mod.getCLIAdapterDefinition('qodercli').streamMode, 'qoder-json');
+assert.equal(mod.supportsCliToolSession('qodercli'), true);
 
 assert.equal(mod.adapterUsesOpenCodeSessionTitle('opencode'), true);
 assert.equal(mod.adapterUsesOpenCodeSessionTitle('codex'), false);
@@ -33,6 +37,8 @@ assert.equal(mod.hasExplicitToolSessionArg('opencode', ['--session=ses_old']), t
 assert.equal(mod.hasExplicitToolSessionArg('codex', ['resume', 'manual-session']), true);
 assert.equal(mod.hasExplicitToolSessionArg('claude', ['--resume', 'manual-session']), true);
 assert.equal(mod.hasExplicitToolSessionArg('cursor', ['--continue']), true);
+assert.equal(mod.hasExplicitToolSessionArg('qodercli', ['-r', 'manual-session']), true);
+assert.equal(mod.hasExplicitToolSessionArg('qodercli', ['--resume=manual-session']), true);
 
 const unknown = mod.getCLIAdapterDefinition('custom-cli');
 assert.equal(unknown.id, 'custom-cli');

@@ -877,6 +877,7 @@ const CLI_ADAPTER_DEFINITIONS: &[CliAdapterDefinition] = &[
     CliAdapterDefinition { id: "opencode", default_binary: Some("opencode") },
     CliAdapterDefinition { id: "claude", default_binary: Some("claude") },
     CliAdapterDefinition { id: "cursor", default_binary: Some("cursor") },
+    CliAdapterDefinition { id: "qodercli", default_binary: Some("qodercli") },
 ];
 
 fn adapter_definition(adapter: &str) -> Option<CliAdapterDefinition> {
@@ -1018,6 +1019,35 @@ fn build_cursor_command(argv: &mut Vec<String>, args: &CliRunArgs) {
     {
         append_tool_session(argv, args, "--resume");
     }
+    argv.push(args.prompt.clone());
+}
+
+fn build_qodercli_command(argv: &mut Vec<String>, args: &CliRunArgs) {
+    if !has_any_extra_arg(args, &["-o", "--output-format"])
+        && !has_any_extra_arg_prefix(args, &["-o=", "--output-format="])
+    {
+        argv.push("-o".to_string());
+        argv.push("json".to_string());
+    }
+    if let Some(cwd) = &args.cwd {
+        if !cwd.is_empty()
+            && !has_any_extra_arg(args, &["-w", "--workspace"])
+            && !has_any_extra_arg_prefix(args, &["-w=", "--workspace="])
+        {
+            argv.push("-w".to_string());
+            argv.push(cwd.clone());
+        }
+    }
+    if args.approval_mode.as_deref() == Some("auto") && !has_extra_arg(args, "--yolo") {
+        argv.push("--yolo".to_string());
+    }
+    append_extra_args(argv, args);
+    if !has_any_extra_arg(args, &["-r", "--resume", "-c", "--continue"])
+        && !has_extra_arg_prefix(args, "--resume=")
+    {
+        append_tool_session(argv, args, "-r");
+    }
+    argv.push("-p".to_string());
     argv.push(args.prompt.clone());
 }
 
@@ -1298,6 +1328,7 @@ fn build_command(args: &CliRunArgs) -> Result<Command, String> {
         "opencode" => build_opencode_command(&mut argv, arg_src),
         "claude" => build_claude_command(&mut argv, arg_src),
         "cursor" => build_cursor_command(&mut argv, arg_src),
+        "qodercli" => build_qodercli_command(&mut argv, arg_src),
         other => return Err(format!("unknown adapter: {}", other)),
     }
 
@@ -1451,6 +1482,7 @@ mod tests {
         assert_eq!(adapter_definition("opencode").and_then(|d| d.default_binary), Some("opencode"));
         assert_eq!(adapter_definition("claude").and_then(|d| d.default_binary), Some("claude"));
         assert_eq!(adapter_definition("cursor").and_then(|d| d.default_binary), Some("cursor"));
+        assert_eq!(adapter_definition("qodercli").and_then(|d| d.default_binary), Some("qodercli"));
         assert!(adapter_definition("unknown").is_none());
     }
 
@@ -1812,6 +1844,97 @@ mod tests {
 
         assert!(rendered.contains("\"--format=default\""));
         assert!(!rendered.contains("\"--format\" \"json\""));
+    }
+
+    #[test]
+    fn qodercli_print_defaults_to_json_and_workspace() {
+        let cmd = build_command(&CliRunArgs {
+            session_id: "session-1".to_string(),
+            group_id: "group-1".to_string(),
+            agent_id: "cli-qoder".to_string(),
+            agent_name: "Qoder".to_string(),
+            adapter: "qodercli".to_string(),
+            prompt: "查看我当前项目目录".to_string(),
+            cwd: Some("/tmp/project".to_string()),
+            extra_args: None,
+            tool_session_id: None,
+            binary: None,
+            env: Some(HashMap::new()),
+            timeout_ms: Some(300000),
+            approval_mode: Some("auto".to_string()),
+            show_stderr: Some(false),
+            wsl: None,
+            wsl_distro: None,
+        })
+        .expect("qodercli command should build");
+
+        let rendered = format!("{:?}", cmd);
+
+        assert!(rendered.contains("\"qodercli\""));
+        assert!(rendered.contains("\"-o\""));
+        assert!(rendered.contains("\"json\""));
+        assert!(rendered.contains("\"-p\""));
+        assert!(rendered.contains("\"查看我当前项目目录\""));
+        assert!(rendered.contains("\"-w\""));
+        assert!(rendered.contains("\"/tmp/project\""));
+        assert!(rendered.contains("\"--yolo\""));
+    }
+
+    #[test]
+    fn qodercli_print_resumes_tool_session_when_available() {
+        let cmd = build_command(&CliRunArgs {
+            session_id: "session-1".to_string(),
+            group_id: "group-1".to_string(),
+            agent_id: "cli-qoder".to_string(),
+            agent_name: "Qoder".to_string(),
+            adapter: "qodercli".to_string(),
+            prompt: "继续刚才的任务".to_string(),
+            cwd: Some("/tmp/project".to_string()),
+            extra_args: None,
+            tool_session_id: Some("qoder-session-1".to_string()),
+            binary: None,
+            env: Some(HashMap::new()),
+            timeout_ms: Some(300000),
+            approval_mode: Some("auto".to_string()),
+            show_stderr: Some(false),
+            wsl: None,
+            wsl_distro: None,
+        })
+        .expect("qodercli resume command should build");
+
+        let rendered = format!("{:?}", cmd);
+
+        assert!(rendered.contains("\"-r\""));
+        assert!(rendered.contains("\"qoder-session-1\""));
+        assert!(rendered.contains("\"继续刚才的任务\""));
+    }
+
+    #[test]
+    fn qodercli_print_respects_explicit_resume_arg() {
+        let cmd = build_command(&CliRunArgs {
+            session_id: "session-1".to_string(),
+            group_id: "group-1".to_string(),
+            agent_id: "cli-qoder".to_string(),
+            agent_name: "Qoder".to_string(),
+            adapter: "qodercli".to_string(),
+            prompt: "继续刚才的任务".to_string(),
+            cwd: Some("/tmp/project".to_string()),
+            extra_args: Some(vec!["-r".to_string(), "manual-session".to_string()]),
+            tool_session_id: Some("stored-session".to_string()),
+            binary: None,
+            env: Some(HashMap::new()),
+            timeout_ms: Some(300000),
+            approval_mode: Some("auto".to_string()),
+            show_stderr: Some(false),
+            wsl: None,
+            wsl_distro: None,
+        })
+        .expect("qodercli command should build");
+
+        let rendered = format!("{:?}", cmd);
+
+        assert!(rendered.contains("\"manual-session\""));
+        assert!(!rendered.contains("\"stored-session\""));
     }
 
     #[test]

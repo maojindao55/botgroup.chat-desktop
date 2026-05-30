@@ -29,6 +29,9 @@ import {
   renderOpenCodeCommandGroupEnd,
   renderOpenCodeCommandGroupStart,
 } from './opencodeStream';
+import {
+  parseQoderJsonLine,
+} from './qoderStream';
 
 export type CLIStreamEvent = Record<string, unknown>;
 
@@ -333,6 +336,37 @@ export function createCLIStreamHandler(
           }
         } else if (!parsed && !line.startsWith('{')) {
           closeCommandGroups();
+          emitters.enqueueChunk(`${line}\n`);
+        }
+        return true;
+      },
+    };
+  }
+
+  if (streamMode === 'qoder-json') {
+    let sessionId: string | null = null;
+
+    return {
+      streamMode,
+      usesJsonModeStderr: false,
+      hasCommandGroupOpen: () => false,
+      closeCommandGroups: () => {},
+      flushDone: () => {},
+      handleStdoutLine: (line) => {
+        const parsed = parseQoderJsonLine(line);
+        if (parsed?.sessionId && parsed.sessionId !== sessionId) {
+          sessionId = parsed.sessionId;
+          emitters.enqueueEvent({ type: 'tool_session', adapter, sessionId: parsed.sessionId });
+        }
+        if (parsed?.error) {
+          emitters.enqueueEvent({
+            type: 'error',
+            content: `\n**[Qoder CLI error]** ${parsed.error}\n`,
+            error: parsed.error,
+          });
+        } else if (parsed?.content) {
+          emitters.enqueueChunk(parsed.content);
+        } else if (!parsed) {
           emitters.enqueueChunk(`${line}\n`);
         }
         return true;

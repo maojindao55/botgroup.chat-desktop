@@ -20,12 +20,14 @@ const [
   cursorStream,
   codexStream,
   opencodeStream,
+  qoderStream,
 ] = await Promise.all([
   importTsModule(new URL('../config/cliAdapters.ts', import.meta.url)),
   importTsModule(new URL('./claudeStream.ts', import.meta.url)),
   importTsModule(new URL('./cursorStream.ts', import.meta.url)),
   importTsModule(new URL('./codexStream.ts', import.meta.url)),
   importTsModule(new URL('./opencodeStream.ts', import.meta.url)),
+  importTsModule(new URL('./qoderStream.ts', import.meta.url)),
 ]);
 
 globalThis.__cliStreamHandlersTestDeps = {
@@ -34,6 +36,7 @@ globalThis.__cliStreamHandlersTestDeps = {
   ...cursorStream,
   ...codexStream,
   ...opencodeStream,
+  ...qoderStream,
 };
 
 const { createCLIStreamHandler } = await importTsModule(
@@ -110,6 +113,14 @@ const { createCLIStreamHandler } = await importTsModule(
   renderOpenCodeCommandGroupEnd,
   renderOpenCodeCommandGroupStart,
 } = globalThis.__cliStreamHandlersTestDeps;`,
+    )
+    .replace(
+      `import {
+  parseQoderJsonLine,
+} from './qoderStream';`,
+      `const {
+  parseQoderJsonLine,
+} = globalThis.__cliStreamHandlersTestDeps;`,
     ),
 );
 
@@ -170,6 +181,23 @@ function createRecorder() {
     { type: 'tool_session', adapter: 'opencode', sessionId: 'open-session' },
   ]);
   assert.equal(recorder.chunks.join(''), 'hello from opencode');
+}
+
+{
+  const recorder = createRecorder();
+  const handler = createCLIStreamHandler('qodercli', recorder.emitters);
+
+  assert.equal(handler.streamMode, 'qoder-json');
+  assert.equal(handler.handleStdoutLine(JSON.stringify({
+    type: 'assistant',
+    session_id: 'qoder-session',
+    message: { content: [{ type: 'text', text: 'hello from qoder' }] },
+  })), true);
+
+  assert.deepEqual(recorder.events, [
+    { type: 'tool_session', adapter: 'qodercli', sessionId: 'qoder-session' },
+  ]);
+  assert.equal(recorder.chunks.join(''), 'hello from qoder');
 }
 
 {

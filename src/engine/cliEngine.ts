@@ -547,7 +547,7 @@ const DEFAULT_TIMEOUT_MS = 300_000;
 /** 实现/修正阶段至少给 coding adapter 10 分钟（多轮 tool call + 验证） */
 const MIN_IMPLEMENT_TIMEOUT_MS = 600_000;
 const IMPLEMENT_STAGE_LABELS = new Set(['实现', '实现+自检', '生成代码']);
-const CODING_ADAPTERS = new Set(['cursor', 'codex', 'claude', 'opencode']);
+const CODING_ADAPTERS = new Set(['cursor', 'codex', 'claude', 'opencode', 'qodercli']);
 
 function isImplementStage(stageLabel?: string): boolean {
   if (!stageLabel) return false;
@@ -568,12 +568,47 @@ function resolveAgentTimeoutMs(
   return base;
 }
 
-/** 去掉上一阶段 CLI 命令 HTML 块，减少 prompt 体积与误执行风险 */
+/** 去掉上一阶段 UI/CLI 执行过程 HTML 块，减少 prompt 体积与误执行风险 */
 function sanitizePipelineOutput(output: string): string {
-  return output
-    .replace(/<details[^>]*data-cli-command-group[^>]*>[\s\S]*?<\/details>/gi, '')
+  return stripDetailsBlocks(output)
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+function stripDetailsBlocks(output: string): string {
+  const detailsTagPattern = /<\s*\/?\s*details\b[^>]*>/gi;
+  let sanitized = '';
+  let cursor = 0;
+  let depth = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = detailsTagPattern.exec(output)) !== null) {
+    const tag = match[0];
+    const tagStart = match.index;
+    const tagEnd = detailsTagPattern.lastIndex;
+    const isClosingTag = /^<\s*\/\s*details\b/i.test(tag);
+
+    if (depth === 0) {
+      sanitized += output.slice(cursor, tagStart);
+    }
+
+    if (isClosingTag) {
+      if (depth > 0) {
+        depth -= 1;
+      }
+      cursor = tagEnd;
+      continue;
+    }
+
+    depth += 1;
+    cursor = tagEnd;
+  }
+
+  if (depth === 0) {
+    sanitized += output.slice(cursor);
+  }
+
+  return sanitized;
 }
 
 function pipelineStageLabel(plan: CLIExecutionPlan, index: number, totalAgents = 0): string {
@@ -682,7 +717,10 @@ ${REVIEW_DECISION_NOTICE}
     }
 
     if (stage.startsWith('修正')) {
-      const feedback = truncate(input.reviewFeedback || input.previousOutput || '(评审阶段无反馈)', 12000);
+      const feedback = truncate(
+        sanitizePipelineOutput(input.reviewFeedback || input.previousOutput || '(评审阶段无反馈)'),
+        12000,
+      );
       return `以下是评审者给出的修正反馈：
 
 ${PREVIOUS_OUTPUT_REFERENCE_NOTICE}
@@ -707,7 +745,7 @@ ${feedback}
     const stage = input.currentStageLabel || '继续';
     const prevStage = input.previousStageLabel || '上一阶段';
     const prevAgent = input.previousAgentName || '上一阶段 Agent';
-    const prev = truncate(input.previousOutput, 12000);
+    const prev = truncate(sanitizePipelineOutput(input.previousOutput), 12000);
     return `${readOnlyPrefix}以下是上一阶段（${prevAgent} - ${prevStage}）的输出结果：
 
 ${PREVIOUS_OUTPUT_REFERENCE_NOTICE}
@@ -728,7 +766,7 @@ ${prev}
 
 ${basePrompt}`;
     }
-    const transcript = truncate(input.discussionTranscript, 12000);
+    const transcript = truncate(sanitizePipelineOutput(input.discussionTranscript), 12000);
     return `${readOnlyPrefix}原始需求：${basePrompt}
 
 以下是上一轮讨论记录：
