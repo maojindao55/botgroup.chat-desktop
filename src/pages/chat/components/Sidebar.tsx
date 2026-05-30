@@ -62,7 +62,7 @@ const useStyles = createStyles(({ token, css }) => ({
   `,
   brand: css`
     font-family: 'Audiowide', system-ui;
-    font-size: 15px;
+    font-size: 15.8px;
     color: #ff6600;
     font-weight: 600;
     letter-spacing: 0.01em;
