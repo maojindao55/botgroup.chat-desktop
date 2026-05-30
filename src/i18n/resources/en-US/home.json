@@ -1,0 +1,21 @@
+{
+  "header": {
+    "title": "Home"
+  },
+  "hero": {
+    "greeting": "Hi, {{name}}",
+    "defaultName": "there",
+    "subtitle": "Pick a way to collaborate and start working with AI."
+  },
+  "sectionStart": "Choose how to collaborate",
+  "cards": {
+    "enter": "Open",
+    "create": "Create"
+  },
+  "recent": {
+    "groupsTitle": "Your groups",
+    "tasksTitle": "Recent dev tasks",
+    "emptyTaskTitle": "Untitled task",
+    "openDevTasks": "View all dev tasks"
+  }
+}

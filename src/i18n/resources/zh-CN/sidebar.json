@@ -7,6 +7,7 @@
   },
   "nav": {
     "devTasks": "开发任务",
+    "home": "首页",
     "createGroup": "创建新群聊",
     "library": "资源库"
   },

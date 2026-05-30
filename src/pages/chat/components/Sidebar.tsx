@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import {
   Bot,
+  Home as HomeIcon,
   Menu as MenuIcon,
   MessageSquare as MessageSquareIcon,
   PanelLeftClose as PanelLeftCloseIcon,
@@ -217,8 +218,9 @@ interface SidebarProps {
   groups: Group[];
   onCreateGroup?: (group: Group) => void;
   onOpenLibrary?: () => void;
-  activeView?: 'groups' | 'cli-tasks';
+  activeView?: 'groups' | 'cli-tasks' | 'home';
   onNavigateCLI?: () => void;
+  onNavigateHome?: () => void;
   hiddenGroupTypes?: GroupType[];
 }
 
@@ -232,6 +234,7 @@ const Sidebar = ({
   onOpenLibrary,
   activeView = 'groups',
   onNavigateCLI,
+  onNavigateHome,
   hiddenGroupTypes = [],
 }: SidebarProps) => {
   const { styles, cx } = useStyles();
@@ -291,6 +294,50 @@ const Sidebar = ({
           <div className={styles.navSection}>
             {isOpen && <div className={styles.sectionLabel}>{t('sidebar:section.workspace')}</div>}
             {(() => {
+              const isHomeActive = activeView === 'home';
+              const homeBtn = (
+                <a
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    if (onNavigateHome) {
+                      onNavigateHome();
+                    } else {
+                      window.location.href = '?view=home';
+                    }
+                  }}
+                  className={cx(
+                    styles.navItem,
+                    isHomeActive && styles.navItemActive,
+                    !isOpen && styles.navItemCollapsed,
+                  )}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      minWidth: 0,
+                      flex: 1,
+                      justifyContent: isOpen ? 'flex-start' : 'center',
+                    }}
+                  >
+                    <HomeIcon
+                      size={16}
+                      style={{ color: isHomeActive ? '#ff6600' : undefined, flexShrink: 0 }}
+                    />
+                    {isOpen && <span className={styles.navItemLabel}>{t('sidebar:nav.home')}</span>}
+                  </div>
+                </a>
+              );
+              const homeEntry = !isOpen ? (
+                <Tooltip title={t('sidebar:nav.home')} placement="right" mouseEnterDelay={0.15}>
+                  {homeBtn}
+                </Tooltip>
+              ) : (
+                homeBtn
+              );
+
               const isCliActive = activeView === 'cli-tasks';
               const devTasksBtn = (
                 <a
@@ -325,12 +372,18 @@ const Sidebar = ({
                   </div>
                 </a>
               );
-              return !isOpen ? (
+              const devTasksEntry = !isOpen ? (
                 <Tooltip title={t('sidebar:nav.devTasks')} placement="right" mouseEnterDelay={0.15}>
                   {devTasksBtn}
                 </Tooltip>
               ) : (
                 devTasksBtn
+              );
+              return (
+                <>
+                  {homeEntry}
+                  {devTasksEntry}
+                </>
               );
             })()}
           </div>

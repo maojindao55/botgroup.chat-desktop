@@ -1,0 +1,21 @@
+{
+  "header": {
+    "title": "首页"
+  },
+  "hero": {
+    "greeting": "你好，{{name}}",
+    "defaultName": "朋友",
+    "subtitle": "选择一种协作方式，开始和 AI 一起工作。"
+  },
+  "sectionStart": "选择一种协作方式",
+  "cards": {
+    "enter": "进入",
+    "create": "创建"
+  },
+  "recent": {
+    "groupsTitle": "我的群聊",
+    "tasksTitle": "最近开发任务",
+    "emptyTaskTitle": "未命名任务",
+    "openDevTasks": "查看全部开发任务"
+  }
+}
