@@ -4,6 +4,7 @@ import { Button, Tag, Tooltip, Modal, Empty } from 'antd';
 import { useProviderStore } from '@/store/providerStore';
 import type { Provider } from '@/config/providers';
 import { Plus, Edit2, Trash2, Server, CheckCircle2, AlertTriangle, Copy } from 'lucide-react';
+import { BRAND_ON_PRIMARY, brandPrimaryButtonProps } from '@/lib/theme';
 import { toast } from 'sonner';
 import { createStyles } from 'antd-style';
 import { useLocale } from '@/hooks/use-locale';
@@ -301,7 +302,11 @@ export const ProviderLibrary: React.FC<ProviderLibraryProps> = ({ onCreate, onEd
   return (
     <>
       <div className={styles.toolbar}>
-        <Button type="primary" icon={<Plus size={16} />} onClick={onCreate}>
+        <Button
+          icon={<Plus size={16} color={BRAND_ON_PRIMARY} />}
+          onClick={onCreate}
+          {...brandPrimaryButtonProps}
+        >
           {t('library:create.provider')}
         </Button>
       </div>

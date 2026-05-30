@@ -11,6 +11,7 @@ import { Send, Settings2, ChevronLeft, Bot, Terminal, PanelLeftOpen } from "luci
 import { Tooltip, Input as AntdInput, Button as AntdButton, Modal } from 'antd';
 import { ActionIcon, Avatar as LobeAvatar } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
+import { BRAND_ON_PRIMARY, brandPrimaryButtonStyle } from '@/lib/theme';
 import { request } from '@/utils/request';
 import { normalizeDesktopUser } from '@/utils/userAvatar';
 import { executeCLIStrategy } from '@/engine/cliEngine';
@@ -2015,11 +2016,14 @@ const ChatUI = () => {
                   style={{ flex: 1, borderRadius: 12 }}
                 />
                 <AntdButton
-                  type="primary"
                   onClick={handleSendMessage}
                   loading={isLoading}
-                  icon={isLoading ? undefined : <Send size={16} />}
-                  style={{ background: '#ff6600', borderColor: '#ff6600', height: 36, borderRadius: 12 }}
+                  icon={isLoading ? undefined : <Send size={16} color={BRAND_ON_PRIMARY} />}
+                  style={{ ...brandPrimaryButtonStyle, height: 36, borderRadius: 12 }}
+                  styles={{
+                    content: { color: BRAND_ON_PRIMARY },
+                    icon: { color: BRAND_ON_PRIMARY },
+                  }}
                 />
               </div>
             </div>

@@ -313,6 +313,7 @@ const HomeView = ({
             onCreateGroup={onCreateGroup}
             onOpenLibrary={() => setShowLibrary(true)}
             activeView="home"
+            hiddenGroupTypes={['cli']}
             onNavigateHome={() => {
               if (isMobile) toggleSidebar();
             }}

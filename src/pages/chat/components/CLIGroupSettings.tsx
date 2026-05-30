@@ -21,6 +21,7 @@ import { openPath } from '@tauri-apps/plugin-opener';
 import CLITaskLogModal from './CLITaskLogModal';
 import { useAIMemberStore } from '@/store/aiMemberStore';
 import { formatLocaleDateTime } from '@/i18n/formatLocale';
+import { BRAND_ON_PRIMARY, brandPrimaryButtonProps } from '@/lib/theme';
 
 type CliStatus = { installed: boolean; version?: string; path?: string };
 
@@ -1316,11 +1317,10 @@ export const CLIGroupSettings = ({
                       </Button>
                       {['failed', 'cancelled', 'timeout', 'completed'].includes(task.status) && (
                         <Button
-                          type="primary"
                           size="small"
-                          icon={<Play size={12} />}
+                          icon={<Play size={12} color={BRAND_ON_PRIMARY} />}
                           className={styles.actionBtn}
-                          style={{ background: '#ff6600', borderColor: '#ff6600' }}
+                          {...brandPrimaryButtonProps}
                           onClick={() => {
                             if (onRetryTask) {
                               onRetryTask(task.agentId, task.prompt);
@@ -1504,7 +1504,7 @@ export const CLIGroupSettings = ({
         <Button onClick={handleRevertDraft} disabled={!isDraftDirty}>
           {t('cli:groupSettings.footer.revert')}
         </Button>
-        <Button type="primary" onClick={handleSaveDraft} disabled={!isDraftDirty} style={{ background: '#ff6600', borderColor: '#ff6600' }}>
+        <Button onClick={handleSaveDraft} disabled={!isDraftDirty} {...brandPrimaryButtonProps}>
           {t('common:actions.save')}
         </Button>
       </div>
@@ -1538,7 +1538,7 @@ export const CLIGroupSettings = ({
                 <Button size="small" onClick={handleRevertDraft} disabled={!isDraftDirty}>
                   {t('cli:groupSettings.footer.revert')}
                 </Button>
-                <Button type="primary" size="small" onClick={handleSaveDraft} disabled={!isDraftDirty} style={{ background: '#ff6600', borderColor: '#ff6600' }}>
+                <Button size="small" onClick={handleSaveDraft} disabled={!isDraftDirty} {...brandPrimaryButtonProps}>
                   {t('common:actions.save')}
                 </Button>
               </div>

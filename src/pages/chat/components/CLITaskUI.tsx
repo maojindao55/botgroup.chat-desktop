@@ -2,10 +2,9 @@
  * CLI 开发任务 UI — 以任务为主对象的聊天界面
  * Phase 1: 团队模板来自 CLIGroup，任务消息本地持久化，执行走 executeCLIStrategy
  */
-import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Send,
   PanelLeftOpen,
   Terminal,
   Info,
@@ -13,10 +12,19 @@ import {
   FolderOpen,
   FolderPlus,
   Plus,
+  Loader2,
 } from 'lucide-react';
 import { Input as AntdInput, Button as AntdButton, Tag, Modal, Select, Tooltip } from 'antd';
 import { ActionIcon, Avatar as LobeAvatar } from '@lobehub/ui';
+import { ChatInputArea } from '@lobehub/ui/chat';
 import { createStyles } from 'antd-style';
+import {
+  BRAND_ON_PRIMARY,
+  BRAND_PRIMARY,
+  BRAND_PRIMARY_HOVER,
+  brandPrimaryButtonProps,
+  brandPrimaryButtonStyle,
+} from '@/lib/theme';
 import { request } from '@/utils/request';
 import { executeCLIStrategy } from '@/engine/cliEngine';
 import { isCodeChangeIntent } from '@/engine/cliIntent';
@@ -46,6 +54,7 @@ import {
   cliTaskMemberSnapshotToAgent,
   createCLITaskMemberSnapshots,
   parseAgentMention,
+  getLatestAgentRoundMessages,
   inferCliModelFromArgs,
   isRaceTask,
   getRaceWorktreeEntries,
@@ -197,7 +206,7 @@ const useStyles = createStyles(({ token, css }) => ({
   inputArea: css`
     background: ${token.colorBgContainer};
     border-top: 1px solid ${token.colorBorderSecondary};
-    padding: 12px 20px 16px;
+    padding: 12px 16px 16px;
   `,
   composeBox: css`
     border: 1px solid ${token.colorBorderSecondary};
@@ -215,26 +224,71 @@ const useStyles = createStyles(({ token, css }) => ({
       border: none !important;
       box-shadow: none !important;
       resize: none;
-      padding: 12px 14px 4px !important;
+      padding: 12px 16px 4px !important;
       background: transparent !important;
     }
-  `,
-  composeFooter: css`
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 12px 10px;
-    border-top: 1px solid ${token.colorBorderSecondary};
-    flex-wrap: wrap;
-  `,
-  composeFooterSpacer: css`
-    flex: 1;
-    min-width: 8px;
   `,
   composeHint: css`
     font-size: 11px;
     color: ${token.colorTextTertiary};
     line-height: 1.4;
+  `,
+  composeSendBar: css`
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 16px 12px;
+    border-top: 1px solid ${token.colorBorderSecondary};
+  `,
+  composeSendBarLeft: css`
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    min-width: 0;
+  `,
+  composeSendBarRight: css`
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  `,
+  composeBrandBtn: css`
+    &&& {
+      background: ${BRAND_PRIMARY} !important;
+      border-color: ${BRAND_PRIMARY} !important;
+      color: ${BRAND_ON_PRIMARY} !important;
+      box-shadow: none;
+
+      &,
+      & * {
+        color: ${BRAND_ON_PRIMARY} !important;
+      }
+
+      &:hover:not(:disabled) {
+        background: ${BRAND_PRIMARY_HOVER} !important;
+        border-color: ${BRAND_PRIMARY_HOVER} !important;
+        color: ${BRAND_ON_PRIMARY} !important;
+      }
+
+      &:disabled {
+        background: ${BRAND_PRIMARY} !important;
+        border-color: ${BRAND_PRIMARY} !important;
+        opacity: 0.65;
+      }
+    }
+  `,
+  composeBtnSpin: css`
+    animation: cliComposeBtnSpin 0.9s linear infinite;
+    @keyframes cliComposeBtnSpin {
+      from {
+        transform: rotate(0deg);
+      }
+      to {
+        transform: rotate(360deg);
+      }
+    }
   `,
   composeWorkspaceRow: css`
     display: flex;
@@ -623,11 +677,8 @@ const useStyles = createStyles(({ token, css }) => ({
     font-size: 12px !important;
   `,
   submitBtnRow: css`
-    display: flex;
-    justify-content: flex-end;
     margin-top: 12px;
     border-top: 1px solid ${token.colorBorderSecondary};
-    padding-top: 20px;
   `,
 }));
 
@@ -668,6 +719,7 @@ const CLITaskUI = ({
   const [creatingWorkspace, setCreatingWorkspace] = useState(false);
   const [inputMessage, setInputMessage] = useState('');
   const [executingTaskIds, setExecutingTaskIds] = useState<Set<string>>(() => new Set());
+  const [isStopping, setIsStopping] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(!isMobile);
   const [taskSidebarOpen, setTaskSidebarOpen] = useState(!isMobile);
   const [taskInfoOpen, setTaskInfoOpen] = useState(false);
@@ -693,6 +745,7 @@ const CLITaskUI = ({
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const executionControllersRef = useRef(new Map<string, AbortController>());
 
   const selectedTask = tasks.find(t => t.id === selectedTaskId) || null;
   const selectedTemplate = templates.find(t => t.id === selectedTemplateId) || templates[0];
@@ -800,6 +853,11 @@ const CLITaskUI = ({
       next.add(to);
       return next;
     });
+    const controller = executionControllersRef.current.get(from);
+    if (controller) {
+      executionControllersRef.current.delete(from);
+      executionControllersRef.current.set(to, controller);
+    }
   }, []);
 
   const workspacePath = selectedTask
@@ -893,6 +951,7 @@ const CLITaskUI = ({
     developmentTask: CLIDevelopmentTask,
     promptText: string,
     retryAgentId?: string,
+    execKeyOverride?: string,
   ) => {
     const snapshot = developmentTask.templateSnapshot;
     const execGroup = templateSnapshotToCLIGroup(snapshot);
@@ -1007,6 +1066,10 @@ const CLITaskUI = ({
       });
     };
 
+    const execKey = execKeyOverride ?? resolveComposeKey(developmentTask.id);
+    const abortController = new AbortController();
+    executionControllersRef.current.set(execKey, abortController);
+
     try {
       await executeCLIStrategy(
         customGroup,
@@ -1015,6 +1078,7 @@ const CLITaskUI = ({
         ws,
         {
           onAgentStart: (agentTaskId, agentId, agentName, meta) => {
+            if (abortController.signal.aborted) return;
             agentIdByAgentTask.set(agentTaskId, agentId);
             const agentInfo = activeAgents.find(agent => agent.id === agentId);
             const baseName = agentInfo?.name || agentName;
@@ -1043,6 +1107,7 @@ const CLITaskUI = ({
             });
           },
           onToolSession: (agentTaskId, agentId, adapter, sessionId) => {
+            if (abortController.signal.aborted) return;
             if (supportsCliToolSession(adapter)) {
               localStorage.setItem(getSessionKey(developmentTask, agentId), sessionId);
             }
@@ -1055,6 +1120,7 @@ const CLITaskUI = ({
             }
           },
           onToken: (agentTaskId, token) => {
+            if (abortController.signal.aborted) return;
             const msgId = messageIdByAgentTask.get(agentTaskId);
             if (!msgId) return;
             const task = useCLITaskStore.getState().getTask(developmentTask.id);
@@ -1064,6 +1130,7 @@ const CLITaskUI = ({
             }
           },
           onAgentEnd: (agentTaskId, fullContent) => {
+            if (abortController.signal.aborted) return;
             const msgId = messageIdByAgentTask.get(agentTaskId);
             if (!msgId) return;
             const task = useCLITaskStore.getState().getTask(developmentTask.id);
@@ -1080,6 +1147,7 @@ const CLITaskUI = ({
             });
           },
           onError: (agentTaskId, error) => {
+            if (abortController.signal.aborted) return;
             const msgId = messageIdByAgentTask.get(agentTaskId);
             if (!msgId) return;
             const task = useCLITaskStore.getState().getTask(developmentTask.id);
@@ -1103,9 +1171,13 @@ const CLITaskUI = ({
           timeoutMs: snapshot.timeout,
           approvalMode: snapshot.approvalMode,
           showStderr: snapshot.showStderr,
+          signal: abortController.signal,
         },
       );
     } catch (err: unknown) {
+      if (abortController.signal.aborted) {
+        return;
+      }
       const errMsg = err instanceof Error ? err.message : String(err);
       appendMessage(developmentTask.id, {
         id: `sys-${Date.now()}`,
@@ -1115,6 +1187,7 @@ const CLITaskUI = ({
         isError: true,
       });
     } finally {
+      executionControllersRef.current.delete(execKey);
       flushOpenCodeTitleSync();
       scheduleCLITaskTitleSync({
         taskId: developmentTask.id,
@@ -1182,7 +1255,7 @@ const CLITaskUI = ({
         updateTask(task.id, { prompt: executionPrompt });
       }
 
-      await runExecution(task, executionPrompt, targetAgentId);
+      await runExecution(task, executionPrompt, targetAgentId, activeScope);
     } finally {
       endTaskExecution(activeScope);
     }
@@ -1255,23 +1328,106 @@ const CLITaskUI = ({
     });
   };
 
+  const cancelAgentTask = useCallback(async (agentTaskId: string, taskId?: string) => {
+    await request('/api/cli/tasks/cancel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ taskId: agentTaskId }),
+    });
+    const tid = taskId ?? selectedTask?.id;
+    if (!tid) return;
+    const task = useCLITaskStore.getState().getTask(tid);
+    const msg = task?.messages.find(m => m.agentTaskId === agentTaskId);
+    if (msg) {
+      updateMessage(tid, msg.id, { status: 'cancelled' });
+    }
+  }, [selectedTask?.id, updateMessage]);
+
   const handleCancelTask = async (agentTaskId: string) => {
     try {
-      await request('/api/cli/tasks/cancel', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ taskId: agentTaskId }),
-      });
-      if (selectedTask) {
-        const msg = selectedTask.messages.find(m => m.agentTaskId === agentTaskId);
-        if (msg) {
-          updateMessage(selectedTask.id, msg.id, { status: 'cancelled' });
-        }
-      }
+      await cancelAgentTask(agentTaskId);
     } catch (e) {
       console.error('Failed to cancel task:', e);
+      toast.error(t('cli:taskUI.compose.stopFailed'));
     }
   };
+
+  const handleStopExecution = async () => {
+    if (!isComposeBusy) return;
+
+    const execKey = composeKey;
+    const taskId = selectedTask?.id;
+    executionControllersRef.current.get(execKey)?.abort();
+    endTaskExecution(execKey);
+
+    setIsStopping(true);
+    try {
+      const task = taskId ? useCLITaskStore.getState().getTask(taskId) : null;
+      const roundMessages = task ? getLatestAgentRoundMessages(task.messages) : [];
+      const runningIds = [
+        ...new Set(
+          roundMessages
+            .filter(m => m.status === 'running' && m.agentTaskId)
+            .map(m => m.agentTaskId!),
+        ),
+      ];
+
+      await Promise.allSettled(runningIds.map(id => cancelAgentTask(id, taskId)));
+
+      if (taskId && task) {
+        roundMessages.forEach(msg => {
+          if (msg.status === 'running') {
+            updateMessage(taskId, msg.id, { status: 'cancelled' });
+          }
+        });
+        updateTask(taskId, { status: 'cancelled' });
+      }
+
+      toast.success(t('cli:taskUI.compose.stopped'));
+    } catch (e) {
+      console.error('Failed to stop execution:', e);
+      toast.error(t('cli:taskUI.compose.stopFailed'));
+    } finally {
+      setIsStopping(false);
+    }
+  };
+
+  const stopLabel = t('cli:taskUI.compose.stop');
+
+  const renderComposeSendBar = (sendLabel: string, leftAddons?: ReactNode) => (
+    <div className={styles.composeSendBar}>
+      <div className={styles.composeSendBarLeft}>{leftAddons}</div>
+      <div className={styles.composeSendBarRight}>
+        {isComposeBusy || isStopping ? (
+          <AntdButton
+            className={styles.composeBrandBtn}
+            style={brandPrimaryButtonStyle}
+            styles={{ content: { color: BRAND_ON_PRIMARY }, icon: { color: BRAND_ON_PRIMARY } }}
+            icon={(
+              <Loader2
+                size={16}
+                color={BRAND_ON_PRIMARY}
+                className={styles.composeBtnSpin}
+              />
+            )}
+            onClick={handleStopExecution}
+            disabled={isStopping}
+          >
+            {stopLabel}
+          </AntdButton>
+        ) : (
+          <AntdButton
+            className={styles.composeBrandBtn}
+            style={brandPrimaryButtonStyle}
+            styles={{ content: { color: BRAND_ON_PRIMARY } }}
+            onClick={handleSendMessage}
+          >
+            {sendLabel}
+          </AntdButton>
+        )}
+      </div>
+    </div>
+  );
 
   const handleRetryTask = async (msg: ReturnType<typeof taskMessageToChatRow>) => {
     if (!selectedTask || !msg.prompt || !msg.sender?.id) return;
@@ -1279,7 +1435,7 @@ const CLITaskUI = ({
 
     beginTaskExecution(selectedTask.id);
     try {
-      await runExecution(selectedTask, msg.prompt, msg.sender.id);
+      await runExecution(selectedTask, msg.prompt, msg.sender.id, selectedTask.id);
     } finally {
       endTaskExecution(selectedTask.id);
     }
@@ -1864,11 +2020,10 @@ const CLITaskUI = ({
                         <div className={styles.templateEmpty}>
                           <span>{t('cli:taskUI.create.emptyTemplates')}</span>
                           <AntdButton
-                            type="primary"
                             size="small"
                             onClick={openCreateTemplate}
-                            icon={<Plus size={14} />}
-                            style={{ background: '#ff6600', borderColor: '#ff6600' }}
+                            icon={<Plus size={14} color={BRAND_ON_PRIMARY} />}
+                            {...brandPrimaryButtonProps}
                           >
                             {t('cli:templateList.create')}
                           </AntdButton>
@@ -1965,24 +2120,7 @@ const CLITaskUI = ({
                     </div>
 
                     <div className={styles.submitBtnRow}>
-                      <AntdButton
-                        type="primary"
-                        icon={<Send size={16} />}
-                        onClick={handleSendMessage}
-                        loading={isComposeBusy}
-                        disabled={isComposeBusy || !inputMessage.trim() || templates.length === 0}
-                        style={{
-                          background: '#ff6600',
-                          borderColor: '#ff6600',
-                          height: 40,
-                          borderRadius: 10,
-                          padding: '0 24px',
-                          fontWeight: 600,
-                          boxShadow: '0 4px 12px rgba(255, 102, 0, 0.2)',
-                        }}
-                      >
-                        {t('cli:taskUI.create.submit')}
-                      </AntdButton>
+                      {renderComposeSendBar(t('cli:taskUI.create.submit'))}
                     </div>
                   </div>
                 </div>
@@ -2076,11 +2214,11 @@ const CLITaskUI = ({
                                   >
                                     {t('cli:taskUI.message.log')}
                                   </button>
-                                  {message.status === 'running' && message.taskId && (
+                                  {message.status === 'running' && message.taskId && isComposeBusy && (
                                     <button
                                       type="button"
                                       className={styles.cliActionBtnCancel}
-                                      onClick={() => handleCancelTask(message.taskId!)}
+                                      onClick={handleStopExecution}
                                     >
                                       {t('cli:taskUI.message.stop')}
                                     </button>
@@ -2160,39 +2298,27 @@ const CLITaskUI = ({
             {selectedTask && (
               <div className={styles.inputArea}>
                 <div className={styles.composeBox}>
-                  <AntdInput.TextArea
+                  <ChatInputArea.Inner
                     ref={inputRef}
                     className={styles.composeTextarea}
                     value={inputMessage}
-                    onChange={(e) => setInputMessage(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSendMessage();
-                      }
-                    }}
+                    onInput={setInputMessage}
+                    onSend={handleSendMessage}
+                    loading={isComposeBusy}
                     placeholder={t('cli:taskUI.compose.placeholder')}
-                    autoSize={{ minRows: 4, maxRows: 12 }}
                     disabled={isComposeBusy}
+                    autoSize={{ minRows: 4, maxRows: 12 }}
                     variant="borderless"
                   />
-                  <div className={styles.composeFooter}>
-                    <Tag color="orange">{selectedTask.templateSnapshot.name}</Tag>
-                    <span className={styles.composeHint}>
-                      {t('cli:taskUI.compose.hint')}
-                    </span>
-                    <div className={styles.composeFooterSpacer} />
-                    <AntdButton
-                      type="primary"
-                      icon={<Send size={16} />}
-                      onClick={handleSendMessage}
-                      loading={isComposeBusy}
-                      disabled={isComposeBusy || !inputMessage.trim()}
-                      style={{ background: '#ff6600', borderColor: '#ff6600' }}
-                    >
-                      {t('cli:taskUI.compose.send')}
-                    </AntdButton>
-                  </div>
+                  {renderComposeSendBar(
+                    t('cli:taskUI.compose.send'),
+                    <>
+                      <Tag color="orange">{selectedTask.templateSnapshot.name}</Tag>
+                      <span className={styles.composeHint}>
+                        {t('cli:taskUI.compose.hint')}
+                      </span>
+                    </>,
+                  )}
                 </div>
                 <div style={{ fontSize: 10, opacity: 0.5, marginTop: 6 }}>
                   {t('cli:taskUI.compose.footerHint')}

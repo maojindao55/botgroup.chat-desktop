@@ -12,6 +12,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(cli::CliState::default())
         .setup(|app| {
+            cli::init_cli_environment();
             // Initialize SQLite Database and Tables on startup
             db::init_db(app.handle()).map_err(|e| {
                 eprintln!("Database initialization failed: {}", e);

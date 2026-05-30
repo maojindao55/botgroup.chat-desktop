@@ -390,6 +390,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "botgroup-chat-desktop"
+version = "1.0.0"
+dependencies = [
+ "aes-gcm",
+ "chrono",
+ "futures-util",
+ "reqwest 0.12.28",
+ "rfd",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-opener",
+ "tempfile",
+ "tokio",
+ "uuid",
+ "which",
+ "wiremock",
+]
+
+[[package]]
 name = "brotli"
 version = "8.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4784,28 +4806,6 @@ dependencies = [
  "serde",
  "unic-ucd-ident",
  "url",
-]
-
-[[package]]
-name = "usershongbin9wwwbotgroupchat-desktop"
-version = "0.1.0"
-dependencies = [
- "aes-gcm",
- "chrono",
- "futures-util",
- "reqwest 0.12.28",
- "rfd",
- "rusqlite",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-opener",
- "tempfile",
- "tokio",
- "uuid",
- "which",
- "wiremock",
 ]
 
 [[package]]

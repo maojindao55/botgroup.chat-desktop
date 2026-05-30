@@ -13,6 +13,7 @@ import {
 } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
+import { brandPrimaryButtonProps } from '@/lib/theme';
 import { useProviderStore, type ProviderTestResult } from '@/store/providerStore';
 import { providerPresets, readLegacyApiKey, type Provider } from '@/config/providers';
 import { getTranslatedProviderName } from '@/i18n/providerLabels';
@@ -256,7 +257,7 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
             </Button>
           )}
           <Button onClick={onClose}>{t('common:actions.cancel')}</Button>
-          <Button type="primary" loading={saving} onClick={() => form.submit()}>
+          <Button loading={saving} onClick={() => form.submit()} {...brandPrimaryButtonProps}>
             {t('common:actions.save')}
           </Button>
         </Space>
