@@ -24,6 +24,7 @@ import AIGroupSettings from './AIGroupSettings';
 import CLIGroupSettings from './CLIGroupSettings';
 import AgentChatUI from './AgentChatUI';
 import CLITaskUI from './CLITaskUI';
+import HomeView from './HomeView';
 import Sidebar from './Sidebar';
 import { AdBanner, AdBannerMobile } from './AdSection';
 import { useUserStore } from '@/store/userStore';
@@ -48,6 +49,7 @@ import {
   isBuiltinGroupId,
   upsertCustomGroup,
 } from '@/config/groupStorage';
+import { readLastView, saveLastView, clearLastView } from '@/utils/lastViewStorage';
 
 const useStyles = createStyles(({ token, css }) => ({
   page: css`
@@ -386,6 +388,9 @@ const ChatUI = () => {
   const viewParam = urlParams.get('view');
   const taskIdParam = urlParams.get('taskId');
   const isCLIView = viewParam === 'cli-tasks' || viewParam === 'cli-task' || viewParam === 'cli-template';
+  const isHomeView = viewParam === 'home';
+  // 裸启动（无任何视图参数）：用于冷启动时恢复上次视图或落地首页
+  const hasNoParams = !urlParams.get('id') && !viewParam && !taskIdParam;
 
   // State
   const [groups, setGroups] = useState<Group[]>([]);
@@ -509,6 +514,13 @@ const ChatUI = () => {
     if (isInitialized.current) return;
 
     const initData = async () => {
+      // 裸启动：恢复上次视图，没有记录则落地首页（避免直接进入开发任务）
+      if (hasNoParams) {
+        const last = readLastView();
+        window.location.replace(last || '?view=home');
+        return;
+      }
+
       try {
         const response = await request(`/api/init`);
         if (!response.ok) throw new Error(t('chat:init.initDataFailed'));
@@ -517,19 +529,33 @@ const ChatUI = () => {
         const resolvedGroups = prepareCLIGroups(data.groups);
         const currentGroup = resolvedGroups[selectedGroupIndex];
 
-        // 旧链接指向 CLI 群时，重定向到任务优先视图
-        if (currentGroup?.type === 'cli' && !isCLIView) {
+        // 旧链接指向 CLI 群时，重定向到任务优先视图（首页除外）
+        if (currentGroup?.type === 'cli' && !isCLIView && !isHomeView) {
           window.location.replace('?view=cli-tasks');
           return;
         }
 
-        if (!currentGroup && !isCLIView) {
+        if (!currentGroup && !isCLIView && !isHomeView) {
+          clearLastView();
           setInitError(t('chat:init.groupNotFound'));
           setIsInitializing(false);
           return;
         }
 
         setGroups(resolvedGroups);
+
+        // 首页视图：仅加载用户信息，不绑定具体群
+        if (isHomeView) {
+          setIsInitializing(false);
+          if (data.user) {
+            const r = await request('/api/user/info');
+            const userInfo = await r.json();
+            userStore.setUserInfo(normalizeDesktopUser(userInfo.data));
+          } else {
+            userStore.setUserInfo({ id: 0, phone: '', nickname: t('settings:aiGroup.selfName'), avatar_url: null, status: 0 });
+          }
+          return;
+        }
 
         if (isCLIView) {
           setIsInitializing(false);
@@ -598,7 +624,13 @@ const ChatUI = () => {
 
     initData();
     isInitialized.current = true;
-  }, [userStore, selectedGroupIndex, isCLIView]);
+  }, [userStore, selectedGroupIndex, isCLIView, isHomeView]);
+
+  // 记住当前视图，供下次冷启动恢复（Option C）
+  useEffect(() => {
+    if (isInitializing || initError) return;
+    saveLastView(window.location.search);
+  }, [isInitializing, initError]);
 
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
@@ -610,6 +642,28 @@ const ChatUI = () => {
   const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
   const handleSelectGroup = (index: number) => { window.location.href = `?id=${index}`; };
   const handleNavigateCLI = () => { window.location.href = '?view=cli-tasks'; };
+
+  // 首页建群：写入 custom_groups 后整页跳转到新群（首页用 replaceState 无法切换视图）
+  const handleHomeCreateGroup = (newGroup: Group) => {
+    try {
+      const stored = localStorage.getItem('custom_groups');
+      const customGroups = stored ? JSON.parse(stored) : [];
+      customGroups.push(newGroup);
+      localStorage.setItem('custom_groups', JSON.stringify(customGroups));
+    } catch (e) {
+      console.error('Failed to save custom group:', e);
+    }
+    if (newGroup.type === 'cli') {
+      window.location.href = '?view=cli-tasks';
+      return;
+    }
+    // 新自定义群追加在群列表末尾，索引即当前群数量
+    window.location.href = `?id=${groups.length}`;
+  };
+
+  const handleSelectTask = (taskId: string) => {
+    window.location.href = `?view=cli-task&taskId=${encodeURIComponent(taskId)}`;
+  };
 
   const handleDeleteCLIGroup = (templateId: string) => {
     markCLITemplateDeleted(templateId);
@@ -796,7 +850,7 @@ const ChatUI = () => {
           <div style={{ fontSize: 48, marginBottom: 16 }}>⚠️</div>
           <p style={{ fontSize: 18, fontWeight: 500, marginBottom: 8 }}>{initError}</p>
           <button
-            onClick={() => { window.location.href = '/'; }}
+            onClick={() => { window.location.href = '?view=home'; }}
             style={{
               padding: '8px 24px',
               background: '#ff6600',
@@ -822,6 +876,21 @@ const ChatUI = () => {
   }
 
   const cliGroups = groups.filter((g): g is CLIGroup => g.type === 'cli');
+
+  // 首页视图
+  if (isHomeView) {
+    return (
+      <HomeView
+        groups={groups}
+        sidebarOpen={sidebarOpen}
+        toggleSidebar={toggleSidebar}
+        onSelectGroup={handleSelectGroup}
+        onCreateGroup={handleHomeCreateGroup}
+        onNavigateCLI={handleNavigateCLI}
+        onSelectTask={handleSelectTask}
+      />
+    );
+  }
 
   // CLI 开发任务视图
   if (isCLIView) {
@@ -1384,6 +1453,7 @@ const ChatUI = () => {
             onCreateGroup={handleCreateGroup}
             onOpenLibrary={() => handleToggleLibrary(true)}
             onNavigateCLI={handleNavigateCLI}
+            onNavigateHome={() => { window.location.href = '?view=home'; }}
             hiddenGroupTypes={['cli']}
           />
 

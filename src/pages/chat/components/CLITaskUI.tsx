@@ -74,6 +74,7 @@ import {
 } from '@/utils/cliWorkspaceStorage';
 import { getCLIWorkflowLabel } from '@/config/groupProduct';
 import { adapterUsesOpenCodeSessionTitle, supportsCliToolSession } from '@/config/cliAdapters';
+import { saveLastView } from '@/utils/lastViewStorage';
 
 interface CLITaskUIProps {
   groups: Group[];
@@ -857,11 +858,14 @@ const CLITaskUI = ({
 
   const navigateToTask = (taskId: string) => {
     setSelectedTaskId(taskId);
-    window.history.replaceState({}, '', `?view=cli-task&taskId=${encodeURIComponent(taskId)}`);
+    const search = `?view=cli-task&taskId=${encodeURIComponent(taskId)}`;
+    window.history.replaceState({}, '', search);
+    saveLastView(search);
   };
 
   const navigateToList = () => {
     window.history.replaceState({}, '', '?view=cli-tasks');
+    saveLastView('?view=cli-tasks');
   };
 
   const startNewTask = () => {
@@ -1704,6 +1708,7 @@ const CLITaskUI = ({
             onOpenLibrary={() => handleToggleLibrary(true)}
             activeView="cli-tasks"
             onNavigateCLI={() => navigateToList()}
+            onNavigateHome={() => { window.location.href = '?view=home'; }}
             hiddenGroupTypes={['cli']}
           />
 

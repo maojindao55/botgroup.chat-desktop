@@ -522,6 +522,7 @@ const AgentChatUI = ({
             onCreateGroup={onCreateGroup}
             onOpenLibrary={() => handleToggleLibrary(true)}
             onNavigateCLI={() => { window.location.href = '?view=cli-tasks'; }}
+            onNavigateHome={() => { window.location.href = '?view=home'; }}
             hiddenGroupTypes={['cli']}
           />
 
