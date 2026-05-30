@@ -98,6 +98,8 @@ export interface CLITaskMemberSnapshot {
     env?: Record<string, string>;
     approvalMode?: 'auto' | 'ask';
     showStderr?: boolean;
+    wsl?: boolean;
+    wslDistro?: string;
   };
 }
 
@@ -297,6 +299,8 @@ export function createCLITaskMemberSnapshots(
       env?: Record<string, string>;
       approvalMode?: 'auto' | 'ask';
       showStderr?: boolean;
+      wsl?: boolean;
+      wslDistro?: string;
     };
   } | null | undefined>,
 ): CLITaskMemberSnapshot[] {
@@ -315,6 +319,8 @@ export function createCLITaskMemberSnapshots(
         env: member.cli!.env ? { ...member.cli!.env } : undefined,
         approvalMode: member.cli!.approvalMode,
         showStderr: member.cli!.showStderr,
+        wsl: member.cli!.wsl,
+        wslDistro: member.cli!.wslDistro,
       },
     }));
 }

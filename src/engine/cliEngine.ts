@@ -185,6 +185,8 @@ async function callCLIAgent(
     timeoutMs: resolvedTimeoutMs,
     approvalMode: options.approvalMode ?? cliCfg.approvalMode ?? 'auto',
     showStderr: options.showStderr ?? cliCfg.showStderr ?? true,
+    wsl: cliCfg.wsl ?? null,
+    wslDistro: cliCfg.wslDistro || null,
   };
 
   let fullContent = '';

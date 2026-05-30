@@ -54,7 +54,13 @@
       "cliApprovalAuto": "完全自动运行 (高危)",
       "cliStderr": "输出错误日志 (Stderr)",
       "cliStderrShow": "显示",
-      "cliStderrHide": "隐藏"
+      "cliStderrHide": "隐藏",
+      "cliWsl": "通过 WSL 运行 (Windows)",
+      "cliWslOn": "开启",
+      "cliWslOff": "关闭",
+      "cliWslHint": "仅 Windows：通过 wsl.exe 在 WSL 中运行该 CLI。可执行文件需安装在 WSL 发行版内；工作目录会自动转换为 Linux 路径。在 macOS/Linux 上忽略此设置。",
+      "cliWslDistro": "WSL 发行版",
+      "cliWslDistroPlaceholder": "留空则使用默认发行版 (如 Ubuntu)"
     },
     "kinds": {
       "llm": "角色",
