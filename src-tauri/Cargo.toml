@@ -1,12 +1,12 @@
 [package]
-name = "usershongbin9wwwbotgroupchat-desktop"
-version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+name = "botgroup-chat-desktop"
+version = "1.0.0"
+description = "BotGroup.Chat - AI Group Chat Desktop App"
+authors = ["BotGroup.Chat Team"]
 edition = "2021"
 
 [lib]
-name = "usershongbin9wwwbotgroupchat_desktop_lib"
+name = "botgroup_chat_desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

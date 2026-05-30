@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    usershongbin9wwwbotgroupchat_desktop_lib::run()
+    botgroup_chat_desktop_lib::run()
 }
