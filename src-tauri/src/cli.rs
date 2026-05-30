@@ -1183,13 +1183,9 @@ fn user_home_dir() -> String {
 /// `wsl.exe -d <distro>`); automount roots can differ between distros, so the
 /// conversion has to run in the same one to produce a path that exists there.
 fn to_wsl_path(win_path: &str, distro: Option<&str>) -> String {
-    let mut cmd = std::process::Command::new("wsl.exe");
-    if let Some(distro) = distro {
-        if !distro.is_empty() {
-            cmd.arg("-d").arg(distro);
-        }
-    }
-    let output = cmd.args(["wslpath", "-a", "-u", win_path]).output();
+    let output = std::process::Command::new("wsl.exe")
+        .args(wslpath_args(win_path, distro))
+        .output();
     if let Ok(out) = output {
         if out.status.success() {
             let converted = String::from_utf8_lossy(&out.stdout).trim().to_string();
@@ -1199,6 +1195,23 @@ fn to_wsl_path(win_path: &str, distro: Option<&str>) -> String {
         }
     }
     manual_wsl_path(win_path)
+}
+
+fn wslpath_args(win_path: &str, distro: Option<&str>) -> Vec<String> {
+    let mut args = Vec::new();
+    if let Some(distro) = distro {
+        if !distro.is_empty() {
+            args.push("-d".to_string());
+            args.push(distro.to_string());
+        }
+    }
+    args.extend([
+        "wslpath".to_string(),
+        "-a".to_string(),
+        "-u".to_string(),
+        win_path.to_string(),
+    ]);
+    args
 }
 
 /// Best-effort manual Windows→WSL path conversion used when `wslpath` is
@@ -1816,6 +1829,35 @@ mod tests {
     }
 
     #[test]
+    fn wslpath_args_use_selected_distro() {
+        let args = super::wslpath_args("C:\\Users\\me\\proj", Some("Ubuntu-24.04"));
+
+        assert_eq!(
+            args,
+            vec![
+                "-d",
+                "Ubuntu-24.04",
+                "wslpath",
+                "-a",
+                "-u",
+                "C:\\Users\\me\\proj"
+            ]
+        );
+    }
+
+    #[test]
+    fn robocopy_args_exclude_git_file_metadata() {
+        let args = super::robocopy_workspace_args("C:\\repo", "C:\\tmp\\copy");
+
+        let xf_pos = args
+            .iter()
+            .position(|arg| arg == "/XF")
+            .expect("robocopy args should include /XF");
+
+        assert_eq!(args.get(xf_pos + 1).map(String::as_str), Some(".git"));
+    }
+
+    #[test]
     fn build_wsl_command_wraps_binary_with_distro_and_cwd() {
         let argv = vec!["exec".to_string(), "写代码".to_string()];
         let cmd = super::build_wsl_command(
@@ -2150,6 +2192,8 @@ pub struct CliTempCopyCleanupArgs {
 
 /// Directory names excluded from temp copies (heavy or derived artifacts).
 const TEMPCOPY_EXCLUDES: &[&str] = &[".git", "node_modules", "target", ".next", "dist"];
+#[cfg(any(windows, test))]
+const TEMPCOPY_FILE_EXCLUDES: &[&str] = &[".git"];
 
 /// Recursively removes any entry whose name matches `TEMPCOPY_EXCLUDES` from a
 /// freshly copied tree. Unlike `cp -a` (which has no exclude support), this
@@ -2235,12 +2279,11 @@ fn copy_workspace(src: &str, dest: &std::path::Path, dest_str: &str) -> Result<(
 /// Windows: uses `robocopy <src> <dest> /E /XD <excludes>`.
 /// robocopy uses exit codes 0–7 to indicate success (files copied / nothing to
 /// do / extra files present); 8 and above indicate a real failure.
-#[cfg(windows)]
-fn copy_workspace(src: &str, dest: &std::path::Path, dest_str: &str) -> Result<(), String> {
-    let _ = std::fs::create_dir_all(dest);
+#[cfg(any(windows, test))]
+fn robocopy_workspace_args(src: &str, dest_str: &str) -> Vec<String> {
     let src_trimmed = src.trim_end_matches(['\\', '/']).to_string();
 
-    let mut robocopy_args: Vec<String> = vec![
+    let mut args: Vec<String> = vec![
         src_trimmed,
         dest_str.to_string(),
         "/E".to_string(),   // copy subdirectories, including empty ones
@@ -2253,16 +2296,25 @@ fn copy_workspace(src: &str, dest: &std::path::Path, dest_str: &str) -> Result<(
         "/R:1".to_string(), // retry once on failure
         "/W:1".to_string(), // wait 1s between retries
     ];
-    robocopy_args.push("/XD".to_string()); // exclude directories...
+    args.push("/XD".to_string()); // exclude directories...
     for ex in TEMPCOPY_EXCLUDES {
-        robocopy_args.push((*ex).to_string());
+        args.push((*ex).to_string());
     }
     // Git worktrees and submodules store `.git` as a *file* pointing at the
     // real repo metadata, which `/XD` (directories only) would not exclude.
     // Excluding the file too keeps git commands in the isolated copy from
     // touching/locking the original checkout.
-    robocopy_args.push("/XF".to_string()); // exclude files named...
-    robocopy_args.push(".git".to_string());
+    args.push("/XF".to_string()); // exclude files...
+    for ex in TEMPCOPY_FILE_EXCLUDES {
+        args.push((*ex).to_string());
+    }
+    args
+}
+
+#[cfg(windows)]
+fn copy_workspace(src: &str, dest: &std::path::Path, dest_str: &str) -> Result<(), String> {
+    let _ = std::fs::create_dir_all(dest);
+    let robocopy_args = robocopy_workspace_args(src, dest_str);
 
     match std::process::Command::new("robocopy")
         .args(&robocopy_args)
