@@ -1178,10 +1178,18 @@ fn user_home_dir() -> String {
 /// (handles UNC, custom mount roots); falls back to a manual `C:\` → `/mnt/c`
 /// translation. Defined unconditionally but only invoked on Windows when WSL
 /// mode is enabled.
-fn to_wsl_path(win_path: &str) -> String {
-    let output = std::process::Command::new("wsl.exe")
-        .args(["wslpath", "-a", "-u", win_path])
-        .output();
+///
+/// `distro` must match the distribution the CLI is later launched in (via
+/// `wsl.exe -d <distro>`); automount roots can differ between distros, so the
+/// conversion has to run in the same one to produce a path that exists there.
+fn to_wsl_path(win_path: &str, distro: Option<&str>) -> String {
+    let mut cmd = std::process::Command::new("wsl.exe");
+    if let Some(distro) = distro {
+        if !distro.is_empty() {
+            cmd.arg("-d").arg(distro);
+        }
+    }
+    let output = cmd.args(["wslpath", "-a", "-u", win_path]).output();
     if let Ok(out) = output {
         if out.status.success() {
             let converted = String::from_utf8_lossy(&out.stdout).trim().to_string();
@@ -1262,7 +1270,7 @@ fn build_command(args: &CliRunArgs) -> Result<Command, String> {
         let mut cloned = args.clone();
         if let Some(cwd) = cloned.cwd.clone() {
             if !cwd.is_empty() {
-                cloned.cwd = Some(to_wsl_path(&cwd));
+                cloned.cwd = Some(to_wsl_path(&cwd, args.wsl_distro.as_deref()));
             }
         }
         translated = cloned;
@@ -2206,6 +2214,12 @@ fn copy_workspace(src: &str, dest: &std::path::Path, dest_str: &str) -> Result<(
     for ex in TEMPCOPY_EXCLUDES {
         robocopy_args.push((*ex).to_string());
     }
+    // Git worktrees and submodules store `.git` as a *file* pointing at the
+    // real repo metadata, which `/XD` (directories only) would not exclude.
+    // Excluding the file too keeps git commands in the isolated copy from
+    // touching/locking the original checkout.
+    robocopy_args.push("/XF".to_string()); // exclude files named...
+    robocopy_args.push(".git".to_string());
 
     match std::process::Command::new("robocopy")
         .args(&robocopy_args)
