@@ -14,7 +14,8 @@ import {
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { useProviderStore, type ProviderTestResult } from '@/store/providerStore';
-import { readLegacyApiKey, type Provider } from '@/config/providers';
+import { providerPresets, readLegacyApiKey, type Provider } from '@/config/providers';
+import { getTranslatedProviderName } from '@/i18n/providerLabels';
 import { Copy, Zap } from 'lucide-react';
 
 interface ProviderEditorProps {
@@ -48,6 +49,7 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [cloning, setCloning] = useState(false);
+  const [presetType, setPresetType] = useState<string | undefined>(undefined);
 
   const provider = providerId ? get(providerId) : undefined;
   const isBuiltin = provider?.source === 'builtin';
@@ -55,6 +57,8 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
 
   useEffect(() => {
     if (!open) return;
+
+    setPresetType(undefined);
 
     if (providerId) {
       const p = get(providerId);
@@ -82,8 +86,7 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
     }
   }, [open, providerId, get, hasSecret, form]);
 
-  const buildProvider = (values: Record<string, unknown>, id: string): Provider => ({
-    id,
+  const buildProvider = (values: Record<string, unknown>, id: string): Provider => ({    id,
     name: values.name as string,
     baseURL: values.baseURL as string,
     apiKeyRef: provider?.apiKeyRef && provider.id === id ? provider.apiKeyRef : `provider:${id}`,
@@ -226,6 +229,18 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
     }
   };
 
+  const handlePresetChange = (value?: string) => {
+    setPresetType(value);
+    if (!value) return;
+    const preset = providerPresets.find((p) => p.id === value);
+    if (!preset || preset.id === 'custom') return;
+    // 仅自动填入名称与 API 地址；模型保持为空，由用户自行填写
+    form.setFieldsValue({
+      name: getTranslatedProviderName(preset.id, preset.name),
+      baseURL: preset.baseURL,
+    });
+  };
+
   return (
     <Drawer
       title={providerId ? t('provider.titleEdit') : t('provider.titleCreate')}
@@ -248,6 +263,26 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
       }
     >
       <Form form={form} layout="vertical" onFinish={handleFinish}>
+        {!providerId && (
+          <Form.Item
+            label={t('provider.fields.presetType')}
+            extra={t('provider.fields.presetTypeHint')}
+          >
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              value={presetType}
+              onChange={handlePresetChange}
+              placeholder={t('provider.fields.presetTypePlaceholder')}
+              options={providerPresets.map((p) => ({
+                value: p.id,
+                label: getTranslatedProviderName(p.id, p.name),
+              }))}
+            />
+          </Form.Item>
+        )}
+
         <Form.Item
           label={t('provider.fields.name')}
           name="name"

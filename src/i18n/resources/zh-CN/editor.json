@@ -119,6 +119,9 @@
     },
     "fields": {
       "name": "服务名称",
+      "presetType": "服务商类型",
+      "presetTypePlaceholder": "选择服务商类型，自动填入 API 地址（可选）",
+      "presetTypeHint": "选择后仅自动填入 API 地址，模型需自行填写",
       "nameRequired": "请输入服务名称",
       "namePlaceholder": "例如：DeepSeek",
       "baseUrl": "API 地址 (Base URL)",
