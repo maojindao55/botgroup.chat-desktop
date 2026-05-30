@@ -4,6 +4,7 @@ import { initReactI18next } from 'react-i18next';
 import commonEn from './resources/en-US/common.json';
 import adEn from './resources/en-US/ad.json';
 import chatEn from './resources/en-US/chat.json';
+import homeEn from './resources/en-US/home.json';
 import cliEn from './resources/en-US/cli.json';
 import editorEn from './resources/en-US/editor.json';
 import engineEn from './resources/en-US/engine.json';
@@ -18,6 +19,7 @@ import wizardEn from './resources/en-US/wizard.json';
 import adZh from './resources/zh-CN/ad.json';
 import commonZh from './resources/zh-CN/common.json';
 import chatZh from './resources/zh-CN/chat.json';
+import homeZh from './resources/zh-CN/home.json';
 import cliZh from './resources/zh-CN/cli.json';
 import editorZh from './resources/zh-CN/editor.json';
 import engineZh from './resources/zh-CN/engine.json';
@@ -62,6 +64,7 @@ i18n.use(initReactI18next).init({
   resources: {
     'zh-CN': {
       common: commonZh,
+      home: homeZh,
       sidebar: sidebarZh,
       user: userZh,
       wizard: wizardZh,
@@ -78,6 +81,7 @@ i18n.use(initReactI18next).init({
     },
     'en-US': {
       common: commonEn,
+      home: homeEn,
       sidebar: sidebarEn,
       user: userEn,
       wizard: wizardEn,

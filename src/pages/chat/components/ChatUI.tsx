@@ -24,6 +24,7 @@ import AIGroupSettings from './AIGroupSettings';
 import CLIGroupSettings from './CLIGroupSettings';
 import AgentChatUI from './AgentChatUI';
 import CLITaskUI from './CLITaskUI';
+import HomeView from './HomeView';
 import Sidebar from './Sidebar';
 import { AdBanner, AdBannerMobile } from './AdSection';
 import { useUserStore } from '@/store/userStore';
@@ -56,6 +57,7 @@ import {
   type ChatSessionMessage,
 } from '@/config/chatSessions';
 import { generateSessionTitle } from '@/utils/sessionTitle';
+import { readLastView, saveLastView, clearLastView } from '@/utils/lastViewStorage';
 
 const useStyles = createStyles(({ token, css }) => ({
   page: css`
@@ -422,6 +424,9 @@ const ChatUI = () => {
   // view 作为响应式状态：支持「群聊 ↔ 开发任务」的客户端切换，避免整页重载导致白屏闪烁
   const [viewParam, setViewParam] = useState<string | null>(() => urlParams.get('view'));
   const isCLIView = viewParam === 'cli-tasks' || viewParam === 'cli-task' || viewParam === 'cli-template';
+  const isHomeView = viewParam === 'home';
+  // 裸启动（无任何视图参数）：用于冷启动时恢复上次视图或落地首页
+  const hasNoParams = !urlParams.get('id') && !viewParam && !taskIdParam;
 
   // State
   const [groups, setGroups] = useState<Group[]>([]);
@@ -564,6 +569,13 @@ const ChatUI = () => {
     if (isInitialized.current) return;
 
     const initData = async () => {
+      // 裸启动：恢复上次视图，没有记录则落地首页（避免直接进入开发任务）
+      if (hasNoParams) {
+        const last = readLastView();
+        window.location.replace(last || '?view=home');
+        return;
+      }
+
       try {
         const response = await request(`/api/init`);
         if (!response.ok) throw new Error(t('chat:init.initDataFailed'));
@@ -572,19 +584,33 @@ const ChatUI = () => {
         const resolvedGroups = prepareCLIGroups(data.groups);
         const currentGroup = resolvedGroups[selectedGroupIndex];
 
-        // 旧链接指向 CLI 群时，重定向到任务优先视图
-        if (currentGroup?.type === 'cli' && !isCLIView) {
+        // 旧链接指向 CLI 群时，重定向到任务优先视图（首页除外）
+        if (currentGroup?.type === 'cli' && !isCLIView && !isHomeView) {
           window.location.replace('?view=cli-tasks');
           return;
         }
 
-        if (!currentGroup && !isCLIView) {
+        if (!currentGroup && !isCLIView && !isHomeView) {
+          clearLastView();
           setInitError(t('chat:init.groupNotFound'));
           setIsInitializing(false);
           return;
         }
 
         setGroups(resolvedGroups);
+
+        // 首页视图：仅加载用户信息，不绑定具体群
+        if (isHomeView) {
+          setIsInitializing(false);
+          if (data.user) {
+            const r = await request('/api/user/info');
+            const userInfo = await r.json();
+            userStore.setUserInfo(normalizeDesktopUser(userInfo.data));
+          } else {
+            userStore.setUserInfo({ id: 0, phone: '', nickname: t('settings:aiGroup.selfName'), avatar_url: null, status: 0 });
+          }
+          return;
+        }
 
         if (isCLIView) {
           setIsInitializing(false);
@@ -653,13 +679,21 @@ const ChatUI = () => {
 
     initData();
     isInitialized.current = true;
-  }, [userStore, selectedGroupIndex, isCLIView]);
+  }, [userStore, selectedGroupIndex, isCLIView, isHomeView]);
+
+  // 记住当前视图，供下次冷启动恢复（Option C）。
+  // viewParam/selectedGroupIndex 变化覆盖客户端切换；URL 已由各导航 pushState/replaceState 先行更新。
+  useEffect(() => {
+    if (isInitializing || initError) return;
+    saveLastView(window.location.search);
+  }, [isInitializing, initError, viewParam, selectedGroupIndex]);
 
   // 客户端切换群聊时解析当前群 + 派生状态（不重载页面）。
   // 初始加载由 initData 设定首个群；这里用 id 比对，命中即跳过，避免重复处理。
   useEffect(() => {
     if (isInitializing) return;
     if (isCLIView) return;
+    if (isHomeView) return;
     if (!groups.length) return;
     const current = groups[selectedGroupIndex];
     if (!current) return;
@@ -853,7 +887,7 @@ const ChatUI = () => {
   const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
   /** 客户端切换群聊：不重载页面，避免白屏闪烁。group 解析由下方 resolve effect 处理 */
   const goToGroup = (index: number) => {
-    if (index === selectedGroupIndex && !isCLIView) return;
+    if (index === selectedGroupIndex && !isCLIView && !isHomeView) return;
     window.history.pushState({}, '', `?id=${index}`);
     setShowSettings(false);
     setShowLibrary(false);
@@ -868,6 +902,19 @@ const ChatUI = () => {
     setShowSettings(false);
     setShowLibrary(false);
     setViewParam('cli-tasks');
+  };
+  /** 客户端切换到首页：不重载页面 */
+  const handleNavigateHome = () => {
+    if (isHomeView) return;
+    window.history.pushState({}, '', '?view=home');
+    setShowSettings(false);
+    setShowLibrary(false);
+    setViewParam('home');
+  };
+
+  /** 打开指定开发任务（从首页进入）：整页跳转，确保 CLITaskUI 读取到 taskId */
+  const handleSelectTask = (taskId: string) => {
+    window.location.href = `?view=cli-task&taskId=${encodeURIComponent(taskId)}`;
   };
 
   const handleDeleteCLIGroup = (templateId: string) => {
@@ -1058,7 +1105,7 @@ const ChatUI = () => {
           <div style={{ fontSize: 48, marginBottom: 16 }}>⚠️</div>
           <p style={{ fontSize: 18, fontWeight: 500, marginBottom: 8 }}>{initError}</p>
           <button
-            onClick={() => { window.location.href = '/'; }}
+            onClick={() => { window.location.href = '?view=home'; }}
             style={{
               padding: '8px 24px',
               background: '#ff6600',
@@ -1085,6 +1132,21 @@ const ChatUI = () => {
 
   const cliGroups = groups.filter((g): g is CLIGroup => g.type === 'cli');
 
+  // 首页视图
+  if (isHomeView) {
+    return (
+      <HomeView
+        groups={groups}
+        sidebarOpen={sidebarOpen}
+        toggleSidebar={toggleSidebar}
+        onSelectGroup={handleSelectGroup}
+        onCreateGroup={handleCreateGroup}
+        onNavigateCLI={handleNavigateCLI}
+        onSelectTask={handleSelectTask}
+      />
+    );
+  }
+
   // CLI 开发任务视图
   if (isCLIView) {
     return (
@@ -1096,6 +1158,7 @@ const ChatUI = () => {
         onCreateGroup={handleCreateGroup}
         onUpdateCLIGroup={handleUpdateCLIGroup}
         onDeleteCLIGroup={handleDeleteCLIGroup}
+        onNavigateHome={handleNavigateHome}
         initialTaskId={taskIdParam}
       />
     );
@@ -1652,6 +1715,7 @@ const ChatUI = () => {
             onCreateGroup={handleCreateGroup}
             onOpenLibrary={() => handleToggleLibrary(true)}
             onNavigateCLI={handleNavigateCLI}
+            onNavigateHome={handleNavigateHome}
             hiddenGroupTypes={['cli']}
           />
 
