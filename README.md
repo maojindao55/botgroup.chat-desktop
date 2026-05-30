@@ -11,6 +11,34 @@
   <img src="https://img.shields.io/badge/i18n-中%20%2F%20EN-success" alt="i18n" />
 </p>
 
+<p align="center">
+  <a href="https://github.com/maojindao55/botgroup.chat-desktop/releases/latest">
+    <img src="https://img.shields.io/badge/⬇️%20立即下载-Download-FF6A00?style=for-the-badge" alt="立即下载" />
+  </a>
+  <a href="https://github.com/maojindao55/botgroup.chat-desktop/releases">
+    <img src="https://img.shields.io/github/v/release/maojindao55/botgroup.chat-desktop?style=for-the-badge&label=最新版本&color=FFB300" alt="最新版本" />
+  </a>
+</p>
+
+## ⬇️ 下载体验
+
+无需配置开发环境，**下载安装包即可开箱即用**：
+
+<p align="center">
+  <a href="https://github.com/maojindao55/botgroup.chat-desktop/releases/latest">
+    <b>👉 前往 Releases 下载最新版本 👈</b>
+  </a>
+</p>
+
+| 平台 | 下载 |
+|------|------|
+| 🍎 **macOS** | [下载 `.dmg`](https://github.com/maojindao55/botgroup.chat-desktop/releases/latest)（区分 Apple Silicon / Intel） |
+| 🪟 **Windows** | [下载 `.exe`](https://github.com/maojindao55/botgroup.chat-desktop/releases/latest)（Windows 10 / 11 64 位） |
+| 🐧 **Linux** | [下载 `.deb`](https://github.com/maojindao55/botgroup.chat-desktop/releases/latest)（Ubuntu / Debian） |
+
+> 下载后准备一个模型服务的 API Key（DeepSeek、通义千问、Kimi、OpenAI、Ollama 等均可），在「资源库 → 模型服务」中填入即可开始第一场群聊。
+> 各平台架构与安装提示详见下方 [💻 支持的系统](#-支持的系统)。
+
 ## ✨ 特性
 
 ### 三类群聊
@@ -67,7 +95,9 @@
 
 > Linux 当前仅打包 `.deb`(amd64);其他发行版 / 架构(如 Linux ARM、Windows ARM)可参考下方步骤自行从源码构建。
 
-## 🚀 快速开始
+## 🚀 从源码构建（开发者）
+
+> 只想使用应用？直接前往 [⬇️ 下载体验](#-下载体验) 获取安装包即可，无需以下步骤。
 
 ### 环境要求
 
