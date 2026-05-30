@@ -7,7 +7,7 @@
  */
 import { useState, useRef, useEffect } from "react";
 import { useTranslation } from 'react-i18next';
-import { Send, Settings2, ChevronLeft, Bot, Terminal } from "lucide-react";
+import { Send, Settings2, ChevronLeft, Bot, Terminal, PanelLeftOpen } from "lucide-react";
 import { Tooltip, Input as AntdInput, Button as AntdButton, Modal } from 'antd';
 import { ActionIcon, Avatar as LobeAvatar } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
@@ -48,6 +48,14 @@ import {
   isBuiltinGroupId,
   upsertCustomGroup,
 } from '@/config/groupStorage';
+import ConversationSidebar from './ConversationSidebar';
+import { useChatSessionStore } from '@/store/chatSessionStore';
+import {
+  newChatMessageId,
+  truncateSessionTitle,
+  type ChatSessionMessage,
+} from '@/config/chatSessions';
+import { generateSessionTitle } from '@/utils/sessionTitle';
 
 const useStyles = createStyles(({ token, css }) => ({
   page: css`
@@ -69,6 +77,32 @@ const useStyles = createStyles(({ token, css }) => ({
     flex-direction: column;
     flex: 1;
     min-width: 0;
+    position: relative;
+  `,
+  convSidebarExpandHandle: css`
+    position: absolute;
+    left: 0;
+    top: 18px;
+    z-index: 5;
+    transform: translateX(-50%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 32px;
+    padding: 0;
+    border: 1px solid ${token.colorBorderSecondary};
+    border-radius: 0 8px 8px 0;
+    background: ${token.colorBgContainer};
+    color: ${token.colorTextSecondary};
+    cursor: pointer;
+    box-shadow: 1px 0 4px rgba(0, 0, 0, 0.06);
+    transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+    &:hover {
+      color: #ff6600;
+      border-color: rgba(255, 102, 0, 0.35);
+      background: rgba(255, 102, 0, 0.06);
+    }
   `,
   headerBar: css`
     background: ${token.colorBgContainer};
@@ -383,13 +417,15 @@ const ChatUI = () => {
 
   const urlParams = new URLSearchParams(window.location.search);
   const id = urlParams.get('id') ? parseInt(urlParams.get('id')!) : 0;
-  const viewParam = urlParams.get('view');
   const taskIdParam = urlParams.get('taskId');
+  const convParam = urlParams.get('conv');
+  // view 作为响应式状态：支持「群聊 ↔ 开发任务」的客户端切换，避免整页重载导致白屏闪烁
+  const [viewParam, setViewParam] = useState<string | null>(() => urlParams.get('view'));
   const isCLIView = viewParam === 'cli-tasks' || viewParam === 'cli-task' || viewParam === 'cli-template';
 
   // State
   const [groups, setGroups] = useState<Group[]>([]);
-  const selectedGroupIndex = id;
+  const [selectedGroupIndex, setSelectedGroupIndex] = useState(id);
   const [showLibrary, setShowLibrary] = useState(false);
   const { load: loadAIMembers } = useAIMemberStore();
   const aiMembers = useAIMemberStore(state => state.members);
@@ -412,6 +448,18 @@ const ChatUI = () => {
   const [initError, setInitError] = useState<string | null>(null);
   const [mutedUsers, setMutedUsers] = useState<string[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [convSidebarOpen, setConvSidebarOpen] = useState(false);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(convParam);
+  // 会话 store（仅角色群使用）
+  const chatSessions = useChatSessionStore(state => state.sessions);
+  const createChatSessionInStore = useChatSessionStore(state => state.createSession);
+  const replaceSessionMessages = useChatSessionStore(state => state.replaceMessages);
+  const renameChatSession = useChatSessionStore(state => state.renameSession);
+  const setChatSessionAutoTitle = useChatSessionStore(state => state.setAutoTitle);
+  const deleteChatSession = useChatSessionStore(state => state.deleteSession);
+  const deleteChatSessionsByGroup = useChatSessionStore(state => state.deleteSessionsByGroup);
+  const toggleChatSessionPinned = useChatSessionStore(state => state.togglePinned);
+  const toggleChatSessionArchived = useChatSessionStore(state => state.toggleArchived);
   const [workspacePath, setWorkspacePath] = useState("");
   const [approvalMode, setApprovalMode] = useState<'auto' | 'ask'>('auto');
   const [cliTimeout, setCliTimeout] = useState(300000);
@@ -423,6 +471,10 @@ const ChatUI = () => {
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const isInitialized = useRef(false);
+  /** 正在生成标题的会话 id，避免重复请求 */
+  const titleGenRef = useRef<Set<string>>(new Set());
+  /** 懒创建会话后跳过一次「加载历史」，避免覆盖刚输入的消息 */
+  const suppressLoadRef = useRef(false);
 
   /** 桌面端打开右侧 inline 面板时同步扩展 Tauri 窗口宽度（移动端跳过） */
   const adjustWindowWidthForPanel = (deltaPx: number) => {
@@ -470,7 +522,10 @@ const ChatUI = () => {
   };
 
   useEffect(() => {
-    if (isMobile !== undefined) setSidebarOpen(!isMobile);
+    if (isMobile !== undefined) {
+      setSidebarOpen(!isMobile);
+      setConvSidebarOpen(!isMobile);
+    }
   }, [isMobile]);
 
   // Reactively compute members/users whenever group, aiMembers store, or user info updates
@@ -600,16 +655,220 @@ const ChatUI = () => {
     isInitialized.current = true;
   }, [userStore, selectedGroupIndex, isCLIView]);
 
+  // 客户端切换群聊时解析当前群 + 派生状态（不重载页面）。
+  // 初始加载由 initData 设定首个群；这里用 id 比对，命中即跳过，避免重复处理。
+  useEffect(() => {
+    if (isInitializing) return;
+    if (isCLIView) return;
+    if (!groups.length) return;
+    const current = groups[selectedGroupIndex];
+    if (!current) return;
+    if (group && group.id === current.id) return;
+    if (current.type === 'cli') {
+      // 角色群侧栏已隐藏 CLI 群；万一选中则转任务视图（客户端）
+      window.history.replaceState({}, '', '?view=cli-tasks');
+      setViewParam('cli-tasks');
+      return;
+    }
+    setShowSettings(false);
+    setMessages([]);
+    setActiveSessionId(null);
+    setGroup(current);
+    if (current.type === 'ai' || !current.type) {
+      const aiGroup = current as AIGroup;
+      setIsGroupDiscussionMode(aiGroup.isGroupDiscussionMode || false);
+      setSchedulerStrategy(aiGroup.schedulerStrategy || 'tag');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groups, selectedGroupIndex, isCLIView, isInitializing, group]);
+
+
+  // ============ 会话（角色群）逻辑 ============
+  const isAIGroup = !!group && (group.type === 'ai' || !group.type);
+  const groupSessions = group ? chatSessions.filter(s => s.groupId === group.id) : [];
+
+  const updateConvParam = (sessionId: string | null) => {
+    const url = new URL(window.location.href);
+    if (sessionId) url.searchParams.set('conv', sessionId);
+    else url.searchParams.delete('conv');
+    window.history.replaceState({}, '', `${url.pathname}${url.search}`);
+  };
+
+  /** 存储消息 → 渲染消息（角色群消息形状一致，浅拷贝即可） */
+  const storedToLocalMessages = (msgs: ChatSessionMessage[]) => msgs.map(m => ({ ...m }));
+
+  /** 渲染消息 → 存储消息（仅保留需要持久化的字段；不存 avatar，渲染时按名称解析） */
+  const localToStoredMessages = (msgs: any[]): ChatSessionMessage[] =>
+    msgs.map(m => ({
+      id: m.id,
+      sender: { id: m.sender?.id, name: m.sender?.name },
+      content: m.content || '',
+      isAI: !!m.isAI,
+      isError: !!m.isError,
+    }));
+
+  // 选中会话变化（来自 URL 或自动/手动选中）→ 加载历史消息
+  useEffect(() => {
+    if (!isAIGroup || !group) return;
+    if (!activeSessionId) return;
+    if (suppressLoadRef.current) { suppressLoadRef.current = false; return; }
+    const session = chatSessions.find(s => s.id === activeSessionId);
+    if (session && session.groupId === group.id) {
+      setMessages(storedToLocalMessages(session.messages));
+    } else {
+      setMessages([]);
+      setActiveSessionId(null);
+      updateConvParam(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSessionId, group?.id, isAIGroup]);
+
+  // 进入角色群且 URL 未指定会话 → 自动选中最近一条（非归档）
+  useEffect(() => {
+    if (!isAIGroup || !group) return;
+    if (activeSessionId) return;
+    const candidates = chatSessions
+      .filter(s => s.groupId === group.id && !s.archived)
+      .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+    if (candidates.length > 0) {
+      setActiveSessionId(candidates[0].id);
+      updateConvParam(candidates[0].id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [group?.id, isAIGroup]);
+
+  // 安全点持久化 + 首轮总结标题（仅在空闲时落盘，避免逐 token 写入）
+  useEffect(() => {
+    if (!isAIGroup || !group) return;
+    if (!activeSessionId) return;
+    if (isLoading) return;
+    if (messages.length === 0) return;
+
+    replaceSessionMessages(activeSessionId, localToStoredMessages(messages));
+
+    const session = useChatSessionStore.getState().getSession(activeSessionId);
+    if (
+      session &&
+      session.titleSource !== 'manual' &&
+      !session.titleGenerated &&
+      !titleGenRef.current.has(session.id)
+    ) {
+      const userMsg = messages.find((m: any) => !m.isAI && (m.content || '').trim());
+      const aiMsg = messages.find((m: any) => m.isAI && !m.isError && (m.content || '').trim());
+      const titleChar: any = groupAiCharacters[0];
+      if (userMsg && aiMsg && titleChar?.model) {
+        const sid = session.id;
+        titleGenRef.current.add(sid);
+        generateSessionTitle({
+          userMessage: userMsg.content,
+          aiMessage: aiMsg.content,
+          model: titleChar.model,
+          providerId: titleChar.providerId,
+        })
+          .then(title => { if (title) setChatSessionAutoTitle(sid, title); })
+          .finally(() => { titleGenRef.current.delete(sid); });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, isLoading, activeSessionId, isAIGroup]);
+
+  /** 确保存在活跃会话（懒创建）；返回会话 id */
+  const ensureActiveSession = (firstText: string): string | null => {
+    if (!group || !isAIGroup) return null;
+    if (activeSessionId && chatSessions.some(s => s.id === activeSessionId)) {
+      return activeSessionId;
+    }
+    const fallbackTitle = truncateSessionTitle(firstText, undefined, t('chat:conversation.untitled'));
+    const session = createChatSessionInStore(group.id, {
+      fallbackTitle,
+      settingsSnapshot: { isGroupDiscussionMode, schedulerStrategy },
+    });
+    suppressLoadRef.current = true;
+    setActiveSessionId(session.id);
+    updateConvParam(session.id);
+    return session.id;
+  };
+
+  const startNewConversation = () => {
+    setMessages([]);
+    setActiveSessionId(null);
+    updateConvParam(null);
+    setShowAd(false);
+    if (isMobile) setConvSidebarOpen(false);
+  };
+
+  const handleSelectSession = (sessionId: string) => {
+    if (sessionId === activeSessionId) {
+      if (isMobile) setConvSidebarOpen(false);
+      return;
+    }
+    setActiveSessionId(sessionId);
+    updateConvParam(sessionId);
+    if (isMobile) setConvSidebarOpen(false);
+  };
+
+  const handleDeleteSession = (sessionId: string) => {
+    const target = chatSessions.find(s => s.id === sessionId);
+    Modal.confirm({
+      title: t('chat:conversation.deleteConfirmTitle', { name: target?.title || '' }),
+      content: t('chat:conversation.deleteConfirmContent'),
+      okText: t('common:actions.delete'),
+      okType: 'danger',
+      cancelText: t('common:actions.cancel'),
+      onOk: () => {
+        deleteChatSession(sessionId);
+        if (sessionId === activeSessionId) {
+          const remaining = chatSessions
+            .filter(s => s.id !== sessionId && s.groupId === group?.id && !s.archived)
+            .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+          if (remaining.length > 0) {
+            setActiveSessionId(remaining[0].id);
+            updateConvParam(remaining[0].id);
+          } else {
+            startNewConversation();
+          }
+        }
+      },
+    });
+  };
+
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
   useEffect(() => { if (messages.length > 0) setShowAd(false); }, [messages]);
+
+  // 同步浏览器前进/后退：保持 view / 选中群 与 URL 一致（配合客户端视图与群切换）
+  useEffect(() => {
+    const onPopState = () => {
+      const p = new URLSearchParams(window.location.search);
+      setViewParam(p.get('view'));
+      setSelectedGroupIndex(p.get('id') ? parseInt(p.get('id')!) : 0);
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
 
   const handleToggleMute = (userId: string) => {
     setMutedUsers(prev => prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]);
   };
   const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
-  const handleSelectGroup = (index: number) => { window.location.href = `?id=${index}`; };
-  const handleNavigateCLI = () => { window.location.href = '?view=cli-tasks'; };
+  /** 客户端切换群聊：不重载页面，避免白屏闪烁。group 解析由下方 resolve effect 处理 */
+  const goToGroup = (index: number) => {
+    if (index === selectedGroupIndex && !isCLIView) return;
+    window.history.pushState({}, '', `?id=${index}`);
+    setShowSettings(false);
+    setShowLibrary(false);
+    setViewParam(null);
+    setSelectedGroupIndex(index);
+  };
+  const handleSelectGroup = (index: number) => goToGroup(index);
+  const handleNavigateCLI = () => {
+    if (isCLIView) return;
+    // 客户端切换：不重载页面（groups/用户数据已在内存），消除白屏闪烁
+    window.history.pushState({}, '', '?view=cli-tasks');
+    setShowSettings(false);
+    setShowLibrary(false);
+    setViewParam('cli-tasks');
+  };
 
   const handleDeleteCLIGroup = (templateId: string) => {
     markCLITemplateDeleted(templateId);
@@ -669,6 +928,8 @@ const ChatUI = () => {
       url.searchParams.delete('settings');
     }
     window.history.replaceState({}, '', `${url.pathname}${url.search}`);
+    setViewParam(null);
+    setSelectedGroupIndex(index);
   };
 
   const handleEditGroup = (index: number) => {
@@ -688,6 +949,7 @@ const ChatUI = () => {
       cancelText: t('common:actions.cancel'),
       onOk: () => {
         deleteChatGroup(targetGroup.id);
+        deleteChatSessionsByGroup(targetGroup.id);
         const deletedIndex = groups.findIndex((g) => g.id === targetGroup.id);
         const remaining = groups.filter((g) => g.id !== targetGroup.id);
         setGroups(remaining);
@@ -727,20 +989,20 @@ const ChatUI = () => {
       console.error('Failed to save custom group:', e);
     }
 
-    let newIndex = 0;
-    setGroups((prev) => {
-      newIndex = prev.length;
-      return [...prev, newGroup];
-    });
+    // 追加到末尾，新群索引即当前长度（在 append 前读取，保证可靠）
+    const newIndex = groups.length;
+    setGroups((prev) => [...prev, newGroup]);
+    setSelectedGroupIndex(newIndex);
 
     if (newGroup.type === 'cli') {
-      const onCliTasks = new URL(window.location.href).searchParams.get('view') === 'cli-tasks';
-      if (!onCliTasks) {
-        window.location.href = '?view=cli-tasks';
+      if (!isCLIView) {
+        window.history.pushState({}, '', '?view=cli-tasks');
+        setViewParam('cli-tasks');
       }
       return;
     }
 
+    setViewParam(null);
     setGroup(newGroup);
     if (newGroup.type === 'ai' || !newGroup.type) {
       const aiGroup = newGroup as AIGroup;
@@ -1174,7 +1436,7 @@ const ChatUI = () => {
       if (mutedUsers.includes(char.id)) continue;
 
       const aiMessage = {
-        id: messages.length + 2 + i,
+        id: newChatMessageId(),
         sender: { id: char.id, name: char.name, avatar: char.avatar },
         content: "",
         isAI: true,
@@ -1280,8 +1542,12 @@ const ChatUI = () => {
     if (isLoading) return;
     if (!inputMessage.trim()) return;
 
+    if (group.type === 'ai' || !group.type) {
+      ensureActiveSession(inputMessage);
+    }
+
     const userMessage = {
-      id: messages.length + 1,
+      id: newChatMessageId(),
       sender: users[0],
       content: inputMessage,
       isAI: false,
@@ -1301,6 +1567,8 @@ const ChatUI = () => {
 
   // ============ RENDER: AI / CLI 群 ============
   const userName = userStore.userInfo.nickname || t('settings:aiGroup.selfName');
+  // 当前用户头像从全局解析（不随消息持久化，避免 base64 撑爆存储）；历史消息也据此渲染
+  const selfAvatar = userStore.avatarDisplaySrc || userStore.userInfo?.avatar_url || undefined;
   const isCLIGroup = group.type === 'cli';
 
   return (
@@ -1387,7 +1655,35 @@ const ChatUI = () => {
             hiddenGroupTypes={['cli']}
           />
 
+          {isAIGroup && (
+            <ConversationSidebar
+              isOpen={convSidebarOpen}
+              toggleSidebar={() => setConvSidebarOpen(false)}
+              sessions={groupSessions}
+              selectedSessionId={activeSessionId}
+              groupName={group.name}
+              onSelectSession={handleSelectSession}
+              onNewSession={startNewConversation}
+              onRenameSession={renameChatSession}
+              onDeleteSession={handleDeleteSession}
+              onTogglePin={toggleChatSessionPinned}
+              onToggleArchive={toggleChatSessionArchived}
+            />
+          )}
+
           <div className={styles.rightCol}>
+            {isAIGroup && !convSidebarOpen && (
+              <Tooltip title={t('chat:conversation.expand')} placement="right">
+                <button
+                  type="button"
+                  className={styles.convSidebarExpandHandle}
+                  onClick={() => setConvSidebarOpen(true)}
+                  aria-label={t('chat:conversation.expand')}
+                >
+                  <PanelLeftOpen size={14} />
+                </button>
+              </Tooltip>
+            )}
             {/* Header */}
             <header className={styles.headerBar}>
               <div className={styles.headerInner}>
@@ -1472,7 +1768,9 @@ const ChatUI = () => {
                     ? (mapAIMemberToLegacy(cliMember) as CLIAgent)
                     : undefined;
                   const avatarName = cliAgentInfo?.name || message.sender.name;
-                  const avatarSource = cliAgentInfo?.avatar || message.sender.avatar;
+                  const avatarSource = isUser
+                    ? (selfAvatar || message.sender.avatar)
+                    : (cliAgentInfo?.avatar || message.sender.avatar);
                   const a = getAvatarData(avatarName);
                   const url = resolveAvatarByName(avatarName, avatarSource, 40);
                   const isLatest = messages[messages.length - 1]?.id === message.id;
