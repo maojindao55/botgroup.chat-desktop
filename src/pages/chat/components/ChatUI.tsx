@@ -417,9 +417,10 @@ const ChatUI = () => {
 
   const urlParams = new URLSearchParams(window.location.search);
   const id = urlParams.get('id') ? parseInt(urlParams.get('id')!) : 0;
-  const viewParam = urlParams.get('view');
   const taskIdParam = urlParams.get('taskId');
   const convParam = urlParams.get('conv');
+  // view 作为响应式状态：支持「群聊 ↔ 开发任务」的客户端切换，避免整页重载导致白屏闪烁
+  const [viewParam, setViewParam] = useState<string | null>(() => urlParams.get('view'));
   const isCLIView = viewParam === 'cli-tasks' || viewParam === 'cli-task' || viewParam === 'cli-template';
 
   // State
@@ -808,12 +809,28 @@ const ChatUI = () => {
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
   useEffect(() => { if (messages.length > 0) setShowAd(false); }, [messages]);
 
+  // 同步浏览器前进/后退：保持 view 与 URL 一致（配合客户端视图切换）
+  useEffect(() => {
+    const onPopState = () => {
+      setViewParam(new URLSearchParams(window.location.search).get('view'));
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
   const handleToggleMute = (userId: string) => {
     setMutedUsers(prev => prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]);
   };
   const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
   const handleSelectGroup = (index: number) => { window.location.href = `?id=${index}`; };
-  const handleNavigateCLI = () => { window.location.href = '?view=cli-tasks'; };
+  const handleNavigateCLI = () => {
+    if (isCLIView) return;
+    // 客户端切换：不重载页面（groups/用户数据已在内存），消除白屏闪烁
+    window.history.pushState({}, '', '?view=cli-tasks');
+    setShowSettings(false);
+    setShowLibrary(false);
+    setViewParam('cli-tasks');
+  };
 
   const handleDeleteCLIGroup = (templateId: string) => {
     markCLITemplateDeleted(templateId);

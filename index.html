@@ -7,6 +7,20 @@
     <title>BotGroup.Chat</title>
     <!-- 运行时配置文件 - 在应用加载前加载配置 -->
     <script src="/config.js"></script>
+    <!-- 预上色：在 React/CSS 加载前根据已存主题给文档上背景色，避免整页重载时白屏闪烁（尤其深色模式） -->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('theme') || 'system';
+          var prefersDark =
+            window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var dark = t === 'dark' || (t === 'system' && prefersDark);
+          var de = document.documentElement;
+          if (dark) de.classList.add('dark');
+          de.style.backgroundColor = dark ? '#121214' : '#f5f5f5';
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
