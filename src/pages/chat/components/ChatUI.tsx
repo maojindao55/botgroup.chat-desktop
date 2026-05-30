@@ -425,7 +425,7 @@ const ChatUI = () => {
 
   // State
   const [groups, setGroups] = useState<Group[]>([]);
-  const selectedGroupIndex = id;
+  const [selectedGroupIndex, setSelectedGroupIndex] = useState(id);
   const [showLibrary, setShowLibrary] = useState(false);
   const { load: loadAIMembers } = useAIMemberStore();
   const aiMembers = useAIMemberStore(state => state.members);
@@ -655,6 +655,33 @@ const ChatUI = () => {
     isInitialized.current = true;
   }, [userStore, selectedGroupIndex, isCLIView]);
 
+  // 客户端切换群聊时解析当前群 + 派生状态（不重载页面）。
+  // 初始加载由 initData 设定首个群；这里用 id 比对，命中即跳过，避免重复处理。
+  useEffect(() => {
+    if (isInitializing) return;
+    if (isCLIView) return;
+    if (!groups.length) return;
+    const current = groups[selectedGroupIndex];
+    if (!current) return;
+    if (group && group.id === current.id) return;
+    if (current.type === 'cli') {
+      // 角色群侧栏已隐藏 CLI 群；万一选中则转任务视图（客户端）
+      window.history.replaceState({}, '', '?view=cli-tasks');
+      setViewParam('cli-tasks');
+      return;
+    }
+    setShowSettings(false);
+    setMessages([]);
+    setActiveSessionId(null);
+    setGroup(current);
+    if (current.type === 'ai' || !current.type) {
+      const aiGroup = current as AIGroup;
+      setIsGroupDiscussionMode(aiGroup.isGroupDiscussionMode || false);
+      setSchedulerStrategy(aiGroup.schedulerStrategy || 'tag');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groups, selectedGroupIndex, isCLIView, isInitializing, group]);
+
 
   // ============ 会话（角色群）逻辑 ============
   const isAIGroup = !!group && (group.type === 'ai' || !group.type);
@@ -809,10 +836,12 @@ const ChatUI = () => {
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
   useEffect(() => { if (messages.length > 0) setShowAd(false); }, [messages]);
 
-  // 同步浏览器前进/后退：保持 view 与 URL 一致（配合客户端视图切换）
+  // 同步浏览器前进/后退：保持 view / 选中群 与 URL 一致（配合客户端视图与群切换）
   useEffect(() => {
     const onPopState = () => {
-      setViewParam(new URLSearchParams(window.location.search).get('view'));
+      const p = new URLSearchParams(window.location.search);
+      setViewParam(p.get('view'));
+      setSelectedGroupIndex(p.get('id') ? parseInt(p.get('id')!) : 0);
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
@@ -822,7 +851,16 @@ const ChatUI = () => {
     setMutedUsers(prev => prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]);
   };
   const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
-  const handleSelectGroup = (index: number) => { window.location.href = `?id=${index}`; };
+  /** 客户端切换群聊：不重载页面，避免白屏闪烁。group 解析由下方 resolve effect 处理 */
+  const goToGroup = (index: number) => {
+    if (index === selectedGroupIndex && !isCLIView) return;
+    window.history.pushState({}, '', `?id=${index}`);
+    setShowSettings(false);
+    setShowLibrary(false);
+    setViewParam(null);
+    setSelectedGroupIndex(index);
+  };
+  const handleSelectGroup = (index: number) => goToGroup(index);
   const handleNavigateCLI = () => {
     if (isCLIView) return;
     // 客户端切换：不重载页面（groups/用户数据已在内存），消除白屏闪烁
@@ -890,6 +928,8 @@ const ChatUI = () => {
       url.searchParams.delete('settings');
     }
     window.history.replaceState({}, '', `${url.pathname}${url.search}`);
+    setViewParam(null);
+    setSelectedGroupIndex(index);
   };
 
   const handleEditGroup = (index: number) => {
@@ -949,20 +989,20 @@ const ChatUI = () => {
       console.error('Failed to save custom group:', e);
     }
 
-    let newIndex = 0;
-    setGroups((prev) => {
-      newIndex = prev.length;
-      return [...prev, newGroup];
-    });
+    // 追加到末尾，新群索引即当前长度（在 append 前读取，保证可靠）
+    const newIndex = groups.length;
+    setGroups((prev) => [...prev, newGroup]);
+    setSelectedGroupIndex(newIndex);
 
     if (newGroup.type === 'cli') {
-      const onCliTasks = new URL(window.location.href).searchParams.get('view') === 'cli-tasks';
-      if (!onCliTasks) {
-        window.location.href = '?view=cli-tasks';
+      if (!isCLIView) {
+        window.history.pushState({}, '', '?view=cli-tasks');
+        setViewParam('cli-tasks');
       }
       return;
     }
 
+    setViewParam(null);
     setGroup(newGroup);
     if (newGroup.type === 'ai' || !newGroup.type) {
       const aiGroup = newGroup as AIGroup;
