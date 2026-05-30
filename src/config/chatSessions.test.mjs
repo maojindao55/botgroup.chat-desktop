@@ -22,6 +22,8 @@ const {
   truncateSessionTitle,
   cleanGeneratedTitle,
   clampSessionMessages,
+  sanitizeMessageForStorage,
+  sanitizeMessagesForStorage,
   createChatSession,
   sortChatSessions,
   filterChatSessions,
@@ -30,6 +32,34 @@ const {
   isUntitledSession,
   shouldGenerateTitle,
 } = mod;
+
+// ---- sanitizeMessageForStorage: must drop bulky fields (e.g. base64 avatar) ----
+{
+  const bigAvatar = `data:image/png;base64,${'A'.repeat(5000)}`;
+  const input = {
+    id: 'm1',
+    sender: { id: 'u', name: 'Me', avatar: bigAvatar },
+    content: 'hello',
+    isAI: false,
+    isError: false,
+    createdAt: '2026-05-30T00:00:00.000Z',
+    extra: 'should be dropped',
+  };
+  const out = sanitizeMessageForStorage(input);
+  assert.equal(out.sender.avatar, undefined, 'avatar must be stripped from stored messages');
+  assert.equal('extra' in out, false, 'unknown fields dropped');
+  assert.equal(out.id, 'm1');
+  assert.equal(out.sender.id, 'u');
+  assert.equal(out.sender.name, 'Me');
+  assert.equal(out.content, 'hello');
+  assert.equal(out.createdAt, '2026-05-30T00:00:00.000Z');
+  // isError omitted when false
+  assert.equal('isError' in out, false, 'falsy isError omitted');
+  const errOut = sanitizeMessageForStorage({ ...input, isError: true });
+  assert.equal(errOut.isError, true);
+  const serialized = JSON.stringify(sanitizeMessagesForStorage([input]));
+  assert.ok(!serialized.includes('base64'), 'serialized stored messages contain no base64 avatar');
+}
 
 // ---- truncateSessionTitle ----
 assert.equal(truncateSessionTitle('hello world'), 'hello world');

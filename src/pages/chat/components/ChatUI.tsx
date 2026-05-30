@@ -669,11 +669,11 @@ const ChatUI = () => {
   /** 存储消息 → 渲染消息（角色群消息形状一致，浅拷贝即可） */
   const storedToLocalMessages = (msgs: ChatSessionMessage[]) => msgs.map(m => ({ ...m }));
 
-  /** 渲染消息 → 存储消息（仅保留需要持久化的字段） */
+  /** 渲染消息 → 存储消息（仅保留需要持久化的字段；不存 avatar，渲染时按名称解析） */
   const localToStoredMessages = (msgs: any[]): ChatSessionMessage[] =>
     msgs.map(m => ({
       id: m.id,
-      sender: { id: m.sender?.id, name: m.sender?.name, avatar: m.sender?.avatar },
+      sender: { id: m.sender?.id, name: m.sender?.name },
       content: m.content || '',
       isAI: !!m.isAI,
       isError: !!m.isError,

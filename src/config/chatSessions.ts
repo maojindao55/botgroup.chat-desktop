@@ -110,6 +110,26 @@ export function cleanGeneratedTitle(raw: string, maxLen: number = MAX_SESSION_TI
   return title;
 }
 
+/**
+ * 持久化前清洗单条消息：只保留必要字段，丢弃可能很大的字段（尤其是 base64 头像）。
+ * 头像在渲染时按成员名称/ id 解析，无需随每条消息存储，否则极易撑爆 localStorage 配额。
+ */
+export function sanitizeMessageForStorage(m: ChatSessionMessage): ChatSessionMessage {
+  const sanitized: ChatSessionMessage = {
+    id: m.id,
+    sender: { id: m.sender?.id, name: m.sender?.name },
+    content: m.content || '',
+    isAI: !!m.isAI,
+  };
+  if (m.isError) sanitized.isError = true;
+  if (m.createdAt) sanitized.createdAt = m.createdAt;
+  return sanitized;
+}
+
+export function sanitizeMessagesForStorage(msgs: ChatSessionMessage[]): ChatSessionMessage[] {
+  return msgs.map(sanitizeMessageForStorage);
+}
+
 /** 限制单会话消息数量：保留最近 N 条 */
 export function clampSessionMessages(
   messages: ChatSessionMessage[],
@@ -142,7 +162,7 @@ export function createChatSession(params: CreateChatSessionParams): ChatSession 
     archived: false,
     createdAt: now,
     updatedAt: now,
-    messages: params.messages ? clampSessionMessages(params.messages) : [],
+    messages: params.messages ? clampSessionMessages(sanitizeMessagesForStorage(params.messages)) : [],
     settingsSnapshot: params.settingsSnapshot,
   };
 }

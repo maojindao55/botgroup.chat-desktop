@@ -116,6 +116,17 @@ interface ChatSessionStore {
   - 每个群保留最多 `MAX_SESSIONS_PER_GROUP`（建议 50）条，超出按 `updatedAt` 淘汰未置顶的最旧会话；
   - 与 `AgentChatUI` 现用的 `.slice(-100)` 思路一致。
 
+### 3.1 持久化体积安全（重要）
+
+会话消息持久化必须避免撑爆 localStorage 配额并导致应用崩溃。两项硬约束：
+
+1. **消息不存头像**：`sender.avatar` 在角色群中可能是 base64 data URL（用户上传头像经 `loadLocalAvatarDataUrl` 转成 data URL，可达数百 KB～数 MB）。若每条消息都存头像，几条消息即可超过 5MB 配额。
+   - 写入前统一经 `sanitizeMessageForStorage` 丢弃 `avatar`（及未知字段），只保留 `id / sender.{id,name} / content / isAI / isError / createdAt`。
+   - 渲染时头像按 **成员名称/ id** 解析（`resolveAvatarByName` / `getAvatarData`），内置角色按名称命中品牌图标，自定义头像回退为首字母色块；用户消息本就不渲染头像。
+   - 旧数据在 `onRehydrateStorage` 时一次性清洗，之后写入即瘦身落盘。
+
+2. **配额安全存储**：自定义 `quotaSafeStorage` 包裹 localStorage，`setItem` 超限时**逐步淘汰最旧/未置顶会话后重试**，始终不抛异常，杜绝持久化导致的崩溃；彻底失败则静默丢弃本次写入。
+
 ## 4. 流式写入的性能策略（关键点）
 
 角色群聊是逐 token 流式输出。若每个 token 都写 zustand persist → 触发一次 `localStorage.setItem`，会造成明显卡顿。
