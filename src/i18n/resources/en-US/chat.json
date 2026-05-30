@@ -66,5 +66,27 @@
     "expertBadge": "Expert",
     "inputPlaceholder": "Send a message — experts will collaborate per group rules...",
     "settings": "Settings"
+  },
+  "conversation": {
+    "title": "Chats",
+    "new": "New chat",
+    "untitled": "New chat",
+    "searchPlaceholder": "Search chats...",
+    "showArchived": "Archived",
+    "empty": "No chats yet\nSend a message to start a new chat",
+    "emptySearch": "No matching chats",
+    "emptyPreview": "No messages yet",
+    "youPrefix": "You",
+    "rename": "Rename",
+    "pin": "Pin",
+    "unpin": "Unpin",
+    "archive": "Archive",
+    "unarchive": "Unarchive",
+    "delete": "Delete chat",
+    "moreActions": "More actions",
+    "archivedTag": "Archived",
+    "deleteConfirmTitle": "Delete chat \"{{name}}\"?",
+    "deleteConfirmContent": "This chat's history will be permanently deleted and cannot be recovered.",
+    "expand": "Expand chat list"
   }
 }

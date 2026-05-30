@@ -7,7 +7,7 @@
  */
 import { useState, useRef, useEffect } from "react";
 import { useTranslation } from 'react-i18next';
-import { Send, Settings2, ChevronLeft, Bot, Terminal } from "lucide-react";
+import { Send, Settings2, ChevronLeft, Bot, Terminal, PanelLeftOpen } from "lucide-react";
 import { Tooltip, Input as AntdInput, Button as AntdButton, Modal } from 'antd';
 import { ActionIcon, Avatar as LobeAvatar } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
@@ -48,6 +48,14 @@ import {
   isBuiltinGroupId,
   upsertCustomGroup,
 } from '@/config/groupStorage';
+import ConversationSidebar from './ConversationSidebar';
+import { useChatSessionStore } from '@/store/chatSessionStore';
+import {
+  newChatMessageId,
+  truncateSessionTitle,
+  type ChatSessionMessage,
+} from '@/config/chatSessions';
+import { generateSessionTitle } from '@/utils/sessionTitle';
 
 const useStyles = createStyles(({ token, css }) => ({
   page: css`
@@ -69,6 +77,32 @@ const useStyles = createStyles(({ token, css }) => ({
     flex-direction: column;
     flex: 1;
     min-width: 0;
+    position: relative;
+  `,
+  convSidebarExpandHandle: css`
+    position: absolute;
+    left: 0;
+    top: 18px;
+    z-index: 5;
+    transform: translateX(-50%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 32px;
+    padding: 0;
+    border: 1px solid ${token.colorBorderSecondary};
+    border-radius: 0 8px 8px 0;
+    background: ${token.colorBgContainer};
+    color: ${token.colorTextSecondary};
+    cursor: pointer;
+    box-shadow: 1px 0 4px rgba(0, 0, 0, 0.06);
+    transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+    &:hover {
+      color: #ff6600;
+      border-color: rgba(255, 102, 0, 0.35);
+      background: rgba(255, 102, 0, 0.06);
+    }
   `,
   headerBar: css`
     background: ${token.colorBgContainer};
@@ -385,6 +419,7 @@ const ChatUI = () => {
   const id = urlParams.get('id') ? parseInt(urlParams.get('id')!) : 0;
   const viewParam = urlParams.get('view');
   const taskIdParam = urlParams.get('taskId');
+  const convParam = urlParams.get('conv');
   const isCLIView = viewParam === 'cli-tasks' || viewParam === 'cli-task' || viewParam === 'cli-template';
 
   // State
@@ -412,6 +447,18 @@ const ChatUI = () => {
   const [initError, setInitError] = useState<string | null>(null);
   const [mutedUsers, setMutedUsers] = useState<string[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [convSidebarOpen, setConvSidebarOpen] = useState(false);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(convParam);
+  // 会话 store（仅角色群使用）
+  const chatSessions = useChatSessionStore(state => state.sessions);
+  const createChatSessionInStore = useChatSessionStore(state => state.createSession);
+  const replaceSessionMessages = useChatSessionStore(state => state.replaceMessages);
+  const renameChatSession = useChatSessionStore(state => state.renameSession);
+  const setChatSessionAutoTitle = useChatSessionStore(state => state.setAutoTitle);
+  const deleteChatSession = useChatSessionStore(state => state.deleteSession);
+  const deleteChatSessionsByGroup = useChatSessionStore(state => state.deleteSessionsByGroup);
+  const toggleChatSessionPinned = useChatSessionStore(state => state.togglePinned);
+  const toggleChatSessionArchived = useChatSessionStore(state => state.toggleArchived);
   const [workspacePath, setWorkspacePath] = useState("");
   const [approvalMode, setApprovalMode] = useState<'auto' | 'ask'>('auto');
   const [cliTimeout, setCliTimeout] = useState(300000);
@@ -423,6 +470,10 @@ const ChatUI = () => {
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const isInitialized = useRef(false);
+  /** 正在生成标题的会话 id，避免重复请求 */
+  const titleGenRef = useRef<Set<string>>(new Set());
+  /** 懒创建会话后跳过一次「加载历史」，避免覆盖刚输入的消息 */
+  const suppressLoadRef = useRef(false);
 
   /** 桌面端打开右侧 inline 面板时同步扩展 Tauri 窗口宽度（移动端跳过） */
   const adjustWindowWidthForPanel = (deltaPx: number) => {
@@ -470,7 +521,10 @@ const ChatUI = () => {
   };
 
   useEffect(() => {
-    if (isMobile !== undefined) setSidebarOpen(!isMobile);
+    if (isMobile !== undefined) {
+      setSidebarOpen(!isMobile);
+      setConvSidebarOpen(!isMobile);
+    }
   }, [isMobile]);
 
   // Reactively compute members/users whenever group, aiMembers store, or user info updates
@@ -601,6 +655,156 @@ const ChatUI = () => {
   }, [userStore, selectedGroupIndex, isCLIView]);
 
 
+  // ============ 会话（角色群）逻辑 ============
+  const isAIGroup = !!group && (group.type === 'ai' || !group.type);
+  const groupSessions = group ? chatSessions.filter(s => s.groupId === group.id) : [];
+
+  const updateConvParam = (sessionId: string | null) => {
+    const url = new URL(window.location.href);
+    if (sessionId) url.searchParams.set('conv', sessionId);
+    else url.searchParams.delete('conv');
+    window.history.replaceState({}, '', `${url.pathname}${url.search}`);
+  };
+
+  /** 存储消息 → 渲染消息（角色群消息形状一致，浅拷贝即可） */
+  const storedToLocalMessages = (msgs: ChatSessionMessage[]) => msgs.map(m => ({ ...m }));
+
+  /** 渲染消息 → 存储消息（仅保留需要持久化的字段） */
+  const localToStoredMessages = (msgs: any[]): ChatSessionMessage[] =>
+    msgs.map(m => ({
+      id: m.id,
+      sender: { id: m.sender?.id, name: m.sender?.name, avatar: m.sender?.avatar },
+      content: m.content || '',
+      isAI: !!m.isAI,
+      isError: !!m.isError,
+    }));
+
+  // 选中会话变化（来自 URL 或自动/手动选中）→ 加载历史消息
+  useEffect(() => {
+    if (!isAIGroup || !group) return;
+    if (!activeSessionId) return;
+    if (suppressLoadRef.current) { suppressLoadRef.current = false; return; }
+    const session = chatSessions.find(s => s.id === activeSessionId);
+    if (session && session.groupId === group.id) {
+      setMessages(storedToLocalMessages(session.messages));
+    } else {
+      setMessages([]);
+      setActiveSessionId(null);
+      updateConvParam(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSessionId, group?.id, isAIGroup]);
+
+  // 进入角色群且 URL 未指定会话 → 自动选中最近一条（非归档）
+  useEffect(() => {
+    if (!isAIGroup || !group) return;
+    if (activeSessionId) return;
+    const candidates = chatSessions
+      .filter(s => s.groupId === group.id && !s.archived)
+      .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+    if (candidates.length > 0) {
+      setActiveSessionId(candidates[0].id);
+      updateConvParam(candidates[0].id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [group?.id, isAIGroup]);
+
+  // 安全点持久化 + 首轮总结标题（仅在空闲时落盘，避免逐 token 写入）
+  useEffect(() => {
+    if (!isAIGroup || !group) return;
+    if (!activeSessionId) return;
+    if (isLoading) return;
+    if (messages.length === 0) return;
+
+    replaceSessionMessages(activeSessionId, localToStoredMessages(messages));
+
+    const session = useChatSessionStore.getState().getSession(activeSessionId);
+    if (
+      session &&
+      session.titleSource !== 'manual' &&
+      !session.titleGenerated &&
+      !titleGenRef.current.has(session.id)
+    ) {
+      const userMsg = messages.find((m: any) => !m.isAI && (m.content || '').trim());
+      const aiMsg = messages.find((m: any) => m.isAI && !m.isError && (m.content || '').trim());
+      const titleChar: any = groupAiCharacters[0];
+      if (userMsg && aiMsg && titleChar?.model) {
+        const sid = session.id;
+        titleGenRef.current.add(sid);
+        generateSessionTitle({
+          userMessage: userMsg.content,
+          aiMessage: aiMsg.content,
+          model: titleChar.model,
+          providerId: titleChar.providerId,
+        })
+          .then(title => { if (title) setChatSessionAutoTitle(sid, title); })
+          .finally(() => { titleGenRef.current.delete(sid); });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, isLoading, activeSessionId, isAIGroup]);
+
+  /** 确保存在活跃会话（懒创建）；返回会话 id */
+  const ensureActiveSession = (firstText: string): string | null => {
+    if (!group || !isAIGroup) return null;
+    if (activeSessionId && chatSessions.some(s => s.id === activeSessionId)) {
+      return activeSessionId;
+    }
+    const fallbackTitle = truncateSessionTitle(firstText, undefined, t('chat:conversation.untitled'));
+    const session = createChatSessionInStore(group.id, {
+      fallbackTitle,
+      settingsSnapshot: { isGroupDiscussionMode, schedulerStrategy },
+    });
+    suppressLoadRef.current = true;
+    setActiveSessionId(session.id);
+    updateConvParam(session.id);
+    return session.id;
+  };
+
+  const startNewConversation = () => {
+    setMessages([]);
+    setActiveSessionId(null);
+    updateConvParam(null);
+    setShowAd(false);
+    if (isMobile) setConvSidebarOpen(false);
+  };
+
+  const handleSelectSession = (sessionId: string) => {
+    if (sessionId === activeSessionId) {
+      if (isMobile) setConvSidebarOpen(false);
+      return;
+    }
+    setActiveSessionId(sessionId);
+    updateConvParam(sessionId);
+    if (isMobile) setConvSidebarOpen(false);
+  };
+
+  const handleDeleteSession = (sessionId: string) => {
+    const target = chatSessions.find(s => s.id === sessionId);
+    Modal.confirm({
+      title: t('chat:conversation.deleteConfirmTitle', { name: target?.title || '' }),
+      content: t('chat:conversation.deleteConfirmContent'),
+      okText: t('common:actions.delete'),
+      okType: 'danger',
+      cancelText: t('common:actions.cancel'),
+      onOk: () => {
+        deleteChatSession(sessionId);
+        if (sessionId === activeSessionId) {
+          const remaining = chatSessions
+            .filter(s => s.id !== sessionId && s.groupId === group?.id && !s.archived)
+            .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+          if (remaining.length > 0) {
+            setActiveSessionId(remaining[0].id);
+            updateConvParam(remaining[0].id);
+          } else {
+            startNewConversation();
+          }
+        }
+      },
+    });
+  };
+
+
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
   useEffect(() => { if (messages.length > 0) setShowAd(false); }, [messages]);
 
@@ -688,6 +892,7 @@ const ChatUI = () => {
       cancelText: t('common:actions.cancel'),
       onOk: () => {
         deleteChatGroup(targetGroup.id);
+        deleteChatSessionsByGroup(targetGroup.id);
         const deletedIndex = groups.findIndex((g) => g.id === targetGroup.id);
         const remaining = groups.filter((g) => g.id !== targetGroup.id);
         setGroups(remaining);
@@ -1174,7 +1379,7 @@ const ChatUI = () => {
       if (mutedUsers.includes(char.id)) continue;
 
       const aiMessage = {
-        id: messages.length + 2 + i,
+        id: newChatMessageId(),
         sender: { id: char.id, name: char.name, avatar: char.avatar },
         content: "",
         isAI: true,
@@ -1280,8 +1485,12 @@ const ChatUI = () => {
     if (isLoading) return;
     if (!inputMessage.trim()) return;
 
+    if (group.type === 'ai' || !group.type) {
+      ensureActiveSession(inputMessage);
+    }
+
     const userMessage = {
-      id: messages.length + 1,
+      id: newChatMessageId(),
       sender: users[0],
       content: inputMessage,
       isAI: false,
@@ -1387,7 +1596,35 @@ const ChatUI = () => {
             hiddenGroupTypes={['cli']}
           />
 
+          {isAIGroup && (
+            <ConversationSidebar
+              isOpen={convSidebarOpen}
+              toggleSidebar={() => setConvSidebarOpen(false)}
+              sessions={groupSessions}
+              selectedSessionId={activeSessionId}
+              groupName={group.name}
+              onSelectSession={handleSelectSession}
+              onNewSession={startNewConversation}
+              onRenameSession={renameChatSession}
+              onDeleteSession={handleDeleteSession}
+              onTogglePin={toggleChatSessionPinned}
+              onToggleArchive={toggleChatSessionArchived}
+            />
+          )}
+
           <div className={styles.rightCol}>
+            {isAIGroup && !convSidebarOpen && (
+              <Tooltip title={t('chat:conversation.expand')} placement="right">
+                <button
+                  type="button"
+                  className={styles.convSidebarExpandHandle}
+                  onClick={() => setConvSidebarOpen(true)}
+                  aria-label={t('chat:conversation.expand')}
+                >
+                  <PanelLeftOpen size={14} />
+                </button>
+              </Tooltip>
+            )}
             {/* Header */}
             <header className={styles.headerBar}>
               <div className={styles.headerInner}>

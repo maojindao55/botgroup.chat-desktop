@@ -66,5 +66,27 @@
     "expertBadge": "专家",
     "inputPlaceholder": "输入消息，专家群友将按群规协作回复...",
     "settings": "设置"
+  },
+  "conversation": {
+    "title": "会话",
+    "new": "新建会话",
+    "untitled": "新会话",
+    "searchPlaceholder": "搜索会话...",
+    "showArchived": "归档",
+    "empty": "还没有会话\n发送一条消息开始新会话",
+    "emptySearch": "没有匹配的会话",
+    "emptyPreview": "暂无消息",
+    "youPrefix": "你",
+    "rename": "重命名",
+    "pin": "置顶",
+    "unpin": "取消置顶",
+    "archive": "归档",
+    "unarchive": "取消归档",
+    "delete": "删除会话",
+    "moreActions": "更多操作",
+    "archivedTag": "已归档",
+    "deleteConfirmTitle": "删除会话「{{name}}」？",
+    "deleteConfirmContent": "该会话的聊天记录将被永久删除，无法恢复。",
+    "expand": "展开会话列表"
   }
 }
