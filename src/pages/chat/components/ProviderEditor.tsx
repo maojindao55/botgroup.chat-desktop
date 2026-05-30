@@ -73,7 +73,7 @@ function paramsToFormValues(params?: ProviderParams): Record<string, unknown> {
 
 /**
  * 将表单值组装为 params 对象。结构化字段使用原生键名，自定义 JSON 合并在后。
- * 自定义 JSON 解析失败时忽略（保存路径已由表单校验拦截）。
+ * 自定义 JSON 解析失败时忽略（调用方应先执行表单校验，保存/测试路径都会拦截）。
  */
 function formValuesToParams(values: Record<string, unknown>): ProviderParams | undefined {
   const params: ProviderParams = {};
@@ -91,7 +91,7 @@ function formValuesToParams(values: Record<string, unknown>): ProviderParams | u
         Object.assign(params, parsed);
       }
     } catch {
-      /* ignored: form validator guards the save path */
+      /* ignored: callers validate form fields before persisting */
     }
   }
   return Object.keys(params).length ? params : undefined;
@@ -207,6 +207,7 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
       setTesting(true);
 
       const id = providerId || `user-${Date.now()}`;
+      await form.validateFields(['customParams']);
       const formValues = form.getFieldsValue();
       const baseURL = (formValues.baseURL as string)?.trim() || provider?.baseURL;
       const models = (formValues.models as string[]) || provider?.models || [];
