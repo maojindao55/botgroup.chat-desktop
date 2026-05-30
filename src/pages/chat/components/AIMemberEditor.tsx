@@ -99,6 +99,8 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
               cliExtraArgs: member.cli?.extraArgs ?? [],
               cliApprovalMode: member.cli?.approvalMode ?? 'ask',
               cliShowStderr: member.cli?.showStderr !== false,
+              cliWsl: member.cli?.wsl === true,
+              cliWslDistro: member.cli?.wslDistro ?? '',
             });
           }
         }
@@ -117,6 +119,8 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
           cliAdapter: 'codex',
           cliApprovalMode: 'ask',
           cliShowStderr: true,
+          cliWsl: false,
+          cliWslDistro: '',
         });
       }
     }
@@ -184,6 +188,8 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
           extraArgs: (values.cliExtraArgs as string[]) || [],
           approvalMode: (values.cliApprovalMode as 'auto' | 'ask') || 'ask',
           showStderr: values.cliShowStderr !== false,
+          wsl: values.cliWsl === true,
+          wslDistro: (values.cliWslDistro as string)?.trim() || undefined,
         },
       } as CLIMember;
     }
@@ -427,6 +433,25 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
 
             <Form.Item label={t('member.fields.cliStderr')} name="cliShowStderr" valuePropName="checked">
               <Switch checkedChildren={t('member.fields.cliStderrShow')} unCheckedChildren={t('member.fields.cliStderrHide')} />
+            </Form.Item>
+
+            <Form.Item
+              label={t('member.fields.cliWsl')}
+              name="cliWsl"
+              valuePropName="checked"
+              tooltip={t('member.fields.cliWslHint')}
+            >
+              <Switch checkedChildren={t('member.fields.cliWslOn')} unCheckedChildren={t('member.fields.cliWslOff')} />
+            </Form.Item>
+
+            <Form.Item noStyle shouldUpdate={(prev, cur) => prev.cliWsl !== cur.cliWsl}>
+              {({ getFieldValue }) =>
+                getFieldValue('cliWsl') ? (
+                  <Form.Item label={t('member.fields.cliWslDistro')} name="cliWslDistro">
+                    <Input placeholder={t('member.fields.cliWslDistroPlaceholder')} />
+                  </Form.Item>
+                ) : null
+              }
             </Form.Item>
           </>
         )}

@@ -46,6 +46,10 @@ export interface CLIMember extends AIMemberBase {
     env?: Record<string, string>;
     approvalMode?: 'auto' | 'ask';
     showStderr?: boolean;
+    /** Windows only: run the adapter inside WSL via `wsl.exe`. Ignored elsewhere. */
+    wsl?: boolean;
+    /** Optional WSL distribution name (passed to `wsl.exe -d <distro>`). */
+    wslDistro?: string;
   };
 }
 

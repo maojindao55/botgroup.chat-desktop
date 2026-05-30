@@ -565,6 +565,8 @@ export async function request(url: string, options: RequestInit = {}) {
         timeoutMs,
         approvalMode = 'auto',
         showStderr = true,
+        wsl,
+        wslDistro,
       } = body || {};
 
       if (!adapter || !prompt) {
@@ -740,6 +742,8 @@ export async function request(url: string, options: RequestInit = {}) {
                 timeoutMs: timeoutMs || null,
                 approvalMode,
                 showStderr: showStderr ?? true,
+                wsl: wsl ?? null,
+                wslDistro: wslDistro || null,
               },
             });
           } catch (e: any) {

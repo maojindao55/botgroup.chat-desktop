@@ -103,7 +103,7 @@ pub struct CliRuntime {
 
 // ---------- Public IPC commands -----------------------------------------
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct CliRunArgs {
     pub session_id: String,
@@ -124,6 +124,14 @@ pub struct CliRunArgs {
     pub timeout_ms: Option<u64>,
     pub approval_mode: Option<String>,
     pub show_stderr: Option<bool>,
+    /// When true (Windows only), run the adapter inside WSL via `wsl.exe`.
+    /// Ignored on non-Windows hosts. Defaults to false when omitted.
+    #[serde(default)]
+    pub wsl: Option<bool>,
+    /// Optional WSL distribution name (passed to `wsl.exe -d <distro>`).
+    /// When omitted, the default WSL distribution is used.
+    #[serde(default)]
+    pub wsl_distro: Option<String>,
 }
 
 #[derive(Serialize, Debug)]
@@ -906,115 +914,184 @@ fn has_any_extra_arg_prefix(args: &CliRunArgs, prefixes: &[&str]) -> bool {
     })
 }
 
-fn append_extra_args(cmd: &mut Command, args: &CliRunArgs) {
+fn append_extra_args(argv: &mut Vec<String>, args: &CliRunArgs) {
     if let Some(extra) = &args.extra_args {
         for a in extra {
-            cmd.arg(a);
+            argv.push(a.clone());
         }
     }
 }
 
-fn append_tool_session(cmd: &mut Command, args: &CliRunArgs, flag: &str) {
+fn append_tool_session(argv: &mut Vec<String>, args: &CliRunArgs, flag: &str) {
     if let Some(tool_session_id) = &args.tool_session_id {
         if !tool_session_id.is_empty() {
-            cmd.arg(flag).arg(tool_session_id);
+            argv.push(flag.to_string());
+            argv.push(tool_session_id.clone());
         }
     }
 }
 
-fn build_codex_command(cmd: &mut Command, args: &CliRunArgs) {
-    cmd.arg("exec");
+fn build_codex_command(argv: &mut Vec<String>, args: &CliRunArgs) {
+    argv.push("exec".to_string());
     if !has_extra_arg(args, "--skip-git-repo-check") {
-        cmd.arg("--skip-git-repo-check");
+        argv.push("--skip-git-repo-check".to_string());
     }
-    append_extra_args(cmd, args);
+    append_extra_args(argv, args);
     if !has_any_extra_arg(args, &["resume", "--last"]) {
         if let Some(tool_session_id) = &args.tool_session_id {
             if !tool_session_id.is_empty() {
-                cmd.arg("resume").arg(tool_session_id);
+                argv.push("resume".to_string());
+                argv.push(tool_session_id.clone());
             }
         }
     }
-    cmd.arg(&args.prompt);
+    argv.push(args.prompt.clone());
 }
 
-fn build_opencode_command(cmd: &mut Command, args: &CliRunArgs) {
-    cmd.arg("run");
+fn build_opencode_command(argv: &mut Vec<String>, args: &CliRunArgs) {
+    argv.push("run".to_string());
     if !has_extra_arg(args, "--format") && !has_extra_arg_prefix(args, "--format=") {
-        cmd.arg("--format").arg("json");
+        argv.push("--format".to_string());
+        argv.push("json".to_string());
     }
-    append_extra_args(cmd, args);
+    append_extra_args(argv, args);
     if !has_any_extra_arg(args, &["--session", "-s", "--continue", "-c"])
         && !has_extra_arg_prefix(args, "--session=")
     {
-        append_tool_session(cmd, args, "--session");
+        append_tool_session(argv, args, "--session");
     }
     if !has_extra_arg(args, "--title") && !has_extra_arg_prefix(args, "--title=") {
-        cmd.arg("--title").arg(prompt_summary(&args.prompt, 48));
+        argv.push("--title".to_string());
+        argv.push(prompt_summary(&args.prompt, 48));
     }
-    cmd.arg(&args.prompt);
+    argv.push(args.prompt.clone());
 }
 
-fn build_claude_command(cmd: &mut Command, args: &CliRunArgs) {
-    cmd.arg("-p");
+fn build_claude_command(argv: &mut Vec<String>, args: &CliRunArgs) {
+    argv.push("-p".to_string());
     if !has_extra_arg(args, "--output-format") && !has_extra_arg_prefix(args, "--output-format=") {
-        cmd.arg("--output-format").arg("stream-json");
+        argv.push("--output-format".to_string());
+        argv.push("stream-json".to_string());
     }
     if !has_extra_arg(args, "--include-partial-messages") {
-        cmd.arg("--include-partial-messages");
+        argv.push("--include-partial-messages".to_string());
     }
     if args.approval_mode.as_deref() == Some("auto") {
-        cmd.arg("--dangerously-skip-permissions");
+        argv.push("--dangerously-skip-permissions".to_string());
     }
-    append_extra_args(cmd, args);
+    append_extra_args(argv, args);
     if !has_any_extra_arg(args, &["--resume", "-r", "--continue", "-c", "--session-id"])
         && !has_any_extra_arg_prefix(args, &["--resume=", "--session-id="])
     {
-        append_tool_session(cmd, args, "--resume");
+        append_tool_session(argv, args, "--resume");
     }
-    cmd.arg(&args.prompt);
+    argv.push(args.prompt.clone());
 }
 
-fn build_cursor_command(cmd: &mut Command, args: &CliRunArgs) {
-    cmd.arg("agent");
-    cmd.arg("-p");
+fn build_cursor_command(argv: &mut Vec<String>, args: &CliRunArgs) {
+    argv.push("agent".to_string());
+    argv.push("-p".to_string());
     if !has_extra_arg(args, "--output-format") && !has_extra_arg_prefix(args, "--output-format=") {
-        cmd.arg("--output-format").arg("stream-json");
+        argv.push("--output-format".to_string());
+        argv.push("stream-json".to_string());
     }
     if !has_extra_arg(args, "--trust") {
-        cmd.arg("--trust");
+        argv.push("--trust".to_string());
     }
     if args.approval_mode.as_deref() == Some("auto")
         && !has_any_extra_arg(args, &["--force", "--yolo"])
     {
-        cmd.arg("--force");
+        argv.push("--force".to_string());
     }
     if let Some(cwd) = &args.cwd {
         if !cwd.is_empty()
             && !has_extra_arg(args, "--workspace")
             && !has_extra_arg_prefix(args, "--workspace=")
         {
-            cmd.arg("--workspace").arg(cwd);
+            argv.push("--workspace".to_string());
+            argv.push(cwd.clone());
         }
     }
-    append_extra_args(cmd, args);
+    append_extra_args(argv, args);
     if !has_any_extra_arg(args, &["--resume", "--continue"])
         && !has_extra_arg_prefix(args, "--resume=")
     {
-        append_tool_session(cmd, args, "--resume");
+        append_tool_session(argv, args, "--resume");
     }
-    cmd.arg(&args.prompt);
+    argv.push(args.prompt.clone());
 }
 
 /// macOS/Linux GUI apps launched from Finder/Dock inherit a minimal PATH
 /// (often only /usr/bin:/bin). Restore the login-shell PATH so npm/Homebrew
 /// CLIs installed in the terminal remain discoverable in release builds.
+///
+/// Windows GUI apps inherit the user/system PATH from the registry, but CLIs
+/// installed via per-user package managers (npm global, scoop, volta, cargo,
+/// winget links) frequently live in directories that are not on the default
+/// PATH for a freshly launched GUI process. We augment PATH with the common
+/// install locations so adapters remain discoverable without requiring an
+/// absolute binary path.
 pub fn init_cli_environment() {
     #[cfg(unix)]
     {
         extend_path_from_login_shell();
         extend_path_with_common_dirs();
     }
+    #[cfg(windows)]
+    {
+        extend_path_with_common_dirs_windows();
+    }
+}
+
+#[cfg(windows)]
+fn extend_path_with_common_dirs_windows() {
+    let mut extra_dirs: Vec<String> = Vec::new();
+
+    // npm global prefix (`npm config get prefix` default): %APPDATA%\npm
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        extra_dirs.push(format!("{appdata}\\npm"));
+    }
+
+    if let Ok(local) = std::env::var("LOCALAPPDATA") {
+        // winget "Links" shims (modern CLI installs land here)
+        extra_dirs.push(format!("{local}\\Microsoft\\WinGet\\Links"));
+        // Volta-managed shims
+        extra_dirs.push(format!("{local}\\Volta\\bin"));
+        // pnpm global bin
+        extra_dirs.push(format!("{local}\\pnpm"));
+    }
+
+    if let Ok(profile) = std::env::var("USERPROFILE") {
+        for sub in [
+            "scoop\\shims",       // scoop
+            ".cargo\\bin",        // rustup / cargo install
+            ".volta\\bin",        // volta (alternate layout)
+            "AppData\\Roaming\\npm", // npm global (alternate, if APPDATA unset)
+            "bin",
+        ] {
+            extra_dirs.push(format!("{profile}\\{sub}"));
+        }
+    }
+
+    // System-wide Node.js install
+    if let Ok(pf) = std::env::var("ProgramFiles") {
+        extra_dirs.push(format!("{pf}\\nodejs"));
+    }
+
+    let current = std::env::var("PATH").unwrap_or_default();
+    let mut parts: Vec<String> = current
+        .split(';')
+        .filter(|p| !p.is_empty())
+        .map(ToString::to_string)
+        .collect();
+    for dir in extra_dirs {
+        if std::path::Path::new(&dir).is_dir()
+            && !parts.iter().any(|p| p.eq_ignore_ascii_case(&dir))
+        {
+            parts.insert(0, dir);
+        }
+    }
+    std::env::set_var("PATH", parts.join(";"));
 }
 
 #[cfg(unix)]
@@ -1087,6 +1164,87 @@ fn resolve_cli_binary(binary: &str) -> Result<std::path::PathBuf, String> {
     })
 }
 
+/// Resolve the home directory used to locate per-user CLI config (e.g. Codex's
+/// `~/.codex`). Unix uses `HOME`; Windows uses `USERPROFILE`. Falls back to the
+/// OS temp dir so callers always get a writable path.
+fn user_home_dir() -> String {
+    std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .unwrap_or_else(|_| std::env::temp_dir().to_string_lossy().to_string())
+}
+
+/// Convert a Windows path (e.g. `C:\Users\me\proj`) to a WSL path
+/// (e.g. `/mnt/c/Users/me/proj`). Prefers `wsl.exe wslpath` for correctness
+/// (handles UNC, custom mount roots); falls back to a manual `C:\` → `/mnt/c`
+/// translation. Defined unconditionally but only invoked on Windows when WSL
+/// mode is enabled.
+///
+/// `distro` must match the distribution the CLI is later launched in (via
+/// `wsl.exe -d <distro>`); automount roots can differ between distros, so the
+/// conversion has to run in the same one to produce a path that exists there.
+fn to_wsl_path(win_path: &str, distro: Option<&str>) -> String {
+    let mut cmd = std::process::Command::new("wsl.exe");
+    if let Some(distro) = distro {
+        if !distro.is_empty() {
+            cmd.arg("-d").arg(distro);
+        }
+    }
+    let output = cmd.args(["wslpath", "-a", "-u", win_path]).output();
+    if let Ok(out) = output {
+        if out.status.success() {
+            let converted = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !converted.is_empty() {
+                return converted;
+            }
+        }
+    }
+    manual_wsl_path(win_path)
+}
+
+/// Best-effort manual Windows→WSL path conversion used when `wslpath` is
+/// unavailable. `C:\a\b` → `/mnt/c/a/b`. Non drive-letter paths are returned
+/// with separators normalized.
+fn manual_wsl_path(win_path: &str) -> String {
+    let normalized = win_path.replace('\\', "/");
+    let bytes = normalized.as_bytes();
+    if bytes.len() >= 2 && bytes[1] == b':' && bytes[0].is_ascii_alphabetic() {
+        let drive = (bytes[0] as char).to_ascii_lowercase();
+        let rest = &normalized[2..];
+        let rest = rest.strip_prefix('/').unwrap_or(rest);
+        if rest.is_empty() {
+            format!("/mnt/{drive}")
+        } else {
+            format!("/mnt/{drive}/{rest}")
+        }
+    } else {
+        normalized
+    }
+}
+
+/// Build a `wsl.exe` command that runs `binary` with `argv` inside WSL.
+/// `cwd` (if provided) must already be a WSL-style path; it is passed via
+/// `--cd` so the spawned process starts in the right directory. We use `-e`
+/// (exec, no shell) so prompts/arguments are passed verbatim without shell
+/// interpretation — avoiding quoting/injection issues with arbitrary prompts.
+fn build_wsl_command(binary: &str, argv: &[String], distro: Option<&str>, wsl_cwd: Option<&str>) -> Command {
+    let mut cmd = Command::new("wsl.exe");
+    if let Some(distro) = distro {
+        if !distro.is_empty() {
+            cmd.arg("-d").arg(distro);
+        }
+    }
+    if let Some(cwd) = wsl_cwd {
+        if !cwd.is_empty() {
+            cmd.arg("--cd").arg(cwd);
+        }
+    }
+    cmd.arg("-e").arg(binary);
+    for a in argv {
+        cmd.arg(a);
+    }
+    cmd
+}
+
 fn build_command(args: &CliRunArgs) -> Result<Command, String> {
     let binary = args
         .binary
@@ -1099,22 +1257,56 @@ fn build_command(args: &CliRunArgs) -> Result<Command, String> {
             )
         })?;
 
-    let resolved_binary = resolve_cli_binary(&binary)?;
-    let mut cmd = Command::new(&resolved_binary);
+    // WSL mode is Windows-only. `cfg!(windows)` is a compile-time constant, so
+    // on macOS/Linux this short-circuits to `false` and the entire WSL branch
+    // is dead code (no behavior change for unix builds).
+    let use_wsl = cfg!(windows) && args.wsl.unwrap_or(false);
 
+    // When running through WSL, adapters that receive the workspace as an
+    // argument (e.g. cursor `--workspace <cwd>`) need a Linux path, so we
+    // translate `cwd` up front and build argv from the translated copy.
+    let translated;
+    let arg_src: &CliRunArgs = if use_wsl {
+        let mut cloned = args.clone();
+        if let Some(cwd) = cloned.cwd.clone() {
+            if !cwd.is_empty() {
+                cloned.cwd = Some(to_wsl_path(&cwd, args.wsl_distro.as_deref()));
+            }
+        }
+        translated = cloned;
+        &translated
+    } else {
+        args
+    };
+
+    let mut argv: Vec<String> = Vec::new();
     match args.adapter.as_str() {
-        "codex" => build_codex_command(&mut cmd, args),
-        "opencode" => build_opencode_command(&mut cmd, args),
-        "claude" => build_claude_command(&mut cmd, args),
-        "cursor" => build_cursor_command(&mut cmd, args),
+        "codex" => build_codex_command(&mut argv, arg_src),
+        "opencode" => build_opencode_command(&mut argv, arg_src),
+        "claude" => build_claude_command(&mut argv, arg_src),
+        "cursor" => build_cursor_command(&mut argv, arg_src),
         other => return Err(format!("unknown adapter: {}", other)),
     }
 
-    if let Some(cwd) = &args.cwd {
-        if !cwd.is_empty() {
-            cmd.current_dir(cwd);
+    let mut cmd = if use_wsl {
+        // `arg_src.cwd` already holds the translated WSL path (if any).
+        build_wsl_command(
+            &binary,
+            &argv,
+            args.wsl_distro.as_deref(),
+            arg_src.cwd.as_deref(),
+        )
+    } else {
+        let resolved_binary = resolve_cli_binary(&binary)?;
+        let mut cmd = Command::new(&resolved_binary);
+        cmd.args(&argv);
+        if let Some(cwd) = &args.cwd {
+            if !cwd.is_empty() {
+                cmd.current_dir(cwd);
+            }
         }
-    }
+        cmd
+    };
 
     if let Some(env) = &args.env {
         for (k, v) in env {
@@ -1127,8 +1319,15 @@ fn build_command(args: &CliRunArgs) -> Result<Command, String> {
     // root ownership), we override CODEX_HOME to a writable temp
     // directory. If the user's config IS readable, we leave CODEX_HOME
     // alone so their existing auth and settings are picked up.
-    if args.adapter == "codex" && args.env.as_ref().map_or(true, |e| !e.contains_key("CODEX_HOME")) {
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+    //
+    // Skipped under WSL: env vars set here apply to the Windows-side
+    // `wsl.exe` process and the paths reference the Windows filesystem, so
+    // they would not correctly carry into the Linux process anyway.
+    if !use_wsl
+        && args.adapter == "codex"
+        && args.env.as_ref().map_or(true, |e| !e.contains_key("CODEX_HOME"))
+    {
+        let home = user_home_dir();
         let user_cfg = std::path::PathBuf::from(&home).join(".codex").join("config.toml");
         let needs_override = if user_cfg.exists() {
             std::fs::File::open(&user_cfg).is_err()
@@ -1259,6 +1458,8 @@ mod tests {
             timeout_ms: Some(300000),
             approval_mode: Some("auto".to_string()),
             show_stderr: Some(true),
+            wsl: None,
+            wsl_distro: None,
         })
         .expect("codex command should build");
 
@@ -1290,6 +1491,8 @@ mod tests {
             timeout_ms: Some(300000),
             approval_mode: Some("auto".to_string()),
             show_stderr: Some(true),
+            wsl: None,
+            wsl_distro: None,
         })
         .expect("codex resume command should build");
 
@@ -1318,6 +1521,8 @@ mod tests {
             timeout_ms: Some(300000),
             approval_mode: Some("auto".to_string()),
             show_stderr: Some(true),
+            wsl: None,
+            wsl_distro: None,
         })
         .expect("codex command should build");
 
@@ -1344,6 +1549,8 @@ mod tests {
             timeout_ms: Some(300000),
             approval_mode: Some("auto".to_string()),
             show_stderr: Some(false),
+            wsl: None,
+            wsl_distro: None,
         })
         .expect("claude command should build");
 
@@ -1374,6 +1581,8 @@ mod tests {
             timeout_ms: Some(300000),
             approval_mode: Some("auto".to_string()),
             show_stderr: Some(false),
+            wsl: None,
+            wsl_distro: None,
         })
         .expect("claude resume command should build");
 
@@ -1401,6 +1610,8 @@ mod tests {
             timeout_ms: Some(300000),
             approval_mode: Some("auto".to_string()),
             show_stderr: Some(false),
+            wsl: None,
+            wsl_distro: None,
         })
         .expect("claude command should build");
 
@@ -1427,6 +1638,8 @@ mod tests {
             timeout_ms: Some(300000),
             approval_mode: Some("auto".to_string()),
             show_stderr: Some(true),
+            wsl: None,
+            wsl_distro: None,
         })
         .expect("opencode command should build");
 
@@ -1457,6 +1670,8 @@ mod tests {
             timeout_ms: Some(300000),
             approval_mode: Some("auto".to_string()),
             show_stderr: Some(true),
+            wsl: None,
+            wsl_distro: None,
         })
         .expect("opencode command should build");
 
@@ -1483,6 +1698,8 @@ mod tests {
             timeout_ms: Some(300000),
             approval_mode: Some("auto".to_string()),
             show_stderr: Some(false),
+            wsl: None,
+            wsl_distro: None,
         })
         .expect("cursor command should build");
 
@@ -1516,6 +1733,8 @@ mod tests {
             timeout_ms: Some(300000),
             approval_mode: Some("auto".to_string()),
             show_stderr: Some(false),
+            wsl: None,
+            wsl_distro: None,
         })
         .expect("cursor resume command should build");
 
@@ -1543,6 +1762,8 @@ mod tests {
             timeout_ms: Some(300000),
             approval_mode: Some("auto".to_string()),
             show_stderr: Some(false),
+            wsl: None,
+            wsl_distro: None,
         })
         .expect("cursor command should build");
 
@@ -1569,6 +1790,8 @@ mod tests {
             timeout_ms: Some(300000),
             approval_mode: Some("auto".to_string()),
             show_stderr: Some(true),
+            wsl: None,
+            wsl_distro: None,
         })
         .expect("opencode command should build");
 
@@ -1576,6 +1799,52 @@ mod tests {
 
         assert!(rendered.contains("\"--format=default\""));
         assert!(!rendered.contains("\"--format\" \"json\""));
+    }
+
+    #[test]
+    fn manual_wsl_path_converts_drive_letters() {
+        assert_eq!(
+            super::manual_wsl_path("C:\\Users\\me\\proj"),
+            "/mnt/c/Users/me/proj"
+        );
+        // Lowercases the drive letter and handles forward slashes.
+        assert_eq!(super::manual_wsl_path("D:/work/app"), "/mnt/d/work/app");
+        // Drive root.
+        assert_eq!(super::manual_wsl_path("E:\\"), "/mnt/e");
+        // Already-Linux paths pass through unchanged.
+        assert_eq!(super::manual_wsl_path("/home/me/proj"), "/home/me/proj");
+    }
+
+    #[test]
+    fn build_wsl_command_wraps_binary_with_distro_and_cwd() {
+        let argv = vec!["exec".to_string(), "写代码".to_string()];
+        let cmd = super::build_wsl_command(
+            "codex",
+            &argv,
+            Some("Ubuntu"),
+            Some("/mnt/c/Users/me/proj"),
+        );
+        let rendered = format!("{:?}", cmd);
+
+        assert!(rendered.contains("wsl.exe"));
+        assert!(rendered.contains("\"-d\" \"Ubuntu\""));
+        assert!(rendered.contains("\"--cd\" \"/mnt/c/Users/me/proj\""));
+        assert!(rendered.contains("\"-e\" \"codex\""));
+        assert!(rendered.contains("\"exec\""));
+        assert!(rendered.contains("\"写代码\""));
+    }
+
+    #[test]
+    fn build_wsl_command_omits_optional_flags_when_absent() {
+        let argv = vec!["run".to_string()];
+        let cmd = super::build_wsl_command("opencode", &argv, None, None);
+        let rendered = format!("{:?}", cmd);
+
+        assert!(rendered.contains("wsl.exe"));
+        assert!(!rendered.contains("\"-d\""));
+        assert!(!rendered.contains("\"--cd\""));
+        assert!(rendered.contains("\"-e\" \"opencode\""));
+        assert!(rendered.contains("\"run\""));
     }
 }
 
@@ -1879,8 +2148,145 @@ pub struct CliTempCopyCleanupArgs {
     pub paths: Vec<String>,
 }
 
+/// Directory names excluded from temp copies (heavy or derived artifacts).
+const TEMPCOPY_EXCLUDES: &[&str] = &[".git", "node_modules", "target", ".next", "dist"];
+
+/// Recursively removes any entry whose name matches `TEMPCOPY_EXCLUDES` from a
+/// freshly copied tree. Unlike `cp -a` (which has no exclude support), this
+/// matches at any depth — mirroring `rsync --exclude` — so a `.git` file from a
+/// Git worktree/submodule (which points at the original repo) can't survive in
+/// the isolated copy and let git commands touch the real checkout. Symlinked
+/// directories are not descended into (so we never escape the copy).
+#[cfg(not(windows))]
+fn prune_copied_excludes(dest: &std::path::Path) {
+    let mut stack = vec![dest.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let entries = match std::fs::read_dir(&dir) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let file_type = match entry.file_type() {
+                Ok(t) => t,
+                Err(_) => continue,
+            };
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if TEMPCOPY_EXCLUDES.iter().any(|ex| *ex == name) {
+                // `.git` (and the rest) may be either a file or a directory.
+                if file_type.is_dir() {
+                    let _ = std::fs::remove_dir_all(entry.path());
+                } else {
+                    let _ = std::fs::remove_file(entry.path());
+                }
+                continue;
+            }
+            // `is_dir()` is false for symlinks, so we don't follow them.
+            if file_type.is_dir() {
+                stack.push(entry.path());
+            }
+        }
+    }
+}
+
+/// Copies the contents of `src` into `dest`, skipping `TEMPCOPY_EXCLUDES`.
+///
+/// Unix: prefers `rsync -a --exclude ...` (fast, preserves symlinks), falling
+/// back to `cp -a` (which has no exclude support) followed by an explicit
+/// prune of the excluded entries when rsync is unavailable.
+#[cfg(not(windows))]
+fn copy_workspace(src: &str, dest: &std::path::Path, dest_str: &str) -> Result<(), String> {
+    let _ = std::fs::create_dir_all(dest);
+    let src_str = format!("{}/", src); // trailing slash = copy contents
+
+    let mut rsync_args: Vec<String> = vec!["-a".to_string()];
+    for ex in TEMPCOPY_EXCLUDES {
+        rsync_args.push("--exclude".to_string());
+        rsync_args.push((*ex).to_string());
+    }
+    rsync_args.push(src_str);
+    rsync_args.push(dest_str.to_string());
+
+    let rsync_ok = matches!(
+        std::process::Command::new("rsync").args(&rsync_args).output(),
+        Ok(o) if o.status.success()
+    );
+    if rsync_ok {
+        return Ok(());
+    }
+
+    // rsync missing or failed → fall back to `cp -a`, then prune excludes
+    // (cp has no --exclude, so it copies .git etc. that we must remove).
+    let _ = std::fs::create_dir_all(dest);
+    let cp_source = format!("{}/.", src.trim_end_matches('/'));
+    match std::process::Command::new("cp")
+        .args(["-a", &cp_source, dest_str])
+        .output()
+    {
+        Ok(co) if co.status.success() => {
+            prune_copied_excludes(dest);
+            Ok(())
+        }
+        Ok(co) => Err(format!("cp failed: {}", String::from_utf8_lossy(&co.stderr))),
+        Err(e) => Err(format!("cp spawn failed: {}", e)),
+    }
+}
+
+/// Windows: uses `robocopy <src> <dest> /E /XD <excludes>`.
+/// robocopy uses exit codes 0–7 to indicate success (files copied / nothing to
+/// do / extra files present); 8 and above indicate a real failure.
+#[cfg(windows)]
+fn copy_workspace(src: &str, dest: &std::path::Path, dest_str: &str) -> Result<(), String> {
+    let _ = std::fs::create_dir_all(dest);
+    let src_trimmed = src.trim_end_matches(['\\', '/']).to_string();
+
+    let mut robocopy_args: Vec<String> = vec![
+        src_trimmed,
+        dest_str.to_string(),
+        "/E".to_string(),   // copy subdirectories, including empty ones
+        "/XJ".to_string(),  // exclude junction points (avoid loops)
+        "/NFL".to_string(), // quiet: no file list
+        "/NDL".to_string(), // quiet: no dir list
+        "/NJH".to_string(), // quiet: no job header
+        "/NJS".to_string(), // quiet: no job summary
+        "/NP".to_string(),  // no progress
+        "/R:1".to_string(), // retry once on failure
+        "/W:1".to_string(), // wait 1s between retries
+    ];
+    robocopy_args.push("/XD".to_string()); // exclude directories...
+    for ex in TEMPCOPY_EXCLUDES {
+        robocopy_args.push((*ex).to_string());
+    }
+    // Git worktrees and submodules store `.git` as a *file* pointing at the
+    // real repo metadata, which `/XD` (directories only) would not exclude.
+    // Excluding the file too keeps git commands in the isolated copy from
+    // touching/locking the original checkout.
+    robocopy_args.push("/XF".to_string()); // exclude files named...
+    robocopy_args.push(".git".to_string());
+
+    match std::process::Command::new("robocopy")
+        .args(&robocopy_args)
+        .output()
+    {
+        Ok(o) => {
+            let code = o.status.code().unwrap_or(-1);
+            // robocopy: 0–7 = success, >=8 = failure.
+            if (0..8).contains(&code) {
+                Ok(())
+            } else {
+                Err(format!(
+                    "robocopy failed (exit {}): {}",
+                    code,
+                    String::from_utf8_lossy(&o.stdout).trim()
+                ))
+            }
+        }
+        Err(e) => Err(format!("robocopy spawn failed: {}", e)),
+    }
+}
+
 /// Creates shallow temporary copies of `cwd` for each agent.
-/// Uses `cp -a` on unix (preserves symlinks), `robocopy /mir` on Windows.
+/// Uses `rsync`/`cp -a` on unix (preserves symlinks), `robocopy` on Windows.
 /// Copies are placed under `{app_data_dir}/cli-tempcopy/{group_id}/{timestamp}/{agent_id}`.
 #[tauri::command]
 pub async fn cli_tempcopy_prepare(
@@ -1918,60 +2324,10 @@ pub async fn cli_tempcopy_prepare(
         let dest = root.join(&safe);
         let dest_str = dest.to_string_lossy().to_string();
 
-        // Use rsync if available (fast, respects .gitignore-like patterns with --exclude),
-        // otherwise fall back to cp -a.
-        let copy_result = {
-            let src_str = format!("{}/", args.cwd); // trailing slash = copy contents
-            let _ = std::fs::create_dir_all(&dest);
-            let output = std::process::Command::new("rsync")
-                .args(&[
-                    "-a",
-                    "--exclude", ".git",
-                    "--exclude", "node_modules",
-                    "--exclude", "target",
-                    "--exclude", ".next",
-                    "--exclude", "dist",
-                    &src_str,
-                    &dest_str,
-                ])
-                .output();
-
-            match output {
-                Ok(o) if o.status.success() => Ok(()),
-                Ok(_o) => {
-                    // rsync failed, try cp -a as fallback
-                    let _ = std::fs::create_dir_all(&dest);
-                    let cp_source = format!("{}/.", args.cwd.trim_end_matches('/'));
-                    let cp_output = std::process::Command::new("cp")
-                        .args(&["-a", &cp_source, &dest_str])
-                        .output();
-                    match cp_output {
-                        Ok(co) if co.status.success() => Ok(()),
-                        Ok(co) => Err(format!(
-                            "cp failed: {}",
-                            String::from_utf8_lossy(&co.stderr)
-                        )),
-                        Err(e) => Err(format!("cp spawn failed: {}", e)),
-                    }
-                }
-                Err(_) => {
-                    // rsync not found, use cp -a
-                    let _ = std::fs::create_dir_all(&dest);
-                    let cp_source = format!("{}/.", args.cwd.trim_end_matches('/'));
-                    let cp_output = std::process::Command::new("cp")
-                        .args(&["-a", &cp_source, &dest_str])
-                        .output();
-                    match cp_output {
-                        Ok(co) if co.status.success() => Ok(()),
-                        Ok(co) => Err(format!(
-                            "cp failed: {}",
-                            String::from_utf8_lossy(&co.stderr)
-                        )),
-                        Err(e) => Err(format!("cp spawn failed: {}", e)),
-                    }
-                }
-            }
-        };
+        // Copy workspace contents into the per-agent temp dir, excluding
+        // heavy/derived directories. Implementation is platform-specific
+        // (rsync/cp on unix, robocopy on Windows) — see `copy_workspace`.
+        let copy_result = copy_workspace(&args.cwd, &dest, &dest_str);
 
         match copy_result {
             Ok(()) => {

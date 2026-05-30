@@ -54,7 +54,13 @@
       "cliApprovalAuto": "Fully automatic (high risk)",
       "cliStderr": "Stderr output",
       "cliStderrShow": "Show",
-      "cliStderrHide": "Hide"
+      "cliStderrHide": "Hide",
+      "cliWsl": "Run via WSL (Windows)",
+      "cliWslOn": "On",
+      "cliWslOff": "Off",
+      "cliWslHint": "Windows only: run this CLI inside WSL via wsl.exe. The binary must be installed in your WSL distribution; the workspace path is auto-converted to a Linux path. Ignored on macOS/Linux.",
+      "cliWslDistro": "WSL distribution",
+      "cliWslDistroPlaceholder": "Leave empty for the default distribution (e.g. Ubuntu)"
     },
     "kinds": {
       "llm": "Character",
