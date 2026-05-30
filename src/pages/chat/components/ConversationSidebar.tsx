@@ -18,6 +18,7 @@ import {
   Clock3,
 } from 'lucide-react';
 import { Input, Tooltip, Button } from 'antd';
+import { BRAND_ON_PRIMARY, brandPrimaryButtonStyle } from '@/lib/theme';
 import { ActionIcon } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 import { useTranslation } from 'react-i18next';
@@ -336,11 +337,14 @@ export const ConversationSidebar = ({
 
           <div className={styles.topActions}>
             <Button
-              type="primary"
-              icon={<Plus size={14} />}
+              icon={<Plus size={14} color={BRAND_ON_PRIMARY} />}
               onClick={onNewSession}
               block
-              style={{ background: '#ff6600', borderColor: '#ff6600', height: 36, borderRadius: 10 }}
+              style={{ ...brandPrimaryButtonStyle, height: 36, borderRadius: 10 }}
+              styles={{
+                content: { color: BRAND_ON_PRIMARY },
+                icon: { color: BRAND_ON_PRIMARY },
+              }}
             >
               {t('chat:conversation.new')}
             </Button>

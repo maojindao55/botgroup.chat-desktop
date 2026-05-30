@@ -10,6 +10,7 @@ import { DryRunModal, type DryRunParams } from './DryRunModal';
 import { Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cliAdapterDefinitions } from '@/config/cliAdapters';
+import { brandPrimaryButtonProps } from '@/lib/theme';
 
 const BUILTIN_TOOLS = [
   { name: 'web_search' },
@@ -252,7 +253,7 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
       extra={
         <Space>
           <Button onClick={onClose}>{t('common:actions.cancel')}</Button>
-          <Button type="primary" onClick={() => form.submit()}>
+          <Button onClick={() => form.submit()} {...brandPrimaryButtonProps}>
             {t('common:actions.save')}
           </Button>
         </Space>

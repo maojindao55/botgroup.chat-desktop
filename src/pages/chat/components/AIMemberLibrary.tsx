@@ -13,6 +13,7 @@ import { ProviderEditor } from './ProviderEditor';
 import { useProviderStore } from '@/store/providerStore';
 import type { Provider } from '@/config/providers';
 import { Plus, Edit2, Trash2, ShieldAlert, Cpu, Terminal, Users, Sparkles, X, Copy } from 'lucide-react';
+import { BRAND_ON_PRIMARY, brandPrimaryButtonProps } from '@/lib/theme';
 import { toast } from 'sonner';
 import { createStyles } from 'antd-style';
 
@@ -487,7 +488,11 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
     return (
       <>
         <div className={styles.tabToolbar}>
-          <Button type="primary" icon={<Plus size={16} />} onClick={() => handleCreate(kind)}>
+          <Button
+            icon={<Plus size={16} color={BRAND_ON_PRIMARY} />}
+            onClick={() => handleCreate(kind)}
+            {...brandPrimaryButtonProps}
+          >
             {createLabelForKind(kind)}
           </Button>
         </div>

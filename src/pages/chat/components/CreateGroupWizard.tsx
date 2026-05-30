@@ -20,6 +20,7 @@ import {
   type AISpeechMode,
 } from '@/config/groupProduct';
 import { cliSessionPolicyOptions } from '@/config/cliTasks';
+import { brandPrimaryButtonProps } from '@/lib/theme';
 import {
   getTranslatedGroupTypeDescription,
   getTranslatedGroupTypeLabel,
@@ -386,8 +387,7 @@ export const CreateGroupWizard = ({
         resource: t(`product:memberKinds.${resourceKey}`),
       })}>
         {onOpenLibrary ? (
-          <Button type="primary" onClick={handleOpenLibrary}
-            style={{ background: '#ff6600', borderColor: '#ff6600' }}>
+          <Button onClick={handleOpenLibrary} {...brandPrimaryButtonProps}>
             {t('wizard:membersStep.goLibrary')}
           </Button>
         ) : (
@@ -720,13 +720,11 @@ export const CreateGroupWizard = ({
           </div>
           <div>
             {step === 'config' ? (
-              <Button type="primary" disabled={!canProceed()} onClick={handleCreate}
-                style={{ background: '#ff6600', borderColor: '#ff6600' }}>
+              <Button disabled={!canProceed()} onClick={handleCreate} {...brandPrimaryButtonProps}>
                 {isTemplateMode ? t('wizard:actions.createTemplate') : t('wizard:actions.createGroup')}
               </Button>
             ) : (
-              <Button type="primary" disabled={!canProceed()} onClick={nextStep}
-                style={{ background: '#ff6600', borderColor: '#ff6600' }}>
+              <Button disabled={!canProceed()} onClick={nextStep} {...brandPrimaryButtonProps}>
                 {t('wizard:actions.next')}
               </Button>
             )}

@@ -1006,6 +1006,87 @@ fn build_cursor_command(cmd: &mut Command, args: &CliRunArgs) {
     cmd.arg(&args.prompt);
 }
 
+/// macOS/Linux GUI apps launched from Finder/Dock inherit a minimal PATH
+/// (often only /usr/bin:/bin). Restore the login-shell PATH so npm/Homebrew
+/// CLIs installed in the terminal remain discoverable in release builds.
+pub fn init_cli_environment() {
+    #[cfg(unix)]
+    {
+        extend_path_from_login_shell();
+        extend_path_with_common_dirs();
+    }
+}
+
+#[cfg(unix)]
+fn extend_path_from_login_shell() {
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| {
+        if cfg!(target_os = "macos") {
+            "/bin/zsh".to_string()
+        } else {
+            "/bin/bash".to_string()
+        }
+    });
+    let output = std::process::Command::new(&shell)
+        .args(["-l", "-c", "echo -n $PATH"])
+        .output();
+    if let Ok(out) = output {
+        if out.status.success() {
+            let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !path.is_empty() {
+                std::env::set_var("PATH", path);
+            }
+        }
+    }
+}
+
+#[cfg(unix)]
+fn extend_path_with_common_dirs() {
+    let mut extra_dirs = vec!["/opt/homebrew/bin".to_string(), "/usr/local/bin".to_string()];
+    if let Ok(home) = std::env::var("HOME") {
+        for sub in ["bin", ".local/bin", ".npm-global/bin", ".volta/bin", ".cargo/bin"] {
+            extra_dirs.push(format!("{home}/{sub}"));
+        }
+    }
+
+    let current = std::env::var("PATH").unwrap_or_default();
+    let mut parts: Vec<String> = current
+        .split(':')
+        .filter(|p| !p.is_empty())
+        .map(ToString::to_string)
+        .collect();
+    for dir in extra_dirs {
+        if std::path::Path::new(&dir).is_dir() && !parts.iter().any(|p| p == &dir) {
+            parts.insert(0, dir);
+        }
+    }
+    std::env::set_var("PATH", parts.join(":"));
+}
+
+fn resolve_cli_binary(binary: &str) -> Result<std::path::PathBuf, String> {
+    #[cfg(test)]
+    {
+        return Ok(std::path::PathBuf::from(binary));
+    }
+
+    let path = std::path::Path::new(binary);
+    if path.is_absolute() {
+        if path.exists() {
+            return Ok(path.to_path_buf());
+        }
+        return Err(format!(
+            "CLI binary not found at '{}'. Check the path in agent settings.",
+            binary
+        ));
+    }
+
+    which::which(binary).map_err(|_| {
+        format!(
+            "CLI binary '{}' not found in PATH. Install it in your terminal, or set an absolute path in the agent's binary field (e.g. run `which {}` in Terminal).",
+            binary, binary
+        )
+    })
+}
+
 fn build_command(args: &CliRunArgs) -> Result<Command, String> {
     let binary = args
         .binary
@@ -1018,7 +1099,8 @@ fn build_command(args: &CliRunArgs) -> Result<Command, String> {
             )
         })?;
 
-    let mut cmd = Command::new(&binary);
+    let resolved_binary = resolve_cli_binary(&binary)?;
+    let mut cmd = Command::new(&resolved_binary);
 
     match args.adapter.as_str() {
         "codex" => build_codex_command(&mut cmd, args),

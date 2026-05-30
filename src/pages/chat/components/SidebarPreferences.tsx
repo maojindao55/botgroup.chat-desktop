@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { useLocale } from '@/hooks/use-locale';
 import { useTheme } from '@/hooks/use-theme';
 import type { LocalePreference } from '@/i18n';
+import { AppVersionBadge } from './AppVersionBadge';
 
 type ThemeOption = 'system' | 'light' | 'dark';
 
@@ -157,6 +158,7 @@ function PreferencesPanel() {
           </Tooltip>
         ))}
       </div>
+      <AppVersionBadge />
     </div>
   );
 }

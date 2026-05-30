@@ -7,6 +7,7 @@ import { createStyles } from 'antd-style';
 import { useTranslation } from 'react-i18next';
 import { getCLIWorkflowLabel } from '@/config/groupProduct';
 import type { CLITeamTemplate } from '@/config/cliTasks';
+import { BRAND_ON_PRIMARY, brandPrimaryButtonProps } from '@/lib/theme';
 
 const useStyles = createStyles(({ token, css }) => ({
   inlinePanel: css`
@@ -171,11 +172,11 @@ export const CLITemplateListPanel = ({
       )}
       {onCreateTemplate && (
         <Button
-          type="primary"
           block
-          icon={<Plus size={14} />}
+          icon={<Plus size={14} color={BRAND_ON_PRIMARY} />}
           onClick={onCreateTemplate}
-          style={{ background: '#ff6600', borderColor: '#ff6600', height: 36, borderRadius: 10 }}
+          {...brandPrimaryButtonProps}
+          style={{ ...brandPrimaryButtonProps.style, height: 36, borderRadius: 10 }}
         >
           {t('cli:templateList.create')}
         </Button>

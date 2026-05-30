@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Modal, Input, Button, Spin } from 'antd';
 import { useTranslation } from 'react-i18next';
+import { brandPrimaryButtonProps } from '@/lib/theme';
 import { llmChatComplete } from '@/utils/llmClient';
 import { resolveLlmCredentials } from '@/utils/resolveLlmCredentials';
 import { applyPromptTemplate } from '@/utils/prompt';
@@ -72,7 +73,7 @@ export const DryRunModal: React.FC<DryRunModalProps> = ({ open, onClose, params 
         <Button key="cancel" onClick={onClose}>
           {t('member.dryRunModal.close')}
         </Button>,
-        <Button key="run" type="primary" loading={loading} onClick={handleRun}>
+        <Button key="run" loading={loading} onClick={handleRun} {...brandPrimaryButtonProps}>
           {t('member.dryRunModal.send')}
         </Button>,
       ]}

@@ -247,6 +247,11 @@
       "placeholder": "Continue this task… type @dev-member to assign",
       "hint": "Continue task · config locked to creation snapshot",
       "send": "Send",
+      "stop": "Stop",
+      "warp": "New line",
+      "stopped": "Task stopped",
+      "stopNothing": "No task is currently running",
+      "stopFailed": "Failed to stop, please try again",
       "footerHint": "Continuing reuses this task's CLI session; @dev-member runs only that member."
     },
     "message": {

@@ -11,6 +11,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { Input, Tooltip, Button } from 'antd';
+import { BRAND_ON_PRIMARY, brandPrimaryButtonStyle } from '@/lib/theme';
 import { ActionIcon } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 import { useTranslation } from 'react-i18next';
@@ -393,20 +394,20 @@ export const CLITaskSidebar = ({
           <div className={styles.headerRow}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Terminal size={16} color="#ff6600" />
-              <div>
-                <span className={styles.title}>{t('cli:taskSidebar.title')}</span>
-                <div className={styles.subtitle}>{t('cli:taskSidebar.subtitle')}</div>
-              </div>
+              <span className={styles.title}>{t('cli:taskSidebar.title')}</span>
             </div>
             <ActionIcon icon={PanelLeftClose} size="small" onClick={toggleSidebar} title="" />
           </div>
 
           <div className={styles.topActions}>
             <Button
-              type="primary"
-              icon={<Plus size={14} />}
+              icon={<Plus size={14} color={BRAND_ON_PRIMARY} />}
               onClick={onNewTask}
-              style={{ background: '#ff6600', borderColor: '#ff6600', height: 36, borderRadius: 10 }}
+              style={{ ...brandPrimaryButtonStyle, height: 36, borderRadius: 10 }}
+              styles={{
+                content: { color: BRAND_ON_PRIMARY },
+                icon: { color: BRAND_ON_PRIMARY },
+              }}
             >
               {t('cli:taskSidebar.newTask')}
             </Button>

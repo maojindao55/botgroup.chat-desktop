@@ -68,6 +68,8 @@ export interface CLIRunOptions {
   timeoutMs?: number;
   approvalMode?: 'auto' | 'ask';
   showStderr?: boolean;
+  /** 用户终止整次任务时 abort，调度器将不再启动后续 Agent */
+  signal?: AbortSignal;
 }
 
 interface CLIWorktreeInfo {
@@ -101,8 +103,12 @@ interface ScheduleInput {
   group: CLIGroup;
   contexts: AgentExecutionContext[];
   prompt: string;
-  options: Required<Pick<CLIRunOptions, 'timeoutMs' | 'approvalMode' | 'showStderr'>>;
+  options: Required<Pick<CLIRunOptions, 'timeoutMs' | 'approvalMode' | 'showStderr'>> & Pick<CLIRunOptions, 'signal'>;
   callbacks: CLIStreamCallback;
+}
+
+function executionAborted(signal?: AbortSignal): boolean {
+  return !!signal?.aborted;
 }
 
 // ============ 单个 CLI Agent 执行 ============
@@ -125,6 +131,24 @@ async function callCLIAgent(
   callbacks: CLIStreamCallback,
   meta: CLIAgentMeta,
 ): Promise<CLIRunResult> {
+  if (executionAborted(options.signal)) {
+    const agent = ctx.agent;
+    return {
+      taskId: `aborted-${Date.now()}`,
+      agentId: agent.id,
+      agentName: agent.name,
+      content: '',
+      status: 'cancelled',
+      exitCode: -2,
+      durationMs: 0,
+      isError: false,
+      cwd: ctx.cwd,
+      branch: ctx.branchName,
+      stageLabel: meta.stageLabel,
+      baseSha: ctx.baseSha,
+    };
+  }
+
   const agent = ctx.agent;
   const sessionId = (typeof crypto !== 'undefined' && (crypto as any).randomUUID
     ? (crypto as any).randomUUID()
@@ -188,6 +212,22 @@ async function callCLIAgent(
     let buffer = '';
 
     while (true) {
+      if (executionAborted(options.signal)) {
+        try {
+          await request('/api/cli/tasks/cancel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ taskId: sessionId }),
+          });
+        } catch { /* ignore */ }
+        try { reader.cancel(); } catch { /* ignore */ }
+        failed = true;
+        status = 'cancelled';
+        exitCode = -2;
+        errorMessage = errorMessage || 'cancelled';
+        break;
+      }
+
       const { done, value } = await reader.read();
       if (done) break;
 
@@ -733,6 +773,7 @@ async function runIndependentSequential(input: ScheduleInput): Promise<CLIRunRes
   const { plan, group, contexts, prompt, options, callbacks } = input;
   const results: CLIRunResult[] = [];
   for (let i = 0; i < contexts.length; i++) {
+    if (executionAborted(options.signal)) break;
     const ctx = contexts[i];
     const finalPrompt = buildPromptForAgent({ plan, basePrompt: prompt });
     const result = await callCLIAgent(group.id, ctx, finalPrompt, options, callbacks, {});
@@ -740,6 +781,7 @@ async function runIndependentSequential(input: ScheduleInput): Promise<CLIRunRes
     if (!shouldContinueAfterResult(plan, result)) break;
     if (i < contexts.length - 1) {
       await new Promise(r => setTimeout(r, 500));
+      if (executionAborted(options.signal)) break;
     }
   }
   return results;
@@ -747,6 +789,7 @@ async function runIndependentSequential(input: ScheduleInput): Promise<CLIRunRes
 
 async function runIndependentParallel(input: ScheduleInput): Promise<CLIRunResult[]> {
   const { plan, group, contexts, prompt, options, callbacks } = input;
+  if (executionAborted(options.signal)) return [];
   return Promise.all(
     contexts.map(ctx =>
       callCLIAgent(
@@ -769,6 +812,7 @@ async function runPipelineSchedule(input: ScheduleInput): Promise<CLIRunResult[]
   let previousStageLabel: string | undefined;
 
   for (let i = 0; i < contexts.length; i++) {
+    if (executionAborted(options.signal)) break;
     const ctx = contexts[i];
     const stageLabel = pipelineStageLabel(plan, i, contexts.length);
     const finalPrompt = buildPromptForAgent({
@@ -784,11 +828,13 @@ async function runPipelineSchedule(input: ScheduleInput): Promise<CLIRunResult[]
     });
     results.push(result);
     if (!shouldContinueAfterResult(plan, result)) break;
+    if (executionAborted(options.signal)) break;
     previousOutput = result.content;
     previousAgentName = ctx.agent.name;
     previousStageLabel = stageLabel;
     if (i < contexts.length - 1) {
       await new Promise(r => setTimeout(r, 300));
+      if (executionAborted(options.signal)) break;
     }
   }
   return results;
@@ -824,6 +870,8 @@ async function runReviewLoopSchedule(input: ScheduleInput): Promise<CLIRunResult
 
   const results: CLIRunResult[] = [];
 
+  if (executionAborted(options.signal)) return results;
+
   const planResult = await callCLIAgent(
     group.id,
     plannerCtx,
@@ -838,6 +886,7 @@ async function runReviewLoopSchedule(input: ScheduleInput): Promise<CLIRunResult
   );
   results.push(planResult);
   if (!shouldContinueAfterResult(plan, planResult)) return results;
+  if (executionAborted(options.signal)) return results;
 
   let lastResult = await callCLIAgent(
     group.id,
@@ -856,8 +905,10 @@ async function runReviewLoopSchedule(input: ScheduleInput): Promise<CLIRunResult
   );
   results.push(lastResult);
   if (!shouldContinueAfterResult(plan, lastResult)) return results;
+  if (executionAborted(options.signal)) return results;
 
   for (let round = 1; round <= maxReviewRounds; round++) {
+    if (executionAborted(options.signal)) break;
     const reviewLabel = `复审 #${round}`;
     const reviewResult = await callCLIAgent(
       group.id,
@@ -876,6 +927,7 @@ async function runReviewLoopSchedule(input: ScheduleInput): Promise<CLIRunResult
     );
     results.push(reviewResult);
     if (!shouldContinueAfterResult(plan, reviewResult)) break;
+    if (executionAborted(options.signal)) break;
     if (isReviewApproved(reviewResult.content)) break;
     if (round >= maxReviewRounds) break;
 
@@ -914,6 +966,7 @@ async function runDiscussionSchedule(input: ScheduleInput): Promise<CLIRunResult
   let transcript = '';
 
   for (let round = 1; round <= totalRounds; round++) {
+    if (executionAborted(options.signal)) break;
     const stageLabel = `Round ${round}`;
     const roundResults = await Promise.all(
       contexts.map(ctx =>
@@ -943,8 +996,8 @@ async function runDiscussionSchedule(input: ScheduleInput): Promise<CLIRunResult
       ? `${transcript}\n\n${segments}`
       : segments;
 
-    // 任意 Agent 取消即终止后续轮次（保护用户的停止操作）
-    if (roundResults.some(r => r.status === 'cancelled')) break;
+    // 任意 Agent 取消或用户终止整次任务时，不再进入后续轮次
+    if (executionAborted(options.signal) || roundResults.some(r => r.status === 'cancelled')) break;
   }
 
   return allResults;
@@ -996,6 +1049,7 @@ export async function executeCLIStrategy(
   };
 
   if (agents.length === 0) return [];
+  if (executionAborted(options?.signal)) return [];
 
   const plan = resolveExecutionPlan(group);
   const selected = selectAgents(plan, agents, prompt);

@@ -23,5 +23,13 @@
     "themeSystem": "跟随系统",
     "themeLight": "浅色模式",
     "themeDark": "深色模式"
+  },
+  "version": {
+    "check": "检查更新",
+    "checking": "检查中…",
+    "latest": "当前已是最新版本",
+    "available": "发现新版本 v{{version}}",
+    "updateAction": "前往下载",
+    "error": "检查更新失败，请稍后重试"
   }
 }

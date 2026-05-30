@@ -9,7 +9,7 @@ import { useLocale } from './hooks/use-locale';
 import { useTheme } from './hooks/use-theme';
 import { getAntdLocale } from './i18n/antdLocale';
 import { i18n } from './i18n';
-import { lobeCustomToken } from './lib/theme';
+import { brandThemeTokens, darkThemeTokens, lobeCustomToken } from './lib/theme';
 
 function App() {
   console.log("App rendering"); // 添加日志
@@ -17,24 +17,23 @@ function App() {
   const { resolvedTheme } = useTheme();
   const themeMode = resolvedTheme === 'dark' ? 'dark' : 'light';
 
-  const customThemeConfig = resolvedTheme === 'dark' ? {
+  const customThemeConfig = {
     token: {
-      colorBgBase: '#121214',
-      colorBgLayout: '#121214',
-      colorBgContainer: '#1a1a1e',
-      colorBgElevated: '#222226',
-      colorBorderSecondary: '#222226',
-      colorFillSecondary: '#222226',
-      colorFillTertiary: '#1a1a1e',
-      colorFillQuaternary: '#222226',
-    }
-  } : undefined;
+      ...brandThemeTokens,
+      ...(resolvedTheme === 'dark' ? darkThemeTokens : {}),
+    },
+  };
 
   return (
     <I18nextProvider i18n={i18n}>
       <AntdConfigProvider locale={getAntdLocale(resolvedLocale)}>
         <ConfigProvider motion={motion}>
-          <ThemeProvider themeMode={themeMode} theme={customThemeConfig} customToken={lobeCustomToken}>
+          <ThemeProvider
+            themeMode={themeMode}
+            theme={customThemeConfig}
+            customTheme={{ primaryColor: 'orange' }}
+            customToken={lobeCustomToken}
+          >
             <AntdApp>
               <RouterProvider router={router} />
               <Toaster
