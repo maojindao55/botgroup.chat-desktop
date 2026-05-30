@@ -10,6 +10,7 @@ import { builtinAIMembers, type AIMember } from '@/config/aiMembers';
 import { builtinProviders, lookupProviderByEnvName, mapProviderToRust } from '@/config/providers';
 import { cleanCliOutputLine, shouldSuppressCliOutputLine } from '@/utils/cliOutput';
 import { createCLIStreamHandler } from '@/utils/cliStreamHandlers';
+import { normalizeDesktopUser } from '@/utils/userAvatar';
 
 const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
 if (isTauri) {
@@ -481,7 +482,7 @@ export async function request(url: string, options: RequestInit = {}) {
       const user = await invoke('get_current_user');
       return mockResponse({
         code: 200,
-        data: user
+        data: user ? normalizeDesktopUser(user as Record<string, unknown>) : null
       });
     }
 
@@ -495,12 +496,46 @@ export async function request(url: string, options: RequestInit = {}) {
       const updatedUser = await invoke('update_user_info', {
         userId: user.id,
         nickname: body.nickname || user.nickname,
-        avatarUrl: body.avatar_url || user.avatar_url
+        avatarUrl: body.avatar_url || user.avatar_url || user.avatarUrl
       });
       return mockResponse({
         success: true,
-        data: updatedUser
+        data: normalizeDesktopUser(updatedUser as Record<string, unknown>)
       });
+    }
+
+    // 3b. User avatar upload (legacy JSON path — prefer direct invoke from uploadUserAvatar)
+    if (cleanUrl === '/api/user/avatar/upload') {
+      const body = JSON.parse(options.body as string);
+      const user: any = await invoke('get_current_user');
+      if (!user) {
+        return mockResponse({ success: false, message: '用户不存在' }, 401);
+      }
+      try {
+        let bytes: Uint8Array;
+        if (typeof body.data_base64 === 'string') {
+          const binary = atob(body.data_base64);
+          bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+        } else if (body.data instanceof Uint8Array) {
+          bytes = body.data;
+        } else {
+          return mockResponse({ success: false, message: '无效的上传数据' }, 400);
+        }
+        const updatedUser = await invoke('upload_user_avatar', {
+          userId: user.id,
+          data: bytes,
+          mimeType: body.mime_type,
+        });
+        return mockResponse({
+          success: true,
+          data: normalizeDesktopUser(updatedUser as Record<string, unknown>),
+        });
+      } catch (error) {
+        return mockResponse({
+          success: false,
+          message: error instanceof Error ? error.message : '上传头像失败',
+        }, 400);
+      }
     }
 
     // 4. Scheduler API for AI response selection

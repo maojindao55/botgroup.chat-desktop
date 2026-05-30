@@ -23,6 +23,8 @@ pub fn run() {
             api::get_current_user,
             api::create_local_user,
             api::update_user_info,
+            api::upload_user_avatar,
+            api::read_local_avatar,
             api::get_claw_groups,
             api::create_claw_group,
             api::join_claw_group,

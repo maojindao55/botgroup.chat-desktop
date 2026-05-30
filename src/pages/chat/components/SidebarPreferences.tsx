@@ -75,12 +75,13 @@ const useStyles = createStyles(({ token, css }) => ({
   `,
   collapsedTrigger: css`
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 6px;
+    gap: 4px;
     width: 40px;
-    height: 36px;
-    padding: 0;
+    min-height: 52px;
+    padding: 8px 0;
     border: 1px solid ${token.colorBorderSecondary};
     border-radius: 10px;
     background: ${token.colorFillQuaternary};
@@ -93,11 +94,6 @@ const useStyles = createStyles(({ token, css }) => ({
       border-color: ${token.colorBorder};
       background: ${token.colorFillTertiary};
     }
-  `,
-  collapsedDivider: css`
-    width: 1px;
-    height: 14px;
-    background: ${token.colorBorderSecondary};
   `,
   collapsedLocale: css`
     font-size: 10px;
@@ -198,7 +194,6 @@ export function SidebarPreferences({ isOpen }: SidebarPreferencesProps) {
             aria-label={t('preferences.title')}
           >
             <ThemeIcon size={14} strokeWidth={2} />
-            <span className={styles.collapsedDivider} aria-hidden />
             {LocaleIcon ? (
               <LocaleIcon size={13} strokeWidth={2} />
             ) : (

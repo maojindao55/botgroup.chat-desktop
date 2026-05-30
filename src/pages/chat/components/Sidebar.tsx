@@ -1,9 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   Bot,
   Menu as MenuIcon,
   MessageSquare as MessageSquareIcon,
-  MoreHorizontal,
   PanelLeftClose as PanelLeftCloseIcon,
   PlusCircle as PlusCircleIcon,
   Puzzle,
@@ -11,20 +10,17 @@ import {
   Users as UsersIcon,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { Dropdown, Tooltip } from 'antd';
-import type { MenuProps } from 'antd';
+import { Tooltip } from 'antd';
 import { ActionIcon } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
-import GitHubButton from 'react-github-btn';
-import '@fontsource/audiowide';
 
 import { SidebarPreferences } from './SidebarPreferences';
 import { UserSection } from './UserSection';
-import { useTheme } from '@/hooks/use-theme';
 import CreateGroupWizard from './CreateGroupWizard';
 import { getTranslatedGroupTypeShortLabel } from '@/i18n/productLabels';
-import { isBuiltinGroupId } from '@/config/groupStorage';
 import type { Group, GroupType } from '@/config/groups';
+
+import '@fontsource/audiowide';
 
 const getGroupIcon = (group: Group) => {
   switch (group.type) {
@@ -53,25 +49,31 @@ const useStyles = createStyles(({ token, css }) => ({
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 8px;
     padding: 14px 12px;
     border-bottom: 1px solid ${token.colorBorderSecondary};
     flex: none;
   `,
+  headerBrand: css`
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+  `,
   brand: css`
     font-family: 'Audiowide', system-ui;
+    font-size: 15px;
     color: #ff6600;
     font-weight: 600;
-    letter-spacing: 0.02em;
+    letter-spacing: 0.01em;
     white-space: nowrap;
     overflow: hidden;
+    text-overflow: ellipsis;
   `,
-  workspaceTitle: css`
-    font-size: 13px;
-    font-weight: 600;
-    letter-spacing: 0.02em;
-    color: ${token.colorText};
-    white-space: nowrap;
-    overflow: hidden;
+  headerLogo: css`
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
   `,
   navList: css`
     flex: 1;
@@ -149,41 +151,6 @@ const useStyles = createStyles(({ token, css }) => ({
     flex: 1;
     min-width: 0;
   `,
-  navItemRow: css`
-    display: flex;
-    align-items: center;
-    gap: 2px;
-    margin-bottom: 4px;
-
-    &:hover .nav-menu-btn {
-      opacity: 1;
-    }
-  `,
-  navItemMain: css`
-    flex: 1;
-    min-width: 0;
-    margin-bottom: 0 !important;
-  `,
-  navMenuBtn: css`
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    border: none;
-    background: transparent;
-    border-radius: 8px;
-    cursor: pointer;
-    color: ${token.colorTextTertiary};
-    opacity: 0;
-    transition: all 0.15s ease;
-
-    &:hover {
-      background: ${token.colorFillTertiary};
-      color: ${token.colorText};
-    }
-  `,
   createBtn: css`
     margin-top: 12px;
   `,
@@ -207,27 +174,11 @@ const useStyles = createStyles(({ token, css }) => ({
     background: rgba(59, 130, 246, 0.12);
     color: ${token.colorInfo};
   `,
-  starWrapper: css`
-    padding: 12px;
-    background: ${token.colorFillQuaternary};
-    flex: none;
-  `,
   brandRow: css`
     display: flex;
     align-items: center;
     gap: 6px;
     text-decoration: none;
-  `,
-  versionBadge: css`
-    font-size: 10px;
-    color: ${token.colorTextTertiary};
-    align-self: flex-end;
-    margin-bottom: 2px;
-  `,
-  starButtonWrapper: css`
-    margin-top: 8px;
-    transform: scale(0.9);
-    transform-origin: left center;
   `,
   mobileOverlay: css`
     position: fixed;
@@ -266,8 +217,6 @@ interface SidebarProps {
   groups: Group[];
   onCreateGroup?: (group: Group) => void;
   onOpenLibrary?: () => void;
-  onEditGroup?: (index: number) => void;
-  onDeleteGroup?: (group: Group, index: number) => void;
   activeView?: 'groups' | 'cli-tasks';
   onNavigateCLI?: () => void;
   hiddenGroupTypes?: GroupType[];
@@ -281,31 +230,13 @@ const Sidebar = ({
   groups,
   onCreateGroup,
   onOpenLibrary,
-  onEditGroup,
-  onDeleteGroup,
   activeView = 'groups',
   onNavigateCLI,
   hiddenGroupTypes = [],
 }: SidebarProps) => {
   const { styles, cx } = useStyles();
   const [showCreateWizard, setShowCreateWizard] = useState(false);
-  const [version, setVersion] = useState('');
   const { t } = useTranslation(['sidebar', 'common', 'product']);
-  const { resolvedTheme } = useTheme();
-
-  const colorScheme =
-    resolvedTheme === 'dark'
-      ? 'no-preference: dark; light: dark; dark: dark;'
-      : 'no-preference: light; light: light; dark: light;';
-
-  useEffect(() => {
-    fetch('https://api.github.com/repos/maojindao55/botgroup.chat/releases/latest')
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.tag_name) setVersion(data.tag_name);
-      })
-      .catch(() => {});
-  }, []);
 
   const handleCreateGroup = (group: Group) => {
     onCreateGroup?.(group);
@@ -339,7 +270,15 @@ const Sidebar = ({
         )}
       >
         <div className={styles.headerRow}>
-          {isOpen && <span className={styles.workspaceTitle}>{t('sidebar:workspaceTitle')}</span>}
+          <a href="/" className={cx(styles.headerBrand, styles.brandRow)} aria-label="botgroup.chat">
+            {isOpen ? (
+              <span className={styles.brand}>botgroup.chat</span>
+            ) : (
+              <Tooltip title="botgroup.chat" placement="right" mouseEnterDelay={0.15}>
+                <img src="/img/logo.svg" alt="botgroup.chat" className={styles.headerLogo} />
+              </Tooltip>
+            )}
+          </a>
           <ActionIcon
             icon={isOpen ? PanelLeftCloseIcon : MenuIcon}
             size="small"
@@ -404,76 +343,47 @@ const Sidebar = ({
             {filteredGroups.map(({ group, originalIndex }) => {
             const Icon = getGroupIcon(group);
             const isSelected = activeView === 'groups' && selectedGroupIndex === originalIndex;
-            const canManage = !isBuiltinGroupId(group.id) && (group.type === 'ai' || group.type === 'agent');
-            const menuItems: MenuProps['items'] = [
-              {
-                key: 'edit',
-                label: t('sidebar:actions.editGroup'),
-                onClick: () => onEditGroup?.(originalIndex),
-              },
-              {
-                key: 'delete',
-                label: t('sidebar:actions.deleteGroup'),
-                danger: true,
-                onClick: () => onDeleteGroup?.(group, originalIndex),
-              },
-            ];
             const item = (
-              <div className={styles.navItemRow}>
-                <a
-                  href="#"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    onSelectGroup?.(originalIndex);
-                  }}
-                  className={cx(
-                    styles.navItem,
-                    styles.navItemMain,
-                    isSelected && styles.navItemActive,
-                    !isOpen && styles.navItemCollapsed,
-                  )}
-                >
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 10,
-                      minWidth: 0,
-                      flex: 1,
-                      justifyContent: isOpen ? 'flex-start' : 'center',
-                    }}
-                  >
-                    <Icon
-                      size={16}
-                      style={{
-                        flexShrink: 0,
-                        color: isSelected ? '#ff6600' : undefined,
-                      }}
-                    />
-                    {isOpen && (
-                      <span className={styles.navItemLabel}>{group.name}</span>
-                    )}
-                  </div>
-                  {isOpen && renderGroupTag(
-                    group.type || 'ai',
-                    styles,
-                    cx,
-                    getTranslatedGroupTypeShortLabel(t, group.type || 'ai'),
-                  )}
-                </a>
-                {isOpen && canManage && (onEditGroup || onDeleteGroup) && (
-                  <Dropdown menu={{ items: menuItems }} trigger={['click']} placement="bottomRight">
-                    <button
-                      type="button"
-                      className={cx(styles.navMenuBtn, 'nav-menu-btn')}
-                      aria-label={t('sidebar:actions.groupMenu')}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <MoreHorizontal size={16} />
-                    </button>
-                  </Dropdown>
+              <a
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault();
+                  onSelectGroup?.(originalIndex);
+                }}
+                className={cx(
+                  styles.navItem,
+                  isSelected && styles.navItemActive,
+                  !isOpen && styles.navItemCollapsed,
                 )}
-              </div>
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    minWidth: 0,
+                    flex: 1,
+                    justifyContent: isOpen ? 'flex-start' : 'center',
+                  }}
+                >
+                  <Icon
+                    size={16}
+                    style={{
+                      flexShrink: 0,
+                      color: isSelected ? '#ff6600' : undefined,
+                    }}
+                  />
+                  {isOpen && (
+                    <span className={styles.navItemLabel}>{group.name}</span>
+                  )}
+                </div>
+                {isOpen && renderGroupTag(
+                  group.type || 'ai',
+                  styles,
+                  cx,
+                  getTranslatedGroupTypeShortLabel(t, group.type || 'ai'),
+                )}
+              </a>
             );
             return !isOpen ? (
               <Tooltip
@@ -592,41 +502,6 @@ const Sidebar = ({
         <UserSection isOpen={isOpen} />
 
         <SidebarPreferences isOpen={isOpen} />
-
-        <div className={styles.starWrapper}>
-          <a href="/" className={styles.brandRow}>
-            <span
-              className={styles.brand}
-              style={
-                isOpen
-                  ? { fontSize: 16 }
-                  : {
-                      fontSize: 12,
-                      maxWidth: 0,
-                      opacity: 0,
-                    }
-              }
-            >
-              botgroup.chat
-            </span>
-            {isOpen && version && (
-              <span className={styles.versionBadge}>{version}</span>
-            )}
-          </a>
-          {isOpen && (
-            <div className={styles.starButtonWrapper}>
-              <GitHubButton
-                href="https://github.com/maojindao55/botgroup.chat"
-                data-color-scheme={colorScheme}
-                data-size="large"
-                data-show-count="true"
-                aria-label="Star maojindao55/botgroup.chat on GitHub"
-              >
-                Star
-              </GitHubButton>
-            </div>
-          )}
-        </div>
       </div>
 
       {isOpen && (

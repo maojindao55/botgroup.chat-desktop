@@ -522,8 +522,6 @@ const AgentChatUI = ({
             onCreateGroup={onCreateGroup}
             onOpenLibrary={() => handleToggleLibrary(true)}
             onNavigateCLI={() => { window.location.href = '?view=cli-tasks'; }}
-            onEditGroup={onEditGroup}
-            onDeleteGroup={(g) => onDeleteGroup?.(g)}
             hiddenGroupTypes={['cli']}
           />
 
@@ -621,7 +619,13 @@ const AgentChatUI = ({
                 {messages.map((message) => {
                   const isUser = message.sender.name === userName;
                   const a = getAvatarData(message.sender.name);
-                  const url = resolveAvatarByName(message.sender.name, message.sender.avatar, 32);
+                  const url = isUser
+                    ? resolveAvatarByName(
+                        userName,
+                        userStore.avatarDisplaySrc || userStore.userInfo?.avatar_url,
+                        32,
+                      )
+                    : resolveAvatarByName(message.sender.name, message.sender.avatar, 32);
                   const isStreaming = !!message.isStreaming;
 
                   let bubbleClass = styles.bubbleAI;
@@ -660,7 +664,7 @@ const AgentChatUI = ({
                       </div>
                       {isUser && (
                         <LobeAvatar
-                          avatar={userStore.userInfo?.avatar_url || a.text}
+                          avatar={url || a.text}
                           background={a.backgroundColor}
                           shape="circle"
                           size={32}

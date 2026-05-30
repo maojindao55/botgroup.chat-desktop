@@ -12,6 +12,7 @@ import { Tooltip, Input as AntdInput, Button as AntdButton, Modal } from 'antd';
 import { ActionIcon, Avatar as LobeAvatar } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 import { request } from '@/utils/request';
+import { normalizeDesktopUser } from '@/utils/userAvatar';
 import { executeCLIStrategy } from '@/engine/cliEngine';
 import { isCodeChangeIntent } from '@/engine/cliIntent';
 import { buildCliUserPrompt } from '@/engine/cliPrompt';
@@ -479,7 +480,8 @@ const ChatUI = () => {
     const memberIds = group.memberIds || (group as AIGroup | CLIGroup).members || [];
     const nickname = userStore.userInfo?.nickname || t('settings:aiGroup.selfName');
     const avatar_url = userStore.userInfo?.avatar_url || null;
-    const currentUser = { id: 1, name: nickname, avatar: avatar_url };
+    const avatarDisplaySrc = userStore.avatarDisplaySrc;
+    const currentUser = { id: 1, name: nickname, avatar: avatarDisplaySrc || avatar_url };
 
     if (group.type === 'ai' || !group.type) {
       const resolvedMembers = memberIds
@@ -500,7 +502,7 @@ const ChatUI = () => {
       setAllNames([...resolvedCLIAgents.map(a => a.name), 'user']);
       setUsers([currentUser, ...resolvedCLIAgents]);
     }
-  }, [group, aiMembers, userStore.userInfo]);
+  }, [group, aiMembers, userStore.userInfo, userStore.avatarDisplaySrc, t]);
 
   // Init data
   useEffect(() => {
@@ -534,7 +536,7 @@ const ChatUI = () => {
           if (data.user) {
             const r = await request('/api/user/info');
             const userInfo = await r.json();
-            userStore.setUserInfo(userInfo.data);
+            userStore.setUserInfo(normalizeDesktopUser(userInfo.data));
           } else {
             userStore.setUserInfo({ id: 0, phone: '', nickname: t('settings:aiGroup.selfName'), avatar_url: null, status: 0 });
           }
@@ -559,7 +561,7 @@ const ChatUI = () => {
           if (data.user) {
             const r = await request('/api/user/info');
             const userInfo = await r.json();
-            userStore.setUserInfo(userInfo.data);
+            userStore.setUserInfo(normalizeDesktopUser(userInfo.data));
           } else {
             userStore.setUserInfo({ id: 0, phone: '', nickname: t('settings:aiGroup.selfName'), avatar_url: null, status: 0 });
           }
@@ -582,7 +584,7 @@ const ChatUI = () => {
           if (data.user) {
             const r = await request('/api/user/info');
             const userInfo = await r.json();
-            userStore.setUserInfo(userInfo.data);
+            userStore.setUserInfo(normalizeDesktopUser(userInfo.data));
           } else {
             userStore.setUserInfo({ id: 0, phone: '', nickname: t('settings:aiGroup.selfName'), avatar_url: null, status: 0 });
           }
@@ -1382,8 +1384,6 @@ const ChatUI = () => {
             onCreateGroup={handleCreateGroup}
             onOpenLibrary={() => handleToggleLibrary(true)}
             onNavigateCLI={handleNavigateCLI}
-            onEditGroup={handleEditGroup}
-            onDeleteGroup={(g) => handleDeleteGroup(g)}
             hiddenGroupTypes={['cli']}
           />
 

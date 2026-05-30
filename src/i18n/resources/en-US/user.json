@@ -5,6 +5,9 @@
   "toast": {
     "nicknameUpdated": "Nickname updated",
     "nicknameUpdateFailed": "Failed to update nickname",
-    "avatarUploadUnsupported": "Cloud avatar upload is not supported in the desktop app. Your avatar uses the first letter of your nickname."
+    "avatarUpdated": "Avatar updated",
+    "avatarUploadFailed": "Failed to upload avatar",
+    "avatarInvalidType": "Please select an image file",
+    "avatarTooLarge": "Image must be 5MB or smaller"
   }
 }

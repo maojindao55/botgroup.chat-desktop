@@ -1,9 +1,103 @@
+use std::fs;
+use std::path::PathBuf;
+
 use rusqlite::{params, Connection, OptionalExtension, Result};
 use serde::{Deserialize, Serialize};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use uuid::Uuid;
 use crate::db::get_db_path;
 use crate::vault;
+
+pub const LOCAL_AVATAR_PREFIX: &str = "local:";
+
+const MAX_AVATAR_BYTES: usize = 5 * 1024 * 1024;
+
+fn get_avatars_dir(app: &AppHandle) -> PathBuf {
+    let mut path = app.path().app_data_dir().unwrap_or_else(|_| PathBuf::from("."));
+    path.push("avatars");
+    fs::create_dir_all(&path).ok();
+    path
+}
+
+fn avatar_extension(mime_type: &str) -> Option<&'static str> {
+    match mime_type {
+        "image/png" => Some("png"),
+        "image/jpeg" | "image/jpg" => Some("jpg"),
+        "image/webp" => Some("webp"),
+        "image/gif" => Some("gif"),
+        _ => None,
+    }
+}
+
+fn remove_local_avatar_file(avatar_url: &str) {
+    if let Some(path) = avatar_url.strip_prefix(LOCAL_AVATAR_PREFIX) {
+        let _ = fs::remove_file(path);
+    }
+}
+
+fn resolve_local_avatar_path(app: &AppHandle, avatar_url: &str) -> Result<PathBuf, String> {
+    if !avatar_url.starts_with(LOCAL_AVATAR_PREFIX) {
+        return Err("不是本地头像".into());
+    }
+    let raw = avatar_url.strip_prefix(LOCAL_AVATAR_PREFIX).unwrap_or("");
+    if raw.is_empty() {
+        return Err("无效头像路径".into());
+    }
+
+    let path = PathBuf::from(raw);
+    if !path.is_absolute() {
+        return Err("无效头像路径".into());
+    }
+
+    let avatars_dir = get_avatars_dir(app);
+    let avatars_root = avatars_dir
+        .canonicalize()
+        .unwrap_or_else(|_| avatars_dir.clone());
+    let canonical = path.canonicalize().map_err(|e| format!("读取头像失败: {}", e))?;
+
+    if !canonical.starts_with(&avatars_root) {
+        return Err("头像路径不在允许目录内".into());
+    }
+
+    Ok(canonical)
+}
+
+fn mime_from_avatar_path(path: &PathBuf) -> &'static str {
+    let ext = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "webp" => "image/webp",
+        "gif" => "image/gif",
+        _ => "application/octet-stream",
+    }
+}
+
+#[derive(Serialize)]
+pub struct LocalAvatarPayload {
+    pub mime_type: String,
+    pub data: Vec<u8>,
+}
+
+#[tauri::command]
+pub fn read_local_avatar(app: AppHandle, avatar_url: String) -> Result<LocalAvatarPayload, String> {
+    let path = resolve_local_avatar_path(&app, &avatar_url)?;
+    let data = fs::read(&path).map_err(|e| format!("读取头像失败: {}", e))?;
+    if data.is_empty() {
+        return Err("头像文件为空".into());
+    }
+    if data.len() > MAX_AVATAR_BYTES {
+        return Err("头像文件过大".into());
+    }
+    Ok(LocalAvatarPayload {
+        mime_type: mime_from_avatar_path(&path).to_string(),
+        data,
+    })
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct User {
@@ -120,6 +214,74 @@ pub fn update_user_info(app: AppHandle, user_id: i64, nickname: String, avatar_u
     conn.execute(
         "UPDATE users SET nickname = ?, avatar_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
         params![nickname, avatar_url, user_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    let user = conn
+        .query_row(
+            "SELECT id, phone, nickname, avatar_url, status, created_at, updated_at FROM users WHERE id = ?",
+            params![user_id],
+            |row| {
+                Ok(User {
+                    id: row.get(0)?,
+                    phone: row.get(1)?,
+                    nickname: row.get(2)?,
+                    avatar_url: row.get(3)?,
+                    status: row.get(4)?,
+                    created_at: row.get(5)?,
+                    updated_at: row.get(6)?,
+                })
+            },
+        )
+        .map_err(|e| e.to_string())?;
+
+    Ok(user)
+}
+
+#[tauri::command]
+pub fn upload_user_avatar(
+    app: AppHandle,
+    user_id: i64,
+    data: Vec<u8>,
+    mime_type: String,
+) -> Result<User, String> {
+    if data.is_empty() {
+        return Err("空文件".into());
+    }
+    if data.len() > MAX_AVATAR_BYTES {
+        return Err("图片不能超过 5MB".into());
+    }
+
+    let ext = avatar_extension(mime_type.trim())
+        .ok_or_else(|| format!("不支持的图片格式: {}", mime_type))?;
+
+    let avatars_dir = get_avatars_dir(&app);
+    let filename = format!("{}.{}", Uuid::new_v4(), ext);
+    let dest = avatars_dir.join(&filename);
+    fs::write(&dest, &data).map_err(|e| e.to_string())?;
+
+    let avatar_url = format!("{}{}", LOCAL_AVATAR_PREFIX, dest.to_string_lossy());
+
+    let db_path = get_db_path(&app);
+    let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
+
+    let old_avatar: Option<String> = conn
+        .query_row(
+            "SELECT avatar_url FROM users WHERE id = ?",
+            params![user_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?
+        .flatten();
+
+    if let Some(ref old) = old_avatar {
+        remove_local_avatar_file(old);
+    }
+
+    conn.execute(
+        "UPDATE users SET avatar_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        params![avatar_url, user_id],
     )
     .map_err(|e| e.to_string())?;
 

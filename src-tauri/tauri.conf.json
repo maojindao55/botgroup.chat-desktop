@@ -21,7 +21,11 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval' ipc: http://ipc.localhost tauri: http://tauri.localhost http://localhost:1420 ws://localhost:1421; img-src 'self' data: blob: asset: http://asset.localhost https://asset.localhost tauri: http: https:; connect-src 'self' ipc: http://ipc.localhost http://localhost:1420 ws://localhost:1421 http: https: ws: wss:;",
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["$APPDATA/**"]
+      }
     }
   },
   "bundle": {

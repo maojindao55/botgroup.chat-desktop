@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Edit2 as Edit2Icon, Check as CheckIcon, X as XIcon } from 'lucide-react';
 import { Input, Tooltip } from 'antd';
 import { Avatar as LobeAvatar, ActionIcon } from '@lobehub/ui';
@@ -7,19 +7,26 @@ import { useTranslation } from 'react-i18next';
 import { request } from '@/utils/request';
 import { useUserStore } from '@/store/userStore';
 import { getAvatarData } from '@/utils/avatar';
+import { uploadUserAvatar, normalizeDesktopUser } from '@/utils/userAvatar';
+import { fileToDataUrl } from '@/utils/localAvatarLoader';
 import { toast } from 'sonner';
 
 const useStyles = createStyles(({ token, css }) => ({
   container: css`
     padding: 12px;
     border-top: 1px solid ${token.colorBorderSecondary};
-    border-bottom: 1px solid ${token.colorBorderSecondary};
     height: 80px;
     display: flex;
     align-items: center;
     gap: 12px;
+    flex: none;
     transition: background 0.15s;
     &:hover { background: ${token.colorFillTertiary}; }
+  `,
+  containerCollapsed: css`
+    justify-content: center;
+    padding: 8px 0;
+    height: auto;
   `,
   avatarWrap: css`
     position: relative;
@@ -82,8 +89,42 @@ export const UserSection: React.FC<UserSectionProps> = ({ isOpen }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [newNickname, setNewNickname] = useState('');
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const userStore = useUserStore();
+  const userInfo = useUserStore(s => s.userInfo);
+  const avatarDisplaySrc = useUserStore(s => s.avatarDisplaySrc);
+  const setUserInfo = useUserStore(s => s.setUserInfo);
+  const setAvatarDisplaySrc = useUserStore(s => s.setAvatarDisplaySrc);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const response = await request('/api/user/info');
+        const payload = await response.json();
+        if (!cancelled && payload?.data) {
+          setUserInfo(normalizeDesktopUser(payload.data));
+        }
+      } catch {
+        if (!cancelled && !useUserStore.getState().userInfo.nickname) {
+          setUserInfo({
+            id: 0,
+            phone: '',
+            nickname: t('defaultNickname'),
+            avatar_url: null,
+            status: 1,
+          });
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [setUserInfo, t]);
+
+  const displayName = userInfo.nickname || t('defaultNickname');
 
   const updateNickname = async () => {
     if (!newNickname.trim()) return;
@@ -95,7 +136,7 @@ export const UserSection: React.FC<UserSectionProps> = ({ isOpen }) => {
         body: JSON.stringify({ nickname: newNickname.trim() })
       });
       const { data } = await response.json();
-      userStore.setUserInfo(data);
+      setUserInfo(normalizeDesktopUser(data));
       toast.success(t('toast.nicknameUpdated'));
       setIsEditing(false);
     } catch (error) {
@@ -111,38 +152,65 @@ export const UserSection: React.FC<UserSectionProps> = ({ isOpen }) => {
 
     try {
       setUploadingAvatar(true);
-      toast.info(t('toast.avatarUploadUnsupported'));
+      const preview = await fileToDataUrl(file);
+      setAvatarPreviewUrl(preview);
+      setAvatarDisplaySrc(preview);
+      const updatedUser = await uploadUserAvatar(file, displayName);
+      setUserInfo(updatedUser);
+      setAvatarPreviewUrl(null);
+      toast.success(t('toast.avatarUpdated'));
     } catch (error) {
-      console.error('上传头像失败:', error);
+      const message = error instanceof Error ? error.message : '';
+      if (message === 'invalid_image_type') {
+        toast.error(t('toast.avatarInvalidType'));
+      } else if (message === 'image_too_large') {
+        toast.error(t('toast.avatarTooLarge'));
+      } else {
+        toast.error(message || t('toast.avatarUploadFailed'));
+      }
     } finally {
       setUploadingAvatar(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
-  if (!isOpen || !userStore.userInfo || !userStore.userInfo.status) return null;
+  const openAvatarPicker = () => {
+    if (!uploadingAvatar) {
+      fileInputRef.current?.click();
+    }
+  };
 
-  const avatarData = getAvatarData(userStore.userInfo?.nickname || t('avatarFallback'));
+  const avatarData = getAvatarData(displayName);
+  const resolvedAvatar = avatarDisplaySrc || avatarPreviewUrl;
 
-  return (
-    <div className={styles.container}>
-      <div className={styles.avatarWrap}>
-        <input
-          type="file"
-          ref={fileInputRef}
-          style={{ display: 'none' }}
-          accept="image/*"
-          onChange={handleAvatarUpload}
+  const avatarNode = (
+    <div className={styles.avatarWrap}>
+      <input
+        type="file"
+        ref={fileInputRef}
+        style={{ display: 'none' }}
+        accept="image/*"
+        onChange={handleAvatarUpload}
+      />
+      <div onClick={openAvatarPicker}>
+        <LobeAvatar
+          key={resolvedAvatar ?? userInfo.avatar_url ?? 'default'}
+          shape="circle"
+          avatar={resolvedAvatar || avatarData.text}
+          background={avatarData.backgroundColor}
+          size={40}
+          title={displayName}
+          unoptimized
         />
-        <div onClick={() => !uploadingAvatar && fileInputRef.current?.click()}>
-          <LobeAvatar
-            shape="circle"
-            avatar={userStore.userInfo?.avatar_url || avatarData.text}
-            background={avatarData.backgroundColor}
-            size={40}
-          />
+        {isOpen && (
           <div
             className={`avatar-overlay ${styles.avatarOverlay}`}
-            onClick={() => !uploadingAvatar && fileInputRef.current?.click()}
+            onClick={(e) => {
+              e.stopPropagation();
+              openAvatarPicker();
+            }}
           >
             {uploadingAvatar ? (
               <div
@@ -159,8 +227,24 @@ export const UserSection: React.FC<UserSectionProps> = ({ isOpen }) => {
               <Edit2Icon size={16} style={{ color: '#fff' }} />
             )}
           </div>
-        </div>
+        )}
       </div>
+    </div>
+  );
+
+  if (!isOpen) {
+    return (
+      <div className={`${styles.container} ${styles.containerCollapsed}`}>
+        <Tooltip title={displayName} placement="right" mouseEnterDelay={0.15}>
+          {avatarNode}
+        </Tooltip>
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.container}>
+      {avatarNode}
 
       <div className={styles.infoCol}>
         <div className={styles.nicknameRow}>
@@ -170,7 +254,7 @@ export const UserSection: React.FC<UserSectionProps> = ({ isOpen }) => {
                 size="small"
                 value={newNickname}
                 onChange={(e) => setNewNickname(e.target.value)}
-                placeholder={userStore.userInfo?.nickname || t('nicknamePlaceholder')}
+                placeholder={userInfo.nickname || t('nicknamePlaceholder')}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') updateNickname();
                   if (e.key === 'Escape') setIsEditing(false);
@@ -201,7 +285,7 @@ export const UserSection: React.FC<UserSectionProps> = ({ isOpen }) => {
           ) : (
             <>
               <span className={styles.nickname}>
-                {isLoading ? t('common:status.loading') : userStore.userInfo?.nickname || t('defaultNickname')}
+                {isLoading ? t('common:status.loading') : displayName}
               </span>
               <Edit2Icon
                 size={12}
@@ -209,7 +293,7 @@ export const UserSection: React.FC<UserSectionProps> = ({ isOpen }) => {
                 style={{ opacity: 0.5 }}
                 onClick={() => {
                   setIsEditing(true);
-                  setNewNickname(userStore.userInfo?.nickname || '');
+                  setNewNickname(userInfo.nickname || '');
                 }}
               />
             </>

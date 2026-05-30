@@ -5,6 +5,9 @@
   "toast": {
     "nicknameUpdated": "更新昵称成功",
     "nicknameUpdateFailed": "更新昵称失败",
-    "avatarUploadUnsupported": "本地版暂不支持云端头像上传，头像将以昵称首字渲染"
+    "avatarUpdated": "头像已更新",
+    "avatarUploadFailed": "上传头像失败",
+    "avatarInvalidType": "请选择图片文件",
+    "avatarTooLarge": "图片不能超过 5MB"
   }
 }
