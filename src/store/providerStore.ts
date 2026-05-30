@@ -89,10 +89,17 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
     try {
       if (isTauri) {
         let rustProviders = await invoke<RustProvider[]>('list_providers');
-        if (rustProviders.length === 0) {
-          await invoke('seed_builtin_providers', {
-            providers: builtinProviders.map(mapToRust),
-          });
+        // 一次性迁移：清理历史遗留的内置预设服务商（现已不再预设服务商）。
+        // 幂等：清理完成后列表中不再有 builtin 项，后续启动不会重复执行。
+        const builtinLeftovers = rustProviders.filter((r) => r.source === 'builtin');
+        if (builtinLeftovers.length > 0) {
+          for (const r of builtinLeftovers) {
+            try {
+              await invoke('delete_provider', { id: r.id });
+            } catch (e) {
+              console.warn('[providerStore] failed to remove legacy builtin provider', r.id, e);
+            }
+          }
           rustProviders = await invoke<RustProvider[]>('list_providers');
         }
         const record: Record<string, Provider> = {};
