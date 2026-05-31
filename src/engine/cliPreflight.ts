@@ -6,7 +6,8 @@
  * 而不是等到运行时 spawn 失败才报错。
  *
  * 设计要点：
- *  - 检测以 adapter 为粒度（与设置面板一致，/api/cli/check 只接收 adapter）。
+ *  - 默认运行时检测以 adapter 为粒度（与设置面板一致，/api/cli/check 只接收 adapter）。
+ *  - 配了自定义 binary 或 WSL 的成员不走默认 binary 检测，交给真正运行路径校验。
  *  - 检测调用本身失败（网络/IPC 异常、未知 adapter 等）时优雅降级为"放行"，
  *    避免因检测不可用而误伤正常执行。
  */
@@ -21,6 +22,8 @@ export interface MissingCliAdapter {
   binary: string;
   installHint?: string;
   docsUrl?: string;
+  /** 使用该 adapter 且被检测为缺失的成员 ID */
+  agentIds: string[];
   /** 使用该 adapter 的成员名（用于提示哪些成员受影响） */
   agentNames: string[];
 }
@@ -55,23 +58,29 @@ async function checkAdapterInstalled(adapter: string): Promise<boolean | null> {
   }
 }
 
+function hasCliRuntimeOverride(agent: CLIAgent): boolean {
+  const cli = agent.cli;
+  return !!cli?.wsl || !!cli?.binary?.trim();
+}
+
 /**
  * 对一组 CLI Agent 做发送前安装检测（按 adapter 去重并发）。
  */
 export async function preflightCheckCliAgents(agents: CLIAgent[]): Promise<CliPreflightResult> {
-  const adapterToAgentNames = new Map<string, string[]>();
+  const adapterToAgents = new Map<string, CLIAgent[]>();
   for (const agent of agents) {
+    if (hasCliRuntimeOverride(agent)) continue;
     const adapter = agent.cli?.adapter || 'codex';
-    const names = adapterToAgentNames.get(adapter) || [];
-    names.push(agent.name);
-    adapterToAgentNames.set(adapter, names);
+    const adapterAgents = adapterToAgents.get(adapter) || [];
+    adapterAgents.push(agent);
+    adapterToAgents.set(adapter, adapterAgents);
   }
 
   const missing: MissingCliAdapter[] = [];
   const skipped: string[] = [];
 
   await Promise.all(
-    Array.from(adapterToAgentNames.entries()).map(async ([adapter, agentNames]) => {
+    Array.from(adapterToAgents.entries()).map(async ([adapter, adapterAgents]) => {
       const installed = await checkAdapterInstalled(adapter);
       if (installed === null) {
         skipped.push(adapter);
@@ -85,7 +94,8 @@ export async function preflightCheckCliAgents(agents: CLIAgent[]): Promise<CliPr
           binary: def.defaultBinary || adapter,
           installHint: def.installHint,
           docsUrl: def.docsUrl,
-          agentNames,
+          agentIds: adapterAgents.map(agent => agent.id),
+          agentNames: adapterAgents.map(agent => agent.name),
         });
       }
     }),
@@ -150,10 +160,10 @@ export async function decideCliPreflight(
     return { action: 'proceed', agents, missing: [], message: '', isError: false };
   }
 
-  const missingAdapters = new Set(result.missing.map((m) => m.adapter));
+  const missingAgentIds = new Set(result.missing.flatMap((m) => m.agentIds));
 
   if (opts.interchangeable) {
-    const remaining = agents.filter((a) => !missingAdapters.has(a.cli?.adapter || 'codex'));
+    const remaining = agents.filter((a) => !missingAgentIds.has(a.id));
     if (remaining.length > 0) {
       return {
         action: 'proceed-filtered',

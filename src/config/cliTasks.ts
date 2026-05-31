@@ -395,8 +395,10 @@ export function createDevelopmentTask(params: {
   };
 }
 
-/** 取最后一次用户消息之后的 agent 回复（最新一轮对话） */
-export function getLatestAgentRoundMessages(messages: CLITaskMessage[]): CLITaskMessage[] {
+function getLatestRoundMessages(
+  messages: CLITaskMessage[],
+  predicate: (message: CLITaskMessage) => boolean,
+): CLITaskMessage[] {
   let lastUserIndex = -1;
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     if (messages[i]?.role === 'user') {
@@ -405,9 +407,22 @@ export function getLatestAgentRoundMessages(messages: CLITaskMessage[]): CLITask
     }
   }
   if (lastUserIndex < 0) {
-    return messages.filter(message => message.role === 'agent');
+    return messages.filter(predicate);
   }
-  return messages.slice(lastUserIndex + 1).filter(message => message.role === 'agent');
+  return messages.slice(lastUserIndex + 1).filter(predicate);
+}
+
+/** 取最后一次用户消息之后的 agent 回复（最新一轮对话） */
+export function getLatestAgentRoundMessages(messages: CLITaskMessage[]): CLITaskMessage[] {
+  return getLatestRoundMessages(messages, message => message.role === 'agent');
+}
+
+/** 取最后一次用户消息之后会影响任务状态的消息（最新一轮对话） */
+export function getLatestStatusRoundMessages(messages: CLITaskMessage[]): CLITaskMessage[] {
+  return getLatestRoundMessages(
+    messages,
+    message => message.role === 'agent' || (message.role === 'system' && !!message.status),
+  );
 }
 
 function deriveAgentRoundStatus(agentMsgs: CLITaskMessage[]): CLITaskStatus {
@@ -423,10 +438,10 @@ function deriveAgentRoundStatus(agentMsgs: CLITaskMessage[]): CLITaskStatus {
 }
 
 export function deriveTaskStatus(messages: CLITaskMessage[]): CLITaskStatus {
-  return deriveAgentRoundStatus(getLatestAgentRoundMessages(messages));
+  return deriveAgentRoundStatus(getLatestStatusRoundMessages(messages));
 }
 
-/** 侧栏/列表展示用状态：归档保留，其余按最新一轮 agent 回复推导 */
+/** 侧栏/列表展示用状态：归档保留，其余按最新一轮状态消息推导 */
 export function getTaskDisplayStatus(task: CLIDevelopmentTask): CLITaskStatus {
   if (task.status === 'archived') return 'archived';
   return deriveTaskStatus(task.messages);

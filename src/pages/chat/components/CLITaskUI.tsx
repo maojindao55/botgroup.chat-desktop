@@ -1011,12 +1011,14 @@ const CLITaskUI = ({
         .collaboration === 'independent';
     const preflight = await decideCliPreflight(activeAgents, { interchangeable });
     if (preflight.message) {
+      const blocked = preflight.action === 'block';
       appendMessage(developmentTask.id, {
         id: `sys-${Date.now()}`,
         taskId: developmentTask.id,
         role: 'system',
         content: preflight.message,
         isError: preflight.isError,
+        ...(blocked ? { status: 'failed' as CLITaskStatus } : {}),
       });
     }
     if (preflight.action === 'block') {
