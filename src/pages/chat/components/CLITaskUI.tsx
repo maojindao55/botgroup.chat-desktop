@@ -27,7 +27,7 @@ import {
 } from '@/lib/theme';
 import { request } from '@/utils/request';
 import { executeCLIStrategy } from '@/engine/cliEngine';
-import { preflightCheckCliAgents, formatCliPreflightMessage } from '@/engine/cliPreflight';
+import { decideCliPreflight } from '@/engine/cliPreflight';
 import { isCodeChangeIntent } from '@/engine/cliIntent';
 import { buildCliUserPrompt } from '@/engine/cliPrompt';
 import { resolveCliToolSessionKey, withCliToolSession } from '@/engine/cliToolSessions';
@@ -50,6 +50,7 @@ import { useAIMemberStore } from '@/store/aiMemberStore';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
 import { resolveEffectiveMember } from '@/utils/aiMemberDisplay';
 import type { Group, CLIGroup } from '@/config/groups';
+import { resolveExecutionPlan } from '@/config/groups';
 import {
   templateSnapshotToCLIGroup,
   cliTaskMemberSnapshotToAgent,
@@ -1002,18 +1003,26 @@ const CLITaskUI = ({
       return;
     }
 
-    // 发送前 pre-flight：本地未安装对应 CLI 时阻止启动并给出安装引导
-    const preflight = await preflightCheckCliAgents(activeAgents);
-    if (!preflight.ok) {
+    // 发送前 pre-flight：本地未安装对应 CLI 时的处理
+    // - 独立模式（router/race/sequential/mapreduce）：自动跳过未安装成员，用其余成员继续
+    // - 角色型（pipeline/review/discussion）：任一缺失则整单拦截
+    const interchangeable =
+      resolveExecutionPlan({ strategy: snapshot.strategy, executionPlan: snapshot.executionPlan })
+        .collaboration === 'independent';
+    const preflight = await decideCliPreflight(activeAgents, { interchangeable });
+    if (preflight.message) {
       appendMessage(developmentTask.id, {
         id: `sys-${Date.now()}`,
         taskId: developmentTask.id,
         role: 'system',
-        content: formatCliPreflightMessage(preflight.missing),
-        isError: true,
+        content: preflight.message,
+        isError: preflight.isError,
       });
+    }
+    if (preflight.action === 'block') {
       return;
     }
+    activeAgents = preflight.agents;
 
     if (snapshot.approvalMode === 'ask') {
       const names = activeAgents.map(a => a.name).join('、');

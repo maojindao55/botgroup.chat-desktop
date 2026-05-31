@@ -15,7 +15,7 @@ import { BRAND_ON_PRIMARY, brandPrimaryButtonStyle } from '@/lib/theme';
 import { request } from '@/utils/request';
 import { normalizeDesktopUser } from '@/utils/userAvatar';
 import { executeCLIStrategy } from '@/engine/cliEngine';
-import { preflightCheckCliAgents, formatCliPreflightMessage } from '@/engine/cliPreflight';
+import { decideCliPreflight } from '@/engine/cliPreflight';
 import { isCodeChangeIntent } from '@/engine/cliIntent';
 import { buildCliUserPrompt } from '@/engine/cliPrompt';
 import { cliToolSessionKey, withCliToolSession } from '@/engine/cliToolSessions';
@@ -36,6 +36,7 @@ import { useAIMemberStore } from '@/store/aiMemberStore';
 import { resolveEffectiveMember } from '@/utils/aiMemberDisplay';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
 import type { Group, AIGroup, CLIGroup, AgentGroup, CLIStrategy, CLIExecutionPlan, CLISessionPolicy } from '@/config/groups';
+import { resolveExecutionPlan } from '@/config/groups';
 import { supportsCliToolSession } from '@/config/cliAdapters';
 import { openPath } from '@tauri-apps/plugin-opener';
 
@@ -1223,17 +1224,17 @@ const ChatUI = () => {
         : undefined;
       if (!agent) throw new Error(t('chat:errors.memberNotFound'));
 
-      // 发送前 pre-flight：本地未安装对应 CLI 时阻止重试并给出安装引导
-      const preflight = await preflightCheckCliAgents([agent]);
-      if (!preflight.ok) {
-        const systemMsg = {
+      // 发送前 pre-flight：单成员重试，未安装则直接拦截并给出安装引导
+      const preflight = await decideCliPreflight([agent], { interchangeable: false });
+      if (preflight.action === 'block') {
+        const sysMsg = {
           id: `sys-${Date.now()}`,
           sender: { id: 'sys', name: t('chat:systemSender') },
-          content: formatCliPreflightMessage(preflight.missing),
+          content: preflight.message,
           isAI: true,
           isError: true,
         };
-        setMessages(prev => [...prev, systemMsg]);
+        setMessages(prev => [...prev, sysMsg]);
         return;
       }
 
@@ -1340,7 +1341,7 @@ const ChatUI = () => {
     const taskPrompt = buildCliUserPrompt(promptText, workspacePath);
 
     const memberIds = (group as CLIGroup).memberIds || (group as CLIGroup).members || [];
-    const activeAgents = memberIds
+    let activeAgents = memberIds
       .map(id => resolveEffectiveMember(aiMembers, id))
       .filter(m => m && m.kind === 'cli' && !mutedUsers.includes(m.id))
       .map(m => mapAIMemberToLegacy(m) as CLIAgent)
@@ -1375,20 +1376,28 @@ const ChatUI = () => {
       return;
     }
 
-    // 发送前 pre-flight：本地未安装对应 CLI 时阻止启动并给出安装引导
-    const preflight = await preflightCheckCliAgents(activeAgents);
-    if (!preflight.ok) {
-      const systemMsg = {
+    // 发送前 pre-flight：本地未安装对应 CLI 时的处理
+    // - 独立模式（router/race/sequential/mapreduce）：自动跳过未安装成员，用其余成员继续
+    // - 角色型（pipeline/review/discussion）：任一缺失则整单拦截
+    const interchangeable =
+      resolveExecutionPlan({ strategy: cliStrategy, executionPlan: cliExecutionPlan })
+        .collaboration === 'independent';
+    const preflight = await decideCliPreflight(activeAgents, { interchangeable });
+    if (preflight.message) {
+      const sysMsg = {
         id: `sys-${Date.now()}`,
         sender: { id: 'sys', name: t('chat:systemSender') },
-        content: formatCliPreflightMessage(preflight.missing),
+        content: preflight.message,
         isAI: true,
-        isError: true,
+        isError: preflight.isError,
       };
-      setMessages(prev => [...prev, systemMsg]);
+      setMessages(prev => [...prev, sysMsg]);
+    }
+    if (preflight.action === 'block') {
       setIsLoading(false);
       return;
     }
+    activeAgents = preflight.agents;
 
     if (approvalMode === 'ask') {
       const names = activeAgents.map(a => a.name).join('、');

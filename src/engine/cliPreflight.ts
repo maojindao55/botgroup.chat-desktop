@@ -94,15 +94,82 @@ export async function preflightCheckCliAgents(agents: CLIAgent[]): Promise<CliPr
   return { ok: missing.length === 0, missing, skipped };
 }
 
+function renderMissingItems(missing: MissingCliAdapter[]): string {
+  return missing
+    .map((m) => {
+      const lines = [te('preflight.item', { label: m.label, binary: m.binary, agents: m.agentNames.join('、') })];
+      if (m.installHint) lines.push(te('preflight.install', { command: m.installHint }));
+      if (m.docsUrl) lines.push(te('preflight.docs', { url: m.docsUrl }));
+      return lines.join('\n');
+    })
+    .join('\n\n');
+}
+
 /**
- * 把未安装列表格式化为可直接展示给用户的本地化提示（Markdown）。
+ * 任务被整单拦截时（角色型工作流或全部未安装）展示的错误提示。
  */
 export function formatCliPreflightMessage(missing: MissingCliAdapter[]): string {
-  const items = missing.map((m) => {
-    const lines = [te('preflight.item', { label: m.label, binary: m.binary, agents: m.agentNames.join('、') })];
-    if (m.installHint) lines.push(te('preflight.install', { command: m.installHint }));
-    if (m.docsUrl) lines.push(te('preflight.docs', { url: m.docsUrl }));
-    return lines.join('\n');
-  });
-  return `${te('preflight.header')}\n\n${items.join('\n\n')}`;
+  return `${te('preflight.header')}\n\n${renderMissingItems(missing)}`;
+}
+
+/**
+ * 独立模式下自动跳过部分未安装成员、继续用其余成员执行时展示的提示。
+ */
+export function formatCliPreflightSkippedMessage(missing: MissingCliAdapter[]): string {
+  return `${te('preflight.skippedHeader')}\n\n${renderMissingItems(missing)}`;
+}
+
+/** preflight 决策：直接执行 / 过滤后执行 / 整单拦截 */
+export type CliPreflightAction = 'proceed' | 'proceed-filtered' | 'block';
+
+export interface CliPreflightDecision {
+  action: CliPreflightAction;
+  /** 实际应执行的 agent 列表（block 时为空） */
+  agents: CLIAgent[];
+  /** 检测到未安装的 adapter */
+  missing: MissingCliAdapter[];
+  /** 需要展示给用户的本地化消息（proceed 时为空字符串） */
+  message: string;
+  /** 该消息是否应按错误样式展示（block=true，proceed-filtered=false） */
+  isError: boolean;
+}
+
+/**
+ * 在安装检测的基础上结合协作语义给出决策：
+ *  - interchangeable=true（独立模式：router / race / sequential / mapreduce）：
+ *    可逐个丢弃未安装成员。仍有已安装成员时过滤后继续；全部未安装则拦截。
+ *  - interchangeable=false（角色型：pipeline / review / discussion / debate）：
+ *    任一成员缺失即整单拦截，避免破坏流水线/讨论的角色分工。
+ */
+export async function decideCliPreflight(
+  agents: CLIAgent[],
+  opts: { interchangeable: boolean },
+): Promise<CliPreflightDecision> {
+  const result = await preflightCheckCliAgents(agents);
+  if (result.ok) {
+    return { action: 'proceed', agents, missing: [], message: '', isError: false };
+  }
+
+  const missingAdapters = new Set(result.missing.map((m) => m.adapter));
+
+  if (opts.interchangeable) {
+    const remaining = agents.filter((a) => !missingAdapters.has(a.cli?.adapter || 'codex'));
+    if (remaining.length > 0) {
+      return {
+        action: 'proceed-filtered',
+        agents: remaining,
+        missing: result.missing,
+        message: formatCliPreflightSkippedMessage(result.missing),
+        isError: false,
+      };
+    }
+  }
+
+  return {
+    action: 'block',
+    agents: [],
+    missing: result.missing,
+    message: formatCliPreflightMessage(result.missing),
+    isError: true,
+  };
 }
