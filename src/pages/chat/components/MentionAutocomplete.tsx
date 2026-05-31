@@ -133,43 +133,20 @@ export function MentionSuggestionPanel({
           }}
           style={{
             width: '100%',
-            minHeight: 36,
+            minHeight: 32,
             display: 'flex',
             alignItems: 'center',
-            gap: 8,
             border: 0,
             borderRadius: 6,
             background: index === selectedIndex ? 'rgba(255,102,0,0.12)' : 'transparent',
             color: '#1f1f1f',
             cursor: 'pointer',
-            padding: '6px 8px',
+            padding: '7px 10px',
             textAlign: 'left',
           }}
         >
-          <span
-            style={{
-              width: 24,
-              height: 24,
-              borderRadius: 999,
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-              background: 'rgba(255,102,0,0.16)',
-              color: '#c24d00',
-              fontSize: 12,
-              fontWeight: 600,
-            }}
-          >
-            {candidate.name.slice(0, 1).toUpperCase()}
-          </span>
-          <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-            <span style={{ fontSize: 13, lineHeight: '18px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {candidate.name}
-            </span>
-            <span style={{ fontSize: 11, lineHeight: '14px', color: '#999', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              @{candidate.id}
-            </span>
+          <span style={{ minWidth: 0, fontSize: 13, lineHeight: '18px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {candidate.name}
           </span>
         </button>
       ))}
