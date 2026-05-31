@@ -41,6 +41,11 @@ import CLIRaceResultsDrawer from './CLIRaceResultsDrawer';
 import CLITaskLogModal from './CLITaskLogModal';
 import CLITaskSidebar from './CLITaskSidebar';
 import CreateGroupWizard from './CreateGroupWizard';
+import {
+  MentionSuggestionPanel,
+  MentionTextArea,
+  useMentionAutocomplete,
+} from './MentionAutocomplete';
 import Sidebar from './Sidebar';
 import { AdBanner, AdBannerMobile } from './AdSection';
 import { useUserStore } from '@/store/userStore';
@@ -1338,6 +1343,16 @@ const CLITaskUI = ({
         return { id: agent.id, name: agent.name, avatar: agent.avatar };
       });
   }, [selectedTask, draftTemplate, aiMembers]);
+  const taskMention = useMentionAutocomplete({
+    value: inputMessage,
+    candidates: headerTeamMembers,
+    onChange: setInputMessage,
+    getCaret: () => inputRef.current?.selectionStart ?? inputMessage.length,
+    setCaret: (caret) => {
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(caret, caret);
+    },
+  });
 
   const openTaskLog = (message: ReturnType<typeof taskMessageToChatRow>) => {
     if (!message.taskId) return;
@@ -2005,9 +2020,10 @@ const CLITaskUI = ({
 
                     <div className={styles.formField}>
                       <span className={styles.formLabel}>{t('cli:taskUI.create.promptLabel')}</span>
-                      <AntdInput.TextArea
+                      <MentionTextArea
                         value={inputMessage}
-                        onChange={(e) => setInputMessage(e.target.value)}
+                        onChange={setInputMessage}
+                        candidates={headerTeamMembers}
                         placeholder={t('cli:taskUI.create.promptPlaceholder')}
                         autoSize={{ minRows: 4, maxRows: 8 }}
                         disabled={isComposeBusy}
@@ -2322,28 +2338,40 @@ const CLITaskUI = ({
 
             {selectedTask && (
               <div className={styles.inputArea}>
-                <div className={styles.composeBox}>
-                  <ChatInputArea.Inner
-                    ref={inputRef}
-                    className={styles.composeTextarea}
-                    value={inputMessage}
-                    onInput={setInputMessage}
-                    onSend={handleSendMessage}
-                    loading={isComposeBusy}
-                    placeholder={t('cli:taskUI.compose.placeholder')}
-                    disabled={isComposeBusy}
-                    autoSize={{ minRows: 4, maxRows: 12 }}
-                    variant="borderless"
+                <div style={{ position: 'relative' }}>
+                  <MentionSuggestionPanel
+                    open={taskMention.open}
+                    suggestions={taskMention.suggestions}
+                    selectedIndex={taskMention.selectedIndex}
+                    onHover={taskMention.setSelectedIndex}
+                    onSelect={taskMention.selectCandidate}
                   />
-                  {renderComposeSendBar(
-                    t('cli:taskUI.compose.send'),
-                    <>
-                      <Tag color="orange">{selectedTask.templateSnapshot.name}</Tag>
-                      <span className={styles.composeHint}>
-                        {t('cli:taskUI.compose.hint')}
-                      </span>
-                    </>,
-                  )}
+                  <div className={styles.composeBox}>
+                    <ChatInputArea.Inner
+                      ref={inputRef}
+                      className={styles.composeTextarea}
+                      value={inputMessage}
+                      onInput={setInputMessage}
+                      onSend={handleSendMessage}
+                      onKeyDown={(event) => {
+                        taskMention.handleKeyDown(event);
+                      }}
+                      loading={isComposeBusy}
+                      placeholder={t('cli:taskUI.compose.placeholder')}
+                      disabled={isComposeBusy}
+                      autoSize={{ minRows: 4, maxRows: 12 }}
+                      variant="borderless"
+                    />
+                    {renderComposeSendBar(
+                      t('cli:taskUI.compose.send'),
+                      <>
+                        <Tag color="orange">{selectedTask.templateSnapshot.name}</Tag>
+                        <span className={styles.composeHint}>
+                          {t('cli:taskUI.compose.hint')}
+                        </span>
+                      </>,
+                    )}
+                  </div>
                 </div>
                 <div style={{ fontSize: 10, opacity: 0.5, marginTop: 6 }}>
                   {t('cli:taskUI.compose.footerHint')}

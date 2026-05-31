@@ -2,7 +2,7 @@
  * 专家群聊对话组件
  * 独立的聊天 UI，使用 agentEngine 策略引擎驱动对话
  */
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Send, Square, Settings2, ChevronLeft, Puzzle } from 'lucide-react';
 import { Tooltip, Input as AntdInput, Button as AntdButton, message as antdMessage } from 'antd';
@@ -20,6 +20,7 @@ import type { AgentGroup, Group } from '@/config/groups';
 import { isBuiltinGroupId } from '@/config/groupStorage';
 import { useAIMemberStore } from '@/store/aiMemberStore';
 import { AIMemberLibrary, AI_MEMBER_LIBRARY_INLINE_WIDTH } from './AIMemberLibrary';
+import { MentionTextArea } from './MentionAutocomplete';
 
 /** 生成唯一消息 ID */
 let _globalMsgId = Date.now();
@@ -249,6 +250,14 @@ const AgentChatUI = ({
     .filter(m => m && m.kind === 'agent');
   // 优先 store 数据；store 未 ready 时回落到群里的内联 agents（兼容旧数据）
   const currentAgents = dbAgents.length > 0 ? dbAgents : (group.agents || []);
+  const mentionCandidates = useMemo(
+    () => currentAgents.map(agent => ({
+      id: agent.id,
+      name: agent.name,
+      avatar: agent.avatar,
+    })),
+    [currentAgents],
+  );
   // store 已加载完成但成员仍解析不出来（id 引用失效 / 成员被删）
   const hasUnresolvedMembers =
     !membersLoading && currentMemberIds.length > 0 && currentAgents.length === 0;
@@ -684,10 +693,12 @@ const AgentChatUI = ({
             {/* Input Area */}
             <div className={styles.inputArea}>
               <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12 }}>
-                <AntdInput.TextArea
+                <MentionTextArea
                   value={inputMessage}
-                  onChange={(e) => setInputMessage(e.target.value)}
-                  onPressEnter={(e) => {
+                  onChange={setInputMessage}
+                  candidates={mentionCandidates}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter') return;
                     if (!e.shiftKey) {
                       e.preventDefault();
                       handleSendMessage();
@@ -695,7 +706,8 @@ const AgentChatUI = ({
                   }}
                   autoSize={{ minRows: 1, maxRows: 6 }}
                   placeholder={t('chat:agentChat.inputPlaceholder')}
-                  style={{ flex: 1, borderRadius: 12 }}
+                  style={{ borderRadius: 12 }}
+                  containerStyle={{ flex: 1 }}
                   disabled={isLoading}
                 />
                 {isLoading ? (

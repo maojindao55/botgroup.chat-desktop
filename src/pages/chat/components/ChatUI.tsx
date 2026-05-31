@@ -5,7 +5,7 @@
  * - cli → CLIChatUI (复用原有 CLI 逻辑)
  * - agent → AgentChatUI
  */
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useTranslation } from 'react-i18next';
 import { Send, Settings2, ChevronLeft, Bot, Terminal, PanelLeftOpen } from "lucide-react";
 import { Tooltip, Input as AntdInput, Button as AntdButton, Modal } from 'antd';
@@ -53,6 +53,7 @@ import {
   upsertCustomGroup,
 } from '@/config/groupStorage';
 import ConversationSidebar from './ConversationSidebar';
+import { MentionTextArea } from './MentionAutocomplete';
 import { useChatSessionStore } from '@/store/chatSessionStore';
 import {
   newChatMessageId,
@@ -506,6 +507,14 @@ const ChatUI = () => {
   };
 
   const settingsPanelWidth = group?.type === 'agent' ? 440 : 400;
+  const mentionCandidates = useMemo(
+    () => groupAiCharacters.map(character => ({
+      id: character.id,
+      name: character.name,
+      avatar: character.avatar,
+    })),
+    [groupAiCharacters],
+  );
 
   const handleToggleSettings = (nextOpen: boolean) => {
     if (nextOpen === showSettings) return;
@@ -2042,10 +2051,12 @@ const ChatUI = () => {
             {/* Input Area */}
             <div className={styles.inputArea}>
               <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12 }}>
-                <AntdInput.TextArea
+                <MentionTextArea
                   value={inputMessage}
-                  onChange={(e) => setInputMessage(e.target.value)}
-                  onPressEnter={(e) => {
+                  onChange={setInputMessage}
+                  candidates={mentionCandidates}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter') return;
                     if (!e.shiftKey) {
                       e.preventDefault();
                       handleSendMessage();
@@ -2053,7 +2064,8 @@ const ChatUI = () => {
                   }}
                   autoSize={{ minRows: 1, maxRows: 6 }}
                   placeholder={isCLIGroup ? t('chat:placeholders.cliInput') : t('chat:placeholders.aiInput')}
-                  style={{ flex: 1, borderRadius: 12 }}
+                  style={{ borderRadius: 12 }}
+                  containerStyle={{ flex: 1 }}
                 />
                 <AntdButton
                   onClick={handleSendMessage}
