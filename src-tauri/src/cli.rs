@@ -169,12 +169,23 @@ fn insert_task(app: &AppHandle, args: &CliRunArgs, log_path: &str) -> Result<(),
 }
 
 fn prompt_summary(prompt: &str, max_chars: usize) -> String {
-    if prompt.chars().count() <= max_chars {
-        return prompt.to_string();
+    // Collapse CR/LF so summaries stay single-line. Besides looking nicer in
+    // task lists, this matters on Windows: summary-derived args (e.g. the
+    // opencode `--title` value) are passed to a `.cmd` shim, and std refuses
+    // arguments containing CR/LF when the target is a batch file (it errors
+    // with "batch file arguments are invalid").
+    let normalized: String = prompt
+        .chars()
+        .map(|c| if c == '\n' || c == '\r' { ' ' } else { c })
+        .collect();
+    let normalized = normalized.trim();
+
+    if normalized.chars().count() <= max_chars {
+        return normalized.to_string();
     }
 
     let keep = max_chars.saturating_sub(3);
-    let mut s: String = prompt.chars().take(keep).collect();
+    let mut s: String = normalized.chars().take(keep).collect();
     s.push_str("...");
     s
 }
@@ -404,6 +415,19 @@ pub async fn cli_run(
     }
 
     let _ = app.emit(&event_name, CliEvent::Started { pid });
+
+    // If build_command piped stdin, the prompt is delivered over it (Windows
+    // `.cmd` shim path, where multi-line args can't be passed to a batch file).
+    // Stream it from a detached task so a large prompt can't deadlock against
+    // stdout/stderr backpressure; dropping the handle closes the pipe (EOF).
+    if let Some(mut child_stdin) = child.stdin.take() {
+        let payload = args.prompt.clone();
+        tokio::spawn(async move {
+            use tokio::io::AsyncWriteExt;
+            let _ = child_stdin.write_all(payload.as_bytes()).await;
+            let _ = child_stdin.shutdown().await;
+        });
+    }
 
     let stdout = child
         .stdout
@@ -932,7 +956,7 @@ fn append_tool_session(argv: &mut Vec<String>, args: &CliRunArgs, flag: &str) {
     }
 }
 
-fn build_codex_command(argv: &mut Vec<String>, args: &CliRunArgs) {
+fn build_codex_command(argv: &mut Vec<String>, args: &CliRunArgs, prompt_via_stdin: bool) {
     argv.push("exec".to_string());
     if !has_extra_arg(args, "--skip-git-repo-check") {
         argv.push("--skip-git-repo-check".to_string());
@@ -946,10 +970,17 @@ fn build_codex_command(argv: &mut Vec<String>, args: &CliRunArgs) {
             }
         }
     }
-    argv.push(args.prompt.clone());
+    if prompt_via_stdin {
+        // `-` tells `codex exec` to read the prompt from stdin. Used on
+        // Windows where codex resolves to a `.cmd` shim that can't receive a
+        // multi-line prompt as an argument. cli_run streams args.prompt in.
+        argv.push("-".to_string());
+    } else {
+        argv.push(args.prompt.clone());
+    }
 }
 
-fn build_opencode_command(argv: &mut Vec<String>, args: &CliRunArgs) {
+fn build_opencode_command(argv: &mut Vec<String>, args: &CliRunArgs, prompt_via_stdin: bool) {
     argv.push("run".to_string());
     if !has_extra_arg(args, "--format") && !has_extra_arg_prefix(args, "--format=") {
         argv.push("--format".to_string());
@@ -965,10 +996,13 @@ fn build_opencode_command(argv: &mut Vec<String>, args: &CliRunArgs) {
         argv.push("--title".to_string());
         argv.push(prompt_summary(&args.prompt, 48));
     }
-    argv.push(args.prompt.clone());
+    if !prompt_via_stdin {
+        argv.push(args.prompt.clone());
+    }
+    // else: opencode reads the message from stdin (Windows `.cmd` shim path).
 }
 
-fn build_claude_command(argv: &mut Vec<String>, args: &CliRunArgs) {
+fn build_claude_command(argv: &mut Vec<String>, args: &CliRunArgs, prompt_via_stdin: bool) {
     argv.push("-p".to_string());
     if !has_extra_arg(args, "--output-format") && !has_extra_arg_prefix(args, "--output-format=") {
         argv.push("--output-format".to_string());
@@ -986,10 +1020,13 @@ fn build_claude_command(argv: &mut Vec<String>, args: &CliRunArgs) {
     {
         append_tool_session(argv, args, "--resume");
     }
-    argv.push(args.prompt.clone());
+    if !prompt_via_stdin {
+        argv.push(args.prompt.clone());
+    }
+    // else: claude `-p` reads the prompt from stdin (Windows `.cmd` shim path).
 }
 
-fn build_cursor_command(argv: &mut Vec<String>, args: &CliRunArgs) {
+fn build_cursor_command(argv: &mut Vec<String>, args: &CliRunArgs, prompt_via_stdin: bool) {
     argv.push("agent".to_string());
     argv.push("-p".to_string());
     if !has_extra_arg(args, "--output-format") && !has_extra_arg_prefix(args, "--output-format=") {
@@ -1019,10 +1056,13 @@ fn build_cursor_command(argv: &mut Vec<String>, args: &CliRunArgs) {
     {
         append_tool_session(argv, args, "--resume");
     }
-    argv.push(args.prompt.clone());
+    if !prompt_via_stdin {
+        argv.push(args.prompt.clone());
+    }
+    // else: cursor-agent reads the prompt from stdin (Windows `.cmd` shim path).
 }
 
-fn build_qodercli_command(argv: &mut Vec<String>, args: &CliRunArgs) {
+fn build_qodercli_command(argv: &mut Vec<String>, args: &CliRunArgs, prompt_via_stdin: bool) {
     if !has_any_extra_arg(args, &["-o", "--output-format"])
         && !has_any_extra_arg_prefix(args, &["-o=", "--output-format="])
     {
@@ -1048,7 +1088,10 @@ fn build_qodercli_command(argv: &mut Vec<String>, args: &CliRunArgs) {
         append_tool_session(argv, args, "-r");
     }
     argv.push("-p".to_string());
-    argv.push(args.prompt.clone());
+    if !prompt_via_stdin {
+        argv.push(args.prompt.clone());
+    }
+    // else: qoder `-p` (print mode) reads the prompt from stdin (Windows `.cmd` shim path).
 }
 
 /// macOS/Linux GUI apps launched from Finder/Dock inherit a minimal PATH
@@ -1288,6 +1331,16 @@ fn build_wsl_command(binary: &str, argv: &[String], distro: Option<&str>, wsl_cw
     cmd
 }
 
+/// Returns true if `path` points to a Windows batch shim (`.cmd`/`.bat`).
+/// Package managers (npm global, volta, scoop) install CLIs like codex as a
+/// `.cmd` shim. std spawns those through cmd.exe, which can't receive
+/// arguments containing CR/LF — so multi-line prompts must go via stdin.
+fn is_batch_shim(path: &std::path::Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map_or(false, |e| e.eq_ignore_ascii_case("cmd") || e.eq_ignore_ascii_case("bat"))
+}
+
 fn build_command(args: &CliRunArgs) -> Result<Command, String> {
     let binary = args
         .binary
@@ -1322,13 +1375,28 @@ fn build_command(args: &CliRunArgs) -> Result<Command, String> {
         args
     };
 
+    // Resolve the binary up front (non-WSL) so we can detect npm/volta/scoop
+    // `.cmd`/`.bat` shims. On Windows, std routes batch files through cmd.exe
+    // and rejects arguments containing CR/LF ("batch file arguments are
+    // invalid"), so a multi-line prompt must be delivered over stdin instead
+    // of argv. WSL invokes `wsl.exe` directly and is therefore exempt.
+    let resolved_binary = if use_wsl {
+        None
+    } else {
+        Some(resolve_cli_binary(&binary)?)
+    };
+    let prompt_via_stdin = cfg!(windows)
+        && resolved_binary
+            .as_ref()
+            .map_or(false, |p| is_batch_shim(p));
+
     let mut argv: Vec<String> = Vec::new();
     match args.adapter.as_str() {
-        "codex" => build_codex_command(&mut argv, arg_src),
-        "opencode" => build_opencode_command(&mut argv, arg_src),
-        "claude" => build_claude_command(&mut argv, arg_src),
-        "cursor" => build_cursor_command(&mut argv, arg_src),
-        "qodercli" => build_qodercli_command(&mut argv, arg_src),
+        "codex" => build_codex_command(&mut argv, arg_src, prompt_via_stdin),
+        "opencode" => build_opencode_command(&mut argv, arg_src, prompt_via_stdin),
+        "claude" => build_claude_command(&mut argv, arg_src, prompt_via_stdin),
+        "cursor" => build_cursor_command(&mut argv, arg_src, prompt_via_stdin),
+        "qodercli" => build_qodercli_command(&mut argv, arg_src, prompt_via_stdin),
         other => return Err(format!("unknown adapter: {}", other)),
     }
 
@@ -1341,8 +1409,9 @@ fn build_command(args: &CliRunArgs) -> Result<Command, String> {
             arg_src.cwd.as_deref(),
         )
     } else {
-        let resolved_binary = resolve_cli_binary(&binary)?;
-        let mut cmd = Command::new(&resolved_binary);
+        // SAFETY: resolved_binary is always Some on the non-WSL path (set above).
+        let resolved = resolved_binary.expect("resolved binary present for non-WSL path");
+        let mut cmd = Command::new(&resolved);
         cmd.args(&argv);
         if let Some(cwd) = &args.cwd {
             if !cwd.is_empty() {
@@ -1397,8 +1466,15 @@ fn build_command(args: &CliRunArgs) -> Result<Command, String> {
         }
     }
 
-    cmd.stdin(Stdio::null())
-        .stdout(Stdio::piped())
+    // When the prompt is delivered over stdin (Windows batch-shim path), pipe
+    // stdin so cli_run can stream args.prompt in after spawn. Otherwise keep
+    // stdin closed so CLIs that probe it observe EOF immediately.
+    if prompt_via_stdin {
+        cmd.stdin(Stdio::piped());
+    } else {
+        cmd.stdin(Stdio::null());
+    }
+    cmd.stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
 
@@ -2010,6 +2086,124 @@ mod tests {
         assert!(!rendered.contains("\"--cd\""));
         assert!(rendered.contains("\"-e\" \"opencode\""));
         assert!(rendered.contains("\"run\""));
+    }
+
+    // ---- Windows batch-shim stdin workaround -----------------------------
+    //
+    // On Windows, CLIs installed via npm/volta/scoop resolve to a `.cmd` shim.
+    // std runs batch files through cmd.exe and rejects arguments containing
+    // CR/LF ("batch file arguments are invalid"), which broke multi-line
+    // prompts. When `prompt_via_stdin` is set, the builders must omit the
+    // inline prompt (codex uses the `-` stdin marker) and the prompt is
+    // streamed to the child over stdin instead. These tests exercise the
+    // builders directly because `cfg!(windows)` is false on the CI runner.
+
+    fn stdin_test_args(adapter: &str, prompt: &str) -> CliRunArgs {
+        CliRunArgs {
+            session_id: "s".to_string(),
+            group_id: "g".to_string(),
+            agent_id: "a".to_string(),
+            agent_name: "n".to_string(),
+            adapter: adapter.to_string(),
+            prompt: prompt.to_string(),
+            cwd: Some("/tmp/project".to_string()),
+            extra_args: None,
+            tool_session_id: None,
+            binary: None,
+            env: None,
+            timeout_ms: None,
+            approval_mode: Some("auto".to_string()),
+            show_stderr: None,
+            wsl: None,
+            wsl_distro: None,
+        }
+    }
+
+    const MULTILINE_PROMPT: &str = "工作目录：C:/workspace/proj\n执行约束：仅在此目录\n\n用户需求：画一只鹈鹕";
+
+    #[test]
+    fn is_batch_shim_detects_cmd_and_bat() {
+        use std::path::Path;
+        assert!(super::is_batch_shim(Path::new("C:/npm/codex.cmd")));
+        assert!(super::is_batch_shim(Path::new("C:/npm/codex.CMD")));
+        assert!(super::is_batch_shim(Path::new("/x/y/run.BAT")));
+        assert!(!super::is_batch_shim(Path::new("codex")));
+        assert!(!super::is_batch_shim(Path::new("/usr/bin/codex.exe")));
+    }
+
+    #[test]
+    fn prompt_summary_collapses_newlines() {
+        assert_eq!(prompt_summary("第一行\n第二行", 60), "第一行 第二行");
+        assert!(!prompt_summary(MULTILINE_PROMPT, 48).contains('\n'));
+    }
+
+    #[test]
+    fn codex_uses_stdin_marker_when_prompt_via_stdin() {
+        let args = stdin_test_args("codex", MULTILINE_PROMPT);
+        let mut argv = Vec::new();
+        super::build_codex_command(&mut argv, &args, true);
+
+        assert!(argv.contains(&"exec".to_string()));
+        assert!(argv.contains(&"-".to_string()));
+        assert!(!argv.contains(&MULTILINE_PROMPT.to_string()));
+        assert!(!argv.iter().any(|a| a.contains('\n')));
+    }
+
+    #[test]
+    fn codex_inlines_prompt_when_not_via_stdin() {
+        let args = stdin_test_args("codex", "写代码");
+        let mut argv = Vec::new();
+        super::build_codex_command(&mut argv, &args, false);
+
+        assert!(argv.contains(&"写代码".to_string()));
+        assert!(!argv.contains(&"-".to_string()));
+    }
+
+    #[test]
+    fn claude_omits_prompt_arg_when_prompt_via_stdin() {
+        let args = stdin_test_args("claude", MULTILINE_PROMPT);
+        let mut argv = Vec::new();
+        super::build_claude_command(&mut argv, &args, true);
+
+        assert!(argv.contains(&"-p".to_string()));
+        assert!(!argv.contains(&MULTILINE_PROMPT.to_string()));
+        assert!(!argv.iter().any(|a| a.contains('\n')));
+    }
+
+    #[test]
+    fn cursor_omits_prompt_arg_when_prompt_via_stdin() {
+        let args = stdin_test_args("cursor", MULTILINE_PROMPT);
+        let mut argv = Vec::new();
+        super::build_cursor_command(&mut argv, &args, true);
+
+        assert!(argv.contains(&"agent".to_string()));
+        assert!(argv.contains(&"-p".to_string()));
+        assert!(!argv.contains(&MULTILINE_PROMPT.to_string()));
+        assert!(!argv.iter().any(|a| a.contains('\n')));
+    }
+
+    #[test]
+    fn opencode_omits_message_and_keeps_single_line_title_when_prompt_via_stdin() {
+        let args = stdin_test_args("opencode", MULTILINE_PROMPT);
+        let mut argv = Vec::new();
+        super::build_opencode_command(&mut argv, &args, true);
+
+        assert!(argv.contains(&"run".to_string()));
+        assert!(argv.contains(&"--title".to_string()));
+        assert!(!argv.contains(&MULTILINE_PROMPT.to_string()));
+        // Both the omitted message and the sanitized title must be newline-free.
+        assert!(!argv.iter().any(|a| a.contains('\n')));
+    }
+
+    #[test]
+    fn qodercli_omits_prompt_arg_when_prompt_via_stdin() {
+        let args = stdin_test_args("qodercli", MULTILINE_PROMPT);
+        let mut argv = Vec::new();
+        super::build_qodercli_command(&mut argv, &args, true);
+
+        assert!(argv.contains(&"-p".to_string()));
+        assert!(!argv.contains(&MULTILINE_PROMPT.to_string()));
+        assert!(!argv.iter().any(|a| a.contains('\n')));
     }
 }
 
