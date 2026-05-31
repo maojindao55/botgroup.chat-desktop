@@ -1,6 +1,6 @@
 [package]
 name = "botgroup-chat-desktop"
-version = "1.0.10"
+version = "1.0.11"
 description = "BotGroup.Chat - AI Group Chat Desktop App"
 authors = ["BotGroup.Chat Team"]
 edition = "2021"
