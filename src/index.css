@@ -8,26 +8,28 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 240 5.9% 10%;
+    /* Warm-neutral palette (hue ~24-30) to harmonize with the orange brand */
+    --background: 30 25% 99%;
+    --foreground: 20 10% 10%;
     --card: 0 0% 100%;
-    --card-foreground: 240 5.9% 10%;
+    --card-foreground: 20 10% 10%;
     --popover: 0 0% 100%;
-    --popover-foreground: 240 5.9% 10%;
-    --primary: 240 5.9% 10%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
+    --popover-foreground: 20 10% 10%;
+    --primary: 20 10% 10%;
+    --primary-foreground: 30 25% 98%;
+    --secondary: 30 12% 96%;
+    --secondary-foreground: 20 10% 12%;
+    --muted: 30 12% 96%;
+    --muted-foreground: 25 6% 44%;
+    --accent: 30 12% 95%;
+    --accent-foreground: 20 10% 12%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 240 5.9% 10%;
-    --chart-1: 12 76% 61%;
+    --border: 28 12% 90%;
+    --input: 28 12% 90%;
+    /* Focus ring tied to the orange brand */
+    --ring: 24 100% 50%;
+    --chart-1: 24 95% 53%;
     --chart-2: 173 58% 39%;
     --chart-3: 197 37% 24%;
     --chart-4: 43 74% 66%;
@@ -36,26 +38,28 @@
   }
 
   .dark {
-    --background: 240 5% 7.5%;
-    --foreground: 240 5% 90%;
-    --card: 240 7% 11%;
-    --card-foreground: 240 5% 90%;
-    --popover: 240 7% 11%;
-    --popover-foreground: 240 5% 90%;
-    --primary: 240 5% 90%;
-    --primary-foreground: 240 5% 7.5%;
-    --secondary: 240 6% 14%;
-    --secondary-foreground: 240 5% 90%;
-    --muted: 240 6% 14%;
-    --muted-foreground: 240 5% 65%;
-    --accent: 240 6% 14%;
-    --accent-foreground: 240 5% 90%;
+    /* Warm-neutral dark palette to harmonize with the orange brand */
+    --background: 24 8% 7%;
+    --foreground: 30 8% 92%;
+    --card: 24 7% 10%;
+    --card-foreground: 30 8% 92%;
+    --popover: 24 7% 10%;
+    --popover-foreground: 30 8% 92%;
+    --primary: 30 8% 92%;
+    --primary-foreground: 24 8% 7%;
+    --secondary: 24 6% 14%;
+    --secondary-foreground: 30 8% 92%;
+    --muted: 24 6% 14%;
+    --muted-foreground: 30 6% 64%;
+    --accent: 24 6% 14%;
+    --accent-foreground: 30 8% 92%;
     --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 240 5% 90%;
-    --border: 240 7% 18%;
-    --input: 240 7% 18%;
-    --ring: 240 5% 65%;
-    --chart-1: 220 70% 50%;
+    --destructive-foreground: 30 8% 92%;
+    --border: 24 6% 18%;
+    --input: 24 6% 18%;
+    /* Focus ring tied to the orange brand (slightly brighter for dark) */
+    --ring: 24 100% 55%;
+    --chart-1: 24 95% 58%;
     --chart-2: 160 60% 45%;
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;
@@ -69,13 +73,20 @@
   }
   * {
     @apply border-border;
-    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+      'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', '微软雅黑', 'Noto Sans SC',
+      'Noto Sans CJK SC', 'WenQuanYi Micro Hei', Helvetica, Arial, sans-serif,
+      'Apple Color Emoji', 'Segoe UI Emoji';
   }
   code, pre, kbd, samp, .font-mono {
-    font-family: 'JetBrains Mono', Menlo, Monaco, Consolas, "Courier New", monospace !important;
+    font-family: 'JetBrains Mono', Menlo, Monaco, Consolas, "Courier New",
+      'PingFang SC', 'Microsoft YaHei', monospace !important;
   }
   body {
     @apply bg-background text-foreground antialiased;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: 'liga' 1, 'calt' 1, 'kern' 1;
+    -webkit-tap-highlight-color: transparent;
   }
 }
 
@@ -107,18 +118,18 @@
   padding: 8px 12px;
   margin: 8px 0;
   font-size: 12px !important;
-  color: #8c95a5 !important;
+  color: #857f78 !important;
 }
 
 .dark .chat-message details {
   background-color: rgba(26, 26, 30, 0.3) !important;
   border-color: rgba(62, 62, 69, 0.4) !important;
-  color: #7c8491 !important;
+  color: #948d85 !important;
 }
 
 .chat-message details summary {
   font-weight: 400;
-  color: #8c95a5 !important;
+  color: #857f78 !important;
   outline: none;
   cursor: pointer;
   user-select: none;
@@ -126,7 +137,7 @@
 }
 
 .dark .chat-message details summary {
-  color: #7c8491 !important;
+  color: #948d85 !important;
 }
 
 .chat-message details[open] > summary {
@@ -155,7 +166,7 @@
 .chat-message details blockquote,
 .chat-message details blockquote p,
 .chat-message details a {
-  color: #8c95a5 !important;
+  color: #857f78 !important;
   font-size: 12px !important;
   font-weight: 400 !important;
   line-height: 1.5 !important;
@@ -170,7 +181,7 @@
 .dark .chat-message details blockquote,
 .dark .chat-message details blockquote p,
 .dark .chat-message details a {
-  color: #7c8491 !important;
+  color: #948d85 !important;
   font-size: 12px !important;
   font-weight: 400 !important;
 }
@@ -310,15 +321,15 @@
 .dark .ant-highlighter-shiki,
 .dark .ant-highlighter-filled,
 .dark [class*="ant-highlighter"] {
-  background-color: #202024 !important;
-  border: 1px solid #2e2e33 !important;
+  background-color: #211f1d !important;
+  border: 1px solid #322f2c !important;
 }
 
 /* Inline code styling overrides */
 .dark :not(pre) > code {
-  background-color: #2a2a30 !important;
+  background-color: #2b2825 !important;
   color: #ff7820 !important;
-  border: 1px solid #3e3e45 !important;
+  border: 1px solid #3d3a36 !important;
   padding: 2px 6px !important;
   border-radius: 6px !important;
   font-size: 0.9em !important;
@@ -326,9 +337,9 @@
 
 /* Light mode inline code styling overrides */
 :not(pre) > code {
-  background-color: #f4f4f5 !important;
+  background-color: #f5f5f4 !important;
   color: #ea580c !important;
-  border: 1px solid #e4e4e7 !important;
+  border: 1px solid #e7e5e4 !important;
   padding: 2px 6px !important;
   border-radius: 6px !important;
   font-size: 0.9em !important;
