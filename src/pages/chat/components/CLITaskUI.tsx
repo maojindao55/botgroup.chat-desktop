@@ -27,6 +27,7 @@ import {
 } from '@/lib/theme';
 import { request } from '@/utils/request';
 import { executeCLIStrategy } from '@/engine/cliEngine';
+import { preflightCheckCliAgents, formatCliPreflightMessage } from '@/engine/cliPreflight';
 import { isCodeChangeIntent } from '@/engine/cliIntent';
 import { buildCliUserPrompt } from '@/engine/cliPrompt';
 import { resolveCliToolSessionKey, withCliToolSession } from '@/engine/cliToolSessions';
@@ -996,6 +997,19 @@ const CLITaskUI = ({
         taskId: developmentTask.id,
         role: 'system',
         content: t('cli:taskUI.system.discussionReadOnly'),
+        isError: true,
+      });
+      return;
+    }
+
+    // 发送前 pre-flight：本地未安装对应 CLI 时阻止启动并给出安装引导
+    const preflight = await preflightCheckCliAgents(activeAgents);
+    if (!preflight.ok) {
+      appendMessage(developmentTask.id, {
+        id: `sys-${Date.now()}`,
+        taskId: developmentTask.id,
+        role: 'system',
+        content: formatCliPreflightMessage(preflight.missing),
         isError: true,
       });
       return;

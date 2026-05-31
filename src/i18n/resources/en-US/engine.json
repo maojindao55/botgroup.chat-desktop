@@ -26,6 +26,12 @@
     "agentReadonlyFailed": "Read-only environment failed for agent {{name}}. Please retry.",
     "discussionReadonlyFailed": "Could not create read-only environment for discussion: {{message}}"
   },
+  "preflight": {
+    "header": "⚠️ The following CLIs were not found on this machine, so the task was blocked. Install them in your terminal and retry:",
+    "item": "• {{label}} (command `{{binary}}`, members: {{agents}})",
+    "install": "  Install: `{{command}}`",
+    "docs": "  Docs: {{url}}"
+  },
   "cliStageLabels": {
     "规划": "Planning",
     "实现": "Implementation",

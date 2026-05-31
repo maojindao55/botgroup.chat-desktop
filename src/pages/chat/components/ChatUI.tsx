@@ -15,6 +15,7 @@ import { BRAND_ON_PRIMARY, brandPrimaryButtonStyle } from '@/lib/theme';
 import { request } from '@/utils/request';
 import { normalizeDesktopUser } from '@/utils/userAvatar';
 import { executeCLIStrategy } from '@/engine/cliEngine';
+import { preflightCheckCliAgents, formatCliPreflightMessage } from '@/engine/cliPreflight';
 import { isCodeChangeIntent } from '@/engine/cliIntent';
 import { buildCliUserPrompt } from '@/engine/cliPrompt';
 import { cliToolSessionKey, withCliToolSession } from '@/engine/cliToolSessions';
@@ -1221,6 +1222,21 @@ const ChatUI = () => {
         )
         : undefined;
       if (!agent) throw new Error(t('chat:errors.memberNotFound'));
+
+      // 发送前 pre-flight：本地未安装对应 CLI 时阻止重试并给出安装引导
+      const preflight = await preflightCheckCliAgents([agent]);
+      if (!preflight.ok) {
+        const systemMsg = {
+          id: `sys-${Date.now()}`,
+          sender: { id: 'sys', name: t('chat:systemSender') },
+          content: formatCliPreflightMessage(preflight.missing),
+          isAI: true,
+          isError: true,
+        };
+        setMessages(prev => [...prev, systemMsg]);
+        return;
+      }
+
       if (approvalMode === 'ask') {
         const confirmed = window.confirm(t('chat:confirmExecuteSingle', {
           name: agent.name,
@@ -1351,6 +1367,21 @@ const ChatUI = () => {
         id: `sys-${Date.now()}`,
         sender: { id: 'sys', name: t('chat:systemSender') },
         content: t('chat:messages.readOnlyDiscussionHint'),
+        isAI: true,
+        isError: true,
+      };
+      setMessages(prev => [...prev, systemMsg]);
+      setIsLoading(false);
+      return;
+    }
+
+    // 发送前 pre-flight：本地未安装对应 CLI 时阻止启动并给出安装引导
+    const preflight = await preflightCheckCliAgents(activeAgents);
+    if (!preflight.ok) {
+      const systemMsg = {
+        id: `sys-${Date.now()}`,
+        sender: { id: 'sys', name: t('chat:systemSender') },
+        content: formatCliPreflightMessage(preflight.missing),
         isAI: true,
         isError: true,
       };
