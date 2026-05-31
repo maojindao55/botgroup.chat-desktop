@@ -318,25 +318,6 @@ const useStyles = createStyles(({ token, css }) => ({
     font-family: ${token.fontFamilyCode} !important;
     font-size: 12px !important;
   `,
-  agentChipRow: css`
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-top: 8px;
-  `,
-  agentChip: css`
-    border: 1px solid ${token.colorBorderSecondary};
-    background: ${token.colorFillTertiary};
-    border-radius: 999px;
-    padding: 2px 10px;
-    font-size: 11px;
-    cursor: pointer;
-    color: ${token.colorTextSecondary};
-    &:hover {
-      border-color: #ff6600;
-      color: #ff6600;
-    }
-  `,
   cliWorktreeInfo: css`
     margin-top: 8px;
     padding: 8px 10px;
@@ -1318,19 +1299,6 @@ const CLITaskUI = ({
       toast.error(err instanceof Error ? err.message : t('cli:taskUI.toast.cleanupFailed'));
     }
   };
-
-  const insertAgentMention = (agentName: string) => {
-    const mention = `@${agentName} `;
-    setInputMessage(prev => (prev.trim() ? `${mention}${prev}` : mention));
-    inputRef.current?.focus();
-  };
-
-  const continueTaskAgents = useMemo(() => {
-    if (!selectedTask) return [];
-    return selectedTask.templateSnapshot.memberIds
-      .map(id => resolveEffectiveMember(aiMembers, id))
-      .filter(member => member && member.kind === 'cli');
-  }, [selectedTask, aiMembers]);
 
   const headerTeamMembers = useMemo(() => {
     const memberIds = selectedTask
@@ -2378,23 +2346,6 @@ const CLITaskUI = ({
                     )}
                   </div>
                 </div>
-                <div style={{ fontSize: 10, opacity: 0.5, marginTop: 6 }}>
-                  {t('cli:taskUI.compose.footerHint')}
-                </div>
-                {continueTaskAgents.length > 0 && (
-                  <div className={styles.agentChipRow}>
-                    {continueTaskAgents.map(member => (
-                      <button
-                        key={member.id}
-                        type="button"
-                        className={styles.agentChip}
-                        onClick={() => insertAgentMention(member.name)}
-                      >
-                        @{member.name}
-                      </button>
-                    ))}
-                  </div>
-                )}
               </div>
             )}
           </div>
