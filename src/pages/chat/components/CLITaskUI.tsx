@@ -54,6 +54,7 @@ import { AIMemberLibrary } from './AIMemberLibrary';
 import { useAIMemberStore } from '@/store/aiMemberStore';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
 import { resolveEffectiveMember } from '@/utils/aiMemberDisplay';
+import { shouldBlockMentionAutocompleteSend } from '@/utils/mentionAutocomplete';
 import type { Group, CLIGroup } from '@/config/groups';
 import { resolveExecutionPlan } from '@/config/groups';
 import {
@@ -1353,6 +1354,10 @@ const CLITaskUI = ({
       inputRef.current?.setSelectionRange(caret, caret);
     },
   });
+  const handleTaskComposeSend = () => {
+    if (shouldBlockMentionAutocompleteSend(taskMention.open)) return;
+    handleSendMessage();
+  };
 
   const openTaskLog = (message: ReturnType<typeof taskMessageToChatRow>) => {
     if (!message.taskId) return;
@@ -2352,7 +2357,7 @@ const CLITaskUI = ({
                       className={styles.composeTextarea}
                       value={inputMessage}
                       onInput={setInputMessage}
-                      onSend={handleSendMessage}
+                      onSend={handleTaskComposeSend}
                       onKeyDown={(event) => {
                         taskMention.handleKeyDown(event);
                       }}

@@ -70,4 +70,9 @@ const candidates = [
   });
 }
 
+{
+  assert.equal(mod.shouldBlockMentionAutocompleteSend(true), true);
+  assert.equal(mod.shouldBlockMentionAutocompleteSend(false), false);
+}
+
 console.log('mentionAutocomplete.test.mjs: ok');

@@ -63,3 +63,7 @@ export function applyMention(
     caret: activeMention.start + mention.length,
   };
 }
+
+export function shouldBlockMentionAutocompleteSend(open: boolean): boolean {
+  return open;
+}
