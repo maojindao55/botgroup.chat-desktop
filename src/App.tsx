@@ -9,7 +9,7 @@ import { useLocale } from './hooks/use-locale';
 import { useTheme } from './hooks/use-theme';
 import { getAntdLocale } from './i18n/antdLocale';
 import { i18n } from './i18n';
-import { brandThemeTokens, darkThemeTokens, lobeCustomToken } from './lib/theme';
+import { brandThemeTokens, darkThemeTokens, lightThemeTokens, lobeCustomToken } from './lib/theme';
 
 function App() {
   console.log("App rendering"); // 添加日志
@@ -20,7 +20,7 @@ function App() {
   const customThemeConfig = {
     token: {
       ...brandThemeTokens,
-      ...(resolvedTheme === 'dark' ? darkThemeTokens : {}),
+      ...(resolvedTheme === 'dark' ? darkThemeTokens : lightThemeTokens),
     },
   };
 
