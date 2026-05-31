@@ -23,6 +23,7 @@ assert.equal(mod.supportsCliToolSession('codex'), true);
 assert.equal(mod.supportsCliToolSession('claude'), true);
 assert.equal(mod.supportsCliToolSession('opencode'), true);
 assert.equal(mod.supportsCliToolSession('cursor'), true);
+assert.equal(mod.getCLIAdapterDefinition('cursor').defaultBinary, 'cursor-agent');
 assert.equal(mod.getCLIAdapterDefinition('qodercli').label, 'Qoder CLI');
 assert.equal(mod.getCLIAdapterDefinition('qodercli').defaultBinary, 'qodercli');
 assert.equal(mod.getCLIAdapterDefinition('qodercli').streamMode, 'qoder-json');

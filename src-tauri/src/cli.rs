@@ -900,7 +900,7 @@ const CLI_ADAPTER_DEFINITIONS: &[CliAdapterDefinition] = &[
     CliAdapterDefinition { id: "codex", default_binary: Some("codex") },
     CliAdapterDefinition { id: "opencode", default_binary: Some("opencode") },
     CliAdapterDefinition { id: "claude", default_binary: Some("claude") },
-    CliAdapterDefinition { id: "cursor", default_binary: Some("cursor") },
+    CliAdapterDefinition { id: "cursor", default_binary: Some("cursor-agent") },
     CliAdapterDefinition { id: "qodercli", default_binary: Some("qodercli") },
 ];
 
@@ -1027,7 +1027,6 @@ fn build_claude_command(argv: &mut Vec<String>, args: &CliRunArgs, prompt_via_st
 }
 
 fn build_cursor_command(argv: &mut Vec<String>, args: &CliRunArgs, prompt_via_stdin: bool) {
-    argv.push("agent".to_string());
     argv.push("-p".to_string());
     if !has_extra_arg(args, "--output-format") && !has_extra_arg_prefix(args, "--output-format=") {
         argv.push("--output-format".to_string());
@@ -1215,26 +1214,29 @@ fn extend_path_with_common_dirs() {
 fn resolve_cli_binary(binary: &str) -> Result<std::path::PathBuf, String> {
     #[cfg(test)]
     {
-        return Ok(std::path::PathBuf::from(binary));
+        Ok(std::path::PathBuf::from(binary))
     }
 
-    let path = std::path::Path::new(binary);
-    if path.is_absolute() {
-        if path.exists() {
-            return Ok(path.to_path_buf());
+    #[cfg(not(test))]
+    {
+        let path = std::path::Path::new(binary);
+        if path.is_absolute() {
+            if path.exists() {
+                return Ok(path.to_path_buf());
+            }
+            return Err(format!(
+                "CLI binary not found at '{}'. Check the path in agent settings.",
+                binary
+            ));
         }
-        return Err(format!(
-            "CLI binary not found at '{}'. Check the path in agent settings.",
-            binary
-        ));
-    }
 
-    which::which(binary).map_err(|_| {
-        format!(
-            "CLI binary '{}' not found in PATH. Install it in your terminal, or set an absolute path in the agent's binary field (e.g. run `which {}` in Terminal).",
-            binary, binary
-        )
-    })
+        which::which(binary).map_err(|_| {
+            format!(
+                "CLI binary '{}' not found in PATH. Install it in your terminal, or set an absolute path in the agent's binary field (e.g. run `which {}` in Terminal).",
+                binary, binary
+            )
+        })
+    }
 }
 
 /// Resolve the home directory used to locate per-user CLI config (e.g. Codex's
@@ -1557,7 +1559,7 @@ mod tests {
         assert_eq!(adapter_definition("codex").and_then(|d| d.default_binary), Some("codex"));
         assert_eq!(adapter_definition("opencode").and_then(|d| d.default_binary), Some("opencode"));
         assert_eq!(adapter_definition("claude").and_then(|d| d.default_binary), Some("claude"));
-        assert_eq!(adapter_definition("cursor").and_then(|d| d.default_binary), Some("cursor"));
+        assert_eq!(adapter_definition("cursor").and_then(|d| d.default_binary), Some("cursor-agent"));
         assert_eq!(adapter_definition("qodercli").and_then(|d| d.default_binary), Some("qodercli"));
         assert!(adapter_definition("unknown").is_none());
     }
@@ -1826,7 +1828,8 @@ mod tests {
 
         let rendered = format!("{:?}", cmd);
 
-        assert!(rendered.contains("\"agent\""));
+        assert!(rendered.contains("\"cursor-agent\""));
+        assert!(!rendered.contains("\"agent\" \"-p\""));
         assert!(rendered.contains("\"-p\""));
         assert!(rendered.contains("\"--output-format\""));
         assert!(rendered.contains("\"stream-json\""));
@@ -2176,8 +2179,8 @@ mod tests {
         let mut argv = Vec::new();
         super::build_cursor_command(&mut argv, &args, true);
 
-        assert!(argv.contains(&"agent".to_string()));
         assert!(argv.contains(&"-p".to_string()));
+        assert!(!argv.contains(&"agent".to_string()));
         assert!(!argv.contains(&MULTILINE_PROMPT.to_string()));
         assert!(!argv.iter().any(|a| a.contains('\n')));
     }

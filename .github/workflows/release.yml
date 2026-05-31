@@ -137,3 +137,16 @@ jobs:
           Copy-Item $file.FullName "${{ matrix.asset_name }}"
           gh release upload "${{ github.ref_name }}" "${{ matrix.asset_name }}" `
             --repo "${{ github.repository }}" --clobber
+
+  publish-release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release edit "${{ github.ref_name }}" \
+            --repo "${{ github.repository }}" \
+            --draft=false \
+            --latest

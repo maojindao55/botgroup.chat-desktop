@@ -61,7 +61,7 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
   {
     id: 'cursor',
     label: 'Cursor Agent',
-    defaultBinary: 'cursor',
+    defaultBinary: 'cursor-agent',
     streamMode: 'cursor-json',
     commandGroup: 'cursor',
     capabilities: { toolSession: true },
