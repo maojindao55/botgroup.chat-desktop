@@ -27,6 +27,7 @@ import {
 } from '@/lib/theme';
 import { request } from '@/utils/request';
 import { executeCLIStrategy } from '@/engine/cliEngine';
+import { decideCliPreflight } from '@/engine/cliPreflight';
 import { isCodeChangeIntent } from '@/engine/cliIntent';
 import { buildCliUserPrompt } from '@/engine/cliPrompt';
 import { resolveCliToolSessionKey, withCliToolSession } from '@/engine/cliToolSessions';
@@ -40,6 +41,11 @@ import CLIRaceResultsDrawer from './CLIRaceResultsDrawer';
 import CLITaskLogModal from './CLITaskLogModal';
 import CLITaskSidebar from './CLITaskSidebar';
 import CreateGroupWizard from './CreateGroupWizard';
+import {
+  MentionSuggestionPanel,
+  MentionTextArea,
+  useMentionAutocomplete,
+} from './MentionAutocomplete';
 import Sidebar from './Sidebar';
 import { AdBanner, AdBannerMobile } from './AdSection';
 import { useUserStore } from '@/store/userStore';
@@ -48,7 +54,9 @@ import { AIMemberLibrary } from './AIMemberLibrary';
 import { useAIMemberStore } from '@/store/aiMemberStore';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
 import { resolveEffectiveMember } from '@/utils/aiMemberDisplay';
+import { shouldBlockMentionAutocompleteSend } from '@/utils/mentionAutocomplete';
 import type { Group, CLIGroup } from '@/config/groups';
+import { resolveExecutionPlan } from '@/config/groups';
 import {
   templateSnapshotToCLIGroup,
   cliTaskMemberSnapshotToAgent,
@@ -309,25 +317,6 @@ const useStyles = createStyles(({ token, css }) => ({
     min-width: 160px;
     font-family: ${token.fontFamilyCode} !important;
     font-size: 12px !important;
-  `,
-  agentChipRow: css`
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-top: 8px;
-  `,
-  agentChip: css`
-    border: 1px solid ${token.colorBorderSecondary};
-    background: ${token.colorFillTertiary};
-    border-radius: 999px;
-    padding: 2px 10px;
-    font-size: 11px;
-    cursor: pointer;
-    color: ${token.colorTextSecondary};
-    &:hover {
-      border-color: #ff6600;
-      color: #ff6600;
-    }
   `,
   cliWorktreeInfo: css`
     margin-top: 8px;
@@ -1001,6 +990,29 @@ const CLITaskUI = ({
       return;
     }
 
+    // 发送前 pre-flight：本地未安装对应 CLI 时的处理
+    // - 独立模式（router/race/sequential/mapreduce）：自动跳过未安装成员，用其余成员继续
+    // - 角色型（pipeline/review/discussion）：任一缺失则整单拦截
+    const interchangeable =
+      resolveExecutionPlan({ strategy: snapshot.strategy, executionPlan: snapshot.executionPlan })
+        .collaboration === 'independent';
+    const preflight = await decideCliPreflight(activeAgents, { interchangeable });
+    if (preflight.message) {
+      const blocked = preflight.action === 'block';
+      appendMessage(developmentTask.id, {
+        id: `sys-${Date.now()}`,
+        taskId: developmentTask.id,
+        role: 'system',
+        content: preflight.message,
+        isError: preflight.isError,
+        ...(blocked ? { status: 'failed' as CLITaskStatus } : {}),
+      });
+    }
+    if (preflight.action === 'block') {
+      return;
+    }
+    activeAgents = preflight.agents;
+
     if (snapshot.approvalMode === 'ask') {
       const names = activeAgents.map(a => a.name).join('、');
       const confirmed = window.confirm(
@@ -1288,19 +1300,6 @@ const CLITaskUI = ({
     }
   };
 
-  const insertAgentMention = (agentName: string) => {
-    const mention = `@${agentName} `;
-    setInputMessage(prev => (prev.trim() ? `${mention}${prev}` : mention));
-    inputRef.current?.focus();
-  };
-
-  const continueTaskAgents = useMemo(() => {
-    if (!selectedTask) return [];
-    return selectedTask.templateSnapshot.memberIds
-      .map(id => resolveEffectiveMember(aiMembers, id))
-      .filter(member => member && member.kind === 'cli');
-  }, [selectedTask, aiMembers]);
-
   const headerTeamMembers = useMemo(() => {
     const memberIds = selectedTask
       ? selectedTask.templateSnapshot.memberIds
@@ -1313,6 +1312,20 @@ const CLITaskUI = ({
         return { id: agent.id, name: agent.name, avatar: agent.avatar };
       });
   }, [selectedTask, draftTemplate, aiMembers]);
+  const taskMention = useMentionAutocomplete({
+    value: inputMessage,
+    candidates: headerTeamMembers,
+    onChange: setInputMessage,
+    getCaret: () => inputRef.current?.selectionStart ?? inputMessage.length,
+    setCaret: (caret) => {
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(caret, caret);
+    },
+  });
+  const handleTaskComposeSend = () => {
+    if (shouldBlockMentionAutocompleteSend(taskMention.open)) return;
+    handleSendMessage();
+  };
 
   const openTaskLog = (message: ReturnType<typeof taskMessageToChatRow>) => {
     if (!message.taskId) return;
@@ -1980,9 +1993,10 @@ const CLITaskUI = ({
 
                     <div className={styles.formField}>
                       <span className={styles.formLabel}>{t('cli:taskUI.create.promptLabel')}</span>
-                      <AntdInput.TextArea
+                      <MentionTextArea
                         value={inputMessage}
-                        onChange={(e) => setInputMessage(e.target.value)}
+                        onChange={setInputMessage}
+                        candidates={headerTeamMembers}
                         placeholder={t('cli:taskUI.create.promptPlaceholder')}
                         autoSize={{ minRows: 4, maxRows: 8 }}
                         disabled={isComposeBusy}
@@ -2297,46 +2311,41 @@ const CLITaskUI = ({
 
             {selectedTask && (
               <div className={styles.inputArea}>
-                <div className={styles.composeBox}>
-                  <ChatInputArea.Inner
-                    ref={inputRef}
-                    className={styles.composeTextarea}
-                    value={inputMessage}
-                    onInput={setInputMessage}
-                    onSend={handleSendMessage}
-                    loading={isComposeBusy}
-                    placeholder={t('cli:taskUI.compose.placeholder')}
-                    disabled={isComposeBusy}
-                    autoSize={{ minRows: 4, maxRows: 12 }}
-                    variant="borderless"
+                <div style={{ position: 'relative' }}>
+                  <MentionSuggestionPanel
+                    open={taskMention.open}
+                    suggestions={taskMention.suggestions}
+                    selectedIndex={taskMention.selectedIndex}
+                    onHover={taskMention.setSelectedIndex}
+                    onSelect={taskMention.selectCandidate}
                   />
-                  {renderComposeSendBar(
-                    t('cli:taskUI.compose.send'),
-                    <>
-                      <Tag color="orange">{selectedTask.templateSnapshot.name}</Tag>
-                      <span className={styles.composeHint}>
-                        {t('cli:taskUI.compose.hint')}
-                      </span>
-                    </>,
-                  )}
-                </div>
-                <div style={{ fontSize: 10, opacity: 0.5, marginTop: 6 }}>
-                  {t('cli:taskUI.compose.footerHint')}
-                </div>
-                {continueTaskAgents.length > 0 && (
-                  <div className={styles.agentChipRow}>
-                    {continueTaskAgents.map(member => (
-                      <button
-                        key={member.id}
-                        type="button"
-                        className={styles.agentChip}
-                        onClick={() => insertAgentMention(member.name)}
-                      >
-                        @{member.name}
-                      </button>
-                    ))}
+                  <div className={styles.composeBox}>
+                    <ChatInputArea.Inner
+                      ref={inputRef}
+                      className={styles.composeTextarea}
+                      value={inputMessage}
+                      onInput={setInputMessage}
+                      onSend={handleTaskComposeSend}
+                      onKeyDown={(event) => {
+                        taskMention.handleKeyDown(event);
+                      }}
+                      loading={isComposeBusy}
+                      placeholder={t('cli:taskUI.compose.placeholder')}
+                      disabled={isComposeBusy}
+                      autoSize={{ minRows: 4, maxRows: 12 }}
+                      variant="borderless"
+                    />
+                    {renderComposeSendBar(
+                      t('cli:taskUI.compose.send'),
+                      <>
+                        <Tag color="orange">{selectedTask.templateSnapshot.name}</Tag>
+                        <span className={styles.composeHint}>
+                          {t('cli:taskUI.compose.hint')}
+                        </span>
+                      </>,
+                    )}
                   </div>
-                )}
+                </div>
               </div>
             )}
           </div>

@@ -5,7 +5,7 @@
  * - cli → CLIChatUI (复用原有 CLI 逻辑)
  * - agent → AgentChatUI
  */
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useTranslation } from 'react-i18next';
 import { Send, Settings2, ChevronLeft, Bot, Terminal, PanelLeftOpen } from "lucide-react";
 import { Tooltip, Input as AntdInput, Button as AntdButton, Modal } from 'antd';
@@ -15,6 +15,7 @@ import { BRAND_ON_PRIMARY, brandPrimaryButtonStyle } from '@/lib/theme';
 import { request } from '@/utils/request';
 import { normalizeDesktopUser } from '@/utils/userAvatar';
 import { executeCLIStrategy } from '@/engine/cliEngine';
+import { decideCliPreflight } from '@/engine/cliPreflight';
 import { isCodeChangeIntent } from '@/engine/cliIntent';
 import { buildCliUserPrompt } from '@/engine/cliPrompt';
 import { cliToolSessionKey, withCliToolSession } from '@/engine/cliToolSessions';
@@ -35,6 +36,7 @@ import { useAIMemberStore } from '@/store/aiMemberStore';
 import { resolveEffectiveMember } from '@/utils/aiMemberDisplay';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
 import type { Group, AIGroup, CLIGroup, AgentGroup, CLIStrategy, CLIExecutionPlan, CLISessionPolicy } from '@/config/groups';
+import { resolveExecutionPlan } from '@/config/groups';
 import { supportsCliToolSession } from '@/config/cliAdapters';
 import { openPath } from '@tauri-apps/plugin-opener';
 
@@ -51,6 +53,7 @@ import {
   upsertCustomGroup,
 } from '@/config/groupStorage';
 import ConversationSidebar from './ConversationSidebar';
+import { MentionTextArea } from './MentionAutocomplete';
 import { useChatSessionStore } from '@/store/chatSessionStore';
 import {
   newChatMessageId,
@@ -504,6 +507,14 @@ const ChatUI = () => {
   };
 
   const settingsPanelWidth = group?.type === 'agent' ? 440 : 400;
+  const mentionCandidates = useMemo(
+    () => groupAiCharacters.map(character => ({
+      id: character.id,
+      name: character.name,
+      avatar: character.avatar,
+    })),
+    [groupAiCharacters],
+  );
 
   const handleToggleSettings = (nextOpen: boolean) => {
     if (nextOpen === showSettings) return;
@@ -1221,6 +1232,21 @@ const ChatUI = () => {
         )
         : undefined;
       if (!agent) throw new Error(t('chat:errors.memberNotFound'));
+
+      // 发送前 pre-flight：单成员重试，未安装则直接拦截并给出安装引导
+      const preflight = await decideCliPreflight([agent], { interchangeable: false });
+      if (preflight.action === 'block') {
+        const sysMsg = {
+          id: `sys-${Date.now()}`,
+          sender: { id: 'sys', name: t('chat:systemSender') },
+          content: preflight.message,
+          isAI: true,
+          isError: true,
+        };
+        setMessages(prev => [...prev, sysMsg]);
+        return;
+      }
+
       if (approvalMode === 'ask') {
         const confirmed = window.confirm(t('chat:confirmExecuteSingle', {
           name: agent.name,
@@ -1324,7 +1350,7 @@ const ChatUI = () => {
     const taskPrompt = buildCliUserPrompt(promptText, workspacePath);
 
     const memberIds = (group as CLIGroup).memberIds || (group as CLIGroup).members || [];
-    const activeAgents = memberIds
+    let activeAgents = memberIds
       .map(id => resolveEffectiveMember(aiMembers, id))
       .filter(m => m && m.kind === 'cli' && !mutedUsers.includes(m.id))
       .map(m => mapAIMemberToLegacy(m) as CLIAgent)
@@ -1358,6 +1384,29 @@ const ChatUI = () => {
       setIsLoading(false);
       return;
     }
+
+    // 发送前 pre-flight：本地未安装对应 CLI 时的处理
+    // - 独立模式（router/race/sequential/mapreduce）：自动跳过未安装成员，用其余成员继续
+    // - 角色型（pipeline/review/discussion）：任一缺失则整单拦截
+    const interchangeable =
+      resolveExecutionPlan({ strategy: cliStrategy, executionPlan: cliExecutionPlan })
+        .collaboration === 'independent';
+    const preflight = await decideCliPreflight(activeAgents, { interchangeable });
+    if (preflight.message) {
+      const sysMsg = {
+        id: `sys-${Date.now()}`,
+        sender: { id: 'sys', name: t('chat:systemSender') },
+        content: preflight.message,
+        isAI: true,
+        isError: preflight.isError,
+      };
+      setMessages(prev => [...prev, sysMsg]);
+    }
+    if (preflight.action === 'block') {
+      setIsLoading(false);
+      return;
+    }
+    activeAgents = preflight.agents;
 
     if (approvalMode === 'ask') {
       const names = activeAgents.map(a => a.name).join('、');
@@ -2002,10 +2051,12 @@ const ChatUI = () => {
             {/* Input Area */}
             <div className={styles.inputArea}>
               <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12 }}>
-                <AntdInput.TextArea
+                <MentionTextArea
                   value={inputMessage}
-                  onChange={(e) => setInputMessage(e.target.value)}
-                  onPressEnter={(e) => {
+                  onChange={setInputMessage}
+                  candidates={mentionCandidates}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter') return;
                     if (!e.shiftKey) {
                       e.preventDefault();
                       handleSendMessage();
@@ -2013,7 +2064,8 @@ const ChatUI = () => {
                   }}
                   autoSize={{ minRows: 1, maxRows: 6 }}
                   placeholder={isCLIGroup ? t('chat:placeholders.cliInput') : t('chat:placeholders.aiInput')}
-                  style={{ flex: 1, borderRadius: 12 }}
+                  style={{ borderRadius: 12 }}
+                  containerStyle={{ flex: 1 }}
                 />
                 <AntdButton
                   onClick={handleSendMessage}

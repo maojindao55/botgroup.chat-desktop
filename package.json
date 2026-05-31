@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "test:cli": "node src/config/cliAdapters.test.mjs && node src/config/aiMembers.test.mjs && node src/config/cliTasks.test.mjs && node src/utils/cliTaskTitleCandidates.test.mjs && node src/engine/cliEngine.modes.test.mjs && node src/engine/cliWorkflowModes.test.mjs && node src/engine/cliIntent.test.mjs && node src/engine/cliPrompt.test.mjs && node src/engine/cliToolSessions.test.mjs",
+    "test:cli": "node src/config/cliAdapters.test.mjs && node src/config/aiMembers.test.mjs && node src/config/cliTasks.test.mjs && node src/utils/cliTaskTitleCandidates.test.mjs && node src/engine/cliEngine.modes.test.mjs && node src/engine/cliWorkflowModes.test.mjs && node src/engine/cliIntent.test.mjs && node src/engine/cliPrompt.test.mjs && node src/engine/cliToolSessions.test.mjs && node src/engine/cliPreflight.test.mjs",
     "test:llm": "node src/utils/llmClient.test.mjs && node src/utils/cliOutput.test.mjs && node src/utils/opencodeStream.test.mjs && node src/utils/codexStream.test.mjs && node src/utils/claudeStream.test.mjs && node src/utils/cursorStream.test.mjs && node src/utils/qoderStream.test.mjs && node src/utils/cliStreamHandlers.test.mjs && node src/utils/lobehubAvatar.test.mjs && node src/utils/markdownContent.test.mjs",
     "test:product": "node src/config/groupProduct.test.mjs",
     "test:provider": "node src/pages/chat/components/ProviderEditor.test.mjs",

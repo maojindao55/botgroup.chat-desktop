@@ -342,6 +342,12 @@ assert.equal(
     mod.canMutateTask({ ...task, status: 'completed', messages: staleRunningFromEarlierRound }),
     true,
   );
+
+  const preflightBlockedBeforeAgentStart = [
+    { id: 'msg-user-1', taskId: task.id, role: 'user', content: '执行任务' },
+    { id: 'sys-preflight', taskId: task.id, role: 'system', content: 'CLI missing', isError: true, status: 'failed' },
+  ];
+  assert.equal(mod.deriveTaskStatus(preflightBlockedBeforeAgentStart), 'failed');
 }
 
 {

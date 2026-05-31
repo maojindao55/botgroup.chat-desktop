@@ -26,6 +26,13 @@
     "agentReadonlyFailed": "Agent {{name}} 的只读环境创建失败，请重试。",
     "discussionReadonlyFailed": "无法为讨论模式创建只读环境: {{message}}"
   },
+  "preflight": {
+    "header": "⚠️ 以下 CLI 未在本机检测到，已阻止任务启动。请先在终端安装后重试：",
+    "skippedHeader": "⚠️ 以下 CLI 未安装，已自动跳过对应成员，继续用其余已安装的 CLI 执行：",
+    "item": "• {{label}}（命令 `{{binary}}`，成员：{{agents}}）",
+    "install": "  安装：`{{command}}`",
+    "docs": "  文档：{{url}}"
+  },
   "cliStageLabels": {
     "规划": "规划",
     "实现": "实现",

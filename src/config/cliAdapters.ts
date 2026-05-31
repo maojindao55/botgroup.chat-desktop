@@ -26,6 +26,10 @@ export interface CLIAdapterDefinition {
   };
   toolSessionArgs?: string[];
   toolSessionArgPrefixes?: string[];
+  /** Shell command to install the CLI locally (shown in pre-flight guidance). */
+  installHint?: string;
+  /** Official installation / docs URL (shown in pre-flight guidance). */
+  docsUrl?: string;
 }
 
 export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
@@ -37,6 +41,8 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     commandGroup: 'codex',
     capabilities: { toolSession: true },
     toolSessionArgs: ['resume', '--last'],
+    installHint: 'npm install -g @openai/codex',
+    docsUrl: 'https://github.com/openai/codex',
   },
   {
     id: 'claude',
@@ -47,6 +53,8 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     capabilities: { toolSession: true },
     toolSessionArgs: ['--resume', '-r', '--continue', '-c', '--session-id'],
     toolSessionArgPrefixes: ['--resume=', '--session-id='],
+    installHint: 'npm install -g @anthropic-ai/claude-code',
+    docsUrl: 'https://docs.anthropic.com/en/docs/claude-code',
   },
   {
     id: 'opencode',
@@ -57,6 +65,8 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     capabilities: { toolSession: true, openCodeSessionTitle: true },
     toolSessionArgs: ['--session', '-s', '--continue', '-c'],
     toolSessionArgPrefixes: ['--session='],
+    installHint: 'npm install -g opencode-ai',
+    docsUrl: 'https://opencode.ai/docs',
   },
   {
     id: 'cursor',
@@ -67,6 +77,8 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     capabilities: { toolSession: true },
     toolSessionArgs: ['--resume', '--continue'],
     toolSessionArgPrefixes: ['--resume='],
+    installHint: 'curl https://cursor.com/install -fsS | bash',
+    docsUrl: 'https://docs.cursor.com/en/cli/installation',
   },
   {
     id: 'qodercli',
@@ -77,6 +89,7 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     capabilities: { toolSession: true },
     toolSessionArgs: ['-r', '--resume', '-c', '--continue'],
     toolSessionArgPrefixes: ['--resume='],
+    docsUrl: 'https://docs.qoder.com/en/cli',
   },
 ];
 
