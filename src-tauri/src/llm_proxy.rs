@@ -7,9 +7,14 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Clone, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum LlmEvent {
-    Token { content: String },
+    Token {
+        content: String,
+    },
     Done,
-    Error { message: String, status: Option<u16> },
+    Error {
+        message: String,
+        status: Option<u16>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -104,14 +109,8 @@ impl std::fmt::Display for LlmProxyError {
 
 fn inline_credentials_provided(args: &LlmChatStreamArgs) -> bool {
     args.provider_id.is_none()
-        && args
-            .base_url
-            .as_ref()
-            .is_some_and(|s| !s.trim().is_empty())
-        && args
-            .api_key
-            .as_ref()
-            .is_some_and(|k| !k.is_empty())
+        && args.base_url.as_ref().is_some_and(|s| !s.trim().is_empty())
+        && args.api_key.as_ref().is_some_and(|k| !k.is_empty())
 }
 
 fn resolve_endpoint_inline(args: &LlmChatStreamArgs) -> Result<(String, String), LlmProxyError> {
@@ -136,8 +135,8 @@ pub fn resolve_endpoint_with_provider(
 
     if let Some(provider_id) = &args.provider_id {
         let db_path = get_db_path(app);
-        let conn = Connection::open(&db_path)
-            .map_err(|e| LlmProxyError::BadRequest(e.to_string()))?;
+        let conn =
+            Connection::open(&db_path).map_err(|e| LlmProxyError::BadRequest(e.to_string()))?;
         let master = vault::load_master_key(app).map_err(LlmProxyError::BadRequest)?;
         return provider::load_provider_endpoint(&conn, &master, provider_id)
             .map_err(LlmProxyError::BadRequest);
@@ -162,10 +161,7 @@ pub fn resolve_provider_params(
             }
         }
     }
-    args.params
-        .as_ref()
-        .filter(|v| v.is_object())
-        .cloned()
+    args.params.as_ref().filter(|v| v.is_object()).cloned()
 }
 
 /// Keys that callers must never override via params (managed by the proxy).
@@ -299,20 +295,19 @@ pub async fn llm_chat_stream(app: AppHandle, args: LlmChatStreamArgs) -> Result<
     let app_bg = app.clone();
 
     tokio::spawn(async move {
-        let result = timeout(STREAM_TIMEOUT, stream_chat_completions(app_bg.clone(), args)).await;
+        let result = timeout(
+            STREAM_TIMEOUT,
+            stream_chat_completions(app_bg.clone(), args),
+        )
+        .await;
         match result {
             Ok(Ok(())) => {}
             Ok(Err(e)) => {
                 let (message, status) = match &e {
-                    LlmProxyError::Http { status, body } => {
-                        (body.clone(), Some(*status))
-                    }
+                    LlmProxyError::Http { status, body } => (body.clone(), Some(*status)),
                     other => (other.to_string(), None),
                 };
-                let _ = app_bg.emit(
-                    &event_name,
-                    LlmEvent::Error { message, status },
-                );
+                let _ = app_bg.emit(&event_name, LlmEvent::Error { message, status });
                 let _ = app_bg.emit(&event_name, LlmEvent::Done);
             }
             Err(_) => {
@@ -490,9 +485,7 @@ mod tests {
                    data: [DONE]\n\n";
         Mock::given(method("POST"))
             .and(path("/chat/completions"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_raw(sse, "text/event-stream"),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_raw(sse, "text/event-stream"))
             .mount(&server)
             .await;
 

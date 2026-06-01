@@ -32,87 +32,83 @@ pub(crate) mod db {
         "id, name, base_url, api_key_ref, models, source, icon_url, description, enabled, params, created_at, updated_at";
 
     fn row_to_provider(row: &rusqlite::Row<'_>) -> rusqlite::Result<Provider> {
-    let models_json: String = row.get(4)?;
-    let models: Vec<String> = serde_json::from_str(&models_json).map_err(|e| {
-        rusqlite::Error::FromSqlConversionFailure(
-            4,
-            rusqlite::types::Type::Text,
-            Box::new(e),
-        )
-    })?;
-    let enabled_int: i32 = row.get(8)?;
-    let params_json: Option<String> = row.get(9)?;
-    let params = params_json
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(|s| serde_json::from_str::<serde_json::Value>(s))
-        .transpose()
-        .map_err(|e| {
-            rusqlite::Error::FromSqlConversionFailure(
-                9,
-                rusqlite::types::Type::Text,
-                Box::new(e),
-            )
+        let models_json: String = row.get(4)?;
+        let models: Vec<String> = serde_json::from_str(&models_json).map_err(|e| {
+            rusqlite::Error::FromSqlConversionFailure(4, rusqlite::types::Type::Text, Box::new(e))
         })?;
-    Ok(Provider {
-        id: row.get(0)?,
-        name: row.get(1)?,
-        base_url: row.get(2)?,
-        api_key_ref: row.get(3)?,
-        models,
-        source: row.get(5)?,
-        icon_url: row.get(6)?,
-        description: row.get(7)?,
-        enabled: enabled_int != 0,
-        params,
-        created_at: row.get(10)?,
-        updated_at: row.get(11)?,
-    })
+        let enabled_int: i32 = row.get(8)?;
+        let params_json: Option<String> = row.get(9)?;
+        let params = params_json
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(|s| serde_json::from_str::<serde_json::Value>(s))
+            .transpose()
+            .map_err(|e| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    9,
+                    rusqlite::types::Type::Text,
+                    Box::new(e),
+                )
+            })?;
+        Ok(Provider {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            base_url: row.get(2)?,
+            api_key_ref: row.get(3)?,
+            models,
+            source: row.get(5)?,
+            icon_url: row.get(6)?,
+            description: row.get(7)?,
+            enabled: enabled_int != 0,
+            params,
+            created_at: row.get(10)?,
+            updated_at: row.get(11)?,
+        })
     }
 
     pub fn list_providers(conn: &Connection) -> Result<Vec<Provider>, String> {
-    let mut stmt = conn
-        .prepare(&format!(
-            "SELECT {SELECT_COLS} FROM providers ORDER BY created_at ASC"
-        ))
-        .map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare(&format!(
+                "SELECT {SELECT_COLS} FROM providers ORDER BY created_at ASC"
+            ))
+            .map_err(|e| e.to_string())?;
 
-    let providers = stmt
-        .query_map([], row_to_provider)
-        .map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
+        let providers = stmt
+            .query_map([], row_to_provider)
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
 
-    Ok(providers)
+        Ok(providers)
     }
 
     pub fn get_provider(conn: &Connection, id: &str) -> Result<Option<Provider>, String> {
-    let mut stmt = conn
-        .prepare(&format!(
-            "SELECT {SELECT_COLS} FROM providers WHERE id = ?1"
-        ))
-        .map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare(&format!(
+                "SELECT {SELECT_COLS} FROM providers WHERE id = ?1"
+            ))
+            .map_err(|e| e.to_string())?;
 
-    let mut rows = stmt
-        .query_map(params![id], row_to_provider)
-        .map_err(|e| e.to_string())?;
+        let mut rows = stmt
+            .query_map(params![id], row_to_provider)
+            .map_err(|e| e.to_string())?;
 
-    match rows.next() {
-        Some(row) => Ok(Some(row.map_err(|e| e.to_string())?)),
-        None => Ok(None),
-    }
+        match rows.next() {
+            Some(row) => Ok(Some(row.map_err(|e| e.to_string())?)),
+            None => Ok(None),
+        }
     }
 
     pub fn upsert_provider(conn: &Connection, p: &Provider) -> Result<(), String> {
-    let models_json = serde_json::to_string(&p.models).map_err(|e| e.to_string())?;
-    let enabled_int: i32 = if p.enabled { 1 } else { 0 };
-    let params_json: Option<String> = match &p.params {
-        Some(v) if !v.is_null() => Some(serde_json::to_string(v).map_err(|e| e.to_string())?),
-        _ => None,
-    };
+        let models_json = serde_json::to_string(&p.models).map_err(|e| e.to_string())?;
+        let enabled_int: i32 = if p.enabled { 1 } else { 0 };
+        let params_json: Option<String> = match &p.params {
+            Some(v) if !v.is_null() => Some(serde_json::to_string(v).map_err(|e| e.to_string())?),
+            _ => None,
+        };
 
-    conn.execute(
+        conn.execute(
         "INSERT INTO providers (id, name, base_url, api_key_ref, models, source, icon_url, description, enabled, params, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, CURRENT_TIMESTAMP)
          ON CONFLICT(id) DO UPDATE SET
@@ -141,41 +137,41 @@ pub(crate) mod db {
     )
     .map_err(|e| e.to_string())?;
 
-    Ok(())
+        Ok(())
     }
 
     fn config_references_provider(config: &str, provider_id: &str) -> bool {
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(config) else {
-        return false;
-    };
-    value
-        .get("providerId")
-        .and_then(|v| v.as_str())
-        .is_some_and(|pid| pid == provider_id)
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(config) else {
+            return false;
+        };
+        value
+            .get("providerId")
+            .and_then(|v| v.as_str())
+            .is_some_and(|pid| pid == provider_id)
     }
 
     pub fn delete_provider(conn: &Connection, id: &str) -> Result<(), String> {
-    let mut stmt = conn
-        .prepare("SELECT name, config FROM ai_members")
-        .map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare("SELECT name, config FROM ai_members")
+            .map_err(|e| e.to_string())?;
 
-    let rows = stmt
-        .query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        })
-        .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(|e| e.to_string())?;
 
-    for row in rows {
-        let (name, config) = row.map_err(|e| e.to_string())?;
-        if config_references_provider(&config, id) {
-            return Err(format!("Provider is referenced by member {name}"));
+        for row in rows {
+            let (name, config) = row.map_err(|e| e.to_string())?;
+            if config_references_provider(&config, id) {
+                return Err(format!("Provider is referenced by member {name}"));
+            }
         }
-    }
 
-    conn.execute("DELETE FROM providers WHERE id = ?1", params![id])
-        .map_err(|e| e.to_string())?;
+        conn.execute("DELETE FROM providers WHERE id = ?1", params![id])
+            .map_err(|e| e.to_string())?;
 
-    Ok(())
+        Ok(())
     }
 
     pub fn seed_builtin_providers(
@@ -187,7 +183,9 @@ pub(crate) mod db {
             let models_json = serde_json::to_string(&p.models).map_err(|e| e.to_string())?;
             let enabled_int: i32 = if p.enabled { 1 } else { 0 };
             let params_json: Option<String> = match &p.params {
-                Some(v) if !v.is_null() => Some(serde_json::to_string(v).map_err(|e| e.to_string())?),
+                Some(v) if !v.is_null() => {
+                    Some(serde_json::to_string(v).map_err(|e| e.to_string())?)
+                }
                 _ => None,
             };
             tx.execute(
@@ -373,7 +371,10 @@ pub async fn provider_ping(
 }
 
 #[tauri::command]
-pub async fn provider_test(app: AppHandle, provider_id: String) -> Result<ProviderTestResult, String> {
+pub async fn provider_test(
+    app: AppHandle,
+    provider_id: String,
+) -> Result<ProviderTestResult, String> {
     let db_path = get_db_path(&app);
     let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
     let master = vault::load_master_key(&app)?;
@@ -534,10 +535,7 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(
-            stored_json,
-            r#"["deepseek-v3","doubao-pro-32k","ep-2024"]"#
-        );
+        assert_eq!(stored_json, r#"["deepseek-v3","doubao-pro-32k","ep-2024"]"#);
 
         let got = get_provider(&conn, "volcengine").unwrap().unwrap();
         assert_eq!(got.models, p.models);
@@ -565,7 +563,11 @@ mod tests {
         // Provider without params yields None
         let plain = sample_provider("no-params");
         upsert_provider(&conn, &plain).unwrap();
-        assert!(get_provider(&conn, "no-params").unwrap().unwrap().params.is_none());
+        assert!(get_provider(&conn, "no-params")
+            .unwrap()
+            .unwrap()
+            .params
+            .is_none());
         assert!(super::load_provider_params(&conn, "no-params").is_none());
     }
 
@@ -585,12 +587,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        let result = ping_provider(
-            &server.uri(),
-            "sk-test",
-            &["deepseek-chat".to_string()],
-        )
-        .await;
+        let result = ping_provider(&server.uri(), "sk-test", &["deepseek-chat".to_string()]).await;
 
         assert!(result.ok);
         assert_eq!(result.error_class.as_deref(), Some("ok"));
@@ -610,6 +607,10 @@ mod tests {
 
         assert!(!result.ok);
         assert_eq!(result.error_class.as_deref(), Some("auth"));
-        assert!(result.message.as_deref().unwrap_or("").contains("invalid key"));
+        assert!(result
+            .message
+            .as_deref()
+            .unwrap_or("")
+            .contains("invalid key"));
     }
 }

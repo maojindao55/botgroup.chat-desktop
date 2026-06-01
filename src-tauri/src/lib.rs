@@ -1,6 +1,6 @@
-mod db;
 mod api;
 mod cli;
+mod db;
 mod llm_proxy;
 mod migrate;
 mod provider;

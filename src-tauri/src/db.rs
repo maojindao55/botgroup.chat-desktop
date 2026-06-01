@@ -1,11 +1,14 @@
+use rusqlite::{Connection, Result};
 use std::fs;
 use std::path::PathBuf;
-use rusqlite::{Connection, Result};
 use tauri::AppHandle;
 use tauri::Manager;
 
 pub fn get_db_path(app: &AppHandle) -> PathBuf {
-    let mut path = app.path().app_data_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let mut path = app
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."));
     fs::create_dir_all(&path).ok();
     path.push("botgroup.db");
     path
@@ -115,10 +118,19 @@ pub fn init_db_schemas(conn: &Connection) -> Result<()> {
     )?;
 
     // Create indices
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_claw_members_group ON claw_members(group_id);", [])?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_claw_members_group ON claw_members(group_id);",
+        [],
+    )?;
     conn.execute("CREATE INDEX IF NOT EXISTS idx_claw_messages_group_time ON claw_messages(group_id, created_at);", [])?;
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_claw_messages_round ON claw_messages(group_id, round);", [])?;
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_claw_group_users_user ON claw_group_users(user_id);", [])?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_claw_messages_round ON claw_messages(group_id, round);",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_claw_group_users_user ON claw_group_users(user_id);",
+        [],
+    )?;
 
     // Create AI game tables
     conn.execute(
@@ -197,10 +209,19 @@ pub fn init_db_schemas(conn: &Connection) -> Result<()> {
         [],
     )?;
 
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_game_players_room ON ai_game_players(room_id);", [])?;
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_game_messages_room_id ON ai_game_messages(room_id, id);", [])?;
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_game_votes_room ON ai_game_votes(room_id);", [])?;
-    
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_ai_game_players_room ON ai_game_players(room_id);",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_ai_game_messages_room_id ON ai_game_messages(room_id, id);",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_ai_game_votes_room ON ai_game_votes(room_id);",
+        [],
+    )?;
+
     // Create CLI task and profile tables
     conn.execute(
         "CREATE TABLE IF NOT EXISTS cli_tasks (
@@ -346,9 +367,18 @@ pub fn init_db_schemas(conn: &Connection) -> Result<()> {
 
     // Create indices
     conn.execute("CREATE INDEX IF NOT EXISTS idx_cli_tasks_group_created ON cli_tasks(group_id, created_at DESC);", [])?;
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_cli_tasks_status ON cli_tasks(status);", [])?;
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_cli_tasks_agent ON cli_tasks(agent_id, created_at DESC);", [])?;
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_members_kind ON ai_members(kind);", [])?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_cli_tasks_status ON cli_tasks(status);",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_cli_tasks_agent ON cli_tasks(agent_id, created_at DESC);",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_ai_members_kind ON ai_members(kind);",
+        [],
+    )?;
 
     conn.execute(
         "CREATE TABLE IF NOT EXISTS app_meta (
@@ -397,13 +427,16 @@ mod tests {
             "INSERT INTO cli_tasks (id, group_id, agent_id, agent_name, adapter, status, prompt)
              VALUES (?, 'group-1', 'agent-1', 'Agent 1', 'codex', 'running', 'hello world')",
             rusqlite::params![task_id],
-        ).unwrap();
+        )
+        .unwrap();
 
-        let count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM cli_tasks WHERE id = ?",
-            rusqlite::params![task_id],
-            |row| row.get(0),
-        ).unwrap();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM cli_tasks WHERE id = ?",
+                rusqlite::params![task_id],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(count, 1);
     }
 }

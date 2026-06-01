@@ -1,19 +1,22 @@
 use std::fs;
 use std::path::PathBuf;
 
+use crate::db::get_db_path;
+use crate::vault;
 use rusqlite::{params, Connection, OptionalExtension, Result};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 use uuid::Uuid;
-use crate::db::get_db_path;
-use crate::vault;
 
 pub const LOCAL_AVATAR_PREFIX: &str = "local:";
 
 const MAX_AVATAR_BYTES: usize = 5 * 1024 * 1024;
 
 fn get_avatars_dir(app: &AppHandle) -> PathBuf {
-    let mut path = app.path().app_data_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let mut path = app
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."));
     path.push("avatars");
     fs::create_dir_all(&path).ok();
     path
@@ -53,7 +56,9 @@ fn resolve_local_avatar_path(app: &AppHandle, avatar_url: &str) -> Result<PathBu
     let avatars_root = avatars_dir
         .canonicalize()
         .unwrap_or_else(|_| avatars_dir.clone());
-    let canonical = path.canonicalize().map_err(|e| format!("读取头像失败: {}", e))?;
+    let canonical = path
+        .canonicalize()
+        .map_err(|e| format!("读取头像失败: {}", e))?;
 
     if !canonical.starts_with(&avatars_root) {
         return Err("头像路径不在允许目录内".into());
@@ -145,7 +150,7 @@ pub fn get_current_user(app: AppHandle) -> Result<Option<User>, String> {
     let mut stmt = conn
         .prepare("SELECT id, phone, nickname, avatar_url, status, created_at, updated_at FROM users LIMIT 1")
         .map_err(|e| e.to_string())?;
-    
+
     let mut user_iter = stmt
         .query_map([], |row| {
             Ok(User {
@@ -174,7 +179,12 @@ pub fn create_local_user(app: AppHandle, nickname: String) -> Result<User, Strin
     let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
 
     // Generate a dummy phone number for compatibility
-    let random_digits: String = Uuid::new_v4().to_string().chars().filter(|c| c.is_digit(10)).take(8).collect();
+    let random_digits: String = Uuid::new_v4()
+        .to_string()
+        .chars()
+        .filter(|c| c.is_digit(10))
+        .take(8)
+        .collect();
     let phone = format!("138{}", random_digits);
 
     conn.execute(
@@ -207,7 +217,12 @@ pub fn create_local_user(app: AppHandle, nickname: String) -> Result<User, Strin
 }
 
 #[tauri::command]
-pub fn update_user_info(app: AppHandle, user_id: i64, nickname: String, avatar_url: Option<String>) -> Result<User, String> {
+pub fn update_user_info(
+    app: AppHandle,
+    user_id: i64,
+    nickname: String,
+    avatar_url: Option<String>,
+) -> Result<User, String> {
     let db_path = get_db_path(&app);
     let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
 
@@ -347,7 +362,12 @@ pub fn get_claw_groups(app: AppHandle, user_id: i64) -> Result<Vec<ClawGroup>, S
 }
 
 #[tauri::command]
-pub fn create_claw_group(app: AppHandle, user_id: i64, name: String, description: Option<String>) -> Result<ClawGroup, String> {
+pub fn create_claw_group(
+    app: AppHandle,
+    user_id: i64,
+    name: String,
+    description: Option<String>,
+) -> Result<ClawGroup, String> {
     let db_path = get_db_path(&app);
     let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
 
@@ -431,7 +451,7 @@ pub fn get_claw_messages(
     params_vec.push(rusqlite::types::Value::Integer(limit_val));
 
     let mut stmt = conn.prepare(&query).map_err(|e| e.to_string())?;
-    
+
     // We bind parameters dynamically
     let messages_iter = stmt
         .query_map(rusqlite::params_from_iter(params_vec), |row| {
@@ -453,10 +473,10 @@ pub fn get_claw_messages(
     for msg in messages_iter {
         messages.push(msg.map_err(|e| e.to_string())?);
     }
-    
+
     // Reverse to get chronological order (since we queried DESC)
     messages.reverse();
-    
+
     Ok(messages)
 }
 
@@ -506,8 +526,7 @@ pub fn send_claw_message(
 
 #[tauri::command]
 pub fn select_directory() -> Result<Option<String>, String> {
-    let result = rfd::FileDialog::new()
-        .pick_folder();
+    let result = rfd::FileDialog::new().pick_folder();
     match result {
         Some(path) => Ok(Some(path.to_string_lossy().to_string())),
         None => Ok(None),
@@ -529,7 +548,10 @@ pub fn create_workspace_directory(parent: String, name: String) -> Result<String
 
     let parent_path = std::path::PathBuf::from(parent.trim());
     if !parent_path.is_dir() {
-        return Err(format!("parent directory does not exist: {}", parent_path.display()));
+        return Err(format!(
+            "parent directory does not exist: {}",
+            parent_path.display()
+        ));
     }
 
     let target = parent_path.join(trimmed_name);
@@ -561,7 +583,10 @@ mod workspace_directory_tests {
 
         let created_path = std::path::PathBuf::from(&created);
         assert!(created_path.is_dir());
-        assert_eq!(created_path.file_name().and_then(|s| s.to_str()), Some("new-dev-task"));
+        assert_eq!(
+            created_path.file_name().and_then(|s| s.to_str()),
+            Some("new-dev-task")
+        );
 
         let _ = std::fs::remove_dir_all(&parent);
     }
@@ -574,11 +599,8 @@ mod workspace_directory_tests {
         ));
         std::fs::create_dir_all(&parent).expect("create temp parent");
 
-        let err = create_workspace_directory(
-            parent.to_string_lossy().to_string(),
-            ".".to_string(),
-        )
-        .expect_err("reject invalid directory name");
+        let err = create_workspace_directory(parent.to_string_lossy().to_string(), ".".to_string())
+            .expect_err("reject invalid directory name");
         assert!(err.contains("invalid"));
 
         let _ = std::fs::remove_dir_all(&parent);
@@ -758,7 +780,7 @@ pub fn delete_ai_member(app: AppHandle, id: String) -> Result<(), String> {
 pub fn seed_builtin_ai_members(app: AppHandle, members: Vec<AIMember>) -> Result<(), String> {
     let db_path = get_db_path(&app);
     let mut conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
-    
+
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     for member in members {
         tx.execute(
@@ -803,7 +825,11 @@ pub fn secret_has(app: AppHandle, name: String) -> std::result::Result<bool, Str
 }
 
 #[tauri::command]
-pub fn secret_copy(app: AppHandle, from_name: String, to_name: String) -> std::result::Result<bool, String> {
+pub fn secret_copy(
+    app: AppHandle,
+    from_name: String,
+    to_name: String,
+) -> std::result::Result<bool, String> {
     let db_path = get_db_path(&app);
     let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
     let master = vault::load_master_key(&app)?;

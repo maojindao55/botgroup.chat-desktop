@@ -12,15 +12,15 @@ use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Instant;
 
+use crate::db::get_db_path;
+use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, State, Manager};
+use std::io::Write;
+use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
-use std::io::Write;
-use rusqlite::{params, Connection};
-use crate::db::get_db_path;
 
 // ---------- Event payload sent over `cli://{session_id}` ------------------
 
@@ -325,7 +325,10 @@ pub async fn cli_run(
     let adapter_for_status = args.adapter.clone();
 
     let log_path = {
-        let mut path = app.path().app_data_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+        let mut path = app
+            .path()
+            .app_data_dir()
+            .unwrap_or_else(|_| std::path::PathBuf::from("."));
         path.push("cli-logs");
         let _ = std::fs::create_dir_all(&path);
         path.push(format!("{}.jsonl", args.session_id));
@@ -334,7 +337,13 @@ pub async fn cli_run(
     let log_path_str = log_path.to_string_lossy().to_string();
 
     // Write initial log
-    if let Some(mut f) = std::fs::OpenOptions::new().create(true).write(true).truncate(true).open(&log_path).ok() {
+    if let Some(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(&log_path)
+        .ok()
+    {
         let log_entry = serde_json::json!({
             "ts": chrono::Utc::now().to_rfc3339(),
             "type": "system",
@@ -353,7 +362,12 @@ pub async fn cli_run(
     }
 
     if let Err(e) = insert_task(&app, &args, &log_path_str) {
-        let _ = app.emit(&event_name, CliEvent::Error { message: format!("DB error: {}", e) });
+        let _ = app.emit(
+            &event_name,
+            CliEvent::Error {
+                message: format!("DB error: {}", e),
+            },
+        );
         return Err(e);
     }
 
@@ -361,10 +375,19 @@ pub async fn cli_run(
         Ok(cmd) => cmd,
         Err(e) => {
             let msg = format!("build command failed: {}", e);
-            let _ = app.emit(&event_name, CliEvent::Error { message: msg.clone() });
+            let _ = app.emit(
+                &event_name,
+                CliEvent::Error {
+                    message: msg.clone(),
+                },
+            );
             let _ = app.emit(&event_name, CliEvent::Done { exit_code: -1 });
 
-            if let Some(mut f) = std::fs::OpenOptions::new().append(true).open(&log_path).ok() {
+            if let Some(mut f) = std::fs::OpenOptions::new()
+                .append(true)
+                .open(&log_path)
+                .ok()
+            {
                 let log_entry = serde_json::json!({
                     "ts": chrono::Utc::now().to_rfc3339(),
                     "type": "system",
@@ -384,11 +407,20 @@ pub async fn cli_run(
         Ok(c) => c,
         Err(e) => {
             let msg = format!("spawn failed: {}", e);
-            let _ = app.emit(&event_name, CliEvent::Error { message: msg.clone() });
+            let _ = app.emit(
+                &event_name,
+                CliEvent::Error {
+                    message: msg.clone(),
+                },
+            );
             let _ = app.emit(&event_name, CliEvent::Done { exit_code: -1 });
 
             // Log spawn failure
-            if let Some(mut f) = std::fs::OpenOptions::new().append(true).open(&log_path).ok() {
+            if let Some(mut f) = std::fs::OpenOptions::new()
+                .append(true)
+                .open(&log_path)
+                .ok()
+            {
                 let log_entry = serde_json::json!({
                     "ts": chrono::Utc::now().to_rfc3339(),
                     "type": "system",
@@ -410,7 +442,10 @@ pub async fn cli_run(
     {
         let db_path = get_db_path(&app);
         if let Ok(conn) = Connection::open(&db_path) {
-            let _ = conn.execute("UPDATE cli_tasks SET pid = ? WHERE id = ?", params![pid, args.session_id]);
+            let _ = conn.execute(
+                "UPDATE cli_tasks SET pid = ? WHERE id = ?",
+                params![pid, args.session_id],
+            );
         }
     }
 
@@ -455,7 +490,12 @@ pub async fn cli_run(
             match lines.next_line().await {
                 Ok(Some(line)) => {
                     *last_activity_out.lock().await = Instant::now();
-                    let _ = app_out.emit(&evt_out, CliEvent::Stdout { content: line.clone() });
+                    let _ = app_out.emit(
+                        &evt_out,
+                        CliEvent::Stdout {
+                            content: line.clone(),
+                        },
+                    );
                     if let Some(ref mut f) = file {
                         let log_entry = serde_json::json!({
                             "ts": chrono::Utc::now().to_rfc3339(),
@@ -497,7 +537,12 @@ pub async fn cli_run(
             match lines.next_line().await {
                 Ok(Some(line)) => {
                     *last_activity_err.lock().await = Instant::now();
-                    let _ = app_err.emit(&evt_err, CliEvent::Stderr { content: line.clone() });
+                    let _ = app_err.emit(
+                        &evt_err,
+                        CliEvent::Stderr {
+                            content: line.clone(),
+                        },
+                    );
                     if let Some(ref mut f) = file {
                         let log_entry = serde_json::json!({
                             "ts": chrono::Utc::now().to_rfc3339(),
@@ -539,7 +584,9 @@ pub async fn cli_run(
             let base_timeout = Duration::from_millis(ms);
             // 无输出 idle 超时 = 配置值；有持续输出时最多跑到 hard_cap
             let idle_limit = base_timeout;
-            let hard_cap = base_timeout.saturating_mul(3).min(Duration::from_secs(3600));
+            let hard_cap = base_timeout
+                .saturating_mul(3)
+                .min(Duration::from_secs(3600));
             let started = Instant::now();
 
             'wait: loop {
@@ -574,14 +621,27 @@ pub async fn cli_run(
         let (status, exit_code, err_msg) = match wait_result {
             Ok(code) => {
                 let status = if code == 0 { "completed" } else { "failed" };
-                let err_msg = if code == 0 { None } else { Some("CLI non-zero exit code".to_string()) };
+                let err_msg = if code == 0 {
+                    None
+                } else {
+                    Some("CLI non-zero exit code".to_string())
+                };
                 let _ = app_wait.emit(&evt_wait, CliEvent::Done { exit_code: code });
                 (status, Some(code), err_msg)
             }
             Err(ref e) if e == "timeout" => {
-                let _ = app_wait.emit(&evt_wait, CliEvent::Error { message: "timeout".to_string() });
+                let _ = app_wait.emit(
+                    &evt_wait,
+                    CliEvent::Error {
+                        message: "timeout".to_string(),
+                    },
+                );
                 let _ = app_wait.emit(&evt_wait, CliEvent::Done { exit_code: -3 });
-                ("timeout", Some(-3), Some("Task execution timed out".to_string()))
+                (
+                    "timeout",
+                    Some(-3),
+                    Some("Task execution timed out".to_string()),
+                )
             }
             Err(e) => {
                 let _ = app_wait.emit(&evt_wait, CliEvent::Error { message: e.clone() });
@@ -591,7 +651,11 @@ pub async fn cli_run(
         };
 
         // Log completion details
-        if let Some(mut f) = std::fs::OpenOptions::new().append(true).open(&log_path_wait).ok() {
+        if let Some(mut f) = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&log_path_wait)
+            .ok()
+        {
             let log_entry = serde_json::json!({
                 "ts": chrono::Utc::now().to_rfc3339(),
                 "type": "system",
@@ -603,7 +667,13 @@ pub async fn cli_run(
         }
 
         // Update DB task entry
-        let _ = update_task_status(&app_wait, &session_id_for_task, status, exit_code, err_msg.as_deref());
+        let _ = update_task_status(
+            &app_wait,
+            &session_id_for_task,
+            status,
+            exit_code,
+            err_msg.as_deref(),
+        );
         update_runtime_run(&app_wait, &adapter_for_task, err_msg.as_deref(), Some(true));
 
         // Remove ourselves from the registry on natural exit
@@ -639,10 +709,17 @@ pub async fn cli_kill(
         session.abort_handle.abort();
 
         // Write system log about cancellation
-        let mut log_path = app.path().app_data_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+        let mut log_path = app
+            .path()
+            .app_data_dir()
+            .unwrap_or_else(|_| std::path::PathBuf::from("."));
         log_path.push("cli-logs");
         log_path.push(format!("{}.jsonl", session_id));
-        if let Some(mut f) = std::fs::OpenOptions::new().append(true).open(&log_path).ok() {
+        if let Some(mut f) = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&log_path)
+            .ok()
+        {
             let log_entry = serde_json::json!({
                 "ts": chrono::Utc::now().to_rfc3339(),
                 "type": "system",
@@ -655,18 +732,38 @@ pub async fn cli_kill(
 
         // Update task status in DB to cancelled
         let event_name = format!("cli://{}", session_id);
-        let _ = app.emit(&event_name, CliEvent::Error { message: "cancelled".to_string() });
+        let _ = app.emit(
+            &event_name,
+            CliEvent::Error {
+                message: "cancelled".to_string(),
+            },
+        );
         let _ = app.emit(&event_name, CliEvent::Done { exit_code: -2 });
-        let _ = update_task_status(&app, &session_id, "cancelled", Some(-2), Some("Task cancelled by user"));
+        let _ = update_task_status(
+            &app,
+            &session_id,
+            "cancelled",
+            Some(-2),
+            Some("Task cancelled by user"),
+        );
         Ok(true)
-    }
-
-    else if let Some(pid) = get_task_pid(&app, &session_id) {
+    } else if let Some(pid) = get_task_pid(&app, &session_id) {
         kill_process_tree(pid).await;
         let event_name = format!("cli://{}", session_id);
-        let _ = app.emit(&event_name, CliEvent::Error { message: "cancelled".to_string() });
+        let _ = app.emit(
+            &event_name,
+            CliEvent::Error {
+                message: "cancelled".to_string(),
+            },
+        );
         let _ = app.emit(&event_name, CliEvent::Done { exit_code: -2 });
-        let _ = update_task_status(&app, &session_id, "cancelled", Some(-2), Some("Task cancelled by user"));
+        let _ = update_task_status(
+            &app,
+            &session_id,
+            "cancelled",
+            Some(-2),
+            Some("Task cancelled by user"),
+        );
         Ok(true)
     } else {
         Ok(false)
@@ -736,28 +833,30 @@ pub async fn cli_task_get(app: AppHandle, task_id: String) -> Result<Option<CliT
          FROM cli_tasks WHERE id = ?1"
     ).map_err(|e| e.to_string())?;
 
-    let mut task_iter = stmt.query_map(params![task_id], |row| {
-        Ok(CliTask {
-            id: row.get(0)?,
-            group_id: row.get(1)?,
-            agent_id: row.get(2)?,
-            agent_name: row.get(3)?,
-            adapter: row.get(4)?,
-            status: row.get(5)?,
-            cwd: row.get(6)?,
-            prompt: row.get(7)?,
-            prompt_summary: row.get(8)?,
-            session_id: row.get(9)?,
-            pid: row.get(10)?,
-            exit_code: row.get(11)?,
-            error_message: row.get(12)?,
-            log_path: row.get(13)?,
-            started_at: row.get(14)?,
-            ended_at: row.get(15)?,
-            created_at: row.get(16)?,
-            updated_at: row.get(17)?,
+    let mut task_iter = stmt
+        .query_map(params![task_id], |row| {
+            Ok(CliTask {
+                id: row.get(0)?,
+                group_id: row.get(1)?,
+                agent_id: row.get(2)?,
+                agent_name: row.get(3)?,
+                adapter: row.get(4)?,
+                status: row.get(5)?,
+                cwd: row.get(6)?,
+                prompt: row.get(7)?,
+                prompt_summary: row.get(8)?,
+                session_id: row.get(9)?,
+                pid: row.get(10)?,
+                exit_code: row.get(11)?,
+                error_message: row.get(12)?,
+                log_path: row.get(13)?,
+                started_at: row.get(14)?,
+                ended_at: row.get(15)?,
+                created_at: row.get(16)?,
+                updated_at: row.get(17)?,
+            })
         })
-    }).map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?;
 
     if let Some(task_res) = task_iter.next() {
         let task = task_res.map_err(|e| e.to_string())?;
@@ -773,7 +872,10 @@ pub async fn cli_task_read_log(
     task_id: String,
     since_line: Option<usize>,
 ) -> Result<CliTaskLogPage, String> {
-    let mut log_path = app.path().app_data_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let mut log_path = app
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from("."));
     log_path.push("cli-logs");
     log_path.push(format!("{}.jsonl", task_id));
 
@@ -816,19 +918,21 @@ pub async fn cli_runtime_list(app: AppHandle) -> Result<Vec<CliRuntime>, String>
          FROM cli_runtimes ORDER BY adapter"
     ).map_err(|e| e.to_string())?;
 
-    let rows = stmt.query_map([], |row| {
-        let installed: i64 = row.get(1)?;
-        Ok(CliRuntime {
-            adapter: row.get(0)?,
-            installed: installed != 0,
-            binary_path: row.get(2)?,
-            version: row.get(3)?,
-            last_check_at: row.get(4)?,
-            last_run_at: row.get(5)?,
-            last_error: row.get(6)?,
-            updated_at: row.get(7)?,
+    let rows = stmt
+        .query_map([], |row| {
+            let installed: i64 = row.get(1)?;
+            Ok(CliRuntime {
+                adapter: row.get(0)?,
+                installed: installed != 0,
+                binary_path: row.get(2)?,
+                version: row.get(3)?,
+                last_check_at: row.get(4)?,
+                last_run_at: row.get(5)?,
+                last_error: row.get(6)?,
+                updated_at: row.get(7)?,
+            })
         })
-    }).map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?;
 
     let mut runtimes = Vec::new();
     for row in rows {
@@ -837,11 +941,9 @@ pub async fn cli_runtime_list(app: AppHandle) -> Result<Vec<CliRuntime>, String>
     Ok(runtimes)
 }
 
-
 #[tauri::command]
 pub async fn cli_check(app: AppHandle, adapter: String) -> Result<CliCheckResult, String> {
-    let bin = adapter_binary(&adapter)
-        .ok_or_else(|| format!("unknown adapter: {}", adapter))?;
+    let bin = adapter_binary(&adapter).ok_or_else(|| format!("unknown adapter: {}", adapter))?;
     let path = match which::which(bin) {
         Ok(p) => p,
         Err(_) => {
@@ -897,11 +999,26 @@ struct CliAdapterDefinition {
 }
 
 const CLI_ADAPTER_DEFINITIONS: &[CliAdapterDefinition] = &[
-    CliAdapterDefinition { id: "codex", default_binary: Some("codex") },
-    CliAdapterDefinition { id: "opencode", default_binary: Some("opencode") },
-    CliAdapterDefinition { id: "claude", default_binary: Some("claude") },
-    CliAdapterDefinition { id: "cursor", default_binary: Some("cursor-agent") },
-    CliAdapterDefinition { id: "qodercli", default_binary: Some("qodercli") },
+    CliAdapterDefinition {
+        id: "codex",
+        default_binary: Some("codex"),
+    },
+    CliAdapterDefinition {
+        id: "opencode",
+        default_binary: Some("opencode"),
+    },
+    CliAdapterDefinition {
+        id: "claude",
+        default_binary: Some("claude"),
+    },
+    CliAdapterDefinition {
+        id: "cursor",
+        default_binary: Some("cursor-agent"),
+    },
+    CliAdapterDefinition {
+        id: "qodercli",
+        default_binary: Some("qodercli"),
+    },
 ];
 
 fn adapter_definition(adapter: &str) -> Option<CliAdapterDefinition> {
@@ -923,19 +1040,23 @@ fn has_extra_arg(args: &CliRunArgs, needle: &str) -> bool {
 
 fn has_any_extra_arg(args: &CliRunArgs, needles: &[&str]) -> bool {
     args.extra_args.as_ref().map_or(false, |extra| {
-        extra.iter().any(|arg| needles.iter().any(|needle| arg == needle))
+        extra
+            .iter()
+            .any(|arg| needles.iter().any(|needle| arg == needle))
     })
 }
 
 fn has_extra_arg_prefix(args: &CliRunArgs, prefix: &str) -> bool {
-    args.extra_args
-        .as_ref()
-        .map_or(false, |extra| extra.iter().any(|arg| arg.starts_with(prefix)))
+    args.extra_args.as_ref().map_or(false, |extra| {
+        extra.iter().any(|arg| arg.starts_with(prefix))
+    })
 }
 
 fn has_any_extra_arg_prefix(args: &CliRunArgs, prefixes: &[&str]) -> bool {
     args.extra_args.as_ref().map_or(false, |extra| {
-        extra.iter().any(|arg| prefixes.iter().any(|prefix| arg.starts_with(prefix)))
+        extra
+            .iter()
+            .any(|arg| prefixes.iter().any(|prefix| arg.starts_with(prefix)))
     })
 }
 
@@ -986,6 +1107,18 @@ fn build_opencode_command(argv: &mut Vec<String>, args: &CliRunArgs, prompt_via_
         argv.push("--format".to_string());
         argv.push("json".to_string());
     }
+    if let Some(cwd) = &args.cwd {
+        if !cwd.is_empty() && !has_extra_arg(args, "--dir") && !has_extra_arg_prefix(args, "--dir=")
+        {
+            argv.push("--dir".to_string());
+            argv.push(cwd.clone());
+        }
+    }
+    if args.approval_mode.as_deref() == Some("auto")
+        && !has_extra_arg(args, "--dangerously-skip-permissions")
+    {
+        argv.push("--dangerously-skip-permissions".to_string());
+    }
     append_extra_args(argv, args);
     if !has_any_extra_arg(args, &["--session", "-s", "--continue", "-c"])
         && !has_extra_arg_prefix(args, "--session=")
@@ -1015,8 +1148,10 @@ fn build_claude_command(argv: &mut Vec<String>, args: &CliRunArgs, prompt_via_st
         argv.push("--dangerously-skip-permissions".to_string());
     }
     append_extra_args(argv, args);
-    if !has_any_extra_arg(args, &["--resume", "-r", "--continue", "-c", "--session-id"])
-        && !has_any_extra_arg_prefix(args, &["--resume=", "--session-id="])
+    if !has_any_extra_arg(
+        args,
+        &["--resume", "-r", "--continue", "-c", "--session-id"],
+    ) && !has_any_extra_arg_prefix(args, &["--resume=", "--session-id="])
     {
         append_tool_session(argv, args, "--resume");
     }
@@ -1135,9 +1270,9 @@ fn extend_path_with_common_dirs_windows() {
 
     if let Ok(profile) = std::env::var("USERPROFILE") {
         for sub in [
-            "scoop\\shims",       // scoop
-            ".cargo\\bin",        // rustup / cargo install
-            ".volta\\bin",        // volta (alternate layout)
+            "scoop\\shims",          // scoop
+            ".cargo\\bin",           // rustup / cargo install
+            ".volta\\bin",           // volta (alternate layout)
             "AppData\\Roaming\\npm", // npm global (alternate, if APPDATA unset)
             "bin",
         ] {
@@ -1190,9 +1325,18 @@ fn extend_path_from_login_shell() {
 
 #[cfg(unix)]
 fn extend_path_with_common_dirs() {
-    let mut extra_dirs = vec!["/opt/homebrew/bin".to_string(), "/usr/local/bin".to_string()];
+    let mut extra_dirs = vec![
+        "/opt/homebrew/bin".to_string(),
+        "/usr/local/bin".to_string(),
+    ];
     if let Ok(home) = std::env::var("HOME") {
-        for sub in ["bin", ".local/bin", ".npm-global/bin", ".volta/bin", ".cargo/bin"] {
+        for sub in [
+            "bin",
+            ".local/bin",
+            ".npm-global/bin",
+            ".volta/bin",
+            ".cargo/bin",
+        ] {
             extra_dirs.push(format!("{home}/{sub}"));
         }
     }
@@ -1314,7 +1458,12 @@ fn manual_wsl_path(win_path: &str) -> String {
 /// `--cd` so the spawned process starts in the right directory. We use `-e`
 /// (exec, no shell) so prompts/arguments are passed verbatim without shell
 /// interpretation — avoiding quoting/injection issues with arbitrary prompts.
-fn build_wsl_command(binary: &str, argv: &[String], distro: Option<&str>, wsl_cwd: Option<&str>) -> Command {
+fn build_wsl_command(
+    binary: &str,
+    argv: &[String],
+    distro: Option<&str>,
+    wsl_cwd: Option<&str>,
+) -> Command {
     let mut cmd = Command::new("wsl.exe");
     if let Some(distro) = distro {
         if !distro.is_empty() {
@@ -1340,7 +1489,9 @@ fn build_wsl_command(binary: &str, argv: &[String], distro: Option<&str>, wsl_cw
 fn is_batch_shim(path: &std::path::Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
-        .map_or(false, |e| e.eq_ignore_ascii_case("cmd") || e.eq_ignore_ascii_case("bat"))
+        .map_or(false, |e| {
+            e.eq_ignore_ascii_case("cmd") || e.eq_ignore_ascii_case("bat")
+        })
 }
 
 fn build_command(args: &CliRunArgs) -> Result<Command, String> {
@@ -1387,10 +1538,8 @@ fn build_command(args: &CliRunArgs) -> Result<Command, String> {
     } else {
         Some(resolve_cli_binary(&binary)?)
     };
-    let prompt_via_stdin = cfg!(windows)
-        && resolved_binary
-            .as_ref()
-            .map_or(false, |p| is_batch_shim(p));
+    let prompt_via_stdin =
+        cfg!(windows) && resolved_binary.as_ref().map_or(false, |p| is_batch_shim(p));
 
     let mut argv: Vec<String> = Vec::new();
     match args.adapter.as_str() {
@@ -1440,10 +1589,15 @@ fn build_command(args: &CliRunArgs) -> Result<Command, String> {
     // they would not correctly carry into the Linux process anyway.
     if !use_wsl
         && args.adapter == "codex"
-        && args.env.as_ref().map_or(true, |e| !e.contains_key("CODEX_HOME"))
+        && args
+            .env
+            .as_ref()
+            .map_or(true, |e| !e.contains_key("CODEX_HOME"))
     {
         let home = user_home_dir();
-        let user_cfg = std::path::PathBuf::from(&home).join(".codex").join("config.toml");
+        let user_cfg = std::path::PathBuf::from(&home)
+            .join(".codex")
+            .join("config.toml");
         let needs_override = if user_cfg.exists() {
             std::fs::File::open(&user_cfg).is_err()
         } else {
@@ -1459,7 +1613,9 @@ fn build_command(args: &CliRunArgs) -> Result<Command, String> {
                 let _ = std::fs::write(&cfg_path, "");
             }
             // Copy the auth.json if it exists and is readable
-            let user_auth = std::path::PathBuf::from(&home).join(".codex").join("auth.json");
+            let user_auth = std::path::PathBuf::from(&home)
+                .join(".codex")
+                .join("auth.json");
             let dest_auth = codex_home.join("auth.json");
             if user_auth.exists() && !dest_auth.exists() {
                 let _ = std::fs::copy(&user_auth, &dest_auth);
@@ -1514,7 +1670,8 @@ pub async fn cli_opencode_session_title(
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(format!(
             "opencode export exited with {}: {}",
-            output.status, stderr.trim()
+            output.status,
+            stderr.trim()
         ));
     }
 
@@ -1556,11 +1713,26 @@ mod tests {
 
     #[test]
     fn adapter_definition_centralizes_default_binary_lookup() {
-        assert_eq!(adapter_definition("codex").and_then(|d| d.default_binary), Some("codex"));
-        assert_eq!(adapter_definition("opencode").and_then(|d| d.default_binary), Some("opencode"));
-        assert_eq!(adapter_definition("claude").and_then(|d| d.default_binary), Some("claude"));
-        assert_eq!(adapter_definition("cursor").and_then(|d| d.default_binary), Some("cursor-agent"));
-        assert_eq!(adapter_definition("qodercli").and_then(|d| d.default_binary), Some("qodercli"));
+        assert_eq!(
+            adapter_definition("codex").and_then(|d| d.default_binary),
+            Some("codex")
+        );
+        assert_eq!(
+            adapter_definition("opencode").and_then(|d| d.default_binary),
+            Some("opencode")
+        );
+        assert_eq!(
+            adapter_definition("claude").and_then(|d| d.default_binary),
+            Some("claude")
+        );
+        assert_eq!(
+            adapter_definition("cursor").and_then(|d| d.default_binary),
+            Some("cursor-agent")
+        );
+        assert_eq!(
+            adapter_definition("qodercli").and_then(|d| d.default_binary),
+            Some("qodercli")
+        );
         assert!(adapter_definition("unknown").is_none());
     }
 
@@ -1771,9 +1943,47 @@ mod tests {
         assert!(rendered.contains("\"run\""));
         assert!(rendered.contains("\"--format\""));
         assert!(rendered.contains("\"json\""));
+        assert!(rendered.contains("\"--dir\""));
+        assert!(rendered.contains("\"/tmp/project\""));
+        assert!(rendered.contains("\"--dangerously-skip-permissions\""));
         assert!(rendered.contains("\"--pure\""));
         assert!(rendered.contains("\"--title\""));
         assert!(rendered.contains("\"继续刚才的任务\""));
+    }
+
+    #[test]
+    fn opencode_run_respects_explicit_dir_and_permissions_args() {
+        let cmd = build_command(&CliRunArgs {
+            session_id: "session-1".to_string(),
+            group_id: "group-1".to_string(),
+            agent_id: "cli-opencode".to_string(),
+            agent_name: "OpenCode".to_string(),
+            adapter: "opencode".to_string(),
+            prompt: "继续刚才的任务".to_string(),
+            cwd: Some("/tmp/project".to_string()),
+            extra_args: Some(vec![
+                "--dir=/tmp/explicit".to_string(),
+                "--dangerously-skip-permissions".to_string(),
+            ]),
+            tool_session_id: None,
+            binary: None,
+            env: Some(HashMap::new()),
+            timeout_ms: Some(300000),
+            approval_mode: Some("auto".to_string()),
+            show_stderr: Some(true),
+            wsl: None,
+            wsl_distro: None,
+        })
+        .expect("opencode command should build");
+
+        let rendered = format!("{:?}", cmd);
+
+        assert!(rendered.contains("\"--dir=/tmp/explicit\""));
+        assert!(!rendered.contains("\"--dir\" \"/tmp/project\""));
+        assert_eq!(
+            rendered.matches("--dangerously-skip-permissions").count(),
+            1
+        );
     }
 
     #[test]
@@ -2062,12 +2272,8 @@ mod tests {
     #[test]
     fn build_wsl_command_wraps_binary_with_distro_and_cwd() {
         let argv = vec!["exec".to_string(), "写代码".to_string()];
-        let cmd = super::build_wsl_command(
-            "codex",
-            &argv,
-            Some("Ubuntu"),
-            Some("/mnt/c/Users/me/proj"),
-        );
+        let cmd =
+            super::build_wsl_command("codex", &argv, Some("Ubuntu"), Some("/mnt/c/Users/me/proj"));
         let rendered = format!("{:?}", cmd);
 
         assert!(rendered.contains("wsl.exe"));
@@ -2122,7 +2328,8 @@ mod tests {
         }
     }
 
-    const MULTILINE_PROMPT: &str = "工作目录：C:/workspace/proj\n执行约束：仅在此目录\n\n用户需求：画一只鹈鹕";
+    const MULTILINE_PROMPT: &str =
+        "工作目录：C:/workspace/proj\n执行约束：仅在此目录\n\n用户需求：画一只鹈鹕";
 
     #[test]
     fn is_batch_shim_detects_cmd_and_bat() {
@@ -2210,7 +2417,6 @@ mod tests {
     }
 }
 
-
 // =====================================================================
 // Worktree IPC: support for `race` strategy isolation per agent.
 //
@@ -2279,8 +2485,9 @@ fn ensure_git_repo_clean(cwd: &std::path::Path) -> Result<String, String> {
     }
 
     // Verify it's a git repo
-    run_git_capture(cwd, &["rev-parse", "--is-inside-work-tree"])
-        .map_err(|_| "当前 workspace 不是 git 仓库，无法使用竞争模式（需要 git 仓库以创建 worktree）".to_string())?;
+    run_git_capture(cwd, &["rev-parse", "--is-inside-work-tree"]).map_err(|_| {
+        "当前 workspace 不是 git 仓库，无法使用竞争模式（需要 git 仓库以创建 worktree）".to_string()
+    })?;
 
     // Check working tree cleanliness; we refuse to create worktrees when
     // the user has uncommitted/untracked work because `git worktree add`
@@ -2317,7 +2524,11 @@ pub async fn cli_worktree_prepare(
     let run_id = format!(
         "{}-{}",
         chrono::Utc::now().format("%Y%m%d-%H%M%S"),
-        uuid::Uuid::new_v4().to_string().split('-').next().unwrap_or("xxxx")
+        uuid::Uuid::new_v4()
+            .to_string()
+            .split('-')
+            .next()
+            .unwrap_or("xxxx")
     );
 
     let mut root = app
@@ -2327,8 +2538,7 @@ pub async fn cli_worktree_prepare(
     root.push("cli-worktrees");
     root.push(sanitize_path_segment(&args.group_id));
     root.push(&run_id);
-    std::fs::create_dir_all(&root)
-        .map_err(|e| format!("创建 worktree 根目录失败：{}", e))?;
+    std::fs::create_dir_all(&root).map_err(|e| format!("创建 worktree 根目录失败：{}", e))?;
 
     let mut worktrees: Vec<CliWorktreeInfo> = Vec::with_capacity(args.agent_ids.len());
     let mut created: Vec<std::path::PathBuf> = Vec::new();
@@ -2349,7 +2559,14 @@ pub async fn cli_worktree_prepare(
         let wt_path_str = wt_path.to_string_lossy().to_string();
         match run_git_capture(
             &workspace,
-            &["worktree", "add", "-b", &branch_name, &wt_path_str, &base_sha],
+            &[
+                "worktree",
+                "add",
+                "-b",
+                &branch_name,
+                &wt_path_str,
+                &base_sha,
+            ],
         ) {
             Ok(_) => {
                 created.push(wt_path.clone());
@@ -2365,10 +2582,7 @@ pub async fn cli_worktree_prepare(
                 // leave half-prepared state when one agent fails.
                 for p in &created {
                     let p_str = p.to_string_lossy().to_string();
-                    let _ = run_git_capture(
-                        &workspace,
-                        &["worktree", "remove", "--force", &p_str],
-                    );
+                    let _ = run_git_capture(&workspace, &["worktree", "remove", "--force", &p_str]);
                 }
                 return Err(format!("为 agent {} 创建 worktree 失败：{}", agent_id, e));
             }
@@ -2405,9 +2619,7 @@ pub async fn cli_worktree_cleanup(args: CliWorktreeCleanupArgs) -> Result<(), St
         let common = std::path::PathBuf::from(&common_dir);
         let source = common.parent().map(|p| p.to_path_buf()).unwrap_or(common);
 
-        if let Err(e) =
-            run_git_capture(&source, &["worktree", "remove", "--force", &path_str])
-        {
+        if let Err(e) = run_git_capture(&source, &["worktree", "remove", "--force", &path_str]) {
             errors.push(format!("{}: {}", path_str, e));
         }
     }
@@ -2468,11 +2680,15 @@ pub async fn cli_git_diff(args: CliGitDiffArgs) -> Result<CliGitDiffResult, Stri
 fn sanitize_path_segment(input: &str) -> String {
     input
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
-
-
 
 // =====================================================================
 // Temp Copy IPC: support for `discussion` (V2.5) read-only isolation.
@@ -2591,7 +2807,10 @@ fn copy_workspace(src: &str, dest: &std::path::Path, dest_str: &str) -> Result<(
             prune_copied_excludes(dest);
             Ok(())
         }
-        Ok(co) => Err(format!("cp failed: {}", String::from_utf8_lossy(&co.stderr))),
+        Ok(co) => Err(format!(
+            "cp failed: {}",
+            String::from_utf8_lossy(&co.stderr)
+        )),
         Err(e) => Err(format!("cp spawn failed: {}", e)),
     }
 }
@@ -2685,8 +2904,7 @@ pub async fn cli_tempcopy_prepare(
     root.push("cli-tempcopy");
     root.push(sanitize_path_segment(&args.group_id));
     root.push(&ts);
-    std::fs::create_dir_all(&root)
-        .map_err(|e| format!("创建临时目录根失败：{}", e))?;
+    std::fs::create_dir_all(&root).map_err(|e| format!("创建临时目录根失败：{}", e))?;
 
     let mut copies: Vec<CliTempCopyInfo> = Vec::with_capacity(args.agent_ids.len());
     let mut created: Vec<std::path::PathBuf> = Vec::new();
@@ -2714,10 +2932,7 @@ pub async fn cli_tempcopy_prepare(
                 for p in &created {
                     let _ = std::fs::remove_dir_all(p);
                 }
-                return Err(format!(
-                    "为 agent {} 创建只读副本失败：{}",
-                    agent_id, e
-                ));
+                return Err(format!("为 agent {} 创建只读副本失败：{}", agent_id, e));
             }
         }
     }

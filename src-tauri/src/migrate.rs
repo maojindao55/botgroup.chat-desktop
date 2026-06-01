@@ -191,7 +191,11 @@ fn lookup_provider_by_env_name(conn: &Connection, env_name: &str) -> String {
     format!("unmapped-{}", env_name)
 }
 
-fn append_model_if_missing(tx: &Transaction<'_>, provider_id: &str, model: &str) -> Result<(), String> {
+fn append_model_if_missing(
+    tx: &Transaction<'_>,
+    provider_id: &str,
+    model: &str,
+) -> Result<(), String> {
     let Some(mut p) = provider::db::get_provider(tx, provider_id)? else {
         return Ok(());
     };
@@ -253,13 +257,10 @@ fn migrate_llm_config(
         .unwrap_or("")
         .to_string();
 
-    let provider_id = lookup_provider_by_model(tx, &model)
-        .unwrap_or_else(|| format!("unmapped-{}", model));
+    let provider_id =
+        lookup_provider_by_model(tx, &model).unwrap_or_else(|| format!("unmapped-{}", model));
 
-    config.insert(
-        "providerId".into(),
-        serde_json::Value::String(provider_id),
-    );
+    config.insert("providerId".into(), serde_json::Value::String(provider_id));
 
     if let Some(personality) = config.remove("personality") {
         config.insert("schedulerTag".into(), personality);
@@ -343,20 +344,14 @@ fn migrate_agent_config(
         pid
     };
 
-    config.insert(
-        "providerId".into(),
-        serde_json::Value::String(provider_id),
-    );
+    config.insert("providerId".into(), serde_json::Value::String(provider_id));
     config.insert("model".into(), serde_json::Value::String(model));
     config.remove("llm");
 
     Ok(())
 }
 
-fn migrate_ai_members(
-    tx: &Transaction<'_>,
-    master: &[u8; vault::KEY_LEN],
-) -> Result<(), String> {
+fn migrate_ai_members(tx: &Transaction<'_>, master: &[u8; vault::KEY_LEN]) -> Result<(), String> {
     let mut stmt = tx
         .prepare("SELECT id, kind, config FROM ai_members")
         .map_err(|e| e.to_string())?;
@@ -434,7 +429,10 @@ pub fn run_migration(app: &AppHandle, input: MigrationInput) -> Result<Migration
 }
 
 #[tauri::command]
-pub fn migrate_a_complete(app: AppHandle, input: MigrationInput) -> Result<MigrationResult, String> {
+pub fn migrate_a_complete(
+    app: AppHandle,
+    input: MigrationInput,
+) -> Result<MigrationResult, String> {
     run_migration(&app, input)
 }
 

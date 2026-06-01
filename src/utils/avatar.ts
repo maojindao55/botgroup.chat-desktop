@@ -125,8 +125,12 @@ export const resolveAvatarByName = (
   currentAvatar?: string,
   size: number = 40
 ): React.ReactNode | string | undefined => {
-  // 用户显式设置的头像（LobeHub 图标 / URL / 本地路径）优先于名称推断
-  if (currentAvatar?.trim()) {
+  const trimmedAvatar = currentAvatar?.trim();
+  const isLegacyBundledCliAvatar = /^\/img\/(codex|claude|opencode)\.webp(?:\?|$)/.test(trimmedAvatar || '');
+
+  // 用户显式设置的头像（LobeHub 图标 / URL / 本地路径）优先于名称推断。
+  // 旧版内置 CLI webp 在桌面端可能加载失败，改走下方本地 Lobe icon 组件。
+  if (trimmedAvatar && !isLegacyBundledCliAvatar) {
     return resolveAvatarSource(currentAvatar) ?? currentAvatar;
   }
 

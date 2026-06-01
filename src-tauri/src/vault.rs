@@ -25,8 +25,8 @@ use std::fmt;
 use std::path::Path;
 
 pub const MASTER_KEY_FILENAME: &str = "master.key";
-pub const KEY_LEN: usize = 32;     // AES-256
-pub const NONCE_LEN: usize = 12;   // GCM standard nonce size
+pub const KEY_LEN: usize = 32; // AES-256
+pub const NONCE_LEN: usize = 12; // GCM standard nonce size
 
 // `allow(dead_code)`: some variants are constructed only by code paths not yet
 // wired up in PR1 (e.g., `NotFound` is reserved for higher-level wrappers in
@@ -56,11 +56,15 @@ impl fmt::Display for VaultError {
 impl std::error::Error for VaultError {}
 
 impl From<std::io::Error> for VaultError {
-    fn from(e: std::io::Error) -> Self { VaultError::Io(e) }
+    fn from(e: std::io::Error) -> Self {
+        VaultError::Io(e)
+    }
 }
 
 impl From<rusqlite::Error> for VaultError {
-    fn from(e: rusqlite::Error) -> Self { VaultError::Sqlite(e) }
+    fn from(e: rusqlite::Error) -> Self {
+        VaultError::Sqlite(e)
+    }
 }
 
 use std::fs;
@@ -79,10 +83,10 @@ pub fn load_master_key(app: &AppHandle) -> Result<[u8; KEY_LEN], String> {
     load_or_create_master_key(&path).map_err(|e| e.to_string())
 }
 
-use aes_gcm::aead::OsRng;
 use aes_gcm::aead::rand_core::RngCore;
-use aes_gcm::{Aes256Gcm, Key, Nonce};
+use aes_gcm::aead::OsRng;
 use aes_gcm::aead::{Aead, KeyInit, Payload};
+use aes_gcm::{Aes256Gcm, Key, Nonce};
 
 /// Load existing master key from disk, or create a new random one.
 ///
@@ -143,9 +147,11 @@ pub fn load_or_create_master_key(key_path: &Path) -> Result<[u8; KEY_LEN], Vault
 /// Encrypt `value` with AES-256-GCM. AAD is bound to `name` so the resulting
 /// ciphertext cannot be successfully decrypted under a different name even
 /// with the correct key.
-pub fn encrypt(master: &[u8; KEY_LEN], name: &str, value: &str)
-    -> Result<(Vec<u8>, Vec<u8>), VaultError>
-{
+pub fn encrypt(
+    master: &[u8; KEY_LEN],
+    name: &str,
+    value: &str,
+) -> Result<(Vec<u8>, Vec<u8>), VaultError> {
     let key = Key::<Aes256Gcm>::from_slice(master);
     let cipher = Aes256Gcm::new(key);
 
@@ -154,7 +160,13 @@ pub fn encrypt(master: &[u8; KEY_LEN], name: &str, value: &str)
     let nonce = Nonce::from_slice(&nonce_bytes);
 
     let ct = cipher
-        .encrypt(nonce, Payload { msg: value.as_bytes(), aad: name.as_bytes() })
+        .encrypt(
+            nonce,
+            Payload {
+                msg: value.as_bytes(),
+                aad: name.as_bytes(),
+            },
+        )
         .map_err(|e| VaultError::Crypto(format!("encrypt: {}", e)))?;
 
     Ok((ct, nonce_bytes.to_vec()))
@@ -166,12 +178,17 @@ pub fn encrypt(master: &[u8; KEY_LEN], name: &str, value: &str)
 /// `allow(dead_code)`: PR1 ships the function but no Rust-side caller exists
 /// yet; PR2 (`llm_proxy.rs`) is the first consumer. Remove the attribute then.
 #[allow(dead_code)]
-pub fn decrypt(master: &[u8; KEY_LEN], name: &str, ciphertext: &[u8], nonce: &[u8])
-    -> Result<String, VaultError>
-{
+pub fn decrypt(
+    master: &[u8; KEY_LEN],
+    name: &str,
+    ciphertext: &[u8],
+    nonce: &[u8],
+) -> Result<String, VaultError> {
     if nonce.len() != NONCE_LEN {
         return Err(VaultError::Crypto(format!(
-            "nonce has {} bytes, expected {}", nonce.len(), NONCE_LEN
+            "nonce has {} bytes, expected {}",
+            nonce.len(),
+            NONCE_LEN
         )));
     }
     let key = Key::<Aes256Gcm>::from_slice(master);
@@ -179,19 +196,27 @@ pub fn decrypt(master: &[u8; KEY_LEN], name: &str, ciphertext: &[u8], nonce: &[u
     let nonce = Nonce::from_slice(nonce);
 
     let pt = cipher
-        .decrypt(nonce, Payload { msg: ciphertext, aad: name.as_bytes() })
+        .decrypt(
+            nonce,
+            Payload {
+                msg: ciphertext,
+                aad: name.as_bytes(),
+            },
+        )
         .map_err(|e| VaultError::Crypto(format!("decrypt: {}", e)))?;
 
-    String::from_utf8(pt)
-        .map_err(|e| VaultError::Crypto(format!("decrypt: invalid utf-8: {}", e)))
+    String::from_utf8(pt).map_err(|e| VaultError::Crypto(format!("decrypt: invalid utf-8: {}", e)))
 }
 
 use rusqlite::{params, Connection};
 
 /// Upsert: encrypt `value` and store under `name` (overwriting if exists).
-pub fn set(conn: &Connection, master: &[u8; KEY_LEN], name: &str, value: &str)
-    -> Result<(), VaultError>
-{
+pub fn set(
+    conn: &Connection,
+    master: &[u8; KEY_LEN],
+    name: &str,
+    value: &str,
+) -> Result<(), VaultError> {
     let (ct, nonce) = encrypt(master, name, value)?;
     conn.execute(
         "INSERT INTO secrets (name, ciphertext, nonce, updated_at)
@@ -207,9 +232,11 @@ pub fn set(conn: &Connection, master: &[u8; KEY_LEN], name: &str, value: &str)
 
 /// Decrypt and return value for `name`, or `Ok(None)` if not present.
 /// Returns `VaultError::Crypto` if decryption fails (e.g., AAD mismatch).
-pub fn get(conn: &Connection, master: &[u8; KEY_LEN], name: &str)
-    -> Result<Option<String>, VaultError>
-{
+pub fn get(
+    conn: &Connection,
+    master: &[u8; KEY_LEN],
+    name: &str,
+) -> Result<Option<String>, VaultError> {
     let row: Option<(Vec<u8>, Vec<u8>)> = conn
         .query_row(
             "SELECT ciphertext, nonce FROM secrets WHERE name = ?1",
@@ -319,12 +346,19 @@ mod tests {
 
         let mode = fs::metadata(&key_path).unwrap().permissions().mode();
         // Mask off file type bits, only check user/group/other
-        assert_eq!(mode & 0o777, 0o600, "master.key permissions must be 0600, got {:o}", mode);
+        assert_eq!(
+            mode & 0o777,
+            0o600,
+            "master.key permissions must be 0600, got {:o}",
+            mode
+        );
     }
 
     fn dummy_key() -> [u8; KEY_LEN] {
         let mut k = [0u8; KEY_LEN];
-        for i in 0..KEY_LEN { k[i] = i as u8; }
+        for i in 0..KEY_LEN {
+            k[i] = i as u8;
+        }
         k
     }
 
@@ -461,14 +495,18 @@ mod tests {
         set(&conn, &key, "provider:b", "value-b").unwrap();
 
         // Swap ciphertexts directly in DB
-        let (ct_a, nonce_a): (Vec<u8>, Vec<u8>) = conn.query_row(
-            "SELECT ciphertext, nonce FROM secrets WHERE name = 'provider:a'",
-            [], |row| Ok((row.get(0)?, row.get(1)?))
-        ).unwrap();
+        let (ct_a, nonce_a): (Vec<u8>, Vec<u8>) = conn
+            .query_row(
+                "SELECT ciphertext, nonce FROM secrets WHERE name = 'provider:a'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
         conn.execute(
             "UPDATE secrets SET ciphertext = ?1, nonce = ?2 WHERE name = 'provider:b'",
             rusqlite::params![ct_a, nonce_a],
-        ).unwrap();
+        )
+        .unwrap();
 
         // Now provider:b holds ciphertext encrypted under AAD='provider:a'.
         // get should fail because AAD won't match.
