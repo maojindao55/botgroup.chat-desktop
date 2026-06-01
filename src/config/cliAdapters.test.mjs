@@ -28,6 +28,10 @@ assert.equal(mod.getCLIAdapterDefinition('qodercli').label, 'Qoder CLI');
 assert.equal(mod.getCLIAdapterDefinition('qodercli').defaultBinary, 'qodercli');
 assert.equal(mod.getCLIAdapterDefinition('qodercli').streamMode, 'qoder-json');
 assert.equal(mod.supportsCliToolSession('qodercli'), true);
+assert.equal(mod.getCLIAdapterDefinition('antigravity').label, 'Antigravity CLI');
+assert.equal(mod.getCLIAdapterDefinition('antigravity').defaultBinary, 'agy');
+assert.equal(mod.getCLIAdapterDefinition('antigravity').streamMode, 'raw');
+assert.equal(mod.supportsCliToolSession('antigravity'), false);
 
 assert.equal(mod.adapterUsesOpenCodeSessionTitle('opencode'), true);
 assert.equal(mod.adapterUsesOpenCodeSessionTitle('codex'), false);

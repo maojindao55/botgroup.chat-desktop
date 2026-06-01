@@ -547,7 +547,7 @@ const DEFAULT_TIMEOUT_MS = 300_000;
 /** 实现/修正阶段至少给 coding adapter 10 分钟（多轮 tool call + 验证） */
 const MIN_IMPLEMENT_TIMEOUT_MS = 600_000;
 const IMPLEMENT_STAGE_LABELS = new Set(['实现', '实现+自检', '生成代码']);
-const CODING_ADAPTERS = new Set(['cursor', 'codex', 'claude', 'opencode', 'qodercli']);
+const CODING_ADAPTERS = new Set(['cursor', 'codex', 'claude', 'opencode', 'qodercli', 'antigravity']);
 
 function isImplementStage(stageLabel?: string): boolean {
   if (!stageLabel) return false;

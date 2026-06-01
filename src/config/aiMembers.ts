@@ -129,4 +129,18 @@ export const builtinAIMembers: AIMember[] = [
       showStderr: false,
     }
   },
+  {
+    id: 'cli-antigravity',
+    kind: 'cli',
+    name: 'Antigravity',
+    avatar: 'lobehub:Gemini',
+    description: 'Google Antigravity CLI Agent，支持本地项目分析、自动编码和命令执行',
+    source: 'builtin',
+    enabled: true,
+    cli: {
+      adapter: 'antigravity',
+      approvalMode: 'auto',
+      showStderr: true,
+    }
+  },
 ];

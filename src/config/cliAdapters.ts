@@ -4,6 +4,7 @@ export type CLIAdapterId =
   | 'opencode'
   | 'cursor'
   | 'qodercli'
+  | 'antigravity'
   | (string & {});
 
 export type CLIStreamMode =
@@ -90,6 +91,18 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     toolSessionArgs: ['-r', '--resume', '-c', '--continue'],
     toolSessionArgPrefixes: ['--resume='],
     docsUrl: 'https://docs.qoder.com/en/cli',
+  },
+  {
+    id: 'antigravity',
+    label: 'Antigravity CLI',
+    defaultBinary: 'agy',
+    streamMode: 'raw',
+    commandGroup: 'antigravity',
+    capabilities: { toolSession: false },
+    toolSessionArgs: ['--continue', '--conversation'],
+    toolSessionArgPrefixes: ['--conversation='],
+    installHint: 'curl -fsSL https://antigravity.google/cli/install.sh | bash',
+    docsUrl: 'https://antigravity.google/docs/cli-overview',
   },
 ];
 

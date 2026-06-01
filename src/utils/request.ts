@@ -668,7 +668,7 @@ export async function request(url: string, options: RequestInit = {}) {
                   streamHandler.closeCommandGroups();
                   enqueueEvent({
                     type: 'error',
-                    content: `\n**登录已过期，请在终端重新登录：**\n\`\`\`\ncodex login          # Codex\nclaude login         # Claude Code\ncursor agent login   # Cursor Agent\n\`\`\`\n`,
+                    content: `\n**登录已过期，请在终端重新登录：**\n\`\`\`\ncodex login          # Codex\nclaude login         # Claude Code\ncursor agent login   # Cursor Agent\nagy                 # Antigravity CLI\n\`\`\`\n`,
                     error: 'auth_error',
                   });
                   break;

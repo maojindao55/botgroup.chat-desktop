@@ -17,6 +17,7 @@ async function importTsModule(url) {
 const { builtinAIMembers } = await importTsModule(new URL('./aiMembers.ts', import.meta.url));
 
 const qoder = builtinAIMembers.find((member) => member.id === 'cli-qodercli');
+const antigravity = builtinAIMembers.find((member) => member.id === 'cli-antigravity');
 
 assert.equal(qoder?.kind, 'cli');
 assert.equal(qoder?.name, 'Qoder CLI');
@@ -26,5 +27,13 @@ assert.equal(qoder?.enabled, true);
 assert.equal(qoder?.cli?.adapter, 'qodercli');
 assert.equal(qoder?.cli?.approvalMode, 'auto');
 assert.equal(qoder?.cli?.showStderr, false);
+
+assert.equal(antigravity?.kind, 'cli');
+assert.equal(antigravity?.name, 'Antigravity');
+assert.equal(antigravity?.source, 'builtin');
+assert.equal(antigravity?.enabled, true);
+assert.equal(antigravity?.cli?.adapter, 'antigravity');
+assert.equal(antigravity?.cli?.approvalMode, 'auto');
+assert.equal(antigravity?.cli?.showStderr, true);
 
 console.log('aiMembers.test.mjs: ok');

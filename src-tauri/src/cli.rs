@@ -110,7 +110,7 @@ pub struct CliRunArgs {
     pub group_id: String,
     pub agent_id: String,
     pub agent_name: String,
-    /// "codex" | "opencode" | "claude" | "cursor"
+    /// "codex" | "opencode" | "claude" | "cursor" | "qodercli" | "antigravity"
     pub adapter: String,
     pub prompt: String,
     pub cwd: Option<String>,
@@ -319,6 +319,8 @@ pub async fn cli_run(
     state: State<'_, CliState>,
     args: CliRunArgs,
 ) -> Result<(), String> {
+    init_cli_environment();
+
     let event_name = format!("cli://{}", args.session_id);
     let session_id = args.session_id.clone();
     let timeout_ms = args.timeout_ms;
@@ -943,6 +945,8 @@ pub async fn cli_runtime_list(app: AppHandle) -> Result<Vec<CliRuntime>, String>
 
 #[tauri::command]
 pub async fn cli_check(app: AppHandle, adapter: String) -> Result<CliCheckResult, String> {
+    init_cli_environment();
+
     let bin = adapter_binary(&adapter).ok_or_else(|| format!("unknown adapter: {}", adapter))?;
     let path = match which::which(bin) {
         Ok(p) => p,
@@ -1018,6 +1022,10 @@ const CLI_ADAPTER_DEFINITIONS: &[CliAdapterDefinition] = &[
     CliAdapterDefinition {
         id: "qodercli",
         default_binary: Some("qodercli"),
+    },
+    CliAdapterDefinition {
+        id: "antigravity",
+        default_binary: Some("agy"),
     },
 ];
 
@@ -1228,6 +1236,17 @@ fn build_qodercli_command(argv: &mut Vec<String>, args: &CliRunArgs, prompt_via_
     // else: qoder `-p` (print mode) reads the prompt from stdin (Windows `.cmd` shim path).
 }
 
+fn build_antigravity_command(argv: &mut Vec<String>, args: &CliRunArgs, _prompt_via_stdin: bool) {
+    if args.approval_mode.as_deref() == Some("auto")
+        && !has_extra_arg(args, "--dangerously-skip-permissions")
+    {
+        argv.push("--dangerously-skip-permissions".to_string());
+    }
+    append_extra_args(argv, args);
+    argv.push("-p".to_string());
+    argv.push(args.prompt.clone());
+}
+
 /// macOS/Linux GUI apps launched from Finder/Dock inherit a minimal PATH
 /// (often only /usr/bin:/bin). Restore the login-shell PATH so npm/Homebrew
 /// CLIs installed in the terminal remain discoverable in release builds.
@@ -1262,6 +1281,8 @@ fn extend_path_with_common_dirs_windows() {
     if let Ok(local) = std::env::var("LOCALAPPDATA") {
         // winget "Links" shims (modern CLI installs land here)
         extra_dirs.push(format!("{local}\\Microsoft\\WinGet\\Links"));
+        // Antigravity CLI native installer
+        extra_dirs.push(format!("{local}\\agy\\bin"));
         // Volta-managed shims
         extra_dirs.push(format!("{local}\\Volta\\bin"));
         // pnpm global bin
@@ -1548,6 +1569,7 @@ fn build_command(args: &CliRunArgs) -> Result<Command, String> {
         "claude" => build_claude_command(&mut argv, arg_src, prompt_via_stdin),
         "cursor" => build_cursor_command(&mut argv, arg_src, prompt_via_stdin),
         "qodercli" => build_qodercli_command(&mut argv, arg_src, prompt_via_stdin),
+        "antigravity" => build_antigravity_command(&mut argv, arg_src, prompt_via_stdin),
         other => return Err(format!("unknown adapter: {}", other)),
     }
 
@@ -1732,6 +1754,10 @@ mod tests {
         assert_eq!(
             adapter_definition("qodercli").and_then(|d| d.default_binary),
             Some("qodercli")
+        );
+        assert_eq!(
+            adapter_definition("antigravity").and_then(|d| d.default_binary),
+            Some("agy")
         );
         assert!(adapter_definition("unknown").is_none());
     }
@@ -2224,6 +2250,38 @@ mod tests {
 
         assert!(rendered.contains("\"manual-session\""));
         assert!(!rendered.contains("\"stored-session\""));
+    }
+
+    #[test]
+    fn antigravity_print_uses_prompt_flag_and_process_cwd() {
+        let cmd = build_command(&CliRunArgs {
+            session_id: "session-1".to_string(),
+            group_id: "group-1".to_string(),
+            agent_id: "cli-antigravity".to_string(),
+            agent_name: "Antigravity".to_string(),
+            adapter: "antigravity".to_string(),
+            prompt: "审查当前改动并运行测试".to_string(),
+            cwd: Some("/tmp/project".to_string()),
+            extra_args: None,
+            tool_session_id: None,
+            binary: None,
+            env: Some(HashMap::new()),
+            timeout_ms: Some(300000),
+            approval_mode: Some("auto".to_string()),
+            show_stderr: Some(true),
+            wsl: None,
+            wsl_distro: None,
+        })
+        .expect("antigravity command should build");
+
+        let rendered = format!("{:?}", cmd);
+
+        assert!(rendered.contains("\"agy\""));
+        assert!(rendered.contains("\"-p\""));
+        assert!(rendered.contains("\"审查当前改动并运行测试\""));
+        assert!(!rendered.contains("\"--cwd\""));
+        assert!(rendered.contains("\"/tmp/project\""));
+        assert!(rendered.contains("\"--dangerously-skip-permissions\""));
     }
 
     #[test]
