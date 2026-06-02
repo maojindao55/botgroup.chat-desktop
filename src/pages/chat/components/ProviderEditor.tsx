@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Drawer,
   Form,
@@ -112,6 +112,10 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
   const [saving, setSaving] = useState(false);
   const [cloning, setCloning] = useState(false);
   const [presetType, setPresetType] = useState<string | undefined>(undefined);
+  // Synchronous lock to prevent double-click races on Save/Test/Clone.
+  // React state updates (`saving`) are async, so two rapid clicks can both
+  // enter the handler before the button becomes disabled; the ref does not.
+  const submittingRef = useRef(false);
 
   const provider = providerId ? get(providerId) : undefined;
   const isBuiltin = provider?.source === 'builtin';
@@ -175,6 +179,8 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
   };
 
   const handleFinish = async (values: Record<string, unknown>) => {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setSaving(true);
     try {
       const id = providerId || `user-${Date.now()}`;
@@ -199,10 +205,13 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
       message.error(t('provider.saveFailed'));
     } finally {
       setSaving(false);
+      submittingRef.current = false;
     }
   };
 
   const handleTest = async () => {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     try {
       setTesting(true);
 
@@ -285,11 +294,14 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
       message.error(formatInvokeError(e) || t('provider.testFailed'));
     } finally {
       setTesting(false);
+      submittingRef.current = false;
     }
   };
 
   const handleClone = async () => {
     if (!providerId) return;
+    if (submittingRef.current) return;
+    submittingRef.current = true;
 
     setCloning(true);
     try {
@@ -301,6 +313,7 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
       message.error(formatInvokeError(e) || t('provider.cloneFailed'));
     } finally {
       setCloning(false);
+      submittingRef.current = false;
     }
   };
 
