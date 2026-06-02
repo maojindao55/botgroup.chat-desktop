@@ -461,11 +461,6 @@ export const CLIGroupSettings = ({
     ? t('cli:groupSettings.sessionPolicy.templateDesc')
     : t('cli:groupSettings.sessionPolicy.desc');
   const handleDrawerClose = () => {
-    if (isDraftDirty) {
-      const confirmed = window.confirm(t('cli:groupSettings.discardConfirm'));
-      if (!confirmed) return;
-      setDraftGroup(originalDraftGroup);
-    }
     if (onBack) {
       onBack();
       return;
