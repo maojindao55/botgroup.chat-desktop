@@ -31,6 +31,7 @@ import sidebarZh from './resources/zh-CN/sidebar.json';
 import tagsZh from './resources/zh-CN/tags.json';
 import userZh from './resources/zh-CN/user.json';
 import wizardZh from './resources/zh-CN/wizard.json';
+import appSettingsZh from './resources/zh-CN/appSettings.json';
 
 export type ResolvedLocale = 'zh-CN' | 'en-US';
 export type LocalePreference = 'system' | ResolvedLocale;
@@ -95,7 +96,6 @@ i18n.use(initReactI18next).init({
       engine: engineEn,
       tags: tagsEn,
       ad: adEn,
-      appSettings: appSettingsEn,
     },
   },
   lng: getInitialLocale(),
