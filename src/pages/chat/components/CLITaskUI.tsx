@@ -915,6 +915,9 @@ const CLITaskUI = ({
   };
 
   const navigateToList = () => {
+    setSelectedTaskId(null);
+    setInputMessage('');
+    closeManagementPanels();
     window.history.replaceState({}, '', '?view=cli-tasks');
     saveLastView('?view=cli-tasks');
   };

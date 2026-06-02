@@ -8,8 +8,8 @@ import {
   PlusCircle as PlusCircleIcon,
   Puzzle,
   Terminal,
+  Users as UsersIcon,
 } from 'lucide-react';
-import type { AppSettingsSection } from '@/config/appSettings';
 import { useTranslation } from 'react-i18next';
 import { Tooltip } from 'antd';
 import { ActionIcon } from '@lobehub/ui';
@@ -217,7 +217,7 @@ interface SidebarProps {
   onSelectGroup?: (index: number) => void;
   groups: Group[];
   onCreateGroup?: (group: Group) => void;
-  onOpenSettings?: (section?: AppSettingsSection) => void;
+  onOpenLibrary?: () => void;
   activeView?: 'groups' | 'cli-tasks' | 'home';
   onNavigateCLI?: () => void;
   onNavigateHome?: () => void;
@@ -231,7 +231,7 @@ const Sidebar = ({
   onSelectGroup,
   groups,
   onCreateGroup,
-  onOpenSettings,
+  onOpenLibrary,
   activeView = 'groups',
   onNavigateCLI,
   onNavigateHome,
@@ -256,9 +256,9 @@ const Sidebar = ({
         onOpenChange={setShowCreateWizard}
         onCreateGroup={handleCreateGroup}
         allowedGroupTypes={['ai', 'agent']}
-        onOpenSettings={(section) => {
+        onOpenLibrary={() => {
           setShowCreateWizard(false);
-          onOpenSettings?.(section);
+          onOpenLibrary?.();
         }}
       />
 
@@ -344,7 +344,11 @@ const Sidebar = ({
                   href="#"
                   onClick={(e) => {
                     e.preventDefault();
-                    onNavigateCLI?.();
+                    if (onNavigateCLI) {
+                      onNavigateCLI();
+                    } else {
+                      window.location.href = '?view=cli-tasks';
+                    }
                   }}
                   className={cx(
                     styles.navItem,
@@ -500,11 +504,61 @@ const Sidebar = ({
           })()}
           </div>
 
+          <div className={styles.sectionDivider} />
+
+          <div className={styles.navSection}>
+            {isOpen && <div className={styles.sectionLabel}>{t('sidebar:section.resources')}</div>}
+            {(() => {
+              const libraryBtn = (
+                <a
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onOpenLibrary?.();
+                  }}
+                  className={cx(
+                    styles.navItem,
+                    !isOpen && styles.navItemCollapsed,
+                  )}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      minWidth: 0,
+                      flex: 1,
+                      justifyContent: isOpen ? 'flex-start' : 'center',
+                    }}
+                  >
+                    <UsersIcon
+                      size={16}
+                      style={{ color: '#ff6600', flexShrink: 0 }}
+                    />
+                    {isOpen && (
+                      <span className={styles.navItemLabel}>{t('sidebar:nav.library')}</span>
+                    )}
+                  </div>
+                </a>
+              );
+              return !isOpen ? (
+                <Tooltip
+                  title={t('sidebar:nav.library')}
+                  placement="right"
+                  mouseEnterDelay={0.15}
+                >
+                  {libraryBtn}
+                </Tooltip>
+              ) : (
+                libraryBtn
+              );
+            })()}
+          </div>
         </nav>
 
         <UserSection isOpen={isOpen} />
 
-        <SidebarPreferences isOpen={isOpen} onOpenSettings={onOpenSettings} />
+        <SidebarPreferences isOpen={isOpen} />
       </div>
 
       {isOpen && (

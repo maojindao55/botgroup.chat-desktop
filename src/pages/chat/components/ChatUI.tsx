@@ -893,17 +893,26 @@ const ChatUI = () => {
     if (index === selectedGroupIndex && !isCLIView && !isHomeView) return;
     window.history.pushState({}, '', `?id=${index}`);
     setShowSettings(false);
-    setShowLibrary(false);
+    setSettingsOpen(false);
     setViewParam(null);
     setSelectedGroupIndex(index);
   };
   const handleSelectGroup = (index: number) => goToGroup(index);
   const handleNavigateCLI = () => {
+    const params = new URLSearchParams(window.location.search);
+    const view = params.get('view');
+    if (view === 'cli-tasks' && !params.get('taskId')) return;
+    if (view === 'cli-task' || view === 'cli-template') {
+      window.history.pushState({}, '', '?view=cli-tasks');
+      setShowSettings(false);
+      setSettingsOpen(false);
+      setViewParam('cli-tasks');
+      return;
+    }
     if (isCLIView) return;
-    // 客户端切换：不重载页面（groups/用户数据已在内存），消除白屏闪烁
     window.history.pushState({}, '', '?view=cli-tasks');
     setShowSettings(false);
-    setShowLibrary(false);
+    setSettingsOpen(false);
     setViewParam('cli-tasks');
   };
   /** 客户端切换到首页：不重载页面 */
@@ -911,7 +920,7 @@ const ChatUI = () => {
     if (isHomeView) return;
     window.history.pushState({}, '', '?view=home');
     setShowSettings(false);
-    setShowLibrary(false);
+    setSettingsOpen(false);
     setViewParam('home');
   };
 
@@ -1060,7 +1069,7 @@ const ChatUI = () => {
       setSchedulerStrategy(aiGroup.schedulerStrategy || 'tag');
     }
     setShowSettings(false);
-    setShowLibrary(false);
+    setSettingsOpen(false);
 
     const url = new URL(window.location.href);
     url.searchParams.set('id', String(newIndex));
