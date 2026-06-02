@@ -53,6 +53,38 @@ export interface CLIReviewLoopRoles {
   maxReviewRounds?: number;
 }
 
+export type CLICustomWorkflowRole = 'planner' | 'implementer' | 'reviewer' | 'member';
+export type CLICustomWorkflowStageMode = 'write' | 'readOnly';
+export type CLICustomWorkflowTransitionTarget = string | 'done';
+
+export interface CLICustomWorkflowReviewDecision {
+  approved: CLICustomWorkflowTransitionTarget;
+  revise: CLICustomWorkflowTransitionTarget;
+}
+
+export interface CLICustomWorkflowStage {
+  id: string;
+  label: string;
+  role: CLICustomWorkflowRole;
+  mode: CLICustomWorkflowStageMode;
+  prompt: string;
+  /** 传递上一阶段输出作为普通文本参考。缺省为 true。 */
+  includePreviousOutput?: boolean;
+  /** 普通阶段结束后跳转到指定阶段；缺省为列表中的下一阶段。 */
+  nextStageId?: CLICustomWorkflowTransitionTarget;
+  /** 评审阶段根据 REVIEW_DECISION 决定通过或修正。 */
+  reviewDecision?: CLICustomWorkflowReviewDecision;
+}
+
+export interface CLICustomWorkflow {
+  id: string;
+  name: string;
+  description?: string;
+  stages: CLICustomWorkflowStage[];
+  /** 防止评审/修正循环无限执行。缺省为 2，最大 5。 */
+  maxLoops?: number;
+}
+
 /**
  * CLI 执行计划：由若干正交维度组合而成，作为内部统一调度模型。
  * 每个 `CLIStrategy` 预设模式映射到一个默认 plan；用户可覆盖部分字段。
@@ -91,6 +123,8 @@ export interface CLIGroup {
   sessionPolicy?: CLISessionPolicy;
   /** 规划实现复审模式的显式角色分工 */
   reviewLoopRoles?: CLIReviewLoopRoles;
+  /** 轻量自定义编排：阶段 + 角色 + 复审循环。 */
+  customWorkflow?: CLICustomWorkflow;
   /** 执行细节：覆盖预设 plan 的部分字段；老数据可缺省 */
   executionPlan?: Partial<CLIExecutionPlan>;
 }

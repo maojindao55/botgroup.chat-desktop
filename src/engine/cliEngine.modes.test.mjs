@@ -452,6 +452,76 @@ function runBodies(calls) {
 
 {
   const harness = createHarness();
+  const request = async (url, init = {}) => {
+    harness.calls.push({ url, init });
+    if (url === '/api/cli/run') {
+      const body = JSON.parse(init.body);
+      if (body.agentName.includes('复审')) {
+        return sseResponse('REVIEW_DECISION: approved\n修复命中根因，没有发现阻塞问题');
+      }
+      return sseResponse(`output:${body.agentId}:${body.agentName}`);
+    }
+    return harness.request(url, init);
+  };
+  const { executeCLIStrategy } = await loadEngine(request);
+  const results = await executeCLIStrategy(
+    {
+      ...baseGroup('review'),
+      reviewLoopRoles: {
+        implementerId: 'cli-claude',
+        reviewerId: 'cli-codex',
+        maxReviewRounds: 2,
+      },
+      customWorkflow: {
+        id: 'diagnose_fix_review',
+        name: '排查修复复审',
+        maxLoops: 2,
+        stages: [
+          {
+            id: 'diagnose_fix',
+            label: '定位修复',
+            role: 'implementer',
+            mode: 'write',
+            prompt: '定位问题并修复。',
+            nextStageId: 'review',
+          },
+          {
+            id: 'review',
+            label: '复审',
+            role: 'reviewer',
+            mode: 'readOnly',
+            prompt: '复审修复。',
+            reviewDecision: { approved: 'done', revise: 'revise' },
+          },
+          {
+            id: 'revise',
+            label: '修正',
+            role: 'implementer',
+            mode: 'write',
+            prompt: '按反馈修正。',
+            nextStageId: 'review',
+          },
+        ],
+      },
+    },
+    agents,
+    'fix broken login redirect',
+    '/workspace/project',
+    harness.callbacks,
+  );
+
+  const bodies = runBodies(harness.calls);
+  assert.deepEqual(results.map(r => r.stageLabel), ['定位修复', '复审']);
+  assert.deepEqual(bodies.map(b => b.agentId), ['cli-claude', 'cli-codex']);
+  assert.match(bodies[0].prompt, /自定义 CLI 工作流「排查修复复审」/);
+  assert.match(bodies[0].prompt, /定位问题并修复/);
+  assert.match(bodies[1].prompt, /不要修改文件/);
+  assert.match(bodies[1].prompt, /上一阶段（ClaudeCode - 定位修复）的输出/);
+  assert.equal(bodies[0].timeoutMs, 600000);
+}
+
+{
+  const harness = createHarness();
   const { executeCLIStrategy } = await loadEngine(harness.request);
   await executeCLIStrategy(
     baseGroup('review', { isolation: 'copyPerAgent' }),

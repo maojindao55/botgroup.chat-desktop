@@ -57,6 +57,10 @@
       "label": "Quick response",
       "description": "Automatically assign one dev member to handle the current coding task."
     },
+    "diagnose_fix_review": {
+      "label": "Diagnose, fix, review",
+      "description": "One dev member diagnoses and fixes the issue, then another reviews it; failed reviews loop back to revision."
+    },
     "implement_review": {
       "label": "Plan, implement, review",
       "description": "The planner breaks down the work, the implementer edits code, and review loops until approved."

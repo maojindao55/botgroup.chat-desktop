@@ -680,7 +680,9 @@ export const CLIGroupSettings = ({
   const persistedCliTemplate = cliWorkflowTemplates.find((item) => item.id === effectiveGroup.workflowTemplateId);
   const activeCliTemplate = selectedCliTemplate || cliWorkflowTemplates.find((item) => item.strategy === effectiveStrategy);
   const activeWorkflowTemplate = selectedCliTemplate || persistedCliTemplate || activeCliTemplate;
-  const isReviewLoopWorkflow = activeWorkflowTemplate?.id === 'implement_review';
+  const isReviewLoopWorkflow = activeWorkflowTemplate?.id === 'implement_review'
+    || !!activeWorkflowTemplate?.customWorkflow
+    || !!effectiveGroup.customWorkflow;
   const memberIds = effectiveGroup.memberIds || effectiveGroup.members || [];
   const visibleMembers = isTemplateMode
     ? memberIds
@@ -900,13 +902,14 @@ export const CLIGroupSettings = ({
                         workflowTemplateId: item.id,
                         strategy: item.strategy,
                         executionPlan: item.executionPlan || {},
-                        reviewLoopRoles: item.id === 'implement_review' ? reviewLoopRoles : undefined,
+                        customWorkflow: item.customWorkflow,
+                        reviewLoopRoles: (item.id === 'implement_review' || item.customWorkflow) ? reviewLoopRoles : undefined,
                       });
                     } else {
                       onWorkflowTemplateChange?.(item.id);
                       onStrategyChange(item.strategy);
                       onExecutionPlanChange?.(item.executionPlan || {}, { replace: true });
-                      if (item.id === 'implement_review') {
+                      if (item.id === 'implement_review' || item.customWorkflow) {
                         onReviewLoopRolesChange?.(reviewLoopRoles);
                       } else {
                         onReviewLoopRolesChange?.(undefined);
@@ -942,6 +945,15 @@ export const CLIGroupSettings = ({
             {isReviewLoopWorkflow && (
               <p className={styles.panelDesc} style={{ marginTop: 4 }}>
                 {t('cli:groupSettings.collaboration.reviewLoopHint')}
+              </p>
+            )}
+            {(activeWorkflowTemplate?.customWorkflow || effectiveGroup.customWorkflow) && (
+              <p className={styles.panelDesc} style={{ marginTop: 4 }}>
+                {t('cli:groupSettings.collaboration.customWorkflowHint', {
+                  stages: (activeWorkflowTemplate?.customWorkflow || effectiveGroup.customWorkflow)?.stages
+                    .map(stage => stage.label)
+                    .join(' → '),
+                })}
               </p>
             )}
             {isReviewLoopWorkflow && visibleMembers.length < 2 && (

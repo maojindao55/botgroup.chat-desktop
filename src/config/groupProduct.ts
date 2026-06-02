@@ -1,4 +1,4 @@
-import type { AgentStrategy, CLIExecutionPlan, CLIStrategy, GroupType } from './groups';
+import type { AgentStrategy, CLICustomWorkflow, CLIExecutionPlan, CLIStrategy, GroupType } from './groups';
 
 export type AISpeechMode = 'smart' | 'round_robin' | 'all';
 
@@ -25,11 +25,12 @@ export interface AgentWorkflowTemplate {
 }
 
 export interface CLIWorkflowTemplate {
-  id: 'quick_response' | 'implement_review' | 'review_fix' | 'multi_solution' | 'isolated_race' | 'discussion';
+  id: 'quick_response' | 'diagnose_fix_review' | 'implement_review' | 'review_fix' | 'multi_solution' | 'isolated_race' | 'discussion';
   label: string;
   description: string;
   strategy: CLIStrategy;
   executionPlan?: Partial<CLIExecutionPlan>;
+  customWorkflow?: CLICustomWorkflow;
   defaultStages: string[];
 }
 
@@ -113,6 +114,42 @@ export const agentWorkflowTemplates: AgentWorkflowTemplate[] = [
   },
 ];
 
+export const diagnoseFixReviewWorkflow: CLICustomWorkflow = {
+  id: 'diagnose_fix_review',
+  name: '排查修复复审',
+  description: '定位问题根因并完成修复，再由评审者检查修复质量；评审不通过时返回修正。',
+  maxLoops: 2,
+  stages: [
+    {
+      id: 'diagnose_fix',
+      label: '定位修复',
+      role: 'implementer',
+      mode: 'write',
+      prompt: '请根据用户描述定位问题根因，完成最小必要修复，并运行必要验证。输出中说明根因、改动、验证结果和剩余风险。',
+      nextStageId: 'review',
+    },
+    {
+      id: 'review',
+      label: '复审',
+      role: 'reviewer',
+      mode: 'readOnly',
+      prompt: '请审查上一阶段修复是否命中根因、是否有副作用、测试是否充分。不要修改文件；如发现阻塞问题，请给出具体修正反馈。',
+      reviewDecision: {
+        approved: 'done',
+        revise: 'revise',
+      },
+    },
+    {
+      id: 'revise',
+      label: '修正',
+      role: 'implementer',
+      mode: 'write',
+      prompt: '请只针对复审反馈中的阻塞问题做必要修正，并重新运行必要验证。输出修正内容、验证结果和仍需关注的风险。',
+      nextStageId: 'review',
+    },
+  ],
+};
+
 export const cliWorkflowTemplates: CLIWorkflowTemplate[] = [
   {
     id: 'quick_response',
@@ -127,6 +164,14 @@ export const cliWorkflowTemplates: CLIWorkflowTemplate[] = [
     description: '规划者先拆解方案，实现者按方案改代码；评审不通过时继续修正并复审。',
     strategy: 'review',
     defaultStages: ['规划', '实现', '复审', '修正'],
+  },
+  {
+    id: 'diagnose_fix_review',
+    label: '排查修复复审',
+    description: '一位开发成员定位并修复问题，另一位开发成员复审；不通过则按反馈修正。',
+    strategy: 'review',
+    customWorkflow: diagnoseFixReviewWorkflow,
+    defaultStages: ['定位修复', '复审', '修正'],
   },
   {
     id: 'review_fix',

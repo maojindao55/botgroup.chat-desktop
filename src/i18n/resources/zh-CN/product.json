@@ -57,6 +57,10 @@
       "label": "快速响应",
       "description": "自动选择一位开发成员处理当前代码任务。"
     },
+    "diagnose_fix_review": {
+      "label": "排查修复复审",
+      "description": "一位开发成员定位并修复问题，另一位开发成员复审；不通过则按反馈修正。"
+    },
     "implement_review": {
       "label": "规划实现复审",
       "description": "规划者先拆解方案，实现者按方案改代码；评审不通过时继续修正并复审。"

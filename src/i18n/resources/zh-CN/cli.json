@@ -59,6 +59,7 @@
       "raceWarning": "需要 git 仓库，且当前工作区不能有未提交改动；每位开发成员在独立 worktree 中执行。",
       "pipelineHint": "默认失败继续（让后续开发成员诊断）；用户取消会停止后续阶段。",
       "reviewLoopHint": "规划实现复审会先规划、再实现；评审不通过时，按反馈修正并再次复审。",
+      "customWorkflowHint": "自定义编排阶段：{{stages}}。",
       "reviewLoopMemberWarning": "建议至少选择 2 个开发成员，并分别指定规划/评审者与实现者。"
     },
     "strategies": {

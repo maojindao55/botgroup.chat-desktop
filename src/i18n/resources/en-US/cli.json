@@ -59,6 +59,7 @@
       "raceWarning": "Requires a git repo with a clean working tree; each dev member runs in an isolated worktree.",
       "pipelineHint": "Continues on failure by default (later members diagnose); user cancel stops later stages.",
       "reviewLoopHint": "Plan-implement-review plans first, then implements; failed review triggers fixes and re-review.",
+      "customWorkflowHint": "Custom workflow stages: {{stages}}.",
       "reviewLoopMemberWarning": "Pick at least 2 dev members and assign planner/reviewer and implementer roles."
     },
     "strategies": {

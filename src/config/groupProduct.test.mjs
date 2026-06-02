@@ -33,7 +33,7 @@ assert.deepEqual(
 
 assert.deepEqual(
   mod.cliWorkflowTemplates.map((item) => item.label),
-  ['快速响应', '规划实现复审', '审核修正', '多人出方案', '隔离竞赛', '只读讨论'],
+  ['快速响应', '规划实现复审', '排查修复复审', '审核修正', '多人出方案', '隔离竞赛', '只读讨论'],
 );
 
 assert.equal(
@@ -70,7 +70,13 @@ const developmentLoop = mod.cliWorkflowTemplates.find((item) => item.id === 'imp
 assert.equal(developmentLoop.strategy, 'review');
 assert.equal(developmentLoop.defaultStages.join(' -> '), '规划 -> 实现 -> 复审 -> 修正');
 
+const diagnoseFixReview = mod.cliWorkflowTemplates.find((item) => item.id === 'diagnose_fix_review');
+assert.equal(diagnoseFixReview.strategy, 'review');
+assert.equal(diagnoseFixReview.customWorkflow.stages.map((stage) => stage.label).join(' -> '), '定位修复 -> 复审 -> 修正');
+assert.equal(diagnoseFixReview.customWorkflow.stages[1].reviewDecision.revise, 'revise');
+
 assert.equal(mod.getCLIWorkflowLabel('review', 'implement_review'), '规划实现复审');
+assert.equal(mod.getCLIWorkflowLabel('review', 'diagnose_fix_review'), '排查修复复审');
 assert.equal(mod.getCLIWorkflowLabel('race', 'isolated_race'), '隔离竞赛');
 assert.equal(mod.getCLIWorkflowLabel('sequential', 'multi_solution'), '多人出方案');
 
@@ -159,7 +165,7 @@ const sidebar = await readFile(new URL('../pages/chat/components/Sidebar.tsx', i
 
 assert.match(sidebar, /useTranslation/);
 assert.match(sidebar, /getTranslatedGroupTypeShortLabel/);
-assert.match(sidebar, /sidebar:workspaceTitle/);
+assert.match(sidebar, /sidebar:section\.workspace/);
 for (const oldCopy of ['工作空间', 'AI 群员库', '>AI<', '>CLI<', '>Agent<']) {
   assert.doesNotMatch(sidebar, new RegExp(oldCopy));
 }

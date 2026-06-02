@@ -177,6 +177,8 @@ export const CreateGroupWizard = ({
   const [cliTemplateId, setCliTemplateId] = useState(defaultCliWorkflowTemplate.id);
   const [cliSessionPolicy, setCliSessionPolicy] = useState<CLISessionPolicy>('task');
   const [reviewLoopRoles, setReviewLoopRoles] = useState<CLIReviewLoopRoles>(() => buildDefaultReviewLoopRoles([]));
+  const selectedCliWorkflowTemplate = cliWorkflowTemplates.find((item) => item.id === cliTemplateId);
+  const usesReviewRoles = cliTemplateId === 'implement_review' || !!selectedCliWorkflowTemplate?.customWorkflow;
 
   // Agent group
   const [selectedAgentMembers, setSelectedAgentMembers] = useState<string[]>([]);
@@ -192,7 +194,7 @@ export const CreateGroupWizard = ({
   }, [open, loadMembers]);
 
   useEffect(() => {
-    if (cliTemplateId !== 'implement_review' || selectedCLIMembers.length === 0) return;
+    if (!usesReviewRoles || selectedCLIMembers.length === 0) return;
     const defaults = buildDefaultReviewLoopRoles(selectedCLIMembers);
     setReviewLoopRoles(prev => ({
       plannerId: prev.plannerId && selectedCLIMembers.includes(prev.plannerId) ? prev.plannerId : defaults.plannerId,
@@ -200,7 +202,7 @@ export const CreateGroupWizard = ({
       reviewerId: prev.reviewerId && selectedCLIMembers.includes(prev.reviewerId) ? prev.reviewerId : defaults.reviewerId,
       maxReviewRounds: prev.maxReviewRounds ?? 2,
     }));
-  }, [cliTemplateId, selectedCLIMembers]);
+  }, [usesReviewRoles, selectedCLIMembers]);
 
   const reviewLoopRoleOptions = useMemo(
     () => selectedCLIMembers.map(id => ({
@@ -247,11 +249,11 @@ export const CreateGroupWizard = ({
         schedulerStrategy: aiMode.schedulerStrategy,
       } as AIGroup;
     } else if (groupType === 'cli') {
-      const selectedTemplate = cliWorkflowTemplates.find((item) => item.id === cliTemplateId);
-      const resolvedReviewLoopRoles = cliTemplateId === 'implement_review'
+      const selectedTemplate = selectedCliWorkflowTemplate;
+      const resolvedReviewLoopRoles = usesReviewRoles
         ? buildDefaultReviewLoopRoles(selectedCLIMembers)
         : undefined;
-      const reviewLoopRolesToSave = cliTemplateId === 'implement_review'
+      const reviewLoopRolesToSave = usesReviewRoles
         ? {
           plannerId: reviewLoopRoles.plannerId || resolvedReviewLoopRoles?.plannerId,
           implementerId: reviewLoopRoles.implementerId || resolvedReviewLoopRoles?.implementerId,
@@ -272,6 +274,7 @@ export const CreateGroupWizard = ({
         sessionPolicy: cliSessionPolicy,
         executionPlan: selectedTemplate?.executionPlan,
         reviewLoopRoles: reviewLoopRolesToSave,
+        customWorkflow: selectedTemplate?.customWorkflow,
       } as CLIGroup;
     } else {
       group = {
@@ -518,7 +521,7 @@ export const CreateGroupWizard = ({
           </button>
         ))}
       </div>
-      {cliTemplateId === 'implement_review' && (
+      {usesReviewRoles && (
         <div style={{ padding: 12, background: 'rgba(0,0,0,0.04)', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div>
             <div style={{ fontSize: 14, fontWeight: 500 }}>{t('wizard:configStep.roleAssignment')}</div>
