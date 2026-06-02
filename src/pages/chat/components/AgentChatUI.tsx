@@ -19,7 +19,8 @@ import Sidebar from './Sidebar';
 import type { AgentGroup, Group } from '@/config/groups';
 import { isBuiltinGroupId } from '@/config/groupStorage';
 import { useAIMemberStore } from '@/store/aiMemberStore';
-import { AIMemberLibrary, AI_MEMBER_LIBRARY_INLINE_WIDTH } from './AIMemberLibrary';
+import { AppSettingsModal } from './AppSettingsModal';
+import type { AppSettingsSection } from '@/config/appSettings';
 import { MentionTextArea } from './MentionAutocomplete';
 import { generateSessionTitle } from '@/utils/sessionTitle';
 
@@ -289,7 +290,8 @@ const AgentChatUI = ({
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [showLibrary, setShowLibrary] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<AppSettingsSection>('general');
   const [groupTitle, setGroupTitle] = useState<string>(() => {
     try {
       return localStorage.getItem(chatTitleKey(group.id)) || '';
@@ -403,24 +405,15 @@ const AgentChatUI = ({
     })();
   };
 
-  const handleToggleSettings = (nextOpen: boolean) => {
-    if (nextOpen === showSettings) return;
-    if (nextOpen && showLibrary) {
-      setShowLibrary(false);
-      adjustWindowWidthForPanel(-AI_MEMBER_LIBRARY_INLINE_WIDTH);
-    }
-    setShowSettings(nextOpen);
-    adjustWindowWidthForPanel(nextOpen ? AGENT_SETTINGS_WIDTH : -AGENT_SETTINGS_WIDTH);
+  const openAppSettings = (section: AppSettingsSection = 'general') => {
+    setSettingsSection(section);
+    setSettingsOpen(true);
   };
 
-  const handleToggleLibrary = (nextOpen: boolean) => {
-    if (nextOpen === showLibrary) return;
-    if (nextOpen && showSettings) {
-      setShowSettings(false);
-      adjustWindowWidthForPanel(-AGENT_SETTINGS_WIDTH);
-    }
-    setShowLibrary(nextOpen);
-    adjustWindowWidthForPanel(nextOpen ? AI_MEMBER_LIBRARY_INLINE_WIDTH : -AI_MEMBER_LIBRARY_INLINE_WIDTH);
+  const handleToggleSettings = (nextOpen: boolean) => {
+    if (nextOpen === showSettings) return;
+    setShowSettings(nextOpen);
+    adjustWindowWidthForPanel(nextOpen ? AGENT_SETTINGS_WIDTH : -AGENT_SETTINGS_WIDTH);
   };
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -589,7 +582,7 @@ const AgentChatUI = ({
             onSelectGroup={onSelectGroup}
             groups={groups}
             onCreateGroup={onCreateGroup}
-            onOpenLibrary={() => handleToggleLibrary(true)}
+            onOpenSettings={openAppSettings}
             onNavigateCLI={() => { window.location.href = '?view=cli-tasks'; }}
             onNavigateHome={() => { window.location.href = '?view=home'; }}
             hiddenGroupTypes={['cli']}
@@ -666,7 +659,7 @@ const AgentChatUI = ({
                   {hasUnresolvedMembers && (
                     <p style={{ fontSize: 13, marginTop: 12, color: '#ef4444' }}>
                       {t('chat:agentChat.unresolvedMembers', { count: currentMemberIds.length })}<br />
-                      {t('chat:agentChat.unresolvedMembersHint', { library: t('library:title') })}
+                      {t('chat:agentChat.unresolvedMembersHint', { settings: t('appSettings:title') })}
                     </p>
                   )}
                   <div style={{ marginTop: 16, display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
@@ -806,15 +799,6 @@ const AgentChatUI = ({
             />
           )}
 
-          {/* 资源库（Desktop Inline） */}
-          {!isMobile && (
-            <AIMemberLibrary
-              inline
-              open={showLibrary}
-              onClose={() => handleToggleLibrary(false)}
-              groups={groups}
-            />
-          )}
         </div>
       </div>
 
@@ -823,14 +807,12 @@ const AgentChatUI = ({
         <div className={styles.mobileOverlay} onClick={toggleSidebar} />
       )}
 
-      {/* 资源库（Mobile Drawer） */}
-      {isMobile && (
-        <AIMemberLibrary
-          open={showLibrary}
-          onClose={() => handleToggleLibrary(false)}
-          groups={groups}
-        />
-      )}
+      <AppSettingsModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        groups={groups}
+        initialSection={settingsSection}
+      />
     </>
   );
 };

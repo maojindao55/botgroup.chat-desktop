@@ -36,7 +36,7 @@
 | 🪟 **Windows** | [下载 `.exe`](https://github.com/maojindao55/botgroup.chat-desktop/releases/latest)（Windows 10 / 11 64 位） |
 | 🐧 **Linux** | [下载 `.deb`](https://github.com/maojindao55/botgroup.chat-desktop/releases/latest)（Ubuntu / Debian） |
 
-> 下载后准备一个模型服务的 API Key（DeepSeek、通义千问、Kimi、OpenAI、Ollama 等均可），在「资源库 → 模型服务」中填入即可开始第一场群聊。
+> 下载后准备一个模型服务的 API Key（DeepSeek、通义千问、Kimi、OpenAI、Ollama 等均可），在「设置 → 模型提供商」中填入即可开始第一场群聊。
 > 各平台架构与安装提示详见下方 [💻 支持的系统](#-支持的系统)。
 
 ## ✨ 特性

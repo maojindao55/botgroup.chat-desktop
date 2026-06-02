@@ -31,7 +31,8 @@ import Sidebar from './Sidebar';
 import { AdBanner, AdBannerMobile } from './AdSection';
 import { useUserStore } from '@/store/userStore';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { AIMemberLibrary, AI_MEMBER_LIBRARY_INLINE_WIDTH } from './AIMemberLibrary';
+import { AppSettingsModal } from './AppSettingsModal';
+import type { AppSettingsSection } from '@/config/appSettings';
 import { useAIMemberStore } from '@/store/aiMemberStore';
 import { resolveEffectiveMember } from '@/utils/aiMemberDisplay';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
@@ -435,7 +436,8 @@ const ChatUI = () => {
   // State
   const [groups, setGroups] = useState<Group[]>([]);
   const [selectedGroupIndex, setSelectedGroupIndex] = useState(id);
-  const [showLibrary, setShowLibrary] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<AppSettingsSection>('general');
   const { load: loadAIMembers } = useAIMemberStore();
   const aiMembers = useAIMemberStore(state => state.members);
 
@@ -516,26 +518,15 @@ const ChatUI = () => {
     [groupAiCharacters],
   );
 
-  const handleToggleSettings = (nextOpen: boolean) => {
-    if (nextOpen === showSettings) return;
-    // 与「资源库」面板互斥（同一侧位置，避免重叠）
-    if (nextOpen && showLibrary) {
-      setShowLibrary(false);
-      adjustWindowWidthForPanel(-AI_MEMBER_LIBRARY_INLINE_WIDTH);
-    }
-    setShowSettings(nextOpen);
-    adjustWindowWidthForPanel(nextOpen ? settingsPanelWidth : -settingsPanelWidth);
+  const openAppSettings = (section: AppSettingsSection = 'general') => {
+    setSettingsSection(section);
+    setSettingsOpen(true);
   };
 
-  const handleToggleLibrary = (nextOpen: boolean) => {
-    if (nextOpen === showLibrary) return;
-    // 与群设置面板互斥
-    if (nextOpen && showSettings) {
-      setShowSettings(false);
-      adjustWindowWidthForPanel(-settingsPanelWidth);
-    }
-    setShowLibrary(nextOpen);
-    adjustWindowWidthForPanel(nextOpen ? AI_MEMBER_LIBRARY_INLINE_WIDTH : -AI_MEMBER_LIBRARY_INLINE_WIDTH);
+  const handleToggleSettings = (nextOpen: boolean) => {
+    if (nextOpen === showSettings) return;
+    setShowSettings(nextOpen);
+    adjustWindowWidthForPanel(nextOpen ? settingsPanelWidth : -settingsPanelWidth);
   };
 
   useEffect(() => {
@@ -1763,7 +1754,7 @@ const ChatUI = () => {
             onSelectGroup={handleSelectGroup}
             groups={groups}
             onCreateGroup={handleCreateGroup}
-            onOpenLibrary={() => handleToggleLibrary(true)}
+            onOpenSettings={openAppSettings}
             onNavigateCLI={handleNavigateCLI}
             onNavigateHome={handleNavigateHome}
             hiddenGroupTypes={['cli']}
@@ -2151,15 +2142,6 @@ const ChatUI = () => {
             />
           )}
 
-          {/* 资源库（Desktop Inline） */}
-          {!isMobile && (
-            <AIMemberLibrary
-              inline
-              open={showLibrary}
-              onClose={() => handleToggleLibrary(false)}
-              groups={groups}
-            />
-          )}
         </div>
       </div>
 
@@ -2167,14 +2149,12 @@ const ChatUI = () => {
         <div className={styles.mobileOverlay} onClick={toggleSidebar} />
       )}
 
-      {/* 资源库（Mobile Drawer） */}
-      {isMobile && (
-        <AIMemberLibrary
-          open={showLibrary}
-          onClose={() => handleToggleLibrary(false)}
-          groups={groups}
-        />
-      )}
+      <AppSettingsModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        groups={groups}
+        initialSection={settingsSection}
+      />
     </>
   );
 };

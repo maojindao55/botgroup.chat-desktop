@@ -16,9 +16,9 @@
     "characterPlaceholder": "选择角色...",
     "cliPlaceholder": "选择开发成员...",
     "expertPlaceholder": "选择专家...",
-    "emptyDescription": "暂无{{resource}}，请先在资源库创建",
-    "goLibrary": "去资源库新建",
-    "openLibraryHint": "请从侧边栏打开资源库后新建"
+    "emptyDescription": "暂无{{resource}}，请先在设置中创建",
+    "goLibrary": "去设置中新建",
+    "openLibraryHint": "请从侧边栏打开设置后新建"
   },
   "configStep": {
     "speechMode": "发言方式",

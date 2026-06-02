@@ -27,6 +27,7 @@ import libraryZh from './resources/zh-CN/library.json';
 import productZh from './resources/zh-CN/product.json';
 import providersZh from './resources/zh-CN/providers.json';
 import settingsZh from './resources/zh-CN/settings.json';
+import appSettingsZh from './resources/zh-CN/appSettings.json';
 import sidebarZh from './resources/zh-CN/sidebar.json';
 import tagsZh from './resources/zh-CN/tags.json';
 import userZh from './resources/zh-CN/user.json';

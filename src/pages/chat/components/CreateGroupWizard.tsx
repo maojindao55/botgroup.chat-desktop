@@ -375,10 +375,10 @@ export const CreateGroupWizard = ({
     [members, memberKind],
   );
 
-  const handleOpenLibrary = () => {
+  const handleOpenSettings = () => {
     onOpenChange(false);
     reset();
-    onOpenLibrary?.();
+    onOpenSettings?.(groupTypeToSettingsSection(groupType));
   };
 
   const renderEmptyMembers = (resourceKey: 'character' | 'cliMember' | 'expert') => (

@@ -27,7 +27,7 @@
     "maxRounds": "Max rounds",
     "manageExperts": "Add / manage experts",
     "pickExpertsPlaceholder": "Select experts to join...",
-    "libraryHint": "Create or edit expert models, roles, and tools in the library.",
+    "libraryHint": "Create or edit expert models, roles, and tools in Settings.",
     "experts": "Experts ({{count}})",
     "supervisorBadge": "👑 Supervisor",
     "unmute": "Unmute",

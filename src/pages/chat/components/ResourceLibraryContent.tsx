@@ -1,34 +1,37 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Drawer, Tabs, Button, Tag, Modal, Empty } from 'antd';
+import { Button, Tag, Modal, Empty } from 'antd';
 import { Avatar as LobeAvatar } from '@lobehub/ui';
 import { useAIMemberStore } from '@/store/aiMemberStore';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
 import { getVisibleMembers } from '@/utils/aiMemberDisplay';
 import { AIMember, AIMemberKind } from '@/config/aiMembers';
 import { Group } from '@/config/groups';
+import type { AppSettingsSection } from '@/config/appSettings';
 import { AIMemberEditor } from './AIMemberEditor';
 import { ProviderLibrary } from './ProviderLibrary';
 import { ProviderEditor } from './ProviderEditor';
 import { useProviderStore } from '@/store/providerStore';
 import type { Provider } from '@/config/providers';
-import { Plus, Edit2, Trash2, ShieldAlert, Cpu, Terminal, Users, Sparkles, X, Copy } from 'lucide-react';
+import { Plus, Edit2, Trash2, ShieldAlert, Cpu, Terminal, Sparkles, Copy } from 'lucide-react';
 import { BRAND_ON_PRIMARY, brandPrimaryButtonProps } from '@/lib/theme';
 import { toast } from 'sonner';
 import { createStyles } from 'antd-style';
 
-/** 桌面端 inline 面板的宽度（用于 ChatUI 窗口宽度联动） */
-export const AI_MEMBER_LIBRARY_INLINE_WIDTH = 680;
-
 const useStyles = createStyles(({ token, css }) => ({
-  drawerBody: css`
+  root: css`
     display: flex;
     flex-direction: column;
     flex: 1;
     min-height: 0;
-    height: 100%;
-    padding: 0;
     overflow: hidden;
+  `,
+  scrollBody: css`
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    background: ${token.colorBgLayout};
   `,
   tabToolbar: css`
     display: flex;
@@ -36,44 +39,8 @@ const useStyles = createStyles(({ token, css }) => ({
     padding: 16px 24px 0;
     flex-shrink: 0;
   `,
-  tabContainer: css`
-    flex: 1;
-    min-height: 0;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-
-    .ant-tabs {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
-
-    .ant-tabs-nav {
-      margin: 0 !important;
-      padding: 0 24px;
-      background: ${token.colorBgContainer};
-      border-bottom: 1px solid ${token.colorBorderSecondary};
-      flex-shrink: 0;
-    }
-
-    .ant-tabs-content-holder {
-      flex: 1;
-      min-height: 0;
-      overflow-y: auto;
-      overflow-x: hidden;
-      background: ${token.colorBgLayout};
-    }
-
-    .ant-tabs-content,
-    .ant-tabs-tabpane-active {
-      height: auto;
-    }
-  `,
   listContainer: css`
-    padding: 16px 24px;
+    padding: 16px 24px 24px;
   `,
   memberCard: css`
     background: ${token.colorBgContainer};
@@ -152,103 +119,48 @@ const useStyles = createStyles(({ token, css }) => ({
     color: ${token.colorTextSecondary} !important;
     border: 1px solid ${token.colorBorder} !important;
   `,
-  // —— inline 模式（与 CLIGroupSettings 对齐）——
-  inlinePanel: css`
-    width: ${AI_MEMBER_LIBRARY_INLINE_WIDTH}px;
-    height: 100%;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-    background: ${token.colorBgContainer};
-    border-left: 1px solid ${token.colorBorderSecondary};
-    flex-shrink: 0;
-    z-index: 5;
-    overflow: hidden;
-  `,
-  inlineHeader: css`
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 16px;
-    border-bottom: 1px solid ${token.colorBorderSecondary};
-    height: 52px;
-    flex-shrink: 0;
-  `,
-  inlineTitleWrap: css`
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 14px;
-    font-weight: 600;
-    color: ${token.colorText};
-  `,
-  inlineCloseBtn: css`
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    padding: 4px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: ${token.colorTextSecondary};
-    border-radius: 4px;
-    transition: background 0.2s;
-    &:hover {
-      background: ${token.colorFillTertiary};
-    }
-  `,
-  inlineBody: css`
-    flex: 1;
-    min-height: 0;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-  `,
-  drawerContent: css`
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  `,
 }));
 
-interface AIMemberLibraryProps {
-  open: boolean;
-  onClose: () => void;
+type ResourceSection = Exclude<AppSettingsSection, 'general'>;
+
+interface ResourceLibraryContentProps {
+  section: ResourceSection;
   groups: Group[];
-  /** 桌面端使用内联面板（与群设置一致），移动端走 Drawer */
-  inline?: boolean;
+  /** 父级弹框是否打开，用于触发数据加载 */
+  active: boolean;
 }
 
-export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose, groups, inline }) => {
+export const ResourceLibraryContent: React.FC<ResourceLibraryContentProps> = ({
+  section,
+  groups,
+  active,
+}) => {
   const { t } = useTranslation(['library', 'common', 'product']);
   const { styles } = useStyles();
   const members = useAIMemberStore((state) => state.members);
   const { load, remove, ensurePersonalCopy, findReferencingGroups } = useAIMemberStore();
   const { load: loadProviders } = useProviderStore();
-  const [activeTab, setActiveTab] = useState<string>('cli');
-  // Editor State
+
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | undefined>(undefined);
   const [editorKind, setEditorKind] = useState<'llm' | 'agent' | 'cli'>('llm');
 
-  // Provider editor state
   const [providerEditorOpen, setProviderEditorOpen] = useState(false);
   const [editingProviderId, setEditingProviderId] = useState<string | undefined>(undefined);
 
   useEffect(() => {
-    if (open) {
+    if (active) {
       load();
     }
-  }, [open]);
+  }, [active, load]);
 
   useEffect(() => {
-    if (open && activeTab === 'providers') {
+    if (active && section === 'providers') {
       loadProviders();
     }
-  }, [open, activeTab, loadProviders]);
+  }, [active, section, loadProviders]);
 
-  const handleCreate = (kind: 'llm' | 'agent' | 'cli') => {
+  const handleCreate = (kind: AIMemberKind) => {
     setEditingId(undefined);
     setEditorKind(kind);
     setEditorOpen(true);
@@ -295,7 +207,7 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
           </div>
         ),
         okText: t('common:actions.gotIt'),
-        cancelButtonProps: { style: { display: 'none' } }
+        cancelButtonProps: { style: { display: 'none' } },
       });
       return;
     }
@@ -310,7 +222,7 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
       cancelText: t('common:actions.cancel'),
       onOk: async () => {
         await remove(member.id);
-      }
+      },
     });
   };
 
@@ -327,7 +239,6 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
 
   const getMembersByKind = (kind: AIMemberKind) => {
     const list = getVisibleMembers(members, kind);
-    // 角色、专家不提供官方预设，仅展示用户自建资源
     if (kind === 'llm' || kind === 'agent') {
       return list.filter((m) => m.source !== 'builtin');
     }
@@ -482,7 +393,7 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
     }
   };
 
-  const renderTabContent = (kind: AIMemberKind) => {
+  const renderMemberSection = (kind: AIMemberKind) => {
     const list = getMembersByKind(kind);
 
     return (
@@ -509,29 +420,15 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
     );
   };
 
-  const body = (
-    <div className={styles.drawerBody}>
-      <div className={styles.tabContainer}>
-        <Tabs activeKey={activeTab} onChange={setActiveTab}>
-          <Tabs.TabPane tab={t('library:tabs.cli')} key="cli">
-            {renderTabContent('cli')}
-          </Tabs.TabPane>
-          <Tabs.TabPane tab={t('library:tabs.providers')} key="providers">
-            <ProviderLibrary onCreate={handleCreateProvider} onEdit={handleEditProvider} />
-          </Tabs.TabPane>
-          <Tabs.TabPane tab={t('library:tabs.llm')} key="llm">
-            {renderTabContent('llm')}
-          </Tabs.TabPane>
-          <Tabs.TabPane tab={t('library:tabs.agent')} key="agent">
-            {renderTabContent('agent')}
-          </Tabs.TabPane>
-        </Tabs>
-      </div>
-    </div>
+  const body = section === 'providers' ? (
+    <ProviderLibrary onCreate={handleCreateProvider} onEdit={handleEditProvider} />
+  ) : (
+    renderMemberSection(section)
   );
 
-  const editor = (
-    <>
+  return (
+    <div className={styles.root}>
+      <div className={styles.scrollBody}>{body}</div>
       <AIMemberEditor
         open={editorOpen}
         memberId={editingId}
@@ -553,52 +450,6 @@ export const AIMemberLibrary: React.FC<AIMemberLibraryProps> = ({ open, onClose,
           setProviderEditorOpen(true);
         }}
       />
-    </>
-  );
-
-  // 桌面端：与群设置一致的右侧推入式面板
-  if (inline) {
-    if (!open) return editor;
-    return (
-      <>
-        <div className={styles.inlinePanel}>
-          <div className={styles.inlineHeader}>
-            <span className={styles.inlineTitleWrap}>
-              <Users size={18} style={{ color: '#ff6600' }} />
-              {t('library:title')}
-            </span>
-            <button className={styles.inlineCloseBtn} onClick={onClose} aria-label={t('library:closeAria')}>
-              <X size={16} />
-            </button>
-          </div>
-          <div className={styles.inlineBody}>{body}</div>
-        </div>
-        {editor}
-      </>
-    );
-  }
-
-  // 移动端：保留 Drawer
-  return (
-    <>
-      <Drawer
-        title={
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Users size={20} style={{ color: '#ff6600' }} />
-            <span>{t('library:title')}</span>
-          </div>
-        }
-        width={AI_MEMBER_LIBRARY_INLINE_WIDTH}
-        open={open}
-        onClose={onClose}
-        styles={{
-          body: { padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' },
-        }}
-        classNames={{ body: styles.drawerContent }}
-      >
-        {body}
-      </Drawer>
-      {editor}
-    </>
+    </div>
   );
 };

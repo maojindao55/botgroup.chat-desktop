@@ -50,7 +50,8 @@ import Sidebar from './Sidebar';
 import { AdBanner, AdBannerMobile } from './AdSection';
 import { useUserStore } from '@/store/userStore';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { AIMemberLibrary } from './AIMemberLibrary';
+import { AppSettingsModal } from './AppSettingsModal';
+import type { AppSettingsSection } from '@/config/appSettings';
 import { useAIMemberStore } from '@/store/aiMemberStore';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
 import { resolveEffectiveMember } from '@/utils/aiMemberDisplay';
@@ -728,7 +729,8 @@ const CLITaskUI = ({
     prompt?: string;
     status?: string;
   } | null>(null);
-  const [showLibrary, setShowLibrary] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<AppSettingsSection>('general');
   const [showAd, setShowAd] = useState(false);
   const [mutedUsers, setMutedUsers] = useState<string[]>([]);
 
@@ -1526,7 +1528,7 @@ const CLITaskUI = ({
       setTemplateSettingsReturnTo('template-list');
     } else {
       setTaskInfoOpen(false);
-      setShowLibrary(false);
+      setSettingsOpen(false);
       setTemplateListOpen(false);
       setTemplateSettingsReturnTo(null);
     }
@@ -1535,7 +1537,7 @@ const CLITaskUI = ({
 
   const openTemplateList = () => {
     setTaskInfoOpen(false);
-    setShowLibrary(false);
+    setSettingsOpen(false);
     if (templateSettingsOpen) {
       setTemplateSettingsOpen(false);
       setEditingTemplateId(null);
@@ -1645,7 +1647,13 @@ const CLITaskUI = ({
     setTemplateSettingsOpen(false);
     setEditingTemplateId(null);
     setTemplateSettingsReturnTo(null);
-    setShowLibrary(false);
+    setSettingsOpen(false);
+  };
+
+  const openAppSettings = (section: AppSettingsSection = 'general') => {
+    closeManagementPanels();
+    setSettingsSection(section);
+    setSettingsOpen(true);
   };
 
   const handleToggleTaskInfo = (nextOpen: boolean) => {
@@ -1656,7 +1664,7 @@ const CLITaskUI = ({
     setTemplateListOpen(false);
     setTemplateSettingsOpen(false);
     setEditingTemplateId(null);
-    setShowLibrary(false);
+    setSettingsOpen(false);
     setTaskInfoOpen(true);
   };
 
@@ -1674,7 +1682,7 @@ const CLITaskUI = ({
     setTemplateSettingsOpen(false);
     setEditingTemplateId(null);
     setTemplateSettingsReturnTo(null);
-    setShowLibrary(false);
+    setSettingsOpen(false);
     setTemplateListOpen(true);
   };
 
@@ -1685,18 +1693,9 @@ const CLITaskUI = ({
     }
     setTaskInfoOpen(false);
     setTemplateListOpen(false);
-    setShowLibrary(false);
+    setSettingsOpen(false);
     setTemplateSettingsReturnTo(null);
     setTemplateSettingsOpen(true);
-  };
-
-  const handleToggleLibrary = (nextOpen: boolean) => {
-    if (!nextOpen) {
-      setShowLibrary(false);
-      return;
-    }
-    closeManagementPanels();
-    setShowLibrary(true);
   };
 
   return (
@@ -1775,7 +1774,7 @@ const CLITaskUI = ({
         onOpenChange={setCreateTemplateOpen}
         onCreateGroup={handleCreateTemplateGroup}
         fixedGroupType="cli"
-        onOpenLibrary={() => handleToggleLibrary(true)}
+        onOpenSettings={(section) => openAppSettings(section ?? 'cli')}
       />
 
       <CLIRaceResultsDrawer
@@ -1861,10 +1860,11 @@ const CLITaskUI = ({
         />
       )}
 
-      <AIMemberLibrary
-        open={showLibrary}
-        onClose={() => handleToggleLibrary(false)}
+      <AppSettingsModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
         groups={groups}
+        initialSection={settingsSection}
       />
 
       <div className={styles.page}>
@@ -1876,7 +1876,7 @@ const CLITaskUI = ({
             onSelectGroup={onSelectGroup}
             groups={groups}
             onCreateGroup={onCreateGroup}
-            onOpenLibrary={() => handleToggleLibrary(true)}
+            onOpenSettings={(section) => openAppSettings(section ?? 'cli')}
             activeView="cli-tasks"
             onNavigateCLI={() => navigateToList()}
             onNavigateHome={onNavigateHome ?? (() => { window.location.href = '?view=home'; })}

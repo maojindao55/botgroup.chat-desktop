@@ -11,7 +11,8 @@ import { createStyles } from 'antd-style';
 
 import Sidebar from './Sidebar';
 import CreateGroupWizard from './CreateGroupWizard';
-import { AIMemberLibrary } from './AIMemberLibrary';
+import { AppSettingsModal } from './AppSettingsModal';
+import type { AppSettingsSection } from '@/config/appSettings';
 import { useUserStore } from '@/store/userStore';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useCLITaskStore } from '@/store/cliTaskStore';
@@ -259,7 +260,8 @@ const HomeView = ({
   const tasks = useCLITaskStore((s) => s.tasks);
 
   const [wizardType, setWizardType] = useState<WizardType | null>(null);
-  const [showLibrary, setShowLibrary] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<AppSettingsSection>('general');
 
   const userName = userStore.userInfo?.nickname?.trim() || t('home:hero.defaultName');
 
@@ -290,16 +292,18 @@ const HomeView = ({
         }}
         onCreateGroup={onCreateGroup}
         fixedGroupType={wizardType ?? undefined}
-        onOpenLibrary={() => {
+        onOpenSettings={(section) => {
           setWizardType(null);
-          setShowLibrary(true);
+          setSettingsSection(section ?? 'general');
+          setSettingsOpen(true);
         }}
       />
 
-      <AIMemberLibrary
-        open={showLibrary}
-        onClose={() => setShowLibrary(false)}
+      <AppSettingsModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
         groups={groups}
+        initialSection={settingsSection}
       />
 
       <div className={styles.page}>
@@ -311,7 +315,10 @@ const HomeView = ({
             onSelectGroup={onSelectGroup}
             groups={groups}
             onCreateGroup={onCreateGroup}
-            onOpenLibrary={() => setShowLibrary(true)}
+            onOpenSettings={(section) => {
+              setSettingsSection(section ?? 'general');
+              setSettingsOpen(true);
+            }}
             activeView="home"
             hiddenGroupTypes={['cli']}
             onNavigateHome={() => {

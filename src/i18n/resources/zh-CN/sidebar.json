@@ -2,14 +2,13 @@
   "workspaceTitle": "群聊空间",
   "section": {
     "workspace": "工作区",
-    "groups": "群聊",
-    "resources": "资源"
+    "groups": "群聊"
   },
   "nav": {
     "devTasks": "开发任务",
     "home": "首页",
     "createGroup": "创建新群聊",
-    "library": "资源库"
+    "settings": "设置"
   },
   "actions": {
     "editGroup": "编辑群聊",

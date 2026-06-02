@@ -8,8 +8,8 @@ import {
   PlusCircle as PlusCircleIcon,
   Puzzle,
   Terminal,
-  Users as UsersIcon,
 } from 'lucide-react';
+import type { AppSettingsSection } from '@/config/appSettings';
 import { useTranslation } from 'react-i18next';
 import { Tooltip } from 'antd';
 import { ActionIcon } from '@lobehub/ui';

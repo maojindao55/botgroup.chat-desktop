@@ -59,9 +59,9 @@
   "agentChat": {
     "expertCount": "{{count}} experts",
     "emptyTitle": "Expert group",
-    "loadingLibrary": "Loading library...",
-    "unresolvedMembers": "This group references {{count}} experts, but they were not found in the library.",
-    "unresolvedMembersHint": "Open \"{{library}}\" to check or re-add members.",
+    "loadingLibrary": "Loading members...",
+    "unresolvedMembers": "This group references {{count}} experts, but they were not found in Settings.",
+    "unresolvedMembersHint": "Open \"{{settings}}\" to check or re-add members.",
     "strategyMeta": "Strategy: {{strategy}} | Max rounds: {{maxRounds}}",
     "expertBadge": "Expert",
     "inputPlaceholder": "Send a message — experts will collaborate per group rules...",
