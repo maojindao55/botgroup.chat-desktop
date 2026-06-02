@@ -21,6 +21,7 @@ import { isBuiltinGroupId } from '@/config/groupStorage';
 import { useAIMemberStore } from '@/store/aiMemberStore';
 import { AIMemberLibrary, AI_MEMBER_LIBRARY_INLINE_WIDTH } from './AIMemberLibrary';
 import { MentionTextArea } from './MentionAutocomplete';
+import { generateSessionTitle } from '@/utils/sessionTitle';
 
 /** 生成唯一消息 ID */
 let _globalMsgId = Date.now();
@@ -31,6 +32,11 @@ function nextMsgId(): string {
 /** localStorage key for persisting chat messages per group */
 function chatStorageKey(groupId: string): string {
   return `agent_chat_messages:${groupId}`;
+}
+
+/** localStorage key for the auto-summarized title per group */
+function chatTitleKey(groupId: string): string {
+  return `agent_chat_title:${groupId}`;
 }
 
 interface ChatMessage {
@@ -284,6 +290,15 @@ const AgentChatUI = ({
   const [isLoading, setIsLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
+  const [groupTitle, setGroupTitle] = useState<string>(() => {
+    try {
+      return localStorage.getItem(chatTitleKey(group.id)) || '';
+    } catch {
+      return '';
+    }
+  });
+  // Prevents double title generation across React strict-mode / concurrent re-renders.
+  const titleGenRef = useRef<Set<string>>(new Set());
 
   /** 当前请求的 AbortController，用于取消正在进行的 Agent 策略执行 */
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -310,6 +325,51 @@ const AgentChatUI = ({
       setMessages([]);
     }
   }, [group.id]);
+
+  // 群切换时重新加载已缓存的标题
+  useEffect(() => {
+    try {
+      setGroupTitle(localStorage.getItem(chatTitleKey(group.id)) || '');
+    } catch {
+      setGroupTitle('');
+    }
+  }, [group.id]);
+
+  // 首轮对话结束后用 LLM 自动总结标题（参考角色群聊 / CLI Agent 群聊）
+  useEffect(() => {
+    if (isLoading) return;
+    if (messages.length === 0) return;
+    if (groupTitle) return;
+    if (titleGenRef.current.has(group.id)) return;
+
+    const userMsg = messages.find(m => !m.isAI && (m.content || '').trim());
+    const aiMsg = messages.find(m => m.isAI && !m.isError && (m.content || '').trim());
+    const firstAgent = currentAgents[0];
+    if (!userMsg || !aiMsg || !firstAgent?.model) return;
+
+    const gid = group.id;
+    titleGenRef.current.add(gid);
+    generateSessionTitle({
+      userMessage: userMsg.content,
+      aiMessage: aiMsg.content,
+      model: firstAgent.model,
+      providerId: firstAgent.providerId,
+    })
+      .then(title => {
+        if (!title) return;
+        setGroupTitle(title);
+        try {
+          localStorage.setItem(chatTitleKey(gid), title);
+        } catch {
+          /* quota exceeded etc */
+        }
+      })
+      .finally(() => {
+        titleGenRef.current.delete(gid);
+      });
+    // currentAgents is memoized from props; no need to re-run on its identity change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, isLoading, group.id, groupTitle]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -546,7 +606,7 @@ const AgentChatUI = ({
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <Puzzle size={16} color="#ff6600" />
                     <h1 style={{ margin: 0, fontWeight: 600, fontSize: 14, letterSpacing: '0.02em' }}>
-                      {group.name}
+                      {groupTitle || group.name}
                     </h1>
                     <span style={{ fontSize: 12, opacity: 0.6 }}>
                       ({t('chat:agentChat.expertCount', { count: currentAgents.length })})
