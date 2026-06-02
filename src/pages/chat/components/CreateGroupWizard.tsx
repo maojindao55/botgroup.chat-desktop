@@ -20,6 +20,10 @@ import {
   type AISpeechMode,
 } from '@/config/groupProduct';
 import { cliSessionPolicyOptions } from '@/config/cliTasks';
+import {
+  groupTypeToSettingsSection,
+  type AppSettingsSection,
+} from '@/config/appSettings';
 import { brandPrimaryButtonProps } from '@/lib/theme';
 import {
   getTranslatedGroupTypeDescription,
