@@ -5,7 +5,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Send, Square, Settings2, ChevronLeft, Puzzle } from 'lucide-react';
-import { Tooltip, Input as AntdInput, Button as AntdButton, message as antdMessage } from 'antd';
+import { Tooltip, Button as AntdButton, message as antdMessage } from 'antd';
 import { ActionIcon, Avatar as LobeAvatar } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 import { ChatMarkdown } from '@/components/Markdown';
@@ -19,8 +19,11 @@ import Sidebar from './Sidebar';
 import type { AgentGroup, Group } from '@/config/groups';
 import { isBuiltinGroupId } from '@/config/groupStorage';
 import { useAIMemberStore } from '@/store/aiMemberStore';
-import { AIMemberLibrary, AI_MEMBER_LIBRARY_INLINE_WIDTH } from './AIMemberLibrary';
+import { AppSettingsModal } from './AppSettingsModal';
+import type { AppSettingsSection } from '@/config/appSettings';
 import { MentionTextArea } from './MentionAutocomplete';
+import { generateSessionTitle } from '@/utils/sessionTitle';
+import { BRAND_ON_PRIMARY, brandPrimaryButtonStyle } from '@/lib/theme';
 
 /** 生成唯一消息 ID */
 let _globalMsgId = Date.now();
@@ -31,6 +34,11 @@ function nextMsgId(): string {
 /** localStorage key for persisting chat messages per group */
 function chatStorageKey(groupId: string): string {
   return `agent_chat_messages:${groupId}`;
+}
+
+/** localStorage key for the auto-summarized title per group */
+function chatTitleKey(groupId: string): string {
+  return `agent_chat_title:${groupId}`;
 }
 
 interface ChatMessage {
@@ -77,7 +85,7 @@ const useStyles = createStyles(({ token, css }) => ({
   `,
   headerBar: css`
     background: ${token.colorBgContainer};
-    border-bottom: 1px solid ${token.colorBorderSecondary};
+    border-bottom: 1px solid ${token.colorBorder};
     backdrop-filter: blur(12px);
     flex: none;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
@@ -86,56 +94,125 @@ const useStyles = createStyles(({ token, css }) => ({
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 12px;
+    gap: 12px;
+    height: 46px;
+    box-sizing: border-box;
+    overflow: hidden;
+    padding: 0 12px;
+    @media (max-width: 640px) {
+      padding: 0 10px;
+    }
+  `,
+  headerLeft: css`
+    display: flex;
+    align-items: center;
+    flex: 1 1 auto;
+    min-width: 0;
+  `,
+  titleStack: css`
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    min-width: 0;
+  `,
+  titleRow: css`
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  `,
+  titleIcon: css`
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border: 1px solid rgba(255, 102, 0, 0.24);
+    border-radius: 7px;
+    background: rgba(255, 102, 0, 0.08);
+    color: #ff6600;
+    flex: none;
+  `,
+  titleText: css`
+    margin: 0;
+    min-width: 0;
+    max-width: min(46vw, 420px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0;
+    color: ${token.colorText};
+  `,
+  memberCount: css`
+    flex: none;
+    font-size: 12px;
+    color: ${token.colorTextTertiary};
+  `,
+  headerActions: css`
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    flex: 1 1 auto;
+    min-width: 0;
   `,
   chatArea: css`
     flex: 1;
     overflow: auto;
-    background: ${token.colorBgLayout};
-    padding: 12px 16px;
+    background: linear-gradient(180deg, ${token.colorBgContainer} 0%, ${token.colorFillQuaternary} 82%);
+    padding: 16px;
+    scrollbar-gutter: stable;
     @media (min-width: 768px) {
-      padding: 16px 20px;
+      padding: 20px 24px;
     }
   `,
   inputArea: css`
     background: ${token.colorBgContainer};
     border-top: 1px solid ${token.colorBorderSecondary};
-    padding: 12px 20px;
+    padding: 10px 14px 14px;
   `,
   bubbleUser: css`
-    background: linear-gradient(to top right, #f97316, #f59e0b);
+    background: #ff6600;
     color: #fff;
     text-align: left;
-    border-radius: 16px;
+    border: 1px solid rgba(194, 65, 12, 0.22);
+    border-radius: 8px;
     border-top-right-radius: 4px;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-    padding: 12px 16px;
+    box-shadow: none;
+    padding: 9px 12px;
     margin-top: 4px;
+    line-height: 1.58;
   `,
   bubbleAI: css`
     background: ${token.colorBgContainer};
     border: 1px solid ${token.colorBorderSecondary};
-    border-radius: 16px;
+    border-radius: 8px;
     border-top-left-radius: 4px;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-    padding: 12px 16px;
+    box-shadow: none;
+    padding: 9px 12px;
     margin-top: 4px;
     text-align: left;
+    line-height: 1.58;
   `,
   bubbleError: css`
-    background: rgba(239, 68, 68, 0.08);
-    border: 1px solid rgba(239, 68, 68, 0.3);
-    border-radius: 16px;
+    background: ${token.colorErrorBg};
+    border: 1px solid ${token.colorErrorBorder};
+    border-radius: 8px;
     border-top-left-radius: 4px;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-    padding: 12px 16px;
+    box-shadow: none;
+    padding: 9px 12px;
     margin-top: 4px;
     text-align: left;
+    line-height: 1.58;
   `,
   metaRow: css`
-    font-size: 12px;
+    min-height: 18px;
+    font-size: 11px;
+    font-weight: 500;
     color: ${token.colorTextTertiary};
-    padding: 0 4px;
+    padding: 0 2px;
     display: flex;
     align-items: center;
     gap: 6px;
@@ -198,20 +275,40 @@ const useStyles = createStyles(({ token, css }) => ({
   messageList: css`
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 14px;
+    width: 100%;
+    max-width: 900px;
+    margin: 0 auto;
+    padding-bottom: 4px;
   `,
   messageRow: css`
     display: flex;
     align-items: flex-start;
-    gap: 12px;
+    gap: 10px;
+    width: 100%;
+  `,
+  messageBody: css`
+    max-width: min(720px, 76%);
+    min-width: 0;
+    text-align: left;
+
+    @media (max-width: 640px) {
+      max-width: calc(100% - 40px);
+    }
+  `,
+  messageBodyUser: css`
+    text-align: right;
   `,
   emptyState: css`
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 80px 0;
+    width: min(640px, 100%);
+    margin: 0 auto 20px;
+    padding: 56px 24px 44px;
     color: ${token.colorTextTertiary};
+    text-align: center;
   `,
   emptyAgentTag: css`
     font-size: 12px;
@@ -219,6 +316,89 @@ const useStyles = createStyles(({ token, css }) => ({
     color: ${token.colorTextSecondary};
     padding: 4px 10px;
     border-radius: 999px;
+  `,
+  emptyIcon: css`
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 52px;
+    height: 52px;
+    margin-bottom: 16px;
+    border: 1px solid ${token.colorBorderSecondary};
+    border-radius: 8px;
+    background: ${token.colorBgContainer};
+    color: #ff6600;
+  `,
+  emptyTitle: css`
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: ${token.colorText};
+  `,
+  emptyDescription: css`
+    margin: 8px 0 0;
+    max-width: 480px;
+    font-size: 14px;
+    line-height: 1.6;
+  `,
+  emptyMeta: css`
+    margin: 14px 0 0;
+    font-size: 12px;
+    color: ${token.colorTextTertiary};
+  `,
+  emptyAgentList: css`
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 16px;
+  `,
+  composeShell: css`
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    width: 100%;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 6px;
+    border: 1px solid ${token.colorBorderSecondary};
+    border-radius: 8px;
+    background: ${token.colorBgContainer};
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+
+    &:focus-within {
+      border-color: rgba(255, 102, 0, 0.55);
+      box-shadow: 0 0 0 2px rgba(255, 102, 0, 0.1);
+    }
+
+    textarea {
+      border: none !important;
+      box-shadow: none !important;
+      background: transparent !important;
+      resize: none;
+      padding: 7px 8px !important;
+    }
+  `,
+  composeSendButton: css`
+    &&& {
+      width: 36px;
+      height: 36px;
+      flex: none;
+      border-radius: 7px;
+      box-shadow: none;
+    }
+  `,
+  composeStopButton: css`
+    &&& {
+      height: 36px;
+      flex: none;
+      border-radius: 7px;
+      box-shadow: none;
+    }
+  `,
+  typingCursor: css`
+    margin-left: 4px;
+    color: #ff6600;
   `,
 }));
 
@@ -235,7 +415,7 @@ const AgentChatUI = ({
   const { t } = useTranslation(['chat', 'settings', 'library', 'common']);
   const userStore = useUserStore();
   const isMobile = useIsMobile();
-  const { styles } = useStyles();
+  const { styles, cx } = useStyles();
   const members = useAIMemberStore(s => s.members);
   const membersLoading = useAIMemberStore(s => s.loading);
   const loadMembers = useAIMemberStore(s => s.load);
@@ -283,7 +463,17 @@ const AgentChatUI = ({
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [showLibrary, setShowLibrary] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<AppSettingsSection>('general');
+  const [groupTitle, setGroupTitle] = useState<string>(() => {
+    try {
+      return localStorage.getItem(chatTitleKey(group.id)) || '';
+    } catch {
+      return '';
+    }
+  });
+  // Prevents double title generation across React strict-mode / concurrent re-renders.
+  const titleGenRef = useRef<Set<string>>(new Set());
 
   /** 当前请求的 AbortController，用于取消正在进行的 Agent 策略执行 */
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -310,6 +500,51 @@ const AgentChatUI = ({
       setMessages([]);
     }
   }, [group.id]);
+
+  // 群切换时重新加载已缓存的标题
+  useEffect(() => {
+    try {
+      setGroupTitle(localStorage.getItem(chatTitleKey(group.id)) || '');
+    } catch {
+      setGroupTitle('');
+    }
+  }, [group.id]);
+
+  // 首轮对话结束后用 LLM 自动总结标题（参考角色群聊 / CLI Agent 群聊）
+  useEffect(() => {
+    if (isLoading) return;
+    if (messages.length === 0) return;
+    if (groupTitle) return;
+    if (titleGenRef.current.has(group.id)) return;
+
+    const userMsg = messages.find(m => !m.isAI && (m.content || '').trim());
+    const aiMsg = messages.find(m => m.isAI && !m.isError && (m.content || '').trim());
+    const firstAgent = currentAgents[0];
+    if (!userMsg || !aiMsg || !firstAgent?.model) return;
+
+    const gid = group.id;
+    titleGenRef.current.add(gid);
+    generateSessionTitle({
+      userMessage: userMsg.content,
+      aiMessage: aiMsg.content,
+      model: firstAgent.model,
+      providerId: firstAgent.providerId,
+    })
+      .then(title => {
+        if (!title) return;
+        setGroupTitle(title);
+        try {
+          localStorage.setItem(chatTitleKey(gid), title);
+        } catch {
+          /* quota exceeded etc */
+        }
+      })
+      .finally(() => {
+        titleGenRef.current.delete(gid);
+      });
+    // currentAgents is memoized from props; no need to re-run on its identity change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, isLoading, group.id, groupTitle]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -343,24 +578,15 @@ const AgentChatUI = ({
     })();
   };
 
-  const handleToggleSettings = (nextOpen: boolean) => {
-    if (nextOpen === showSettings) return;
-    if (nextOpen && showLibrary) {
-      setShowLibrary(false);
-      adjustWindowWidthForPanel(-AI_MEMBER_LIBRARY_INLINE_WIDTH);
-    }
-    setShowSettings(nextOpen);
-    adjustWindowWidthForPanel(nextOpen ? AGENT_SETTINGS_WIDTH : -AGENT_SETTINGS_WIDTH);
+  const openAppSettings = (section: AppSettingsSection = 'general') => {
+    setSettingsSection(section);
+    setSettingsOpen(true);
   };
 
-  const handleToggleLibrary = (nextOpen: boolean) => {
-    if (nextOpen === showLibrary) return;
-    if (nextOpen && showSettings) {
-      setShowSettings(false);
-      adjustWindowWidthForPanel(-AGENT_SETTINGS_WIDTH);
-    }
-    setShowLibrary(nextOpen);
-    adjustWindowWidthForPanel(nextOpen ? AI_MEMBER_LIBRARY_INLINE_WIDTH : -AI_MEMBER_LIBRARY_INLINE_WIDTH);
+  const handleToggleSettings = (nextOpen: boolean) => {
+    if (nextOpen === showSettings) return;
+    setShowSettings(nextOpen);
+    adjustWindowWidthForPanel(nextOpen ? AGENT_SETTINGS_WIDTH : -AGENT_SETTINGS_WIDTH);
   };
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -529,7 +755,7 @@ const AgentChatUI = ({
             onSelectGroup={onSelectGroup}
             groups={groups}
             onCreateGroup={onCreateGroup}
-            onOpenLibrary={() => handleToggleLibrary(true)}
+            onOpenSettings={openAppSettings}
             onNavigateCLI={() => { window.location.href = '?view=cli-tasks'; }}
             onNavigateHome={() => { window.location.href = '?view=home'; }}
             hiddenGroupTypes={['cli']}
@@ -539,21 +765,25 @@ const AgentChatUI = ({
             {/* Header */}
             <header className={styles.headerBar}>
               <div className={styles.headerInner}>
-                <div style={{ display: 'flex', alignItems: 'center' }}>
+                <div className={styles.headerLeft}>
                   <div className={styles.mobileBackBtn} onClick={toggleSidebar}>
                     <ChevronLeft size={20} />
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Puzzle size={16} color="#ff6600" />
-                    <h1 style={{ margin: 0, fontWeight: 600, fontSize: 14, letterSpacing: '0.02em' }}>
-                      {group.name}
-                    </h1>
-                    <span style={{ fontSize: 12, opacity: 0.6 }}>
-                      ({t('chat:agentChat.expertCount', { count: currentAgents.length })})
-                    </span>
+                  <div className={styles.titleStack}>
+                    <div className={styles.titleRow}>
+                      <span className={styles.titleIcon}>
+                        <Puzzle size={15} />
+                      </span>
+                      <h1 className={styles.titleText}>
+                        {groupTitle || group.name}
+                      </h1>
+                      <span className={styles.memberCount}>
+                        ({t('chat:agentChat.expertCount', { count: currentAgents.length })})
+                      </span>
+                    </div>
                   </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div className={styles.headerActions}>
                   <div className={styles.avatarStack}>
                     {currentAgents.slice(0, 4).map(agent => {
                       const a = getAvatarData(agent.name);
@@ -593,30 +823,32 @@ const AgentChatUI = ({
             <div className={styles.chatArea}>
               {messages.length === 0 && (
                 <div className={styles.emptyState}>
-                  <Puzzle size={48} style={{ opacity: 0.4, marginBottom: 16 }} />
-                  <p style={{ fontSize: 18, fontWeight: 500, margin: 0 }}>{t('chat:agentChat.emptyTitle')}</p>
-                  <p style={{ fontSize: 14, marginTop: 8, textAlign: 'center', maxWidth: 480 }}>
+                  <span className={styles.emptyIcon}>
+                    <Puzzle size={26} />
+                  </span>
+                  <p className={styles.emptyTitle}>{t('chat:agentChat.emptyTitle')}</p>
+                  <p className={styles.emptyDescription}>
                     {group.description}
                   </p>
                   {isResolvingMembers && (
-                    <p style={{ fontSize: 13, marginTop: 12, opacity: 0.6 }}>
+                    <p className={styles.emptyMeta}>
                       {t('chat:agentChat.loadingLibrary')}
                     </p>
                   )}
                   {hasUnresolvedMembers && (
-                    <p style={{ fontSize: 13, marginTop: 12, color: '#ef4444' }}>
+                    <p className={styles.emptyMeta} style={{ color: '#ef4444' }}>
                       {t('chat:agentChat.unresolvedMembers', { count: currentMemberIds.length })}<br />
-                      {t('chat:agentChat.unresolvedMembersHint', { library: t('library:title') })}
+                      {t('chat:agentChat.unresolvedMembersHint', { settings: t('appSettings:title') })}
                     </p>
                   )}
-                  <div style={{ marginTop: 16, display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
+                  <div className={styles.emptyAgentList}>
                     {currentAgents.map(a => (
                       <span key={a.id} className={styles.emptyAgentTag}>
                         {a.name}: {('role' in a ? a.role : '')}
                       </span>
                     ))}
                   </div>
-                  <p style={{ fontSize: 12, marginTop: 16, opacity: 0.6 }}>
+                  <p className={styles.emptyMeta}>
                     {t('chat:agentChat.strategyMeta', {
                       strategy: getStrategyLabel(group.strategy),
                       maxRounds: group.maxRounds,
@@ -658,7 +890,7 @@ const AgentChatUI = ({
                           style={{ flexShrink: 0 }}
                         />
                       )}
-                      <div style={{ maxWidth: '75%', textAlign: isUser ? 'right' : 'left' }}>
+                      <div className={cx(styles.messageBody, isUser && styles.messageBodyUser)}>
                         <div className={styles.metaRow} style={{ justifyContent: isUser ? 'flex-end' : 'flex-start' }}>
                           {message.sender.name}
                           {!isUser && (
@@ -668,7 +900,7 @@ const AgentChatUI = ({
                         <div className={bubbleClass}>
                           <ChatMarkdown content={message.content} isUser={isUser} />
                           {isStreaming && (
-                            <span className="typing-indicator" style={{ marginLeft: 4 }}>▋</span>
+                            <span className={cx('typing-indicator', styles.typingCursor)}>▋</span>
                           )}
                         </div>
                       </div>
@@ -692,7 +924,7 @@ const AgentChatUI = ({
 
             {/* Input Area */}
             <div className={styles.inputArea}>
-              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12 }}>
+              <div className={styles.composeShell}>
                 <MentionTextArea
                   value={inputMessage}
                   onChange={setInputMessage}
@@ -706,25 +938,28 @@ const AgentChatUI = ({
                   }}
                   autoSize={{ minRows: 1, maxRows: 6 }}
                   placeholder={t('chat:agentChat.inputPlaceholder')}
-                  style={{ borderRadius: 12 }}
-                  containerStyle={{ flex: 1 }}
+                  containerStyle={{ flex: 1, minWidth: 0 }}
                   disabled={isLoading}
                 />
                 {isLoading ? (
                   <AntdButton
+                    className={styles.composeStopButton}
                     danger
                     onClick={handleAbort}
                     icon={<Square size={16} />}
-                    style={{ height: 36, borderRadius: 12 }}
                   >
                     {t('chat:agentChat.stop', { defaultValue: '停止' })}
                   </AntdButton>
                 ) : (
                   <AntdButton
-                    type="primary"
+                    className={styles.composeSendButton}
                     onClick={handleSendMessage}
-                    icon={<Send size={16} />}
-                    style={{ background: '#ff6600', borderColor: '#ff6600', height: 36, borderRadius: 12 }}
+                    icon={<Send size={16} color={BRAND_ON_PRIMARY} />}
+                    style={brandPrimaryButtonStyle}
+                    styles={{
+                      content: { color: BRAND_ON_PRIMARY },
+                      icon: { color: BRAND_ON_PRIMARY },
+                    }}
                   />
                 )}
               </div>
@@ -746,15 +981,6 @@ const AgentChatUI = ({
             />
           )}
 
-          {/* 资源库（Desktop Inline） */}
-          {!isMobile && (
-            <AIMemberLibrary
-              inline
-              open={showLibrary}
-              onClose={() => handleToggleLibrary(false)}
-              groups={groups}
-            />
-          )}
         </div>
       </div>
 
@@ -763,14 +989,12 @@ const AgentChatUI = ({
         <div className={styles.mobileOverlay} onClick={toggleSidebar} />
       )}
 
-      {/* 资源库（Mobile Drawer） */}
-      {isMobile && (
-        <AIMemberLibrary
-          open={showLibrary}
-          onClose={() => handleToggleLibrary(false)}
-          groups={groups}
-        />
-      )}
+      <AppSettingsModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        groups={groups}
+        initialSection={settingsSection}
+      />
     </>
   );
 };

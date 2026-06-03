@@ -9,6 +9,9 @@
  * CLI Agent 通过 /api/cli/run 流式调用。
  */
 import type {
+  CLICustomWorkflow,
+  CLICustomWorkflowRole,
+  CLICustomWorkflowStage,
   CLIGroup,
   CLIExecutionPlan,
 } from '@/config/groups';
@@ -546,7 +549,7 @@ const REVIEW_DECISION_NOTICE = '请在输出开头单独写一行：REVIEW_DECIS
 const DEFAULT_TIMEOUT_MS = 300_000;
 /** 实现/修正阶段至少给 coding adapter 10 分钟（多轮 tool call + 验证） */
 const MIN_IMPLEMENT_TIMEOUT_MS = 600_000;
-const IMPLEMENT_STAGE_LABELS = new Set(['实现', '实现+自检', '生成代码']);
+const IMPLEMENT_STAGE_LABELS = new Set(['实现', '实现+自检', '生成代码', '定位修复', '修正']);
 const CODING_ADAPTERS = new Set(['cursor', 'codex', 'claude', 'opencode', 'qodercli', 'antigravity']);
 
 function isImplementStage(stageLabel?: string): boolean {
@@ -890,6 +893,35 @@ function getReviewLoopContext(
     || contexts[0];
 }
 
+function getWorkflowRoleAgentId(
+  group: CLIGroup,
+  role: CLICustomWorkflowRole,
+): string | undefined {
+  const roles = group.reviewLoopRoles || {};
+  if (role === 'planner') return roles.plannerId;
+  if (role === 'implementer') return roles.implementerId;
+  if (role === 'reviewer') return roles.reviewerId || roles.plannerId;
+  return undefined;
+}
+
+function getWorkflowContext(
+  contexts: AgentExecutionContext[],
+  group: CLIGroup,
+  role: CLICustomWorkflowRole,
+): AgentExecutionContext {
+  const fallbackIndexByRole: Record<CLICustomWorkflowRole, number> = {
+    planner: 0,
+    implementer: 1,
+    reviewer: 0,
+    member: 0,
+  };
+  return getReviewLoopContext(
+    contexts,
+    getWorkflowRoleAgentId(group, role),
+    fallbackIndexByRole[role],
+  );
+}
+
 function isReviewApproved(content: string): boolean {
   if (/REVIEW_DECISION\s*:\s*approved/i.test(content)) return true;
   if (/REVIEW_DECISION\s*:\s*revise/i.test(content)) return false;
@@ -898,6 +930,101 @@ function isReviewApproved(content: string): boolean {
   const hasReviseSignal = /REVIEW_DECISION\s*:\s*revise|需要修正|必须修复|阻塞问题|不通过|not approved/i.test(content)
     || normalized.includes('must fix');
   return hasApproval && !hasReviseSignal;
+}
+
+function buildCustomWorkflowPrompt(input: {
+  workflow: CLICustomWorkflow;
+  stage: CLICustomWorkflowStage;
+  basePrompt: string;
+  previousOutput?: string;
+  previousAgentName?: string;
+  previousStageLabel?: string;
+}): string {
+  const { workflow, stage, basePrompt } = input;
+  const readOnlyPrefix = stage.mode === 'readOnly' ? READ_ONLY_PROMPT_PREFIX : '';
+  const includePrevious = stage.includePreviousOutput !== false && input.previousOutput !== undefined;
+  const previousBlock = includePrevious
+    ? `\n以下是上一阶段（${input.previousAgentName || '上一阶段 Agent'} - ${input.previousStageLabel || '上一阶段'}）的输出：\n\n${PREVIOUS_OUTPUT_REFERENCE_NOTICE}\n\n---\n${truncate(sanitizePipelineOutput(input.previousOutput || '(上一阶段无输出)'), 12000)}\n---\n`
+    : '';
+  const reviewDecisionNotice = stage.reviewDecision
+    ? `\n${REVIEW_DECISION_NOTICE}\n`
+    : '';
+
+  return `${readOnlyPrefix}你正在执行自定义 CLI 工作流「${workflow.name}」的「${stage.label}」阶段。
+阶段要求：${stage.prompt}${reviewDecisionNotice}${previousBlock}
+原始需求：${basePrompt}
+
+请完成当前阶段并给出简洁结论。`;
+}
+
+function getWorkflowStage(workflow: CLICustomWorkflow, stageId: string): CLICustomWorkflowStage | undefined {
+  return workflow.stages.find(stage => stage.id === stageId);
+}
+
+function getNextWorkflowStage(
+  workflow: CLICustomWorkflow,
+  current: CLICustomWorkflowStage,
+): CLICustomWorkflowStage | undefined {
+  const target = current.nextStageId;
+  if (target === 'done') return undefined;
+  if (target) return getWorkflowStage(workflow, target);
+  const currentIndex = workflow.stages.findIndex(stage => stage.id === current.id);
+  return currentIndex >= 0 ? workflow.stages[currentIndex + 1] : undefined;
+}
+
+async function runCustomWorkflowSchedule(input: ScheduleInput): Promise<CLIRunResult[]> {
+  const { plan, group, contexts, prompt, options, callbacks } = input;
+  const workflow = group.customWorkflow;
+  if (!workflow?.stages.length) return [];
+
+  const results: CLIRunResult[] = [];
+  const maxLoops = Math.min(5, Math.max(1, workflow.maxLoops ?? 2));
+  let currentStage: CLICustomWorkflowStage | undefined = workflow.stages[0];
+  let previousOutput: string | undefined;
+  let previousAgentName: string | undefined;
+  let previousStageLabel: string | undefined;
+  let reviseLoops = 0;
+  const maxStageRuns = Math.max(workflow.stages.length + maxLoops * 2 + 2, 4);
+
+  for (let runIndex = 0; currentStage && runIndex < maxStageRuns; runIndex++) {
+    if (executionAborted(options.signal)) break;
+    const ctx = getWorkflowContext(contexts, group, currentStage.role);
+    const finalPrompt = buildCustomWorkflowPrompt({
+      workflow,
+      stage: currentStage,
+      basePrompt: prompt,
+      previousOutput,
+      previousAgentName,
+      previousStageLabel,
+    });
+    const result = await callCLIAgent(group.id, ctx, finalPrompt, options, callbacks, {
+      stageLabel: currentStage.label,
+    });
+    results.push(result);
+    if (!shouldContinueAfterResult(plan, result)) break;
+    if (executionAborted(options.signal)) break;
+
+    previousOutput = result.content;
+    previousAgentName = ctx.agent.name;
+    previousStageLabel = currentStage.label;
+
+    if (currentStage.reviewDecision) {
+      const target = isReviewApproved(result.content)
+        ? currentStage.reviewDecision.approved
+        : currentStage.reviewDecision.revise;
+      if (target === 'done') break;
+      if (!isReviewApproved(result.content)) {
+        reviseLoops += 1;
+        if (reviseLoops > maxLoops) break;
+      }
+      currentStage = getWorkflowStage(workflow, target);
+      continue;
+    }
+
+    currentStage = getNextWorkflowStage(workflow, currentStage);
+  }
+
+  return results;
 }
 
 async function runReviewLoopSchedule(input: ScheduleInput): Promise<CLIRunResult[]> {
@@ -1048,6 +1175,10 @@ async function runDiscussionSchedule(input: ScheduleInput): Promise<CLIRunResult
  */
 async function runSchedule(input: ScheduleInput): Promise<CLIRunResult[]> {
   const { plan } = input;
+
+  if (input.group.customWorkflow?.stages.length) {
+    return runCustomWorkflowSchedule(input);
+  }
 
   if (plan.collaboration === 'discussion') {
     return runDiscussionSchedule(input);

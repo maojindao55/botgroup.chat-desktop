@@ -26,7 +26,7 @@
   },
   "messages": {
     "noEnabledCliMembers": "No enabled dev members in this group. Add or enable members in the settings panel.",
-    "readOnlyDiscussionHint": "Read-only discussion runs in a temporary copy and will not modify your workspace. Switch to implement/review or quick response to edit files."
+    "readOnlyDiscussionHint": "Read-only discussion runs in a temporary copy and will not modify your workspace. Switch to diagnose/fix/review, plan/implement/review, or quick response to edit files."
   },
   "placeholders": {
     "cliInput": "Enter a coding task for dev members to run in the workspace...",
@@ -59,9 +59,9 @@
   "agentChat": {
     "expertCount": "{{count}} experts",
     "emptyTitle": "Expert group",
-    "loadingLibrary": "Loading library...",
-    "unresolvedMembers": "This group references {{count}} experts, but they were not found in the library.",
-    "unresolvedMembersHint": "Open \"{{library}}\" to check or re-add members.",
+    "loadingLibrary": "Loading members...",
+    "unresolvedMembers": "This group references {{count}} experts, but they were not found in Settings.",
+    "unresolvedMembersHint": "Open \"{{settings}}\" to check or re-add members.",
     "strategyMeta": "Strategy: {{strategy}} | Max rounds: {{maxRounds}}",
     "expertBadge": "Expert",
     "inputPlaceholder": "Send a message — experts will collaborate per group rules...",

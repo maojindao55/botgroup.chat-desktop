@@ -2,14 +2,13 @@
   "workspaceTitle": "Chat Workspace",
   "section": {
     "workspace": "Workspace",
-    "groups": "Groups",
-    "resources": "Resources"
+    "groups": "Groups"
   },
   "nav": {
     "devTasks": "Dev Tasks",
     "home": "Home",
     "createGroup": "New Group",
-    "library": "Library"
+    "settings": "Settings"
   },
   "actions": {
     "editGroup": "Edit Group",

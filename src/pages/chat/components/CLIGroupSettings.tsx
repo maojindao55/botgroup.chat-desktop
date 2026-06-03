@@ -9,11 +9,17 @@ import { Avatar as LobeAvatar, ActionIcon } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 import { FolderOpen, Terminal, Mic, MicOff, CheckCircle2, XCircle, Play, FileText, RefreshCw, Clock, X, ChevronLeft, Info } from 'lucide-react';
 import { MemberPicker } from './MemberPicker';
-import { cliWorkflowTemplates } from '@/config/groupProduct';
+import { cliWorkflowTemplateGroups, cliWorkflowTemplates, getCLIWorkflowTemplatesByGroup } from '@/config/groupProduct';
 import { request } from '@/utils/request';
 import { mapAIMemberToLegacy, type CLIAgent } from '@/config/aiCharacters';
-import type { CLIExecutionPlan, CLIGroup, CLIStrategy, CLISessionPolicy, CLIReviewLoopRoles } from '@/config/groups';
-import { cliSessionPolicyOptions } from '@/config/cliTasks';
+import type {
+  CLICustomWorkflow,
+  CLIExecutionPlan,
+  CLIGroup,
+  CLIStrategy,
+  CLISessionPolicy,
+  CLIReviewLoopRoles,
+} from '@/config/groups';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
 import { resolveEffectiveMember } from '@/utils/aiMemberDisplay';
 import { invoke } from '@tauri-apps/api/core';
@@ -24,6 +30,17 @@ import { formatLocaleDateTime } from '@/i18n/formatLocale';
 import { BRAND_ON_PRIMARY, brandPrimaryButtonProps } from '@/lib/theme';
 
 type CliStatus = { installed: boolean; version?: string; path?: string };
+
+const cloneCustomWorkflow = (workflow: CLICustomWorkflow | undefined): CLICustomWorkflow | undefined => {
+  if (!workflow) return undefined;
+  return {
+    ...workflow,
+    stages: workflow.stages.map(stage => ({
+      ...stage,
+      reviewDecision: stage.reviewDecision ? { ...stage.reviewDecision } : undefined,
+    })),
+  };
+};
 
 interface CliTask {
   id: string;
@@ -162,56 +179,14 @@ const useStyles = createStyles(({ token, css }) => ({
     background: rgba(255, 102, 0, 0.08);
     color: #ff6600;
   `,
-  sessionPolicyList: css`
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  `,
-  sessionPolicyBtn: css`
-    width: 100%;
-    min-height: 58px;
-    padding: 10px 12px;
+  selectedWorkflowDesc: css`
+    margin-top: 8px;
+    padding: 8px 10px;
     border-radius: 8px;
-    border: 1px solid ${token.colorBorderSecondary};
-    background: ${token.colorBgContainer};
-    cursor: pointer;
-    text-align: left;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    transition: all 0.15s;
-
-    &:hover {
-      border-color: rgba(255, 102, 0, 0.45);
-      background: rgba(255, 102, 0, 0.04);
-    }
-  `,
-  sessionPolicyBtnActive: css`
-    border-color: #ff6600;
-    background: rgba(255, 102, 0, 0.08);
-  `,
-  sessionPolicyLabel: css`
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    font-size: 13px;
-    font-weight: 600;
-    color: ${token.colorText};
-  `,
-  sessionPolicyDescText: css`
+    background: ${token.colorFillTertiary};
+    color: ${token.colorTextSecondary};
     font-size: 12px;
-    color: ${token.colorTextTertiary};
     line-height: 1.5;
-  `,
-  riskTag: css`
-    flex: none;
-    border-radius: 999px;
-    padding: 1px 7px;
-    font-size: 10px;
-    font-weight: 500;
-    color: #c2410c;
-    background: rgba(249, 115, 22, 0.12);
   `,
   memberRow: css`
     display: flex;
@@ -422,7 +397,6 @@ export const CLIGroupSettings = ({
   onReviewLoopRolesChange,
   onSaveTemplate,
   sessionPolicy,
-  onSessionPolicyChange,
   inline,
   mode = 'group',
   onBack,
@@ -453,19 +427,9 @@ export const CLIGroupSettings = ({
   const effectiveTimeout = isTemplateMode ? (draftGroup.timeout ?? 300000) : timeout;
   const effectiveShowStderr = isTemplateMode ? draftGroup.showStderr !== false : showStderr;
   const effectiveStrategy = isTemplateMode ? (draftGroup.strategy || 'sequential') : strategy;
-  const effectiveSessionPolicy = isTemplateMode ? (draftGroup.sessionPolicy || 'task') : sessionPolicy;
   const isDraftDirty = isTemplateMode && JSON.stringify(draftGroup) !== JSON.stringify(originalDraftGroup);
   const panelTitle = isTemplateMode ? t('cli:groupSettings.templateTitle') : t('cli:groupSettings.title');
-  const sessionPolicyTitle = t('cli:groupSettings.sessionPolicy.title');
-  const sessionPolicyDesc = isTemplateMode
-    ? t('cli:groupSettings.sessionPolicy.templateDesc')
-    : t('cli:groupSettings.sessionPolicy.desc');
   const handleDrawerClose = () => {
-    if (isDraftDirty) {
-      const confirmed = window.confirm(t('cli:groupSettings.discardConfirm'));
-      if (!confirmed) return;
-      setDraftGroup(originalDraftGroup);
-    }
     if (onBack) {
       onBack();
       return;
@@ -685,7 +649,9 @@ export const CLIGroupSettings = ({
   const persistedCliTemplate = cliWorkflowTemplates.find((item) => item.id === effectiveGroup.workflowTemplateId);
   const activeCliTemplate = selectedCliTemplate || cliWorkflowTemplates.find((item) => item.strategy === effectiveStrategy);
   const activeWorkflowTemplate = selectedCliTemplate || persistedCliTemplate || activeCliTemplate;
-  const isReviewLoopWorkflow = activeWorkflowTemplate?.id === 'implement_review';
+  const effectiveCustomWorkflow = activeWorkflowTemplate?.customWorkflow || effectiveGroup.customWorkflow;
+  const isReviewLoopWorkflow = activeWorkflowTemplate?.id === 'implement_review'
+    || !!effectiveCustomWorkflow;
   const memberIds = effectiveGroup.memberIds || effectiveGroup.members || [];
   const visibleMembers = isTemplateMode
     ? memberIds
@@ -823,38 +789,6 @@ export const CLIGroupSettings = ({
             </div>
           </div>
 
-          {/* session policy */}
-          <div className={styles.panel}>
-            <div style={{ fontSize: 14, fontWeight: 500 }}>{sessionPolicyTitle}</div>
-            <div className={styles.panelDesc} style={{ marginTop: 4, marginBottom: 8 }}>
-              {sessionPolicyDesc}
-            </div>
-            <div className={styles.sessionPolicyList}>
-              {cliSessionPolicyOptions.map((item) => (
-                <button
-                  key={item.value}
-                  type="button"
-                  onClick={() => {
-                    if (isTemplateMode) updateDraftGroup({ sessionPolicy: item.value });
-                    else onSessionPolicyChange(item.value);
-                  }}
-                  className={cx(
-                    styles.sessionPolicyBtn,
-                    effectiveSessionPolicy === item.value && styles.sessionPolicyBtnActive,
-                  )}
-                >
-                  <div className={styles.sessionPolicyLabel}>
-                    <span>{t(`product:cliSessionPolicy.${item.value}.label`, { defaultValue: item.label })}</span>
-                    {item.value === 'template' && <span className={styles.riskTag}>{t('cli:groupSettings.sessionPolicy.highReuse')}</span>}
-                  </div>
-                  <div className={styles.sessionPolicyDescText}>
-                    {t(`product:cliSessionPolicy.${item.value}.description`, { defaultValue: item.description })}
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-
           {/* stderr */}
           <div className={styles.panel}>
             <div className={styles.rowBetween}>
@@ -894,46 +828,58 @@ export const CLIGroupSettings = ({
           {/* strategy */}
           <div className={styles.panel}>
             <div style={{ fontSize: 14, fontWeight: 500 }}>{t('cli:groupSettings.collaboration.title')}</div>
-            <div className={styles.strategyGrid}>
-              {cliWorkflowTemplates.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => {
-                    setSelectedCliTemplateId(item.id);
-                    if (isTemplateMode) {
-                      updateDraftGroup({
-                        workflowTemplateId: item.id,
-                        strategy: item.strategy,
-                        executionPlan: item.executionPlan || {},
-                        reviewLoopRoles: item.id === 'implement_review' ? reviewLoopRoles : undefined,
-                      });
-                    } else {
-                      onWorkflowTemplateChange?.(item.id);
-                      onStrategyChange(item.strategy);
-                      onExecutionPlanChange?.(item.executionPlan || {}, { replace: true });
-                      if (item.id === 'implement_review') {
-                        onReviewLoopRolesChange?.(reviewLoopRoles);
-                      } else {
-                        onReviewLoopRolesChange?.(undefined);
-                      }
-                    }
-                  }}
-                  className={cx(
-                    styles.strategyBtn,
-                    activeWorkflowTemplate?.id === item.id && styles.strategyBtnActive,
-                  )}
-                >
-                  {t(`product:cliWorkflowTemplates.${item.id}.label`, { defaultValue: item.label })}
-                </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {cliWorkflowTemplateGroups.map(group => (
+                <div key={group.id}>
+                  <div style={{ marginBottom: 6 }}>
+                    <span className={styles.panelDesc} style={{ fontWeight: 600, color: 'rgba(0,0,0,0.65)' }}>
+                      {t(`product:cliWorkflowTemplateGroups.${group.id}.label`, { defaultValue: group.label })}
+                    </span>
+                  </div>
+                  <div className={styles.strategyGrid}>
+                    {getCLIWorkflowTemplatesByGroup(group).map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={() => {
+                          setSelectedCliTemplateId(item.id);
+                          if (isTemplateMode) {
+                            updateDraftGroup({
+                              workflowTemplateId: item.id,
+                              strategy: item.strategy,
+                              executionPlan: item.executionPlan || {},
+                              customWorkflow: cloneCustomWorkflow(item.customWorkflow),
+                              reviewLoopRoles: (item.id === 'implement_review' || item.customWorkflow) ? reviewLoopRoles : undefined,
+                            });
+                          } else {
+                            onWorkflowTemplateChange?.(item.id);
+                            onStrategyChange(item.strategy);
+                            onExecutionPlanChange?.(item.executionPlan || {}, { replace: true });
+                            if (item.id === 'implement_review' || item.customWorkflow) {
+                              onReviewLoopRolesChange?.(reviewLoopRoles);
+                            } else {
+                              onReviewLoopRolesChange?.(undefined);
+                            }
+                          }
+                        }}
+                        className={cx(
+                          styles.strategyBtn,
+                          activeWorkflowTemplate?.id === item.id && styles.strategyBtnActive,
+                        )}
+                      >
+                        {t(`product:cliWorkflowTemplates.${item.id}.label`, { defaultValue: item.label })}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
-            <p className={styles.panelDesc} style={{ marginTop: 4 }}>
+            <div className={styles.selectedWorkflowDesc}>
               {activeWorkflowTemplate
                 ? t(`product:cliWorkflowTemplates.${activeWorkflowTemplate.id}.description`, {
                   defaultValue: activeWorkflowTemplate.description || strategyDescriptions[effectiveStrategy],
                 })
                 : strategyDescriptions[effectiveStrategy]}
-            </p>
+            </div>
             {effectiveStrategy === 'race' && (
               <p className={styles.panelDesc} style={{ marginTop: 4, color: '#ff9500' }}>
                 {t('cli:groupSettings.collaboration.raceWarning')}
@@ -944,55 +890,88 @@ export const CLIGroupSettings = ({
                 {t('cli:groupSettings.collaboration.pipelineHint')}
               </p>
             )}
-            {isReviewLoopWorkflow && (
+            {isReviewLoopWorkflow && !effectiveCustomWorkflow && (
               <p className={styles.panelDesc} style={{ marginTop: 4 }}>
                 {t('cli:groupSettings.collaboration.reviewLoopHint')}
               </p>
             )}
+            {effectiveCustomWorkflow && (
+              <p className={styles.panelDesc} style={{ marginTop: 4 }}>
+                {t('cli:groupSettings.collaboration.customWorkflowHint', {
+                  stages: effectiveCustomWorkflow.stages
+                    .map(stage => stage.label)
+                    .join(' → '),
+                })}
+              </p>
+            )}
             {isReviewLoopWorkflow && visibleMembers.length < 2 && (
               <p className={styles.panelDesc} style={{ marginTop: 4, color: '#ff9500' }}>
-                {t('cli:groupSettings.collaboration.reviewLoopMemberWarning')}
+                {effectiveCustomWorkflow
+                  ? t('cli:groupSettings.collaboration.customWorkflowMemberWarning')
+                  : t('cli:groupSettings.collaboration.reviewLoopMemberWarning')}
               </p>
             )}
           </div>
 
           {isTemplateMode && isReviewLoopWorkflow && (
             <div className={styles.panel}>
-              <div style={{ fontSize: 14, fontWeight: 500 }}>{t('cli:groupSettings.roles.title')}</div>
+              <div style={{ fontSize: 14, fontWeight: 500 }}>
+                {effectiveCustomWorkflow
+                  ? t('cli:groupSettings.roles.customTitle')
+                  : t('cli:groupSettings.roles.title')}
+              </div>
               <div className={styles.panelDesc}>
-                {t('cli:groupSettings.roles.desc')}
+                {effectiveCustomWorkflow
+                  ? t('cli:groupSettings.roles.customDesc', {
+                    stages: effectiveCustomWorkflow.stages.map(stage => stage.label).join(' → '),
+                  })
+                  : t('cli:groupSettings.roles.desc')}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
+                {!effectiveCustomWorkflow && (
+                  <div>
+                    <div className={styles.panelDesc} style={{ marginBottom: 4 }}>{t('cli:groupSettings.roles.planner')}</div>
+                    <Select
+                      size="small"
+                      value={reviewLoopRoles.plannerId}
+                      onChange={(plannerId) => handleReviewLoopRolesPatch({ plannerId })}
+                      options={reviewLoopRoleOptions}
+                      placeholder={t('cli:groupSettings.roles.plannerPlaceholder')}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                )}
                 <div>
-                  <div className={styles.panelDesc} style={{ marginBottom: 4 }}>{t('cli:groupSettings.roles.planner')}</div>
-                  <Select
-                    size="small"
-                    value={reviewLoopRoles.plannerId}
-                    onChange={(plannerId) => handleReviewLoopRolesPatch({ plannerId })}
-                    options={reviewLoopRoleOptions}
-                    placeholder={t('cli:groupSettings.roles.plannerPlaceholder')}
-                    style={{ width: '100%' }}
-                  />
-                </div>
-                <div>
-                  <div className={styles.panelDesc} style={{ marginBottom: 4 }}>{t('cli:groupSettings.roles.implementer')}</div>
+                  <div className={styles.panelDesc} style={{ marginBottom: 4 }}>
+                    {effectiveCustomWorkflow
+                      ? t('cli:groupSettings.roles.diagnoseFixer')
+                      : t('cli:groupSettings.roles.implementer')}
+                  </div>
                   <Select
                     size="small"
                     value={reviewLoopRoles.implementerId}
                     onChange={(implementerId) => handleReviewLoopRolesPatch({ implementerId })}
                     options={reviewLoopRoleOptions}
-                    placeholder={t('cli:groupSettings.roles.implementerPlaceholder')}
+                    placeholder={effectiveCustomWorkflow
+                      ? t('cli:groupSettings.roles.diagnoseFixerPlaceholder')
+                      : t('cli:groupSettings.roles.implementerPlaceholder')}
                     style={{ width: '100%' }}
                   />
                 </div>
                 <div>
-                  <div className={styles.panelDesc} style={{ marginBottom: 4 }}>{t('cli:groupSettings.roles.reviewer')}</div>
+                  <div className={styles.panelDesc} style={{ marginBottom: 4 }}>
+                    {effectiveCustomWorkflow
+                      ? t('cli:groupSettings.roles.fixReviewer')
+                      : t('cli:groupSettings.roles.reviewer')}
+                  </div>
                   <Select
                     size="small"
                     value={reviewLoopRoles.reviewerId}
                     onChange={(reviewerId) => handleReviewLoopRolesPatch({ reviewerId })}
                     options={reviewLoopRoleOptions}
-                    placeholder={t('cli:groupSettings.roles.reviewerPlaceholder')}
+                    placeholder={effectiveCustomWorkflow
+                      ? t('cli:groupSettings.roles.fixReviewerPlaceholder')
+                      : t('cli:groupSettings.roles.reviewerPlaceholder')}
                     style={{ width: '100%' }}
                   />
                 </div>

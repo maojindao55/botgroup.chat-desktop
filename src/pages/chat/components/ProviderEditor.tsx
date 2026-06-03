@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Drawer,
   Form,
@@ -7,11 +7,11 @@ import {
   Select,
   Switch,
   Button,
-  Space,
   Divider,
   Tag,
   message,
 } from 'antd';
+import { createStyles } from 'antd-style';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { brandPrimaryButtonProps } from '@/lib/theme';
@@ -19,6 +19,52 @@ import { useProviderStore, type ProviderTestResult } from '@/store/providerStore
 import { providerPresets, readLegacyApiKey, type Provider, type ProviderParams } from '@/config/providers';
 import { getTranslatedProviderName } from '@/i18n/providerLabels';
 import { Copy, Zap } from 'lucide-react';
+
+const useStyles = createStyles(({ token, css }) => ({
+  form: css`
+    padding: 16px 20px 24px;
+
+    .ant-form-item {
+      margin-bottom: 14px;
+    }
+  `,
+  sectionHint: css`
+    margin: -4px 0 12px;
+    font-size: 11px;
+    color: ${token.colorTextTertiary};
+    line-height: 1.5;
+  `,
+  fieldGrid: css`
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 12px;
+
+    @media (max-width: 560px) {
+      grid-template-columns: 1fr;
+    }
+  `,
+  drawerFooter: css`
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px;
+    border-top: 1px solid ${token.colorBorderSecondary};
+    background: ${token.colorBgContainer};
+  `,
+  footerActions: css`
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-left: auto;
+  `,
+  testRow: css`
+    display: flex;
+    justify-content: flex-start;
+    margin-top: 4px;
+  `,
+}));
 
 interface ProviderEditorProps {
   open: boolean;
@@ -104,6 +150,7 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
   onSave,
   onCloneEdit,
 }) => {
+  const { styles } = useStyles();
   const { t } = useTranslation(['editor', 'common']);
   const [form] = Form.useForm();
   const { get, upsert, hasSecret, ensureSecret, testConnection, clone } = useProviderStore();
@@ -112,6 +159,10 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
   const [saving, setSaving] = useState(false);
   const [cloning, setCloning] = useState(false);
   const [presetType, setPresetType] = useState<string | undefined>(undefined);
+  // Synchronous lock to prevent double-click races on Save/Test/Clone.
+  // React state updates (`saving`) are async, so two rapid clicks can both
+  // enter the handler before the button becomes disabled; the ref does not.
+  const submittingRef = useRef(false);
 
   const provider = providerId ? get(providerId) : undefined;
   const isBuiltin = provider?.source === 'builtin';
@@ -175,6 +226,8 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
   };
 
   const handleFinish = async (values: Record<string, unknown>) => {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setSaving(true);
     try {
       const id = providerId || `user-${Date.now()}`;
@@ -199,10 +252,13 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
       message.error(t('provider.saveFailed'));
     } finally {
       setSaving(false);
+      submittingRef.current = false;
     }
   };
 
   const handleTest = async () => {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     try {
       setTesting(true);
 
@@ -285,11 +341,14 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
       message.error(formatInvokeError(e) || t('provider.testFailed'));
     } finally {
       setTesting(false);
+      submittingRef.current = false;
     }
   };
 
   const handleClone = async () => {
     if (!providerId) return;
+    if (submittingRef.current) return;
+    submittingRef.current = true;
 
     setCloning(true);
     try {
@@ -301,6 +360,7 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
       message.error(formatInvokeError(e) || t('provider.cloneFailed'));
     } finally {
       setCloning(false);
+      submittingRef.current = false;
     }
   };
 
@@ -319,25 +379,34 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
   return (
     <Drawer
       title={providerId ? t('provider.titleEdit') : t('provider.titleCreate')}
-      width={460}
+      width={540}
       open={open}
       onClose={onClose}
       destroyOnClose
-      extra={
-        <Space>
-          {isBuiltin && (
-            <Button icon={<Copy size={14} />} loading={cloning} onClick={handleClone}>
-              {t('provider.cloneEdit')}
+      footer={
+        <div className={styles.drawerFooter}>
+          <div>
+            {isBuiltin && (
+              <Button icon={<Copy size={14} />} loading={cloning} onClick={handleClone}>
+                {t('provider.cloneEdit')}
+              </Button>
+            )}
+          </div>
+          <div className={styles.footerActions}>
+            <Button onClick={onClose}>{t('common:actions.cancel')}</Button>
+            <Button loading={saving} onClick={() => form.submit()} {...brandPrimaryButtonProps}>
+              {t('common:actions.save')}
             </Button>
-          )}
-          <Button onClick={onClose}>{t('common:actions.cancel')}</Button>
-          <Button loading={saving} onClick={() => form.submit()} {...brandPrimaryButtonProps}>
-            {t('common:actions.save')}
-          </Button>
-        </Space>
+          </div>
+        </div>
       }
+      styles={{
+        body: { padding: 0 },
+        header: { padding: '14px 18px' },
+        footer: { padding: 0 },
+      }}
     >
-      <Form form={form} layout="vertical" onFinish={handleFinish}>
+      <Form form={form} layout="vertical" onFinish={handleFinish} className={styles.form}>
         {!providerId && (
           <Form.Item
             label={t('provider.fields.presetType')}
@@ -395,36 +464,30 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
           <Switch checkedChildren={t('provider.fields.enabledOn')} unCheckedChildren={t('provider.fields.enabledOff')} disabled={readOnly} />
         </Form.Item>
 
-        <Divider orientation={'left' as 'left'} style={{ fontSize: 13, margin: '12px 0' }}>
+        <Divider orientation="left" style={{ fontSize: 13, margin: '12px 0' }}>
           {t('provider.fields.paramsSection')}
         </Divider>
-        <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 12 }}>
+        <div className={styles.sectionHint}>
           {t('provider.fields.paramsHint')}
         </div>
 
-        <div style={{ display: 'flex', gap: 16 }}>
-          <Form.Item label={t('provider.fields.temperature')} name="temperature" style={{ flex: 1 }}>
+        <div className={styles.fieldGrid}>
+          <Form.Item label={t('provider.fields.temperature')} name="temperature">
             <InputNumber min={0} max={2} step={0.1} style={{ width: '100%' }} placeholder={t('provider.fields.paramDefault')} disabled={readOnly} />
           </Form.Item>
-          <Form.Item label={t('provider.fields.topP')} name="topP" style={{ flex: 1 }}>
+          <Form.Item label={t('provider.fields.topP')} name="topP">
             <InputNumber min={0} max={1} step={0.05} style={{ width: '100%' }} placeholder={t('provider.fields.paramDefault')} disabled={readOnly} />
           </Form.Item>
-        </div>
-
-        <div style={{ display: 'flex', gap: 16 }}>
-          <Form.Item label={t('provider.fields.topK')} name="topK" style={{ flex: 1 }}>
+          <Form.Item label={t('provider.fields.topK')} name="topK">
             <InputNumber min={0} step={1} precision={0} style={{ width: '100%' }} placeholder={t('provider.fields.paramDefault')} disabled={readOnly} />
           </Form.Item>
-          <Form.Item label={t('provider.fields.maxTokens')} name="maxTokens" style={{ flex: 1 }}>
+          <Form.Item label={t('provider.fields.maxTokens')} name="maxTokens">
             <InputNumber min={1} step={1} precision={0} style={{ width: '100%' }} placeholder={t('provider.fields.paramDefault')} disabled={readOnly} />
           </Form.Item>
-        </div>
-
-        <div style={{ display: 'flex', gap: 16 }}>
-          <Form.Item label={t('provider.fields.frequencyPenalty')} name="frequencyPenalty" style={{ flex: 1 }}>
+          <Form.Item label={t('provider.fields.frequencyPenalty')} name="frequencyPenalty">
             <InputNumber min={-2} max={2} step={0.1} style={{ width: '100%' }} placeholder={t('provider.fields.paramDefault')} disabled={readOnly} />
           </Form.Item>
-          <Form.Item label={t('provider.fields.presencePenalty')} name="presencePenalty" style={{ flex: 1 }}>
+          <Form.Item label={t('provider.fields.presencePenalty')} name="presencePenalty">
             <InputNumber min={-2} max={2} step={0.1} style={{ width: '100%' }} placeholder={t('provider.fields.paramDefault')} disabled={readOnly} />
           </Form.Item>
         </div>
@@ -459,7 +522,7 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
           />
         </Form.Item>
 
-        <Divider orientation={'left' as 'left'} style={{ fontSize: 13, margin: '12px 0' }}>
+        <Divider orientation="left" style={{ fontSize: 13, margin: '12px 0' }}>
           {t('provider.fields.secretSection')}
           {secretConfigured !== null && (
             <Tag
@@ -481,7 +544,7 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
           />
         </Form.Item>
 
-        <Space style={{ marginTop: 8 }}>
+        <div className={styles.testRow}>
           <Button
             icon={<Zap size={14} />}
             loading={testing}
@@ -490,7 +553,7 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
           >
             {t('provider.fields.testConnection')}
           </Button>
-        </Space>
+        </div>
       </Form>
     </Drawer>
   );

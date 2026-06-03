@@ -11,7 +11,8 @@ import { createStyles } from 'antd-style';
 
 import Sidebar from './Sidebar';
 import CreateGroupWizard from './CreateGroupWizard';
-import { AIMemberLibrary } from './AIMemberLibrary';
+import { AppSettingsModal } from './AppSettingsModal';
+import type { AppSettingsSection } from '@/config/appSettings';
 import { useUserStore } from '@/store/userStore';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useCLITaskStore } from '@/store/cliTaskStore';
@@ -62,7 +63,7 @@ const useStyles = createStyles(({ token, css }) => ({
   `,
   headerBar: css`
     background: ${token.colorBgContainer};
-    border-bottom: 1px solid ${token.colorBorderSecondary};
+    border-bottom: 1px solid ${token.colorBorder};
     flex: none;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
   `,
@@ -70,7 +71,9 @@ const useStyles = createStyles(({ token, css }) => ({
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 10px 12px;
+    height: 46px;
+    box-sizing: border-box;
+    padding: 0 12px;
   `,
   headerTitle: css`
     font-size: 15px;
@@ -85,108 +88,118 @@ const useStyles = createStyles(({ token, css }) => ({
   scroll: css`
     flex: 1;
     overflow: auto;
-    background: ${token.colorBgLayout};
+    background: linear-gradient(180deg, ${token.colorBgContainer} 0%, ${token.colorFillQuaternary} 100%);
   `,
   content: css`
-    max-width: 860px;
+    max-width: 960px;
     margin: 0 auto;
-    padding: 40px 24px 64px;
+    padding: 28px 22px 48px;
     display: flex;
     flex-direction: column;
-    gap: 36px;
+    gap: 24px;
   `,
   hero: css`
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 4px;
   `,
   greeting: css`
-    font-size: 28px;
+    font-size: 22px;
     font-weight: 700;
     color: ${token.colorText};
     margin: 0;
     line-height: 1.2;
   `,
   subtitle: css`
-    font-size: 15px;
+    font-size: 13px;
     color: ${token.colorTextSecondary};
     margin: 0;
   `,
   section: css`
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 10px;
   `,
   sectionTitle: css`
-    font-size: 13px;
+    font-size: 11px;
     font-weight: 600;
     color: ${token.colorTextTertiary};
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0;
     margin: 0;
   `,
   cardGrid: css`
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    gap: 14px;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 10px;
   `,
   modeCard: css`
     text-align: left;
     border: 1px solid ${token.colorBorderSecondary};
-    border-radius: 16px;
+    border-radius: 8px;
     background: ${token.colorBgContainer};
-    padding: 20px;
+    padding: 12px;
     cursor: pointer;
     display: flex;
-    flex-direction: column;
+    align-items: center;
     gap: 12px;
     transition: all 0.18s ease;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
     &:hover {
-      transform: translateY(-2px);
       border-color: rgba(255, 102, 0, 0.35);
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+      background: ${token.colorFillQuaternary};
     }
   `,
   modeIcon: css`
-    width: 44px;
-    height: 44px;
-    border-radius: 12px;
+    width: 34px;
+    height: 34px;
+    border-radius: 7px;
     display: flex;
     align-items: center;
     justify-content: center;
     flex: none;
   `,
+  modeText: css`
+    min-width: 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  `,
   modeTitle: css`
-    font-size: 16px;
+    font-size: 14px;
     font-weight: 600;
     color: ${token.colorText};
   `,
   modeDesc: css`
-    font-size: 13px;
+    font-size: 12px;
     color: ${token.colorTextSecondary};
-    line-height: 1.5;
-    flex: 1;
+    line-height: 1.45;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
   `,
   modeCta: css`
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
     color: #ff6600;
+    flex: none;
   `,
   recentGrid: css`
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: 10px;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 8px;
   `,
   recentItem: css`
     text-align: left;
     border: 1px solid ${token.colorBorderSecondary};
-    border-radius: 12px;
+    border-radius: 8px;
     background: ${token.colorBgContainer};
-    padding: 12px 14px;
+    padding: 9px 10px;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -198,9 +211,9 @@ const useStyles = createStyles(({ token, css }) => ({
     }
   `,
   recentIcon: css`
-    width: 30px;
-    height: 30px;
-    border-radius: 8px;
+    width: 28px;
+    height: 28px;
+    border-radius: 7px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -234,7 +247,7 @@ const useStyles = createStyles(({ token, css }) => ({
     border: none;
     padding: 0;
     cursor: pointer;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 500;
     color: #ff6600;
     display: inline-flex;
@@ -259,7 +272,8 @@ const HomeView = ({
   const tasks = useCLITaskStore((s) => s.tasks);
 
   const [wizardType, setWizardType] = useState<WizardType | null>(null);
-  const [showLibrary, setShowLibrary] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<AppSettingsSection>('general');
 
   const userName = userStore.userInfo?.nickname?.trim() || t('home:hero.defaultName');
 
@@ -290,16 +304,18 @@ const HomeView = ({
         }}
         onCreateGroup={onCreateGroup}
         fixedGroupType={wizardType ?? undefined}
-        onOpenLibrary={() => {
+        onOpenSettings={(section) => {
           setWizardType(null);
-          setShowLibrary(true);
+          setSettingsSection(section ?? 'general');
+          setSettingsOpen(true);
         }}
       />
 
-      <AIMemberLibrary
-        open={showLibrary}
-        onClose={() => setShowLibrary(false)}
+      <AppSettingsModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
         groups={groups}
+        initialSection={settingsSection}
       />
 
       <div className={styles.page}>
@@ -311,7 +327,10 @@ const HomeView = ({
             onSelectGroup={onSelectGroup}
             groups={groups}
             onCreateGroup={onCreateGroup}
-            onOpenLibrary={() => setShowLibrary(true)}
+            onOpenSettings={(section) => {
+              setSettingsSection(section ?? 'general');
+              setSettingsOpen(true);
+            }}
             activeView="home"
             hiddenGroupTypes={['cli']}
             onNavigateHome={() => {
@@ -347,10 +366,12 @@ const HomeView = ({
                       return (
                         <button key={type} type="button" className={styles.modeCard} onClick={onClick}>
                           <div className={styles.modeIcon} style={{ background: meta.bg }}>
-                            <Icon size={24} style={{ color: meta.color }} />
+                            <Icon size={18} style={{ color: meta.color }} />
                           </div>
-                          <div className={styles.modeTitle}>{getTranslatedGroupTypeLabel(t, type)}</div>
-                          <div className={styles.modeDesc}>{getTranslatedGroupTypeDescription(t, type)}</div>
+                          <div className={styles.modeText}>
+                            <div className={styles.modeTitle}>{getTranslatedGroupTypeLabel(t, type)}</div>
+                            <div className={styles.modeDesc}>{getTranslatedGroupTypeDescription(t, type)}</div>
+                          </div>
                           <span className={styles.modeCta}>
                             {isCreate ? t('home:cards.create') : t('home:cards.enter')}
                             <ChevronRight size={15} />
