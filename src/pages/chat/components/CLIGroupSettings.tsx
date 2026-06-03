@@ -680,9 +680,9 @@ export const CLIGroupSettings = ({
   const persistedCliTemplate = cliWorkflowTemplates.find((item) => item.id === effectiveGroup.workflowTemplateId);
   const activeCliTemplate = selectedCliTemplate || cliWorkflowTemplates.find((item) => item.strategy === effectiveStrategy);
   const activeWorkflowTemplate = selectedCliTemplate || persistedCliTemplate || activeCliTemplate;
+  const effectiveCustomWorkflow = activeWorkflowTemplate?.customWorkflow || effectiveGroup.customWorkflow;
   const isReviewLoopWorkflow = activeWorkflowTemplate?.id === 'implement_review'
-    || !!activeWorkflowTemplate?.customWorkflow
-    || !!effectiveGroup.customWorkflow;
+    || !!effectiveCustomWorkflow;
   const memberIds = effectiveGroup.memberIds || effectiveGroup.members || [];
   const visibleMembers = isTemplateMode
     ? memberIds
@@ -942,15 +942,15 @@ export const CLIGroupSettings = ({
                 {t('cli:groupSettings.collaboration.pipelineHint')}
               </p>
             )}
-            {isReviewLoopWorkflow && (
+            {isReviewLoopWorkflow && !effectiveCustomWorkflow && (
               <p className={styles.panelDesc} style={{ marginTop: 4 }}>
                 {t('cli:groupSettings.collaboration.reviewLoopHint')}
               </p>
             )}
-            {(activeWorkflowTemplate?.customWorkflow || effectiveGroup.customWorkflow) && (
+            {effectiveCustomWorkflow && (
               <p className={styles.panelDesc} style={{ marginTop: 4 }}>
                 {t('cli:groupSettings.collaboration.customWorkflowHint', {
-                  stages: (activeWorkflowTemplate?.customWorkflow || effectiveGroup.customWorkflow)?.stages
+                  stages: effectiveCustomWorkflow.stages
                     .map(stage => stage.label)
                     .join(' → '),
                 })}
@@ -965,41 +965,63 @@ export const CLIGroupSettings = ({
 
           {isTemplateMode && isReviewLoopWorkflow && (
             <div className={styles.panel}>
-              <div style={{ fontSize: 14, fontWeight: 500 }}>{t('cli:groupSettings.roles.title')}</div>
+              <div style={{ fontSize: 14, fontWeight: 500 }}>
+                {effectiveCustomWorkflow
+                  ? t('cli:groupSettings.roles.customTitle')
+                  : t('cli:groupSettings.roles.title')}
+              </div>
               <div className={styles.panelDesc}>
-                {t('cli:groupSettings.roles.desc')}
+                {effectiveCustomWorkflow
+                  ? t('cli:groupSettings.roles.customDesc', {
+                    stages: effectiveCustomWorkflow.stages.map(stage => stage.label).join(' → '),
+                  })
+                  : t('cli:groupSettings.roles.desc')}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
+                {!effectiveCustomWorkflow && (
+                  <div>
+                    <div className={styles.panelDesc} style={{ marginBottom: 4 }}>{t('cli:groupSettings.roles.planner')}</div>
+                    <Select
+                      size="small"
+                      value={reviewLoopRoles.plannerId}
+                      onChange={(plannerId) => handleReviewLoopRolesPatch({ plannerId })}
+                      options={reviewLoopRoleOptions}
+                      placeholder={t('cli:groupSettings.roles.plannerPlaceholder')}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                )}
                 <div>
-                  <div className={styles.panelDesc} style={{ marginBottom: 4 }}>{t('cli:groupSettings.roles.planner')}</div>
-                  <Select
-                    size="small"
-                    value={reviewLoopRoles.plannerId}
-                    onChange={(plannerId) => handleReviewLoopRolesPatch({ plannerId })}
-                    options={reviewLoopRoleOptions}
-                    placeholder={t('cli:groupSettings.roles.plannerPlaceholder')}
-                    style={{ width: '100%' }}
-                  />
-                </div>
-                <div>
-                  <div className={styles.panelDesc} style={{ marginBottom: 4 }}>{t('cli:groupSettings.roles.implementer')}</div>
+                  <div className={styles.panelDesc} style={{ marginBottom: 4 }}>
+                    {effectiveCustomWorkflow
+                      ? t('cli:groupSettings.roles.diagnoseFixer')
+                      : t('cli:groupSettings.roles.implementer')}
+                  </div>
                   <Select
                     size="small"
                     value={reviewLoopRoles.implementerId}
                     onChange={(implementerId) => handleReviewLoopRolesPatch({ implementerId })}
                     options={reviewLoopRoleOptions}
-                    placeholder={t('cli:groupSettings.roles.implementerPlaceholder')}
+                    placeholder={effectiveCustomWorkflow
+                      ? t('cli:groupSettings.roles.diagnoseFixerPlaceholder')
+                      : t('cli:groupSettings.roles.implementerPlaceholder')}
                     style={{ width: '100%' }}
                   />
                 </div>
                 <div>
-                  <div className={styles.panelDesc} style={{ marginBottom: 4 }}>{t('cli:groupSettings.roles.reviewer')}</div>
+                  <div className={styles.panelDesc} style={{ marginBottom: 4 }}>
+                    {effectiveCustomWorkflow
+                      ? t('cli:groupSettings.roles.fixReviewer')
+                      : t('cli:groupSettings.roles.reviewer')}
+                  </div>
                   <Select
                     size="small"
                     value={reviewLoopRoles.reviewerId}
                     onChange={(reviewerId) => handleReviewLoopRolesPatch({ reviewerId })}
                     options={reviewLoopRoleOptions}
-                    placeholder={t('cli:groupSettings.roles.reviewerPlaceholder')}
+                    placeholder={effectiveCustomWorkflow
+                      ? t('cli:groupSettings.roles.fixReviewerPlaceholder')
+                      : t('cli:groupSettings.roles.reviewerPlaceholder')}
                     style={{ width: '100%' }}
                   />
                 </div>

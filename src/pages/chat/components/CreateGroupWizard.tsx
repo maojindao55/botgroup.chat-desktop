@@ -178,7 +178,8 @@ export const CreateGroupWizard = ({
   const [cliSessionPolicy, setCliSessionPolicy] = useState<CLISessionPolicy>('task');
   const [reviewLoopRoles, setReviewLoopRoles] = useState<CLIReviewLoopRoles>(() => buildDefaultReviewLoopRoles([]));
   const selectedCliWorkflowTemplate = cliWorkflowTemplates.find((item) => item.id === cliTemplateId);
-  const usesReviewRoles = cliTemplateId === 'implement_review' || !!selectedCliWorkflowTemplate?.customWorkflow;
+  const selectedCustomWorkflow = selectedCliWorkflowTemplate?.customWorkflow;
+  const usesReviewRoles = cliTemplateId === 'implement_review' || !!selectedCustomWorkflow;
 
   // Agent group
   const [selectedAgentMembers, setSelectedAgentMembers] = useState<string[]>([]);
@@ -524,9 +525,17 @@ export const CreateGroupWizard = ({
       {usesReviewRoles && (
         <div style={{ padding: 12, background: 'rgba(0,0,0,0.04)', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 500 }}>{t('wizard:configStep.roleAssignment')}</div>
+            <div style={{ fontSize: 14, fontWeight: 500 }}>
+              {selectedCustomWorkflow
+                ? t('wizard:configStep.customWorkflowRoles')
+                : t('wizard:configStep.roleAssignment')}
+            </div>
             <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginTop: 4 }}>
-              {t('wizard:configStep.roleAssignmentHint')}
+              {selectedCustomWorkflow
+                ? t('wizard:configStep.customWorkflowHint', {
+                  stages: selectedCustomWorkflow.stages.map(stage => stage.label).join(' → '),
+                })
+                : t('wizard:configStep.roleAssignmentHint')}
             </div>
             {selectedCLIMembers.length < 2 && (
               <div style={{ fontSize: 12, color: '#ff9500', marginTop: 4 }}>
@@ -534,36 +543,50 @@ export const CreateGroupWizard = ({
               </div>
             )}
           </div>
+          {!selectedCustomWorkflow && (
+            <div>
+              <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginBottom: 4 }}>{t('wizard:configStep.planner')}</div>
+              <Select
+                size="small"
+                value={reviewLoopRoles.plannerId}
+                onChange={(plannerId) => setReviewLoopRoles(prev => ({ ...prev, plannerId }))}
+                options={reviewLoopRoleOptions}
+                placeholder={t('wizard:configStep.plannerPlaceholder')}
+                style={{ width: '100%' }}
+              />
+            </div>
+          )}
           <div>
-            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginBottom: 4 }}>{t('wizard:configStep.planner')}</div>
-            <Select
-              size="small"
-              value={reviewLoopRoles.plannerId}
-              onChange={(plannerId) => setReviewLoopRoles(prev => ({ ...prev, plannerId }))}
-              options={reviewLoopRoleOptions}
-              placeholder={t('wizard:configStep.plannerPlaceholder')}
-              style={{ width: '100%' }}
-            />
-          </div>
-          <div>
-            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginBottom: 4 }}>{t('wizard:configStep.implementer')}</div>
+            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginBottom: 4 }}>
+              {selectedCustomWorkflow
+                ? t('wizard:configStep.diagnoseFixer')
+                : t('wizard:configStep.implementer')}
+            </div>
             <Select
               size="small"
               value={reviewLoopRoles.implementerId}
               onChange={(implementerId) => setReviewLoopRoles(prev => ({ ...prev, implementerId }))}
               options={reviewLoopRoleOptions}
-              placeholder={t('wizard:configStep.implementerPlaceholder')}
+              placeholder={selectedCustomWorkflow
+                ? t('wizard:configStep.diagnoseFixerPlaceholder')
+                : t('wizard:configStep.implementerPlaceholder')}
               style={{ width: '100%' }}
             />
           </div>
           <div>
-            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginBottom: 4 }}>{t('wizard:configStep.reviewer')}</div>
+            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginBottom: 4 }}>
+              {selectedCustomWorkflow
+                ? t('wizard:configStep.fixReviewer')
+                : t('wizard:configStep.reviewer')}
+            </div>
             <Select
               size="small"
               value={reviewLoopRoles.reviewerId}
               onChange={(reviewerId) => setReviewLoopRoles(prev => ({ ...prev, reviewerId }))}
               options={reviewLoopRoleOptions}
-              placeholder={t('wizard:configStep.reviewerPlaceholder')}
+              placeholder={selectedCustomWorkflow
+                ? t('wizard:configStep.fixReviewerPlaceholder')
+                : t('wizard:configStep.reviewerPlaceholder')}
               style={{ width: '100%' }}
             />
           </div>
