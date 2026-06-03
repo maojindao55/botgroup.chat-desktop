@@ -55,27 +55,48 @@
   "cliWorkflowTemplates": {
     "quick_response": {
       "label": "Quick response",
-      "description": "Automatically assign one dev member to handle the current coding task."
+      "shortDescription": "Small edits",
+      "description": "Automatically assign one dev member to handle it directly. Good for small edits, simple fixes, and one-off requests."
+    },
+    "diagnose_fix_review": {
+      "label": "Diagnose, fix, review",
+      "shortDescription": "Bug symptoms",
+      "description": "A fixer diagnoses and edits code first, then a reviewer checks the fix quality. Good when the user only describes a bug symptom."
     },
     "implement_review": {
       "label": "Plan, implement, review",
-      "description": "The planner breaks down the work, the implementer edits code, and review loops until approved."
+      "shortDescription": "Features/refactors",
+      "description": "Plan first, then implement, then review. Good for new features, refactors, and cross-module changes."
     },
     "review_fix": {
       "label": "Review and fix",
-      "description": "Review existing changes first, then let dev members fix based on feedback."
-    },
-    "multi_solution": {
-      "label": "Multiple solutions",
-      "description": "Multiple dev members handle the same task and show results side by side."
-    },
-    "isolated_race": {
-      "label": "Isolated race",
-      "description": "Dev members implement in parallel worktrees and the user picks the result to adopt."
+      "shortDescription": "Existing review",
+      "description": "Review existing changes or current code first, then fix based on feedback. Good for follow-up fixes after review."
     },
     "discussion": {
       "label": "Read-only discussion",
-      "description": "Analyze code plans and risks without requiring file changes."
+      "shortDescription": "Discuss first",
+      "description": "Analyze plans, risks, and debugging ideas without changing the workspace. Good before committing to edits."
+    },
+    "multi_solution": {
+      "label": "Multiple solutions",
+      "shortDescription": "Compare options",
+      "description": "Multiple dev members propose implementations or plans side by side. Good when the direction is uncertain."
+    },
+    "isolated_race": {
+      "label": "Isolated race",
+      "shortDescription": "Parallel worktrees",
+      "description": "Multiple dev members implement in isolated worktrees, then you choose which result to adopt. Good for complex tasks or model races."
+    }
+  },
+  "cliWorkflowTemplateGroups": {
+    "common": {
+      "label": "Common",
+      "description": "Covers most day-to-day development tasks. Start here first."
+    },
+    "advanced": {
+      "label": "Advanced",
+      "description": "For existing reviews, comparing multiple approaches, or isolated parallel implementation."
     }
   },
   "cliSessionPolicy": {

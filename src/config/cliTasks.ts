@@ -1,4 +1,4 @@
-import type { CLIGroup, CLIStrategy, CLIExecutionPlan, CLISessionPolicy, CLIReviewLoopRoles } from './groups';
+import type { CLIGroup, CLIStrategy, CLIExecutionPlan, CLISessionPolicy, CLIReviewLoopRoles, CLICustomWorkflow } from './groups';
 import { adapterUsesOpenCodeSessionTitle } from './cliAdapters';
 import i18n from '@/i18n';
 
@@ -83,6 +83,7 @@ export interface CLITeamTemplate {
   executionPlan?: Partial<CLIExecutionPlan>;
   sessionPolicy: CLISessionPolicy;
   reviewLoopRoles?: CLIReviewLoopRoles;
+  customWorkflow?: CLICustomWorkflow;
 }
 
 export interface CLITaskMemberSnapshot {
@@ -162,6 +163,7 @@ export function cliGroupToTeamTemplate(group: CLIGroup): CLITeamTemplate {
     executionPlan: group.executionPlan,
     sessionPolicy: group.sessionPolicy ?? DEFAULT_SESSION_POLICY,
     reviewLoopRoles: group.reviewLoopRoles,
+    customWorkflow: group.customWorkflow,
   };
 }
 
@@ -181,6 +183,7 @@ export function templateSnapshotToCLIGroup(template: CLITeamTemplate): CLIGroup 
     workflowTemplateId: template.workflowTemplateId,
     executionPlan: template.executionPlan,
     reviewLoopRoles: template.reviewLoopRoles,
+    customWorkflow: template.customWorkflow,
   };
 }
 

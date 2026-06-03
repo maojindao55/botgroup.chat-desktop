@@ -1,4 +1,4 @@
-import type { AgentStrategy, CLIExecutionPlan, CLIStrategy, GroupType } from './groups';
+import type { AgentStrategy, CLICustomWorkflow, CLIExecutionPlan, CLIStrategy, GroupType } from './groups';
 
 export type AISpeechMode = 'smart' | 'round_robin' | 'all';
 
@@ -25,12 +25,20 @@ export interface AgentWorkflowTemplate {
 }
 
 export interface CLIWorkflowTemplate {
-  id: 'quick_response' | 'implement_review' | 'review_fix' | 'multi_solution' | 'isolated_race' | 'discussion';
+  id: 'quick_response' | 'diagnose_fix_review' | 'implement_review' | 'review_fix' | 'multi_solution' | 'isolated_race' | 'discussion';
   label: string;
   description: string;
   strategy: CLIStrategy;
   executionPlan?: Partial<CLIExecutionPlan>;
+  customWorkflow?: CLICustomWorkflow;
   defaultStages: string[];
+}
+
+export interface CLIWorkflowTemplateGroup {
+  id: 'common' | 'advanced';
+  label: string;
+  description: string;
+  templateIds: CLIWorkflowTemplate['id'][];
 }
 
 export const productGroupTypes: ProductGroupType[] = [
@@ -113,51 +121,116 @@ export const agentWorkflowTemplates: AgentWorkflowTemplate[] = [
   },
 ];
 
+export const diagnoseFixReviewWorkflow: CLICustomWorkflow = {
+  id: 'diagnose_fix_review',
+  name: '排查修复复审',
+  description: '定位问题根因并完成修复，再由评审者检查修复质量；评审不通过时返回修正。',
+  maxLoops: 2,
+  stages: [
+    {
+      id: 'diagnose_fix',
+      label: '定位修复',
+      role: 'implementer',
+      mode: 'write',
+      prompt: '请根据用户描述定位问题根因，完成最小必要修复，并运行必要验证。输出中说明根因、改动、验证结果和剩余风险。',
+      nextStageId: 'review',
+    },
+    {
+      id: 'review',
+      label: '复审',
+      role: 'reviewer',
+      mode: 'readOnly',
+      prompt: '请审查上一阶段修复是否命中根因、是否有副作用、测试是否充分。不要修改文件；如发现阻塞问题，请给出具体修正反馈。',
+      reviewDecision: {
+        approved: 'done',
+        revise: 'revise',
+      },
+    },
+    {
+      id: 'revise',
+      label: '修正',
+      role: 'implementer',
+      mode: 'write',
+      prompt: '请只针对复审反馈中的阻塞问题做必要修正，并重新运行必要验证。输出修正内容、验证结果和仍需关注的风险。',
+      nextStageId: 'review',
+    },
+  ],
+};
+
 export const cliWorkflowTemplates: CLIWorkflowTemplate[] = [
   {
     id: 'quick_response',
     label: '快速响应',
-    description: '自动选择一位开发成员处理当前代码任务。',
+    description: '自动选择一位开发成员直接处理，适合小改动、简单修复和一次性请求。',
     strategy: 'router',
     defaultStages: ['分派', '执行'],
   },
   {
+    id: 'diagnose_fix_review',
+    label: '排查修复复审',
+    description: '定位修复者先排查并改代码，复审者再检查修复质量；适合只描述现象的 bug 修复。',
+    strategy: 'review',
+    customWorkflow: diagnoseFixReviewWorkflow,
+    defaultStages: ['定位修复', '复审', '修正'],
+  },
+  {
     id: 'implement_review',
     label: '规划实现复审',
-    description: '规划者先拆解方案，实现者按方案改代码；评审不通过时继续修正并复审。',
+    description: '先规划、再实现、再复审；适合新功能、重构和跨模块改动。',
     strategy: 'review',
     defaultStages: ['规划', '实现', '复审', '修正'],
   },
   {
     id: 'review_fix',
     label: '审核修正',
-    description: '先审查现有改动，再让开发成员按意见修正。',
+    description: '先审查已有改动或当前代码，再按意见修正；适合 review 后补修。',
     strategy: 'review',
     defaultStages: ['审核', '修正', '验证'],
   },
   {
+    id: 'discussion',
+    label: '只读讨论',
+    description: '只分析方案、风险和排查思路，不改 workspace；适合动手前确认方向。',
+    strategy: 'discussion',
+    defaultStages: ['分析', '补充', '结论'],
+    executionPlan: { isolation: 'copyPerAgent' },
+  },
+  {
     id: 'multi_solution',
     label: '多人出方案',
-    description: '多个开发成员分别处理同一任务，结果在群里并列展示。',
+    description: '多位开发成员分别给出实现或方案并列展示；适合不确定思路时比较。',
     strategy: 'sequential',
     defaultStages: ['方案 A', '方案 B', '对比'],
   },
   {
     id: 'isolated_race',
     label: '隔离竞赛',
-    description: '多个开发成员在独立 worktree 中并行实现，用户选择采纳。',
+    description: '多位开发成员在独立 worktree 并行实现，最后选择采纳；适合复杂问题或多模型竞赛。',
     strategy: 'race',
     defaultStages: ['并行实现', '结果对比', '用户采纳'],
   },
+];
+
+export const cliWorkflowTemplateGroups: CLIWorkflowTemplateGroup[] = [
   {
-    id: 'discussion',
-    label: '只读讨论',
-    description: '只分析代码方案和风险，不要求开发成员修改文件。',
-    strategy: 'discussion',
-    defaultStages: ['分析', '补充', '结论'],
-    executionPlan: { isolation: 'copyPerAgent' },
+    id: 'common',
+    label: '常用',
+    description: '覆盖多数日常开发任务，优先从这里选择。',
+    templateIds: ['quick_response', 'diagnose_fix_review', 'implement_review', 'discussion'],
+  },
+  {
+    id: 'advanced',
+    label: '高级',
+    description: '适合已有 review、多方案比较或隔离并行实现。',
+    templateIds: ['review_fix', 'multi_solution', 'isolated_race'],
   },
 ];
+
+export function getCLIWorkflowTemplatesByGroup(group: CLIWorkflowTemplateGroup): CLIWorkflowTemplate[] {
+  return group.templateIds
+    .map(id => cliWorkflowTemplates.find(template => template.id === id))
+    .filter((template): template is CLIWorkflowTemplate => Boolean(template));
+}
 
 /** 展示团队模板的协作方式名称（优先 workflowTemplateId，其次 strategy） */
 export function getCLIWorkflowLabel(strategy: CLIStrategy, workflowTemplateId?: string): string {
