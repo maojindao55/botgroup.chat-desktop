@@ -33,7 +33,24 @@ assert.deepEqual(
 
 assert.deepEqual(
   mod.cliWorkflowTemplates.map((item) => item.label),
-  ['快速响应', '规划实现复审', '排查修复复审', '审核修正', '多人出方案', '隔离竞赛', '只读讨论'],
+  ['快速响应', '排查修复复审', '规划实现复审', '审核修正', '只读讨论', '多人出方案', '隔离竞赛'],
+);
+
+assert.deepEqual(
+  mod.cliWorkflowTemplateGroups.map((group) => ({
+    label: group.label,
+    templates: mod.getCLIWorkflowTemplatesByGroup(group).map((item) => item.label),
+  })),
+  [
+    {
+      label: '常用',
+      templates: ['快速响应', '排查修复复审', '规划实现复审', '只读讨论'],
+    },
+    {
+      label: '高级',
+      templates: ['审核修正', '多人出方案', '隔离竞赛'],
+    },
+  ],
 );
 
 assert.equal(
@@ -126,10 +143,10 @@ const cliSettings = await readFile(new URL('../pages/chat/components/CLIGroupSet
 assert.match(cliSettings, /useTranslation/);
 assert.match(cliSettings, /cli:groupSettings/);
 assert.match(cliSettings, /cliWorkflowTemplates/);
-assert.match(cliSettings, /cliSessionPolicy/);
 assert.match(cliSettings, /product:cliWorkflowTemplates/);
-assert.match(cliSettings, /product:cliSessionPolicy/);
 assert.match(cliSettings, /cli:groupSettings\.executionDetails/);
+assert.doesNotMatch(cliSettings, /cliSessionPolicyOptions/);
+assert.doesNotMatch(cliSettings, /product:cliSessionPolicy/);
 assert.doesNotMatch(cliSettings, /群规/);
 assert.doesNotMatch(cliSettings, /Runtime/);
 assert.doesNotMatch(cliSettings, /本机 CLI Runtime 状态/);

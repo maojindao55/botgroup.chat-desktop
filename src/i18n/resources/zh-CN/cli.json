@@ -59,8 +59,9 @@
       "raceWarning": "需要 git 仓库，且当前工作区不能有未提交改动；每位开发成员在独立 worktree 中执行。",
       "pipelineHint": "默认失败继续（让后续开发成员诊断）；用户取消会停止后续阶段。",
       "reviewLoopHint": "规划实现复审会先规划、再实现；评审不通过时，按反馈修正并再次复审。",
-      "customWorkflowHint": "自定义编排阶段：{{stages}}。",
-      "reviewLoopMemberWarning": "建议至少选择 2 个开发成员，并分别指定规划/评审者与实现者。"
+      "customWorkflowHint": "执行阶段：{{stages}}。",
+      "reviewLoopMemberWarning": "建议至少选择 2 个开发成员，并分别指定规划/评审者与实现者。",
+      "customWorkflowMemberWarning": "建议至少选择 2 个开发成员，并分别指定定位修复者与复审者。"
     },
     "strategies": {
       "router": "自动选择最合适的开发成员处理当前任务，适合大多数一次性请求。",
@@ -75,8 +76,8 @@
     "roles": {
       "title": "角色分工",
       "desc": "指定谁负责规划、谁按方案写代码、谁做复审。规划者和评审者可以是同一个开发成员。",
-      "customTitle": "自定义编排角色",
-      "customDesc": "编排阶段：{{stages}}。定位修复者负责排查并改代码，复审者负责检查修复质量。",
+      "customTitle": "排查修复角色",
+      "customDesc": "执行阶段：{{stages}}。定位修复者负责排查并改代码，复审者负责检查修复质量。",
       "planner": "规划者",
       "implementer": "实现者",
       "reviewer": "评审者",

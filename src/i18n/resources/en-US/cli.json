@@ -59,8 +59,9 @@
       "raceWarning": "Requires a git repo with a clean working tree; each dev member runs in an isolated worktree.",
       "pipelineHint": "Continues on failure by default (later members diagnose); user cancel stops later stages.",
       "reviewLoopHint": "Plan-implement-review plans first, then implements; failed review triggers fixes and re-review.",
-      "customWorkflowHint": "Custom workflow stages: {{stages}}.",
-      "reviewLoopMemberWarning": "Pick at least 2 dev members and assign planner/reviewer and implementer roles."
+      "customWorkflowHint": "Stages: {{stages}}.",
+      "reviewLoopMemberWarning": "Pick at least 2 dev members and assign planner/reviewer and implementer roles.",
+      "customWorkflowMemberWarning": "Pick at least 2 dev members and assign the fixer and reviewer roles."
     },
     "strategies": {
       "router": "Automatically picks the best dev member for one-off requests.",
@@ -75,8 +76,8 @@
     "roles": {
       "title": "Role assignment",
       "desc": "Assign who plans, who implements, and who reviews. Planner and reviewer can be the same member.",
-      "customTitle": "Custom workflow roles",
-      "customDesc": "Workflow stages: {{stages}}. The fixer diagnoses and edits code; the reviewer checks the fix quality.",
+      "customTitle": "Diagnose/fix roles",
+      "customDesc": "Stages: {{stages}}. The fixer diagnoses and edits code; the reviewer checks the fix quality.",
       "planner": "Planner",
       "implementer": "Implementer",
       "reviewer": "Reviewer",

@@ -9,17 +9,18 @@ import {
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type {
-  Group, AIGroup, CLIGroup, CLIStrategy, CLISessionPolicy, AgentGroup, AgentStrategy, CLIReviewLoopRoles,
+  CLICustomWorkflow, Group, AIGroup, CLIGroup, CLIStrategy, CLISessionPolicy, AgentGroup, AgentStrategy, CLIReviewLoopRoles,
 } from '@/config/groups';
 import {
   aiSpeechModes,
   agentWorkflowTemplates,
   applyAISpeechMode,
+  cliWorkflowTemplateGroups,
   cliWorkflowTemplates,
+  getCLIWorkflowTemplatesByGroup,
   productGroupTypes,
   type AISpeechMode,
 } from '@/config/groupProduct';
-import { cliSessionPolicyOptions } from '@/config/cliTasks';
 import { brandPrimaryButtonProps } from '@/lib/theme';
 import {
   getTranslatedGroupTypeDescription,
@@ -63,6 +64,17 @@ function buildDefaultReviewLoopRoles(memberIds: string[]): CLIReviewLoopRoles {
     maxReviewRounds: 2,
   };
 }
+
+const cloneCustomWorkflow = (workflow: CLICustomWorkflow | undefined): CLICustomWorkflow | undefined => {
+  if (!workflow) return undefined;
+  return {
+    ...workflow,
+    stages: workflow.stages.map(stage => ({
+      ...stage,
+      reviewDecision: stage.reviewDecision ? { ...stage.reviewDecision } : undefined,
+    })),
+  };
+};
 
 const useStyles = createStyles(({ token, css }) => ({
   card: css`
@@ -275,7 +287,7 @@ export const CreateGroupWizard = ({
         sessionPolicy: cliSessionPolicy,
         executionPlan: selectedTemplate?.executionPlan,
         reviewLoopRoles: reviewLoopRolesToSave,
-        customWorkflow: selectedTemplate?.customWorkflow,
+        customWorkflow: cloneCustomWorkflow(selectedTemplate?.customWorkflow),
       } as CLIGroup;
     } else {
       group = {
@@ -503,24 +515,39 @@ export const CreateGroupWizard = ({
       )}
       <div>
         <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 8 }}>{t('wizard:configStep.collaborationMode')}</label>
-        {cliWorkflowTemplates.map(item => (
-          <button key={item.id}
-            onClick={() => {
-              setCliStrategy(item.strategy);
-              setCliTemplateId(item.id);
-            }}
-            className={cx(styles.strategyBtn, cliTemplateId === item.id && styles.strategyBtnActive)}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14, fontWeight: 500 }}>
-                {t(`product:cliWorkflowTemplates.${item.id}.label`, { defaultValue: item.label })}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {cliWorkflowTemplateGroups.map(group => (
+            <div key={group.id}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(0,0,0,0.65)' }}>
+                  {t(`product:cliWorkflowTemplateGroups.${group.id}.label`, { defaultValue: group.label })}
+                </span>
+                <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.38)' }}>
+                  {t(`product:cliWorkflowTemplateGroups.${group.id}.description`, { defaultValue: group.description })}
+                </span>
               </div>
-              <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>
-                {t(`product:cliWorkflowTemplates.${item.id}.description`, { defaultValue: item.description })}
-              </div>
+              {getCLIWorkflowTemplatesByGroup(group).map(item => (
+                <button key={item.id}
+                  type="button"
+                  onClick={() => {
+                    setCliStrategy(item.strategy);
+                    setCliTemplateId(item.id);
+                  }}
+                  className={cx(styles.strategyBtn, cliTemplateId === item.id && styles.strategyBtnActive)}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 14, fontWeight: 500 }}>
+                      {t(`product:cliWorkflowTemplates.${item.id}.label`, { defaultValue: item.label })}
+                    </div>
+                    <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>
+                      {t(`product:cliWorkflowTemplates.${item.id}.description`, { defaultValue: item.description })}
+                    </div>
+                  </div>
+                  {cliTemplateId === item.id && <Check size={16} style={{ color: '#ff6600' }} />}
+                </button>
+              ))}
             </div>
-            {cliTemplateId === item.id && <Check size={16} style={{ color: '#ff6600' }} />}
-          </button>
-        ))}
+          ))}
+        </div>
       </div>
       {usesReviewRoles && (
         <div style={{ padding: 12, background: 'rgba(0,0,0,0.04)', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -539,7 +566,9 @@ export const CreateGroupWizard = ({
             </div>
             {selectedCLIMembers.length < 2 && (
               <div style={{ fontSize: 12, color: '#ff9500', marginTop: 4 }}>
-                {t('wizard:configStep.roleAssignmentWarning')}
+                {selectedCustomWorkflow
+                  ? t('wizard:configStep.customWorkflowWarning')
+                  : t('wizard:configStep.roleAssignmentWarning')}
               </div>
             )}
           </div>
@@ -608,27 +637,6 @@ export const CreateGroupWizard = ({
           </div>
         </div>
       )}
-      <div>
-        <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 8 }}>{t('wizard:configStep.cliSessionReuse')}</label>
-        {cliSessionPolicyOptions.map(item => (
-          <button
-            key={item.value}
-            type="button"
-            onClick={() => setCliSessionPolicy(item.value)}
-            className={cx(styles.strategyBtn, cliSessionPolicy === item.value && styles.strategyBtnActive)}
-          >
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14, fontWeight: 500 }}>
-                {t(`product:cliSessionPolicy.${item.value}.label`, { defaultValue: item.label })}
-              </div>
-              <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>
-                {t(`product:cliSessionPolicy.${item.value}.description`, { defaultValue: item.description })}
-              </div>
-            </div>
-            {cliSessionPolicy === item.value && <Check size={16} style={{ color: '#ff6600' }} />}
-          </button>
-        ))}
-      </div>
       <div style={{ padding: 12, background: 'rgba(0,0,0,0.04)', borderRadius: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>

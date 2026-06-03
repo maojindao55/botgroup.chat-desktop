@@ -26,7 +26,7 @@
   },
   "messages": {
     "noEnabledCliMembers": "No enabled dev members in this group. Add or enable members in the settings panel.",
-    "readOnlyDiscussionHint": "Read-only discussion runs in a temporary copy and will not modify your workspace. Switch to implement/review or quick response to edit files."
+    "readOnlyDiscussionHint": "Read-only discussion runs in a temporary copy and will not modify your workspace. Switch to diagnose/fix/review, plan/implement/review, or quick response to edit files."
   },
   "placeholders": {
     "cliInput": "Enter a coding task for dev members to run in the workspace...",
