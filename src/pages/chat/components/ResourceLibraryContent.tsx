@@ -31,7 +31,6 @@ const useStyles = createStyles(({ token, css }) => ({
     min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
-    background: ${token.colorBgLayout};
   `,
   tabToolbar: css`
     display: flex;
@@ -40,7 +39,7 @@ const useStyles = createStyles(({ token, css }) => ({
     flex-shrink: 0;
   `,
   listContainer: css`
-    padding: 16px 24px 24px;
+    padding: 16px 24px;
   `,
   memberCard: css`
     background: ${token.colorBgContainer};

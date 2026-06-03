@@ -23,6 +23,7 @@ const useStyles = createStyles(({ token, css }) => ({
     height: min(720px, calc(100vh - 120px));
     min-height: 480px;
     overflow: hidden;
+    background: ${token.colorBgContainer};
   `,
   nav: css`
     width: 200px;
@@ -32,7 +33,7 @@ const useStyles = createStyles(({ token, css }) => ({
     gap: 2px;
     padding: 12px;
     border-right: 1px solid ${token.colorBorderSecondary};
-    background: ${token.colorBgLayout};
+    background: ${token.colorBgContainer};
     overflow-y: auto;
   `,
   navItem: css`
@@ -67,13 +68,14 @@ const useStyles = createStyles(({ token, css }) => ({
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    background: ${token.colorBgContainer};
+    background: ${token.colorBgLayout};
   `,
   mainScroll: css`
     flex: 1;
     min-height: 0;
     overflow-y: auto;
     padding: 24px 28px;
+    background: ${token.colorBgLayout};
   `,
   modalTitle: css`
     display: flex;
