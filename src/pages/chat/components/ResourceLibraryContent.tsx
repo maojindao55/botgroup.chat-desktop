@@ -32,11 +32,14 @@ const useStyles = createStyles(({ token, css }) => ({
     overflow-y: auto;
     overflow-x: hidden;
   `,
-  tabToolbar: css`
+  actionBar: css`
     display: flex;
     justify-content: flex-end;
-    padding: 16px 24px 0;
+    align-items: center;
     flex-shrink: 0;
+    padding: 12px 24px;
+    background: ${token.colorBgContainer};
+    border-bottom: 1px solid ${token.colorBorderSecondary};
   `,
   listContainer: css`
     padding: 16px 24px;
@@ -397,7 +400,7 @@ export const ResourceLibraryContent: React.FC<ResourceLibraryContentProps> = ({
 
     return (
       <>
-        <div className={styles.tabToolbar}>
+        <div className={styles.actionBar}>
           <Button
             icon={<Plus size={16} color={BRAND_ON_PRIMARY} />}
             onClick={() => handleCreate(kind)}

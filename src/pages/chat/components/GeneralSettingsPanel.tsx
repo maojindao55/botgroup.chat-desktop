@@ -14,29 +14,22 @@ const useStyles = createStyles(({ token, css }) => ({
   root: css`
     display: flex;
     flex-direction: column;
-    gap: 20px;
-    max-width: 420px;
+    gap: 16px;
+    max-width: 480px;
   `,
-  heading: css`
-    margin: 0;
-    font-size: 16px;
-    font-weight: 600;
-    color: ${token.colorText};
-  `,
-  description: css`
-    margin: 6px 0 0;
-    font-size: 13px;
-    color: ${token.colorTextSecondary};
-    line-height: 1.5;
-  `,
-  field: css`
+  section: css`
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
+    padding: 14px 16px;
+    border-radius: 12px;
+    background: ${token.colorBgContainer};
+    border: 1px solid ${token.colorBorderSecondary};
   `,
-  label: css`
+  sectionTitle: css`
+    margin: 0;
     font-size: 13px;
-    font-weight: 500;
+    font-weight: 600;
     color: ${token.colorText};
   `,
   track: css`
@@ -69,14 +62,19 @@ const useStyles = createStyles(({ token, css }) => ({
       color: ${token.colorText};
       background: ${token.colorFillTertiary};
     }
+
+    &:focus-visible {
+      outline: 2px solid ${token.colorPrimary};
+      outline-offset: 1px;
+    }
   `,
   optionActive: css`
     color: ${token.colorText};
-    background: ${token.colorBgContainer};
+    background: ${token.colorBgElevated};
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
 
     &:hover {
-      background: ${token.colorBgContainer};
+      background: ${token.colorBgElevated};
     }
   `,
 }));
@@ -106,13 +104,10 @@ export function GeneralSettingsPanel() {
 
   return (
     <div className={styles.root}>
-      <div>
-        <h3 className={styles.heading}>{t('appSettings:general.heading')}</h3>
-        <p className={styles.description}>{t('appSettings:general.description')}</p>
-      </div>
-
-      <div className={styles.field}>
-        <span className={styles.label}>{t('sidebar:preferences.appearance')}</span>
+      <section className={styles.section} aria-labelledby="settings-appearance">
+        <h3 id="settings-appearance" className={styles.sectionTitle}>
+          {t('appSettings:generalPanel.appearance')}
+        </h3>
         <div className={styles.track} role="group" aria-label={t('sidebar:preferences.appearance')}>
           {themeOptions.map(({ value, icon: Icon, title }) => (
             <Tooltip key={value} title={title} mouseEnterDelay={0.3}>
@@ -123,16 +118,18 @@ export function GeneralSettingsPanel() {
                 aria-pressed={theme === value}
                 aria-label={title}
               >
-                <Icon size={16} strokeWidth={2} />
+                <Icon size={16} strokeWidth={2} aria-hidden />
                 <span>{title}</span>
               </button>
             </Tooltip>
           ))}
         </div>
-      </div>
+      </section>
 
-      <div className={styles.field}>
-        <span className={styles.label}>{t('sidebar:preferences.language')}</span>
+      <section className={styles.section} aria-labelledby="settings-language">
+        <h3 id="settings-language" className={styles.sectionTitle}>
+          {t('appSettings:generalPanel.language')}
+        </h3>
         <div className={styles.track} role="group" aria-label={t('sidebar:preferences.language')}>
           {localeOptions.map(({ value, label, title, icon: Icon }) => (
             <Tooltip key={value} title={title} mouseEnterDelay={0.3}>
@@ -143,15 +140,20 @@ export function GeneralSettingsPanel() {
                 aria-pressed={locale === value}
                 aria-label={title}
               >
-                {Icon ? <Icon size={15} strokeWidth={2} /> : null}
+                {Icon ? <Icon size={15} strokeWidth={2} aria-hidden /> : null}
                 <span>{label}</span>
               </button>
             </Tooltip>
           ))}
         </div>
-      </div>
+      </section>
 
-      <AppVersionBadge />
+      <section className={styles.section} aria-labelledby="settings-about">
+        <h3 id="settings-about" className={styles.sectionTitle}>
+          {t('appSettings:generalPanel.about')}
+        </h3>
+        <AppVersionBadge />
+      </section>
     </div>
   );
-}
+};

@@ -14,7 +14,12 @@ const useStyles = createStyles(({ token, css }) => ({
   toolbar: css`
     display: flex;
     justify-content: flex-end;
-    padding: 16px 24px 0;
+    align-items: center;
+    flex-shrink: 0;
+    padding: 12px 24px;
+    background: ${token.colorBgContainer};
+    border-bottom: 1px solid ${token.colorBorderSecondary};
+    margin: 0 0 0;
   `,
   listContainer: css`
     padding: 16px 24px;
