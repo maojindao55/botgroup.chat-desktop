@@ -152,9 +152,6 @@ export const CLITemplateListPanel = ({
     return fallback;
   };
 
-  const sessionPolicyText = (policy: CLITeamTemplate['sessionPolicy']) =>
-    t(`product:cliSessionPolicy.${policy}.label`, { defaultValue: policy });
-
   if (!open) {
     if (inline) return null;
     return null;
@@ -214,7 +211,6 @@ export const CLITemplateListPanel = ({
           </div>
           <div className={styles.meta}>
             {workflowLabel(template)} · {t('cli:templateList.memberCount', { count: template.memberIds.length })}
-            {` · ${sessionPolicyText(template.sessionPolicy)}`}
           </div>
           <div className={styles.meta}>
             {t('cli:templateList.linkedTasks', { count: taskCountByTemplate[template.id] || 0 })}

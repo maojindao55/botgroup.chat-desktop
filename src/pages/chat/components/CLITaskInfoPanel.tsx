@@ -263,12 +263,6 @@ export const CLITaskInfoPanel = ({
           <span className={styles.value}>{t('cli:taskInfo.fields.timeoutValue', { seconds: Math.round(snapshot.timeout / 1000) })}</span>
         </div>
         <div className={styles.row}>
-          <span className={styles.label}>{t('cli:taskInfo.fields.sessionPolicy')}</span>
-          <span className={styles.value}>
-            {t(`product:cliSessionPolicy.${snapshot.sessionPolicy}.label`, { defaultValue: snapshot.sessionPolicy })}
-          </span>
-        </div>
-        <div className={styles.row}>
           <span className={styles.label}>{t('cli:taskInfo.fields.stderr')}</span>
           <span className={styles.value}>{snapshot.showStderr ? t('cli:taskInfo.fields.stderrOn') : t('cli:taskInfo.fields.stderrOff')}</span>
         </div>

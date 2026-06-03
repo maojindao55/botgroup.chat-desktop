@@ -9,17 +9,18 @@ import {
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type {
-  Group, AIGroup, CLIGroup, CLIStrategy, CLISessionPolicy, AgentGroup, AgentStrategy, CLIReviewLoopRoles,
+  CLICustomWorkflow, Group, AIGroup, CLIGroup, CLIStrategy, CLISessionPolicy, AgentGroup, AgentStrategy, CLIReviewLoopRoles,
 } from '@/config/groups';
 import {
   aiSpeechModes,
   agentWorkflowTemplates,
   applyAISpeechMode,
+  cliWorkflowTemplateGroups,
   cliWorkflowTemplates,
+  getCLIWorkflowTemplatesByGroup,
   productGroupTypes,
   type AISpeechMode,
 } from '@/config/groupProduct';
-import { cliSessionPolicyOptions } from '@/config/cliTasks';
 import {
   groupTypeToSettingsSection,
   type AppSettingsSection,
@@ -67,6 +68,17 @@ function buildDefaultReviewLoopRoles(memberIds: string[]): CLIReviewLoopRoles {
     maxReviewRounds: 2,
   };
 }
+
+const cloneCustomWorkflow = (workflow: CLICustomWorkflow | undefined): CLICustomWorkflow | undefined => {
+  if (!workflow) return undefined;
+  return {
+    ...workflow,
+    stages: workflow.stages.map(stage => ({
+      ...stage,
+      reviewDecision: stage.reviewDecision ? { ...stage.reviewDecision } : undefined,
+    })),
+  };
+};
 
 const useStyles = createStyles(({ token, css }) => ({
   card: css`
@@ -140,6 +152,56 @@ const useStyles = createStyles(({ token, css }) => ({
     border-color: #ff6600;
     background: rgba(255,102,0,0.06);
   `,
+  workflowGrid: css`
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  `,
+  workflowBtn: css`
+    width: 100%;
+    min-height: 56px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid ${token.colorBorderSecondary};
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    &:hover { background: ${token.colorFillTertiary}; }
+  `,
+  workflowBtnActive: css`
+    border-color: #ff6600;
+    background: rgba(255,102,0,0.06);
+  `,
+  workflowTitle: css`
+    font-size: 13px;
+    font-weight: 600;
+    color: ${token.colorText};
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  `,
+  workflowHint: css`
+    font-size: 12px;
+    color: ${token.colorTextTertiary};
+    margin-top: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  `,
+  workflowDesc: css`
+    margin-top: 8px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: ${token.colorFillTertiary};
+    color: ${token.colorTextSecondary};
+    font-size: 12px;
+    line-height: 1.5;
+  `,
 }));
 
 
@@ -181,6 +243,9 @@ export const CreateGroupWizard = ({
   const [cliTemplateId, setCliTemplateId] = useState(defaultCliWorkflowTemplate.id);
   const [cliSessionPolicy, setCliSessionPolicy] = useState<CLISessionPolicy>('task');
   const [reviewLoopRoles, setReviewLoopRoles] = useState<CLIReviewLoopRoles>(() => buildDefaultReviewLoopRoles([]));
+  const selectedCliWorkflowTemplate = cliWorkflowTemplates.find((item) => item.id === cliTemplateId);
+  const selectedCustomWorkflow = selectedCliWorkflowTemplate?.customWorkflow;
+  const usesReviewRoles = cliTemplateId === 'implement_review' || !!selectedCustomWorkflow;
 
   // Agent group
   const [selectedAgentMembers, setSelectedAgentMembers] = useState<string[]>([]);
@@ -196,7 +261,7 @@ export const CreateGroupWizard = ({
   }, [open, loadMembers]);
 
   useEffect(() => {
-    if (cliTemplateId !== 'implement_review' || selectedCLIMembers.length === 0) return;
+    if (!usesReviewRoles || selectedCLIMembers.length === 0) return;
     const defaults = buildDefaultReviewLoopRoles(selectedCLIMembers);
     setReviewLoopRoles(prev => ({
       plannerId: prev.plannerId && selectedCLIMembers.includes(prev.plannerId) ? prev.plannerId : defaults.plannerId,
@@ -204,7 +269,7 @@ export const CreateGroupWizard = ({
       reviewerId: prev.reviewerId && selectedCLIMembers.includes(prev.reviewerId) ? prev.reviewerId : defaults.reviewerId,
       maxReviewRounds: prev.maxReviewRounds ?? 2,
     }));
-  }, [cliTemplateId, selectedCLIMembers]);
+  }, [usesReviewRoles, selectedCLIMembers]);
 
   const reviewLoopRoleOptions = useMemo(
     () => selectedCLIMembers.map(id => ({
@@ -251,11 +316,11 @@ export const CreateGroupWizard = ({
         schedulerStrategy: aiMode.schedulerStrategy,
       } as AIGroup;
     } else if (groupType === 'cli') {
-      const selectedTemplate = cliWorkflowTemplates.find((item) => item.id === cliTemplateId);
-      const resolvedReviewLoopRoles = cliTemplateId === 'implement_review'
+      const selectedTemplate = selectedCliWorkflowTemplate;
+      const resolvedReviewLoopRoles = usesReviewRoles
         ? buildDefaultReviewLoopRoles(selectedCLIMembers)
         : undefined;
-      const reviewLoopRolesToSave = cliTemplateId === 'implement_review'
+      const reviewLoopRolesToSave = usesReviewRoles
         ? {
           plannerId: reviewLoopRoles.plannerId || resolvedReviewLoopRoles?.plannerId,
           implementerId: reviewLoopRoles.implementerId || resolvedReviewLoopRoles?.implementerId,
@@ -276,6 +341,7 @@ export const CreateGroupWizard = ({
         sessionPolicy: cliSessionPolicy,
         executionPlan: selectedTemplate?.executionPlan,
         reviewLoopRoles: reviewLoopRolesToSave,
+        customWorkflow: cloneCustomWorkflow(selectedTemplate?.customWorkflow),
       } as CLIGroup;
     } else {
       group = {
@@ -503,68 +569,115 @@ export const CreateGroupWizard = ({
       )}
       <div>
         <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 8 }}>{t('wizard:configStep.collaborationMode')}</label>
-        {cliWorkflowTemplates.map(item => (
-          <button key={item.id}
-            onClick={() => {
-              setCliStrategy(item.strategy);
-              setCliTemplateId(item.id);
-            }}
-            className={cx(styles.strategyBtn, cliTemplateId === item.id && styles.strategyBtnActive)}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14, fontWeight: 500 }}>
-                {t(`product:cliWorkflowTemplates.${item.id}.label`, { defaultValue: item.label })}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {cliWorkflowTemplateGroups.map(group => (
+            <div key={group.id}>
+              <div style={{ marginBottom: 6 }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(0,0,0,0.65)' }}>
+                  {t(`product:cliWorkflowTemplateGroups.${group.id}.label`, { defaultValue: group.label })}
+                </span>
               </div>
-              <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>
-                {t(`product:cliWorkflowTemplates.${item.id}.description`, { defaultValue: item.description })}
+              <div className={styles.workflowGrid}>
+                {getCLIWorkflowTemplatesByGroup(group).map(item => (
+                  <button key={item.id}
+                    type="button"
+                    onClick={() => {
+                      setCliStrategy(item.strategy);
+                      setCliTemplateId(item.id);
+                    }}
+                    className={cx(styles.workflowBtn, cliTemplateId === item.id && styles.workflowBtnActive)}>
+                    <div style={{ minWidth: 0 }}>
+                      <div className={styles.workflowTitle}>
+                        {t(`product:cliWorkflowTemplates.${item.id}.label`, { defaultValue: item.label })}
+                      </div>
+                      <div className={styles.workflowHint}>
+                        {t(`product:cliWorkflowTemplates.${item.id}.shortDescription`, {
+                          defaultValue: item.defaultStages.join(' / '),
+                        })}
+                      </div>
+                    </div>
+                    {cliTemplateId === item.id && <Check size={15} style={{ color: '#ff6600', flex: 'none' }} />}
+                  </button>
+                ))}
               </div>
             </div>
-            {cliTemplateId === item.id && <Check size={16} style={{ color: '#ff6600' }} />}
-          </button>
-        ))}
+          ))}
+        </div>
+        {selectedCliWorkflowTemplate && (
+          <div className={styles.workflowDesc}>
+            {t(`product:cliWorkflowTemplates.${selectedCliWorkflowTemplate.id}.description`, {
+              defaultValue: selectedCliWorkflowTemplate.description,
+            })}
+          </div>
+        )}
       </div>
-      {cliTemplateId === 'implement_review' && (
+      {usesReviewRoles && (
         <div style={{ padding: 12, background: 'rgba(0,0,0,0.04)', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 500 }}>{t('wizard:configStep.roleAssignment')}</div>
+            <div style={{ fontSize: 14, fontWeight: 500 }}>
+              {selectedCustomWorkflow
+                ? t('wizard:configStep.customWorkflowRoles')
+                : t('wizard:configStep.roleAssignment')}
+            </div>
             <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginTop: 4 }}>
-              {t('wizard:configStep.roleAssignmentHint')}
+              {selectedCustomWorkflow
+                ? t('wizard:configStep.customWorkflowHint', {
+                  stages: selectedCustomWorkflow.stages.map(stage => stage.label).join(' → '),
+                })
+                : t('wizard:configStep.roleAssignmentHint')}
             </div>
             {selectedCLIMembers.length < 2 && (
               <div style={{ fontSize: 12, color: '#ff9500', marginTop: 4 }}>
-                {t('wizard:configStep.roleAssignmentWarning')}
+                {selectedCustomWorkflow
+                  ? t('wizard:configStep.customWorkflowWarning')
+                  : t('wizard:configStep.roleAssignmentWarning')}
               </div>
             )}
           </div>
+          {!selectedCustomWorkflow && (
+            <div>
+              <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginBottom: 4 }}>{t('wizard:configStep.planner')}</div>
+              <Select
+                size="small"
+                value={reviewLoopRoles.plannerId}
+                onChange={(plannerId) => setReviewLoopRoles(prev => ({ ...prev, plannerId }))}
+                options={reviewLoopRoleOptions}
+                placeholder={t('wizard:configStep.plannerPlaceholder')}
+                style={{ width: '100%' }}
+              />
+            </div>
+          )}
           <div>
-            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginBottom: 4 }}>{t('wizard:configStep.planner')}</div>
-            <Select
-              size="small"
-              value={reviewLoopRoles.plannerId}
-              onChange={(plannerId) => setReviewLoopRoles(prev => ({ ...prev, plannerId }))}
-              options={reviewLoopRoleOptions}
-              placeholder={t('wizard:configStep.plannerPlaceholder')}
-              style={{ width: '100%' }}
-            />
-          </div>
-          <div>
-            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginBottom: 4 }}>{t('wizard:configStep.implementer')}</div>
+            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginBottom: 4 }}>
+              {selectedCustomWorkflow
+                ? t('wizard:configStep.diagnoseFixer')
+                : t('wizard:configStep.implementer')}
+            </div>
             <Select
               size="small"
               value={reviewLoopRoles.implementerId}
               onChange={(implementerId) => setReviewLoopRoles(prev => ({ ...prev, implementerId }))}
               options={reviewLoopRoleOptions}
-              placeholder={t('wizard:configStep.implementerPlaceholder')}
+              placeholder={selectedCustomWorkflow
+                ? t('wizard:configStep.diagnoseFixerPlaceholder')
+                : t('wizard:configStep.implementerPlaceholder')}
               style={{ width: '100%' }}
             />
           </div>
           <div>
-            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginBottom: 4 }}>{t('wizard:configStep.reviewer')}</div>
+            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginBottom: 4 }}>
+              {selectedCustomWorkflow
+                ? t('wizard:configStep.fixReviewer')
+                : t('wizard:configStep.reviewer')}
+            </div>
             <Select
               size="small"
               value={reviewLoopRoles.reviewerId}
               onChange={(reviewerId) => setReviewLoopRoles(prev => ({ ...prev, reviewerId }))}
               options={reviewLoopRoleOptions}
-              placeholder={t('wizard:configStep.reviewerPlaceholder')}
+              placeholder={selectedCustomWorkflow
+                ? t('wizard:configStep.fixReviewerPlaceholder')
+                : t('wizard:configStep.reviewerPlaceholder')}
               style={{ width: '100%' }}
             />
           </div>
@@ -586,27 +699,6 @@ export const CreateGroupWizard = ({
           </div>
         </div>
       )}
-      <div>
-        <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 8 }}>{t('wizard:configStep.cliSessionReuse')}</label>
-        {cliSessionPolicyOptions.map(item => (
-          <button
-            key={item.value}
-            type="button"
-            onClick={() => setCliSessionPolicy(item.value)}
-            className={cx(styles.strategyBtn, cliSessionPolicy === item.value && styles.strategyBtnActive)}
-          >
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14, fontWeight: 500 }}>
-                {t(`product:cliSessionPolicy.${item.value}.label`, { defaultValue: item.label })}
-              </div>
-              <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>
-                {t(`product:cliSessionPolicy.${item.value}.description`, { defaultValue: item.description })}
-              </div>
-            </div>
-            {cliSessionPolicy === item.value && <Check size={16} style={{ color: '#ff6600' }} />}
-          </button>
-        ))}
-      </div>
       <div style={{ padding: 12, background: 'rgba(0,0,0,0.04)', borderRadius: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
