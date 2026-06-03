@@ -31,8 +31,9 @@ const SIDEBAR_WIDTH = 264;
 const useStyles = createStyles(({ token, css }) => ({
   container: css`
     height: 100%;
-    border-right: 1px solid ${token.colorBorderSecondary};
-    background: ${token.colorBgLayout};
+    border-right: 1px solid ${token.colorBorder};
+    background: ${token.colorBgContainer};
+    box-shadow: 1px 0 0 rgba(0, 0, 0, 0.02);
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -49,33 +50,30 @@ const useStyles = createStyles(({ token, css }) => ({
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 14px 14px 8px;
+    gap: 8px;
+    height: 46px;
+    box-sizing: border-box;
+    padding: 0 10px 0 12px;
+    border-bottom: 1px solid ${token.colorBorder};
+    background: ${token.colorBgContainer};
     flex: none;
   `,
   title: css`
     font-size: 14px;
     font-weight: 600;
+    line-height: 18px;
     color: ${token.colorText};
   `,
-  subtitle: css`
-    margin-top: 2px;
-    font-size: 11px;
-    color: ${token.colorTextTertiary};
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 170px;
-  `,
   topActions: css`
-    padding: 0 14px 8px;
+    padding: 8px 8px 6px;
     flex: none;
   `,
   searchWrapper: css`
-    padding: 0 14px 8px;
+    padding: 0 8px 7px;
     flex: none;
   `,
   toolbar: css`
-    padding: 0 14px 8px;
+    padding: 0 8px 7px;
     display: flex;
     align-items: center;
     justify-content: flex-end;
@@ -83,7 +81,7 @@ const useStyles = createStyles(({ token, css }) => ({
   `,
   archiveToggle: css`
     height: 26px;
-    border-radius: 8px;
+    border-radius: 6px;
     border: 1px solid ${token.colorBorderSecondary};
     background: ${token.colorBgContainer};
     color: ${token.colorTextSecondary};
@@ -106,22 +104,24 @@ const useStyles = createStyles(({ token, css }) => ({
   navList: css`
     flex: 1;
     overflow: auto;
-    padding: 4px 10px 10px;
+    padding: 4px 7px 10px;
   `,
   navItem: css`
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: 6px;
-    padding: 10px 12px;
-    border-radius: 8px;
-    background: ${token.colorBgContainer};
-    border: 1px solid ${token.colorBorderSecondary};
+    padding: 8px 9px;
+    border-radius: 7px;
+    background: transparent;
+    border: 1px solid transparent;
     cursor: pointer;
     color: ${token.colorTextSecondary};
     transition: all 0.15s ease;
-    margin-bottom: 6px;
+    margin-bottom: 4px;
+    overflow: hidden;
     &:hover {
-      border-color: rgba(255, 102, 0, 0.35);
+      background: ${token.colorFillQuaternary};
       color: ${token.colorText};
       .convActions {
         opacity: 1;
@@ -129,10 +129,19 @@ const useStyles = createStyles(({ token, css }) => ({
     }
   `,
   navItemActive: css`
-    background: ${token.colorBgContainer} !important;
-    border-color: rgba(255, 102, 0, 0.45) !important;
-    box-shadow: inset 3px 0 0 #ff6600;
+    background: ${token.colorFillQuaternary} !important;
+    border-color: ${token.colorBorderSecondary} !important;
     color: ${token.colorText} !important;
+    &::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 7px;
+      bottom: 7px;
+      width: 3px;
+      border-radius: 999px;
+      background: #ff6600;
+    }
   `,
   titleRow: css`
     display: flex;
@@ -151,6 +160,7 @@ const useStyles = createStyles(({ token, css }) => ({
   sessionTitle: css`
     font-size: 13px;
     font-weight: 600;
+    line-height: 18px;
     color: ${token.colorText};
     overflow: hidden;
     text-overflow: ellipsis;
@@ -172,8 +182,8 @@ const useStyles = createStyles(({ token, css }) => ({
     opacity: 1;
   `,
   actionBtn: css`
-    width: 24px;
-    height: 24px;
+    width: 22px;
+    height: 22px;
     border: none;
     border-radius: 6px;
     background: transparent;
@@ -219,6 +229,7 @@ const useStyles = createStyles(({ token, css }) => ({
   `,
   preview: css`
     font-size: 11px;
+    line-height: 16px;
     color: ${token.colorTextTertiary};
     overflow: hidden;
     text-overflow: ellipsis;
@@ -255,7 +266,6 @@ export const ConversationSidebar = ({
   toggleSidebar,
   sessions,
   selectedSessionId,
-  groupName,
   onSelectSession,
   onNewSession,
   onRenameSession,
@@ -327,10 +337,7 @@ export const ConversationSidebar = ({
           <div className={styles.headerRow}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
               <MessageSquare size={16} color="#ff6600" />
-              <div style={{ minWidth: 0 }}>
-                <span className={styles.title}>{t('chat:conversation.title')}</span>
-                {groupName && <div className={styles.subtitle}>{groupName}</div>}
-              </div>
+              <span className={styles.title}>{t('chat:conversation.title')}</span>
             </div>
             <ActionIcon icon={PanelLeftClose} size="small" onClick={toggleSidebar} title="" />
           </div>
@@ -340,7 +347,7 @@ export const ConversationSidebar = ({
               icon={<Plus size={14} color={BRAND_ON_PRIMARY} />}
               onClick={onNewSession}
               block
-              style={{ ...brandPrimaryButtonStyle, height: 36, borderRadius: 10 }}
+              style={{ ...brandPrimaryButtonStyle, height: 32, borderRadius: 7 }}
               styles={{
                 content: { color: BRAND_ON_PRIMARY },
                 icon: { color: BRAND_ON_PRIMARY },
@@ -364,7 +371,7 @@ export const ConversationSidebar = ({
               }
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ borderRadius: 10, height: 34 }}
+              style={{ borderRadius: 7, height: 30 }}
             />
           </div>
 

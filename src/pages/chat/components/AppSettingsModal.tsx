@@ -24,21 +24,34 @@ import { SettingsSectionHeader } from './SettingsSectionHeader';
 const useStyles = createStyles(({ token, css }) => ({
   shell: css`
     display: flex;
-    height: min(720px, calc(100vh - 120px));
-    min-height: 480px;
+    height: min(740px, calc(100vh - 72px));
+    min-height: 520px;
     overflow: hidden;
     background: ${token.colorBgContainer};
+
+    @media (max-width: 720px) {
+      min-height: min(680px, calc(100vh - 48px));
+      flex-direction: column;
+    }
   `,
   nav: css`
-    width: 220px;
+    width: 208px;
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    padding: 12px 10px;
-    border-right: 1px solid ${token.colorBorderSecondary};
+    gap: 2px;
+    padding: 10px 8px;
+    border-right: 1px solid ${token.colorBorder};
     background: ${token.colorBgContainer};
     overflow-y: auto;
+
+    @media (max-width: 720px) {
+      width: 100%;
+      max-height: 148px;
+      border-right: none;
+      border-bottom: 1px solid ${token.colorBorderSecondary};
+      padding: 8px;
+    }
   `,
   navGroup: css`
     display: flex;
@@ -46,14 +59,14 @@ const useStyles = createStyles(({ token, css }) => ({
     gap: 2px;
 
     &:not(:first-child) {
-      margin-top: 8px;
-      padding-top: 8px;
+      margin-top: 10px;
+      padding-top: 10px;
       border-top: 1px solid ${token.colorBorderSecondary};
     }
   `,
   navGroupLabel: css`
-    padding: 4px 12px 6px;
-    font-size: 11px;
+    padding: 3px 9px 5px;
+    font-size: 10px;
     font-weight: 600;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -64,19 +77,21 @@ const useStyles = createStyles(({ token, css }) => ({
     align-items: center;
     gap: 10px;
     width: 100%;
-    padding: 10px 12px;
+    min-height: 32px;
+    padding: 6px 9px;
     border: none;
-    border-radius: 10px;
+    border-radius: 7px;
     background: transparent;
     color: ${token.colorTextSecondary};
     font-size: 13px;
     font-weight: 500;
     text-align: left;
     cursor: pointer;
+    position: relative;
     transition: background 0.15s ease, color 0.15s ease;
 
     &:hover {
-      background: ${token.colorFillTertiary};
+      background: ${token.colorFillQuaternary};
       color: ${token.colorText};
     }
 
@@ -86,9 +101,20 @@ const useStyles = createStyles(({ token, css }) => ({
     }
   `,
   navItemActive: css`
-    background: rgba(255, 102, 0, 0.1) !important;
-    color: #ff6600 !important;
+    background: ${token.colorFillQuaternary} !important;
+    color: ${token.colorText} !important;
     font-weight: 600;
+
+    &::before {
+      content: '';
+      position: absolute;
+      left: 3px;
+      top: 8px;
+      bottom: 8px;
+      width: 3px;
+      border-radius: 999px;
+      background: #ff6600;
+    }
   `,
   main: css`
     flex: 1;
@@ -96,7 +122,7 @@ const useStyles = createStyles(({ token, css }) => ({
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    background: ${token.colorBgLayout};
+    background: ${token.colorBgContainer};
   `,
   mainBody: css`
     flex: 1;
@@ -109,14 +135,14 @@ const useStyles = createStyles(({ token, css }) => ({
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    padding: 20px 24px 24px;
-    background: ${token.colorBgLayout};
+    padding: 14px 20px 20px;
+    background: ${token.colorBgContainer};
   `,
   modalTitle: css`
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 600;
   `,
 }));
@@ -204,12 +230,12 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
       open={open}
       onCancel={onClose}
       footer={null}
-      width={960}
+      width={980}
       destroyOnClose
       closeIcon={<X size={16} />}
       styles={{
         body: { padding: 0 },
-        content: { overflow: 'hidden' },
+        content: { overflow: 'hidden', borderRadius: 10 },
       }}
       aria-label={t('title')}
     >
@@ -243,7 +269,11 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
                     onClick={() => setSection(key)}
                     onKeyDown={(e) => handleNavKeyDown(e, key)}
                   >
-                    <Icon size={16} style={{ flexShrink: 0 }} aria-hidden />
+                    <Icon
+                      size={16}
+                      style={{ flexShrink: 0, color: selected ? '#ff6600' : undefined }}
+                      aria-hidden
+                    />
                     <span>{t(`nav.${key}`)}</span>
                   </button>
                 );

@@ -14,32 +14,48 @@ const useStyles = createStyles(({ token, css }) => ({
   root: css`
     display: flex;
     flex-direction: column;
-    gap: 16px;
-    max-width: 480px;
+    max-width: 760px;
   `,
   section: css`
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    padding: 14px 16px;
-    border-radius: 12px;
+    display: grid;
+    grid-template-columns: 160px minmax(0, 1fr);
+    align-items: center;
+    gap: 16px;
+    min-height: 48px;
+    padding: 10px 0;
     background: ${token.colorBgContainer};
-    border: 1px solid ${token.colorBorderSecondary};
+    border-bottom: 1px solid ${token.colorBorderSecondary};
+
+    &:first-child {
+      padding-top: 2px;
+    }
+
+    &:last-child {
+      border-bottom: none;
+    }
+
+    @media (max-width: 720px) {
+      grid-template-columns: 1fr;
+      align-items: stretch;
+      gap: 8px;
+    }
   `,
   sectionTitle: css`
     margin: 0;
     font-size: 13px;
     font-weight: 600;
     color: ${token.colorText};
+    line-height: 1.4;
   `,
   track: css`
     display: flex;
     align-items: center;
     gap: 4px;
-    padding: 4px;
-    border-radius: 10px;
+    padding: 3px;
+    border-radius: 8px;
     background: ${token.colorFillQuaternary};
     border: 1px solid ${token.colorBorderSecondary};
+    width: min(100%, 420px);
   `,
   option: css`
     flex: 1;
@@ -47,13 +63,13 @@ const useStyles = createStyles(({ token, css }) => ({
     align-items: center;
     justify-content: center;
     gap: 6px;
-    min-height: 36px;
+    min-height: 30px;
     padding: 0 10px;
     border: none;
-    border-radius: 8px;
+    border-radius: 6px;
     background: transparent;
     color: ${token.colorTextSecondary};
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 500;
     cursor: pointer;
     transition: all 0.15s ease;
@@ -71,7 +87,7 @@ const useStyles = createStyles(({ token, css }) => ({
   optionActive: css`
     color: ${token.colorText};
     background: ${token.colorBgElevated};
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+    box-shadow: 0 0 0 1px ${token.colorBorderSecondary};
 
     &:hover {
       background: ${token.colorBgElevated};

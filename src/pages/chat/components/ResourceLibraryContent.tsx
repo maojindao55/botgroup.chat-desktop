@@ -37,27 +37,31 @@ const useStyles = createStyles(({ token, css }) => ({
     justify-content: flex-end;
     align-items: center;
     flex-shrink: 0;
-    padding: 12px 24px;
+    padding: 8px 20px;
     background: ${token.colorBgContainer};
     border-bottom: 1px solid ${token.colorBorderSecondary};
   `,
   listContainer: css`
-    padding: 16px 24px;
+    padding: 10px 20px 20px;
   `,
   memberCard: css`
     background: ${token.colorBgContainer};
-    border-radius: 12px;
-    padding: 16px;
-    margin-bottom: 12px;
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 7px;
     border: 1px solid ${token.colorBorderSecondary};
-    transition: all 0.2s ease;
+    transition: border-color 0.15s ease, background 0.15s ease;
     display: flex;
-    gap: 16px;
+    gap: 12px;
     align-items: flex-start;
+    min-width: 0;
     &:hover {
       border-color: ${token.colorPrimaryBorderHover};
-      transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+      background: ${token.colorFillQuaternary};
+    }
+
+    @media (max-width: 720px) {
+      flex-wrap: wrap;
     }
   `,
   infoSection: css`
@@ -72,14 +76,14 @@ const useStyles = createStyles(({ token, css }) => ({
     flex-wrap: wrap;
   `,
   name: css`
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 600;
     color: ${token.colorText};
   `,
   description: css`
     font-size: 13px;
     color: ${token.colorTextSecondary};
-    margin-bottom: 8px;
+    margin-bottom: 6px;
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
@@ -88,18 +92,18 @@ const useStyles = createStyles(({ token, css }) => ({
   tagContainer: css`
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
-    margin-bottom: 8px;
+    gap: 5px;
+    margin-bottom: 6px;
   `,
   metaDetails: css`
     display: flex;
     flex-wrap: wrap;
-    gap: 12px;
+    gap: 10px;
     font-size: 12px;
     color: ${token.colorTextTertiary};
-    border-top: 1px dashed ${token.colorBorderSecondary};
-    padding-top: 8px;
-    margin-top: 8px;
+    border-top: 1px solid ${token.colorBorderSecondary};
+    padding-top: 7px;
+    margin-top: 7px;
   `,
   metaItem: css`
     display: flex;
@@ -108,8 +112,17 @@ const useStyles = createStyles(({ token, css }) => ({
   `,
   actionColumn: css`
     display: flex;
-    flex-direction: column;
-    gap: 8px;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 4px;
+    flex-shrink: 0;
+
+    @media (max-width: 720px) {
+      width: 100%;
+      justify-content: flex-start;
+      padding-left: 48px;
+    }
   `,
   badgeBuiltin: css`
     background: ${token.colorPrimaryBg} !important;
@@ -323,7 +336,7 @@ export const ResourceLibraryContent: React.FC<ResourceLibraryContentProps> = ({
     return (
       <div className={styles.memberCard} key={member.id}>
         <LobeAvatar
-          size={48}
+          size={36}
           avatar={url || a.text}
           background={a.backgroundColor}
           shape="circle"
@@ -364,7 +377,7 @@ export const ResourceLibraryContent: React.FC<ResourceLibraryContentProps> = ({
             type="text"
             icon={isBuiltin ? <Copy size={14} /> : <Edit2 size={14} />}
             onClick={() => handleEdit(member)}
-            style={{ padding: '4px 8px', height: 'auto' }}
+            style={{ padding: '3px 8px', height: 26, borderRadius: 6 }}
           >
             {isBuiltin ? t('common:actions.copy') : t('common:actions.edit')}
           </Button>
@@ -374,7 +387,7 @@ export const ResourceLibraryContent: React.FC<ResourceLibraryContentProps> = ({
               danger
               icon={<Trash2 size={14} />}
               onClick={() => handleDelete(member)}
-              style={{ padding: '4px 8px', height: 'auto' }}
+              style={{ padding: '3px 8px', height: 26, borderRadius: 6 }}
             >
               {t('common:actions.delete')}
             </Button>

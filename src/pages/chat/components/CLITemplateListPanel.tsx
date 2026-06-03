@@ -14,14 +14,14 @@ const useStyles = createStyles(({ token, css }) => ({
     height: 100%;
     display: flex;
     flex-direction: column;
-    background: ${token.colorBgContainer};
-    border-left: 1px solid ${token.colorBorderSecondary};
+    background: ${token.colorBgLayout};
+    border-left: 1px solid ${token.colorBorder};
   `,
   inlineHeader: css`
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 14px 16px;
+    padding: 12px 14px;
     border-bottom: 1px solid ${token.colorBorderSecondary};
     flex: none;
   `,
@@ -33,18 +33,26 @@ const useStyles = createStyles(({ token, css }) => ({
     border: none;
     background: transparent;
     cursor: pointer;
-    opacity: 0.6;
-    display: flex;
-    padding: 4px;
-    &:hover { opacity: 1; }
+    color: ${token.colorTextTertiary};
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    padding: 0;
+    &:hover {
+      background: ${token.colorFillTertiary};
+      color: ${token.colorText};
+    }
   `,
   content: css`
     flex: 1;
     overflow-y: auto;
-    padding: 16px;
+    padding: 12px 14px 14px;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 8px;
   `,
   hint: css`
     font-size: 11px;
@@ -53,12 +61,17 @@ const useStyles = createStyles(({ token, css }) => ({
   `,
   card: css`
     border: 1px solid ${token.colorBorderSecondary};
-    border-radius: 12px;
-    padding: 12px;
-    background: ${token.colorFillTertiary};
+    border-radius: 8px;
+    padding: 10px 12px;
+    background: ${token.colorBgContainer};
     display: flex;
     flex-direction: column;
     gap: 8px;
+    transition: background 0.15s ease, border-color 0.15s ease;
+    &:hover {
+      background: ${token.colorFillQuaternary};
+      border-color: ${token.colorBorder};
+    }
   `,
   cardHeader: css`
     display: flex;
@@ -69,11 +82,19 @@ const useStyles = createStyles(({ token, css }) => ({
   cardTitle: css`
     font-size: 13px;
     font-weight: 600;
+    color: ${token.colorText};
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   `,
   cardDesc: css`
     font-size: 11px;
     color: ${token.colorTextTertiary};
     line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   `,
   meta: css`
     font-size: 10px;
@@ -83,8 +104,9 @@ const useStyles = createStyles(({ token, css }) => ({
     flex: none;
     border: 1px solid ${token.colorBorderSecondary};
     background: ${token.colorBgContainer};
-    border-radius: 8px;
-    padding: 6px 8px;
+    border-radius: 6px;
+    height: 28px;
+    padding: 0 8px;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -106,11 +128,14 @@ const useStyles = createStyles(({ token, css }) => ({
     flex: none;
     border: 1px solid ${token.colorBorderSecondary};
     background: ${token.colorBgContainer};
-    border-radius: 8px;
-    padding: 6px 8px;
+    border-radius: 6px;
+    width: 28px;
+    height: 28px;
+    padding: 0;
     cursor: pointer;
     display: flex;
     align-items: center;
+    justify-content: center;
     color: ${token.colorTextTertiary};
     &:hover {
       border-color: #ff4d4f;
@@ -173,7 +198,7 @@ export const CLITemplateListPanel = ({
           icon={<Plus size={14} color={BRAND_ON_PRIMARY} />}
           onClick={onCreateTemplate}
           {...brandPrimaryButtonProps}
-          style={{ ...brandPrimaryButtonProps.style, height: 36, borderRadius: 10 }}
+          style={{ ...brandPrimaryButtonProps.style, height: 34, borderRadius: 7 }}
         >
           {t('cli:templateList.create')}
         </Button>
@@ -222,7 +247,7 @@ export const CLITemplateListPanel = ({
 
   if (inline) {
     return (
-      <div className={styles.inlinePanel} style={{ width: 360, flexShrink: 0 }}>
+      <div className={styles.inlinePanel} style={{ width: 340, flexShrink: 0 }}>
         <div className={styles.inlineHeader}>
           <span className={styles.inlineTitle}>{t('cli:templateList.title')}</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>

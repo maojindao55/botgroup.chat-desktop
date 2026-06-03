@@ -24,8 +24,9 @@ const SIDEBAR_WIDTH = 296;
 const useStyles = createStyles(({ token, css }) => ({
   container: css`
     height: 100%;
-    border-right: 1px solid ${token.colorBorderSecondary};
-    background: ${token.colorBgLayout};
+    border-right: 1px solid ${token.colorBorder};
+    background: ${token.colorBgContainer};
+    box-shadow: 1px 0 0 rgba(0, 0, 0, 0.02);
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -42,32 +43,43 @@ const useStyles = createStyles(({ token, css }) => ({
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 14px 14px 8px;
+    gap: 8px;
+    height: 46px;
+    box-sizing: border-box;
+    padding: 0 10px 0 12px;
+    border-bottom: 1px solid ${token.colorBorder};
+    background: ${token.colorBgContainer};
     flex: none;
   `,
   title: css`
     font-size: 14px;
     font-weight: 600;
+    line-height: 20px;
     color: ${token.colorText};
   `,
-  subtitle: css`
-    margin-top: 2px;
-    font-size: 11px;
-    color: ${token.colorTextTertiary};
-  `,
   topActions: css`
-    padding: 0 14px 8px;
+    padding: 8px 8px 6px;
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 8px;
+    gap: 6px;
     flex: none;
+
+    .ant-btn {
+      min-width: 0;
+    }
+
+    .ant-btn > span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
   `,
   searchWrapper: css`
-    padding: 0 14px 8px;
+    padding: 0 8px 7px;
     flex: none;
   `,
   toolbar: css`
-    padding: 0 14px 8px;
+    padding: 0 8px 7px;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -139,22 +151,24 @@ const useStyles = createStyles(({ token, css }) => ({
   navList: css`
     flex: 1;
     overflow: auto;
-    padding: 4px 10px 10px;
+    padding: 4px 7px 10px;
   `,
   navItem: css`
+    position: relative;
     display: flex;
     flex-direction: column;
-    gap: 7px;
-    padding: 11px 12px;
-    border-radius: 8px;
-    background: ${token.colorBgContainer};
-    border: 1px solid ${token.colorBorderSecondary};
+    gap: 6px;
+    padding: 8px 9px;
+    border-radius: 7px;
+    background: transparent;
+    border: 1px solid transparent;
     cursor: pointer;
     color: ${token.colorTextSecondary};
     transition: all 0.15s ease;
-    margin-bottom: 6px;
+    margin-bottom: 4px;
+    overflow: hidden;
     &:hover {
-      border-color: rgba(255, 102, 0, 0.35);
+      background: ${token.colorFillQuaternary};
       color: ${token.colorText};
       .taskDeleteBtn {
         opacity: 1;
@@ -162,10 +176,19 @@ const useStyles = createStyles(({ token, css }) => ({
     }
   `,
   navItemActive: css`
-    background: ${token.colorBgContainer} !important;
-    border-color: rgba(255, 102, 0, 0.45) !important;
-    box-shadow: inset 3px 0 0 #ff6600;
+    background: ${token.colorFillQuaternary} !important;
+    border-color: ${token.colorBorderSecondary} !important;
     color: ${token.colorText} !important;
+    &::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 7px;
+      bottom: 7px;
+      width: 3px;
+      border-radius: 999px;
+      background: #ff6600;
+    }
   `,
   taskTitleRow: css`
     display: flex;
@@ -183,8 +206,8 @@ const useStyles = createStyles(({ token, css }) => ({
   `,
   taskDeleteBtn: css`
     flex: none;
-    width: 24px;
-    height: 24px;
+    width: 22px;
+    height: 22px;
     border: none;
     border-radius: 6px;
     background: transparent;
@@ -210,6 +233,7 @@ const useStyles = createStyles(({ token, css }) => ({
   taskTitle: css`
     font-size: 13px;
     font-weight: 600;
+    line-height: 18px;
     color: ${token.colorText};
     overflow: hidden;
     text-overflow: ellipsis;
@@ -265,10 +289,10 @@ const useStyles = createStyles(({ token, css }) => ({
     font-weight: 500;
     line-height: 16px;
     padding: 0 6px;
-    border-radius: 4px;
-    background: rgba(255, 102, 0, 0.06);
+    border-radius: 5px;
+    background: ${token.colorFillQuaternary};
     color: ${token.colorTextSecondary};
-    border: 1px solid rgba(255, 102, 0, 0.14);
+    border: 1px solid ${token.colorBorderSecondary};
     letter-spacing: 0.01em;
   `,
   taskTimeMeta: css`
@@ -403,7 +427,7 @@ export const CLITaskSidebar = ({
             <Button
               icon={<Plus size={14} color={BRAND_ON_PRIMARY} />}
               onClick={onNewTask}
-              style={{ ...brandPrimaryButtonStyle, height: 36, borderRadius: 10 }}
+              style={{ ...brandPrimaryButtonStyle, height: 32, borderRadius: 7 }}
               styles={{
                 content: { color: BRAND_ON_PRIMARY },
                 icon: { color: BRAND_ON_PRIMARY },
@@ -414,7 +438,7 @@ export const CLITaskSidebar = ({
             <Button
               icon={<Users size={14} />}
               onClick={onOpenTemplateList}
-              style={{ height: 36, borderRadius: 10 }}
+              style={{ height: 32, borderRadius: 7 }}
             >
               {t('cli:taskSidebar.teamTemplates')}
             </Button>
@@ -434,7 +458,7 @@ export const CLITaskSidebar = ({
               }
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ borderRadius: 10, height: 34 }}
+              style={{ borderRadius: 7, height: 30 }}
             />
           </div>
 

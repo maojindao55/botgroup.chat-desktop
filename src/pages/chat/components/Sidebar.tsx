@@ -15,7 +15,6 @@ import { Tooltip } from 'antd';
 import { ActionIcon } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 
-import { SidebarPreferences } from './SidebarPreferences';
 import { UserSection } from './UserSection';
 import CreateGroupWizard from './CreateGroupWizard';
 import { getTranslatedGroupTypeShortLabel } from '@/i18n/productLabels';
@@ -39,8 +38,9 @@ const getGroupIcon = (group: Group) => {
 const useStyles = createStyles(({ token, css }) => ({
   container: css`
     height: 100%;
-    border-right: 1px solid ${token.colorBorderSecondary};
-    background: ${token.colorBgLayout};
+    border-right: 1px solid ${token.colorBorder};
+    background: ${token.colorBgContainer};
+    box-shadow: 1px 0 0 rgba(0, 0, 0, 0.02);
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -51,8 +51,9 @@ const useStyles = createStyles(({ token, css }) => ({
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    padding: 14px 12px;
+    padding: 12px 10px 10px;
     border-bottom: 1px solid ${token.colorBorderSecondary};
+    background: ${token.colorBgContainer};
     flex: none;
   `,
   headerBrand: css`
@@ -63,7 +64,7 @@ const useStyles = createStyles(({ token, css }) => ({
   `,
   brand: css`
     font-family: 'Audiowide', system-ui;
-    font-size: 15.8px;
+    font-size: 14.5px;
     color: #ff6600;
     font-weight: 600;
     letter-spacing: 0.01em;
@@ -82,7 +83,7 @@ const useStyles = createStyles(({ token, css }) => ({
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    padding: 8px;
+    padding: 8px 8px 10px;
   `,
   navSection: css`
     flex: none;
@@ -97,53 +98,61 @@ const useStyles = createStyles(({ token, css }) => ({
   sectionDivider: css`
     height: 1px;
     background: ${token.colorBorderSecondary};
-    margin: 6px 8px;
+    margin: 8px 8px;
     flex: none;
   `,
   sectionLabel: css`
-    padding: 2px 12px 8px;
-    font-size: 11px;
+    padding: 4px 10px 6px;
+    font-size: 10px;
     font-weight: 600;
     color: ${token.colorTextTertiary};
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
   `,
   navItem: css`
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 12px;
-    border-radius: 12px;
+    min-height: 34px;
+    padding: 7px 10px;
+    border-radius: 7px;
     cursor: pointer;
     color: ${token.colorTextSecondary};
     transition: all 0.15s ease;
     position: relative;
     overflow: hidden;
-    margin-bottom: 4px;
+    margin-bottom: 2px;
     font-size: 13px;
     font-weight: 500;
     text-decoration: none;
     &:hover {
-      background: ${token.colorFillTertiary};
+      background: ${token.colorFillQuaternary};
       color: ${token.colorText};
+    }
+
+    &:focus-visible {
+      outline: 2px solid rgba(255, 102, 0, 0.4);
+      outline-offset: 1px;
     }
   `,
   navItemActive: css`
-    background: rgba(255, 102, 0, 0.1) !important;
-    color: #ff6600 !important;
+    background: ${token.colorFillQuaternary} !important;
+    color: ${token.colorText} !important;
     font-weight: 600;
     &::before {
       content: '';
       position: absolute;
-      left: 0;
-      top: 10px;
-      bottom: 10px;
-      width: 2px;
+      left: 4px;
+      top: 8px;
+      bottom: 8px;
+      width: 3px;
       background: #ff6600;
-      border-radius: 0 2px 2px 0;
+      border-radius: 999px;
     }
   `,
   navItemCollapsed: css`
     justify-content: center;
-    padding: 10px 0;
+    padding: 7px 0;
   `,
   navItemLabel: css`
     overflow: hidden;
@@ -153,13 +162,14 @@ const useStyles = createStyles(({ token, css }) => ({
     min-width: 0;
   `,
   createBtn: css`
-    margin-top: 12px;
+    margin-top: 8px;
+    color: #d97706;
   `,
   tag: css`
     font-size: 10px;
     font-weight: 600;
     padding: 2px 6px;
-    border-radius: 4px;
+    border-radius: 5px;
     white-space: nowrap;
     flex-shrink: 0;
   `,
@@ -189,6 +199,9 @@ const useStyles = createStyles(({ token, css }) => ({
     @media (min-width: 768px) {
       display: none;
     }
+  `,
+  navIcon: css`
+    flex-shrink: 0;
   `,
 }));
 
@@ -264,7 +277,7 @@ const Sidebar = ({
 
       <div
         style={{
-          width: isOpen ? 192 : 56,
+          width: isOpen ? 216 : 56,
         }}
         className={cx(
           'fixed md:relative z-20 h-full md:translate-x-0',
@@ -324,7 +337,8 @@ const Sidebar = ({
                   >
                     <HomeIcon
                       size={16}
-                      style={{ color: isHomeActive ? '#ff6600' : undefined, flexShrink: 0 }}
+                      className={styles.navIcon}
+                      style={{ color: isHomeActive ? '#ff6600' : undefined }}
                     />
                     {isOpen && <span className={styles.navItemLabel}>{t('sidebar:nav.home')}</span>}
                   </div>
@@ -368,7 +382,8 @@ const Sidebar = ({
                   >
                     <Terminal
                       size={16}
-                      style={{ color: isCliActive ? '#ff6600' : undefined, flexShrink: 0 }}
+                      className={styles.navIcon}
+                      style={{ color: isCliActive ? '#ff6600' : undefined }}
                     />
                     {isOpen && (
                       <span className={styles.navItemLabel}>{t('sidebar:nav.devTasks')}</span>
@@ -425,8 +440,8 @@ const Sidebar = ({
                 >
                   <Icon
                     size={16}
+                    className={styles.navIcon}
                     style={{
-                      flexShrink: 0,
                       color: isSelected ? '#ff6600' : undefined,
                     }}
                   />
@@ -482,7 +497,8 @@ const Sidebar = ({
                 >
                   <PlusCircleIcon
                     size={16}
-                    style={{ color: '#f59e0b', flexShrink: 0 }}
+                    className={styles.navIcon}
+                    style={{ color: '#d97706' }}
                   />
                   {isOpen && (
                     <span className={styles.navItemLabel}>{t('sidebar:nav.createGroup')}</span>
@@ -506,9 +522,7 @@ const Sidebar = ({
 
         </nav>
 
-        <UserSection isOpen={isOpen} />
-
-        <SidebarPreferences isOpen={isOpen} onOpenSettings={onOpenSettings} />
+        <UserSection isOpen={isOpen} onOpenSettings={onOpenSettings} />
       </div>
 
       {isOpen && (

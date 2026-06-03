@@ -3,20 +3,20 @@ import { createStyles } from 'antd-style';
 const useStyles = createStyles(({ token, css }) => ({
   root: css`
     flex-shrink: 0;
-    padding: 20px 24px 16px;
+    padding: 14px 20px 12px;
     background: ${token.colorBgContainer};
     border-bottom: 1px solid ${token.colorBorderSecondary};
   `,
   title: css`
     margin: 0;
-    font-size: 18px;
+    font-size: 15px;
     font-weight: 600;
     color: ${token.colorText};
     line-height: 1.3;
   `,
   description: css`
-    margin: 6px 0 0;
-    font-size: 13px;
+    margin: 4px 0 0;
+    font-size: 12px;
     color: ${token.colorTextSecondary};
     line-height: 1.5;
     max-width: 52ch;

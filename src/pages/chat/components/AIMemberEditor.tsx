@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Drawer, Form, Input, Select, Radio, Checkbox, InputNumber, Button, Space, Divider, Switch, Tooltip } from 'antd';
+import { createStyles } from 'antd-style';
 import { useTranslation } from 'react-i18next';
 import { useAIMemberStore } from '@/store/aiMemberStore';
 import { useProviderStore } from '@/store/providerStore';
@@ -11,6 +12,61 @@ import { Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cliAdapterDefinitions } from '@/config/cliAdapters';
 import { brandPrimaryButtonProps } from '@/lib/theme';
+
+const useStyles = createStyles(({ token, css }) => ({
+  form: css`
+    padding: 16px 20px 24px;
+
+    .ant-form-item {
+      margin-bottom: 14px;
+    }
+  `,
+  fieldGrid: css`
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 12px;
+
+    @media (max-width: 560px) {
+      grid-template-columns: 1fr;
+    }
+  `,
+  stageRow: css`
+    display: grid;
+    grid-template-columns: 112px minmax(0, 1fr) 32px;
+    align-items: start;
+    gap: 8px;
+    margin-bottom: 8px;
+
+    @media (max-width: 560px) {
+      grid-template-columns: 1fr 32px;
+    }
+  `,
+  stagePrompt: css`
+    @media (max-width: 560px) {
+      grid-column: 1 / -1;
+      grid-row: 2;
+    }
+  `,
+  drawerFooter: css`
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px;
+    border-top: 1px solid ${token.colorBorderSecondary};
+    background: ${token.colorBgContainer};
+  `,
+  footerActions: css`
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-left: auto;
+  `,
+  footerLeft: css`
+    min-width: 0;
+  `,
+}));
 
 const BUILTIN_TOOLS = [
   { name: 'web_search' },
@@ -34,6 +90,7 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
   onClose,
   onSave,
 }) => {
+  const { styles } = useStyles();
   const { t } = useTranslation(['editor', 'common']);
   const [form] = Form.useForm();
   const { get, upsert } = useAIMemberStore();
@@ -250,218 +307,230 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
   );
 
   return (
-    <Drawer
-      title={memberId ? t('member.titleEdit') : t('member.titleCreate')}
-      width={460}
-      open={open}
-      onClose={onClose}
-      destroyOnClose
-      extra={
-        <Space>
-          <Button onClick={onClose}>{t('common:actions.cancel')}</Button>
-          <Button onClick={() => form.submit()} {...brandPrimaryButtonProps}>
-            {t('common:actions.save')}
-          </Button>
-        </Space>
-      }
-    >
-      <Form form={form} layout="vertical" onFinish={handleFinish}>
-        <Form.Item label={t('member.fields.kind')} name="kind">
-          <Radio.Group disabled={!!memberId}>
-            <Radio.Button value="llm">{t('member.kinds.llm')}</Radio.Button>
-            <Radio.Button value="agent">{t('member.kinds.agent')}</Radio.Button>
-            <Radio.Button value="cli">{t('member.kinds.cli')}</Radio.Button>
-          </Radio.Group>
-        </Form.Item>
-
-        <Form.Item label={t('member.fields.name')} name="name" rules={[{ required: true, message: t('member.fields.nameRequired') }]}>
-          <Input placeholder={t('member.fields.namePlaceholder')} />
-        </Form.Item>
-
-        <Form.Item label={t('member.fields.avatar')} name="avatar">
-          <AvatarPicker />
-        </Form.Item>
-
-        <Form.Item label={t('member.fields.description')} name="description">
-          <Input.TextArea autoSize={{ minRows: 2 }} placeholder={t('member.fields.descriptionPlaceholder')} />
-        </Form.Item>
-
-        {kind === 'llm' && (
-          <Form.Item label={t('member.fields.tags')} name="tags">
-            <TagPicker />
-          </Form.Item>
-        )}
-
-        <Divider style={{ margin: '16px 0' }} />
-
-        {kind === 'llm' && (
-          <>
-            {providerSelect}
-
-            <Form.Item
-              label={
-                <Tooltip title={t('member.fields.schedulerTagTooltip')}>
-                  <span>{t('member.fields.schedulerTag')}</span>
-                </Tooltip>
-              }
-              name="schedulerTag"
-            >
-              <Input placeholder={t('member.fields.schedulerTagPlaceholder')} />
-            </Form.Item>
-
-            <Form.Item
-              label={t('member.fields.systemPrompt')}
-              name="customPrompt"
-              extra={<span style={{ fontSize: 11, opacity: 0.6 }}>{t('member.fields.promptPlaceholderHint')}</span>}
-            >
-              <Input.TextArea autoSize={{ minRows: 3, maxRows: 10 }} placeholder={t('member.fields.systemPromptPlaceholder')} />
-            </Form.Item>
-
-            <Form.Item label={t('member.fields.gameStages')} style={{ marginBottom: 0 }}>
-              <Form.List name="stages">
-                {(fields, { add, remove }) => (
-                  <>
-                    {fields.map(({ key, name, ...restField }) => (
-                      <Space key={key} style={{ display: 'flex', marginBottom: 8 }} align="baseline">
-                        <Form.Item
-                          {...restField}
-                          name={[name, 'name']}
-                          rules={[{ required: true, message: t('member.fields.stageNameRequired') }]}
-                          style={{ marginBottom: 0 }}
-                        >
-                          <Input placeholder={t('member.fields.stageName')} style={{ width: 100 }} />
-                        </Form.Item>
-                        <Form.Item
-                          {...restField}
-                          name={[name, 'prompt']}
-                          rules={[{ required: true, message: t('member.fields.stagePromptRequired') }]}
-                          style={{ marginBottom: 0 }}
-                        >
-                          <Input.TextArea autoSize placeholder={t('member.fields.stagePromptPlaceholder')} style={{ width: 240 }} />
-                        </Form.Item>
-                        <Button type="text" danger icon={<Trash2 size={16} />} onClick={() => remove(name)} />
-                      </Space>
-                    ))}
-                    <Form.Item>
-                      <Button type="dashed" onClick={() => add()} block icon={<Plus size={14} />}>
-                        {t('member.fields.addStagePrompt')}
-                      </Button>
-                    </Form.Item>
-                  </>
-                )}
-              </Form.List>
-            </Form.Item>
-          </>
-        )}
-
-        {kind === 'agent' && (
-          <>
-            <Form.Item label={t('member.fields.agentRole')} name="role">
-              <Input placeholder={t('member.fields.agentRolePlaceholder')} />
-            </Form.Item>
-
-            <Form.Item
-              label={t('member.fields.agentSystemPrompt')}
-              name="systemPrompt"
-              extra={<span style={{ fontSize: 11, opacity: 0.6 }}>{t('member.fields.promptPlaceholderHint')}</span>}
-            >
-              <Input.TextArea autoSize={{ minRows: 4 }} placeholder={t('member.fields.agentSystemPromptPlaceholder')} />
-            </Form.Item>
-
-            <Divider orientation={'left' as const} style={{ fontSize: 13, margin: '12px 0' }}>
-              {t('member.fields.llmConfigSection')}
-            </Divider>
-
-            {providerSelect}
-
-            <Divider orientation={'left' as const} style={{ fontSize: 13, margin: '12px 0' }}>
-              {t('member.fields.paramsToolsSection')}
-            </Divider>
-
-            <div style={{ display: 'flex', gap: 16 }}>
-              <Form.Item label="Temperature" name="temperature" style={{ flex: 1 }}>
-                <InputNumber min={0} max={2} step={0.1} style={{ width: '100%' }} />
-              </Form.Item>
-              <Form.Item label={t('member.fields.maxTurns')} name="maxTurns" style={{ flex: 1 }}>
-                <InputNumber min={1} max={20} style={{ width: '100%' }} />
-              </Form.Item>
+    <>
+      <Drawer
+        title={memberId ? t('member.titleEdit') : t('member.titleCreate')}
+        width={540}
+        open={open}
+        onClose={onClose}
+        destroyOnClose
+        footer={
+          <div className={styles.drawerFooter}>
+            <div className={styles.footerLeft}>
+              {(kind === 'llm' || kind === 'agent') && (
+                <Button onClick={() => setDryRunOpen(true)}>
+                  {t('member.dryRun')}
+                </Button>
+              )}
             </div>
+            <div className={styles.footerActions}>
+              <Button onClick={onClose}>{t('common:actions.cancel')}</Button>
+              <Button onClick={() => form.submit()} {...brandPrimaryButtonProps}>
+                {t('common:actions.save')}
+              </Button>
+            </div>
+          </div>
+        }
+        styles={{
+          body: { padding: 0 },
+          header: { padding: '14px 18px' },
+          footer: { padding: 0 },
+        }}
+      >
+        <Form form={form} layout="vertical" onFinish={handleFinish} className={styles.form}>
+          <Form.Item label={t('member.fields.kind')} name="kind">
+            <Radio.Group disabled={!!memberId}>
+              <Radio.Button value="llm">{t('member.kinds.llm')}</Radio.Button>
+              <Radio.Button value="agent">{t('member.kinds.agent')}</Radio.Button>
+              <Radio.Button value="cli">{t('member.kinds.cli')}</Radio.Button>
+            </Radio.Group>
+          </Form.Item>
 
-            <Form.Item label={t('member.fields.enabledTools')} name="tools">
-              <Checkbox.Group style={{ width: '100%' }}>
-                <Space direction="vertical" style={{ width: '100%' }}>
-                  {BUILTIN_TOOLS.map((tool) => (
-                    <Checkbox key={tool.name} value={tool.name}>
-                      <span style={{ fontSize: 13, fontWeight: 500 }}>{tool.name}</span>
-                      <span style={{ fontSize: 11, opacity: 0.6, marginLeft: 8 }}>
-                        {t(`member.tools.${tool.name}`)}
-                      </span>
-                    </Checkbox>
+          <Form.Item label={t('member.fields.name')} name="name" rules={[{ required: true, message: t('member.fields.nameRequired') }]}>
+            <Input placeholder={t('member.fields.namePlaceholder')} />
+          </Form.Item>
+
+          <Form.Item label={t('member.fields.avatar')} name="avatar">
+            <AvatarPicker />
+          </Form.Item>
+
+          <Form.Item label={t('member.fields.description')} name="description">
+            <Input.TextArea autoSize={{ minRows: 2 }} placeholder={t('member.fields.descriptionPlaceholder')} />
+          </Form.Item>
+
+          {kind === 'llm' && (
+            <Form.Item label={t('member.fields.tags')} name="tags">
+              <TagPicker />
+            </Form.Item>
+          )}
+
+          <Divider style={{ margin: '16px 0' }} />
+
+          {kind === 'llm' && (
+            <>
+              {providerSelect}
+
+              <Form.Item
+                label={
+                  <Tooltip title={t('member.fields.schedulerTagTooltip')}>
+                    <span>{t('member.fields.schedulerTag')}</span>
+                  </Tooltip>
+                }
+                name="schedulerTag"
+              >
+                <Input placeholder={t('member.fields.schedulerTagPlaceholder')} />
+              </Form.Item>
+
+              <Form.Item
+                label={t('member.fields.systemPrompt')}
+                name="customPrompt"
+                extra={<span style={{ fontSize: 11, opacity: 0.6 }}>{t('member.fields.promptPlaceholderHint')}</span>}
+              >
+                <Input.TextArea autoSize={{ minRows: 3, maxRows: 10 }} placeholder={t('member.fields.systemPromptPlaceholder')} />
+              </Form.Item>
+
+              <Form.Item label={t('member.fields.gameStages')} style={{ marginBottom: 0 }}>
+                <Form.List name="stages">
+                  {(fields, { add, remove }) => (
+                    <>
+                      {fields.map(({ key, name, ...restField }) => (
+                        <div key={key} className={styles.stageRow}>
+                          <Form.Item
+                            {...restField}
+                            name={[name, 'name']}
+                            rules={[{ required: true, message: t('member.fields.stageNameRequired') }]}
+                            style={{ marginBottom: 0 }}
+                          >
+                            <Input placeholder={t('member.fields.stageName')} />
+                          </Form.Item>
+                          <Form.Item
+                            {...restField}
+                            name={[name, 'prompt']}
+                            rules={[{ required: true, message: t('member.fields.stagePromptRequired') }]}
+                            className={styles.stagePrompt}
+                            style={{ marginBottom: 0 }}
+                          >
+                            <Input.TextArea autoSize placeholder={t('member.fields.stagePromptPlaceholder')} />
+                          </Form.Item>
+                          <Button type="text" danger icon={<Trash2 size={16} />} onClick={() => remove(name)} />
+                        </div>
+                      ))}
+                      <Form.Item>
+                        <Button type="dashed" onClick={() => add()} block icon={<Plus size={14} />}>
+                          {t('member.fields.addStagePrompt')}
+                        </Button>
+                      </Form.Item>
+                    </>
+                  )}
+                </Form.List>
+              </Form.Item>
+            </>
+          )}
+
+          {kind === 'agent' && (
+            <>
+              <Form.Item label={t('member.fields.agentRole')} name="role">
+                <Input placeholder={t('member.fields.agentRolePlaceholder')} />
+              </Form.Item>
+
+              <Form.Item
+                label={t('member.fields.agentSystemPrompt')}
+                name="systemPrompt"
+                extra={<span style={{ fontSize: 11, opacity: 0.6 }}>{t('member.fields.promptPlaceholderHint')}</span>}
+              >
+                <Input.TextArea autoSize={{ minRows: 4 }} placeholder={t('member.fields.agentSystemPromptPlaceholder')} />
+              </Form.Item>
+
+              <Divider orientation="left" style={{ fontSize: 13, margin: '12px 0' }}>
+                {t('member.fields.llmConfigSection')}
+              </Divider>
+
+              {providerSelect}
+
+              <Divider orientation="left" style={{ fontSize: 13, margin: '12px 0' }}>
+                {t('member.fields.paramsToolsSection')}
+              </Divider>
+
+              <div className={styles.fieldGrid}>
+                <Form.Item label="Temperature" name="temperature">
+                  <InputNumber min={0} max={2} step={0.1} style={{ width: '100%' }} />
+                </Form.Item>
+                <Form.Item label={t('member.fields.maxTurns')} name="maxTurns">
+                  <InputNumber min={1} max={20} style={{ width: '100%' }} />
+                </Form.Item>
+              </div>
+
+              <Form.Item label={t('member.fields.enabledTools')} name="tools">
+                <Checkbox.Group style={{ width: '100%' }}>
+                  <Space direction="vertical" style={{ width: '100%' }}>
+                    {BUILTIN_TOOLS.map((tool) => (
+                      <Checkbox key={tool.name} value={tool.name}>
+                        <span style={{ fontSize: 13, fontWeight: 500 }}>{tool.name}</span>
+                        <span style={{ fontSize: 11, opacity: 0.6, marginLeft: 8 }}>
+                          {t(`member.tools.${tool.name}`)}
+                        </span>
+                      </Checkbox>
+                    ))}
+                  </Space>
+                </Checkbox.Group>
+              </Form.Item>
+            </>
+          )}
+
+          {kind === 'cli' && (
+            <>
+              <Form.Item label={t('member.fields.cliAdapter')} name="cliAdapter" rules={[{ required: true, message: t('member.fields.cliAdapterRequired') }]}>
+                <Select placeholder={t('member.fields.cliAdapterPlaceholder')}>
+                  {cliAdapterDefinitions.map((adapter) => (
+                    <Select.Option key={adapter.id} value={adapter.id}>
+                      {adapter.label}
+                    </Select.Option>
                   ))}
-                </Space>
-              </Checkbox.Group>
-            </Form.Item>
-          </>
-        )}
+                </Select>
+              </Form.Item>
 
-        {kind === 'cli' && (
-          <>
-            <Form.Item label={t('member.fields.cliAdapter')} name="cliAdapter" rules={[{ required: true, message: t('member.fields.cliAdapterRequired') }]}>
-              <Select placeholder={t('member.fields.cliAdapterPlaceholder')}>
-                {cliAdapterDefinitions.map((adapter) => (
-                  <Select.Option key={adapter.id} value={adapter.id}>
-                    {adapter.label}
-                  </Select.Option>
-                ))}
-              </Select>
-            </Form.Item>
+              <Form.Item label={t('member.fields.cliBinary')} name="cliBinary">
+                <Input placeholder={t('member.fields.cliBinaryPlaceholder')} />
+              </Form.Item>
 
-            <Form.Item label={t('member.fields.cliBinary')} name="cliBinary">
-              <Input placeholder={t('member.fields.cliBinaryPlaceholder')} />
-            </Form.Item>
+              <Form.Item label={t('member.fields.cliExtraArgs')} name="cliExtraArgs">
+                <Select mode="tags" placeholder={t('member.fields.cliExtraArgsPlaceholder')} tokenSeparators={[' ']} />
+              </Form.Item>
 
-            <Form.Item label={t('member.fields.cliExtraArgs')} name="cliExtraArgs">
-              <Select mode="tags" placeholder={t('member.fields.cliExtraArgsPlaceholder')} tokenSeparators={[' ']} />
-            </Form.Item>
+              <Form.Item label={t('member.fields.cliApproval')} name="cliApprovalMode">
+                <Radio.Group>
+                  <Radio value="ask">{t('member.fields.cliApprovalAsk')}</Radio>
+                  <Radio value="auto">{t('member.fields.cliApprovalAuto')}</Radio>
+                </Radio.Group>
+              </Form.Item>
 
-            <Form.Item label={t('member.fields.cliApproval')} name="cliApprovalMode">
-              <Radio.Group>
-                <Radio value="ask">{t('member.fields.cliApprovalAsk')}</Radio>
-                <Radio value="auto">{t('member.fields.cliApprovalAuto')}</Radio>
-              </Radio.Group>
-            </Form.Item>
+              <Form.Item label={t('member.fields.cliStderr')} name="cliShowStderr" valuePropName="checked">
+                <Switch checkedChildren={t('member.fields.cliStderrShow')} unCheckedChildren={t('member.fields.cliStderrHide')} />
+              </Form.Item>
 
-            <Form.Item label={t('member.fields.cliStderr')} name="cliShowStderr" valuePropName="checked">
-              <Switch checkedChildren={t('member.fields.cliStderrShow')} unCheckedChildren={t('member.fields.cliStderrHide')} />
-            </Form.Item>
+              <Form.Item
+                label={t('member.fields.cliWsl')}
+                name="cliWsl"
+                valuePropName="checked"
+                tooltip={t('member.fields.cliWslHint')}
+              >
+                <Switch checkedChildren={t('member.fields.cliWslOn')} unCheckedChildren={t('member.fields.cliWslOff')} />
+              </Form.Item>
 
-            <Form.Item
-              label={t('member.fields.cliWsl')}
-              name="cliWsl"
-              valuePropName="checked"
-              tooltip={t('member.fields.cliWslHint')}
-            >
-              <Switch checkedChildren={t('member.fields.cliWslOn')} unCheckedChildren={t('member.fields.cliWslOff')} />
-            </Form.Item>
-
-            <Form.Item noStyle shouldUpdate={(prev, cur) => prev.cliWsl !== cur.cliWsl}>
-              {({ getFieldValue }) =>
-                getFieldValue('cliWsl') ? (
-                  <Form.Item label={t('member.fields.cliWslDistro')} name="cliWslDistro">
-                    <Input placeholder={t('member.fields.cliWslDistroPlaceholder')} />
-                  </Form.Item>
-                ) : null
-              }
-            </Form.Item>
-          </>
-        )}
-        {(kind === 'llm' || kind === 'agent') && (
-          <Button block style={{ marginTop: 8 }} onClick={() => setDryRunOpen(true)}>
-            {t('member.dryRun')}
-          </Button>
-        )}
-      </Form>
+              <Form.Item noStyle shouldUpdate={(prev, cur) => prev.cliWsl !== cur.cliWsl}>
+                {({ getFieldValue }) =>
+                  getFieldValue('cliWsl') ? (
+                    <Form.Item label={t('member.fields.cliWslDistro')} name="cliWslDistro">
+                      <Input placeholder={t('member.fields.cliWslDistroPlaceholder')} />
+                    </Form.Item>
+                  ) : null
+                }
+              </Form.Item>
+            </>
+          )}
+        </Form>
+      </Drawer>
       <DryRunModal open={dryRunOpen} onClose={() => setDryRunOpen(false)} params={dryRunParams} />
-    </Drawer>
+    </>
   );
 };
