@@ -179,6 +179,15 @@ const useStyles = createStyles(({ token, css }) => ({
     background: rgba(255, 102, 0, 0.08);
     color: #ff6600;
   `,
+  selectedWorkflowDesc: css`
+    margin-top: 8px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: ${token.colorFillTertiary};
+    color: ${token.colorTextSecondary};
+    font-size: 12px;
+    line-height: 1.5;
+  `,
   memberRow: css`
     display: flex;
     align-items: center;
@@ -822,12 +831,9 @@ export const CLIGroupSettings = ({
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {cliWorkflowTemplateGroups.map(group => (
                 <div key={group.id}>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
+                  <div style={{ marginBottom: 6 }}>
                     <span className={styles.panelDesc} style={{ fontWeight: 600, color: 'rgba(0,0,0,0.65)' }}>
                       {t(`product:cliWorkflowTemplateGroups.${group.id}.label`, { defaultValue: group.label })}
-                    </span>
-                    <span className={styles.panelDesc}>
-                      {t(`product:cliWorkflowTemplateGroups.${group.id}.description`, { defaultValue: group.description })}
                     </span>
                   </div>
                   <div className={styles.strategyGrid}>
@@ -867,13 +873,13 @@ export const CLIGroupSettings = ({
                 </div>
               ))}
             </div>
-            <p className={styles.panelDesc} style={{ marginTop: 4 }}>
+            <div className={styles.selectedWorkflowDesc}>
               {activeWorkflowTemplate
                 ? t(`product:cliWorkflowTemplates.${activeWorkflowTemplate.id}.description`, {
                   defaultValue: activeWorkflowTemplate.description || strategyDescriptions[effectiveStrategy],
                 })
                 : strategyDescriptions[effectiveStrategy]}
-            </p>
+            </div>
             {effectiveStrategy === 'race' && (
               <p className={styles.panelDesc} style={{ marginTop: 4, color: '#ff9500' }}>
                 {t('cli:groupSettings.collaboration.raceWarning')}

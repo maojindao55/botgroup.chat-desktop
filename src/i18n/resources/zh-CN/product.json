@@ -55,30 +55,37 @@
   "cliWorkflowTemplates": {
     "quick_response": {
       "label": "快速响应",
+      "shortDescription": "小改动",
       "description": "自动选择一位开发成员直接处理，适合小改动、简单修复和一次性请求。"
     },
     "diagnose_fix_review": {
       "label": "排查修复复审",
+      "shortDescription": "现象修复",
       "description": "定位修复者先排查并改代码，复审者再检查修复质量；适合只描述现象的 bug 修复。"
     },
     "implement_review": {
       "label": "规划实现复审",
+      "shortDescription": "新功能/重构",
       "description": "先规划、再实现、再复审；适合新功能、重构和跨模块改动。"
     },
     "review_fix": {
       "label": "审核修正",
+      "shortDescription": "已有 review",
       "description": "先审查已有改动或当前代码，再按意见修正；适合 review 后补修。"
     },
     "discussion": {
       "label": "只读讨论",
+      "shortDescription": "先讨论",
       "description": "只分析方案、风险和排查思路，不改 workspace；适合动手前确认方向。"
     },
     "multi_solution": {
       "label": "多人出方案",
+      "shortDescription": "方案比较",
       "description": "多位开发成员分别给出实现或方案并列展示；适合不确定思路时比较。"
     },
     "isolated_race": {
       "label": "隔离竞赛",
+      "shortDescription": "隔离并行",
       "description": "多位开发成员在独立 worktree 并行实现，最后选择采纳；适合复杂问题或多模型竞赛。"
     }
   },

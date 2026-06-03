@@ -148,6 +148,56 @@ const useStyles = createStyles(({ token, css }) => ({
     border-color: #ff6600;
     background: rgba(255,102,0,0.06);
   `,
+  workflowGrid: css`
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  `,
+  workflowBtn: css`
+    width: 100%;
+    min-height: 56px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid ${token.colorBorderSecondary};
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    &:hover { background: ${token.colorFillTertiary}; }
+  `,
+  workflowBtnActive: css`
+    border-color: #ff6600;
+    background: rgba(255,102,0,0.06);
+  `,
+  workflowTitle: css`
+    font-size: 13px;
+    font-weight: 600;
+    color: ${token.colorText};
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  `,
+  workflowHint: css`
+    font-size: 12px;
+    color: ${token.colorTextTertiary};
+    margin-top: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  `,
+  workflowDesc: css`
+    margin-top: 8px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: ${token.colorFillTertiary};
+    color: ${token.colorTextSecondary};
+    font-size: 12px;
+    line-height: 1.5;
+  `,
 }));
 
 
@@ -515,39 +565,47 @@ export const CreateGroupWizard = ({
       )}
       <div>
         <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 8 }}>{t('wizard:configStep.collaborationMode')}</label>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {cliWorkflowTemplateGroups.map(group => (
             <div key={group.id}>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
+              <div style={{ marginBottom: 6 }}>
                 <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(0,0,0,0.65)' }}>
                   {t(`product:cliWorkflowTemplateGroups.${group.id}.label`, { defaultValue: group.label })}
                 </span>
-                <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.38)' }}>
-                  {t(`product:cliWorkflowTemplateGroups.${group.id}.description`, { defaultValue: group.description })}
-                </span>
               </div>
-              {getCLIWorkflowTemplatesByGroup(group).map(item => (
-                <button key={item.id}
-                  type="button"
-                  onClick={() => {
-                    setCliStrategy(item.strategy);
-                    setCliTemplateId(item.id);
-                  }}
-                  className={cx(styles.strategyBtn, cliTemplateId === item.id && styles.strategyBtnActive)}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 14, fontWeight: 500 }}>
-                      {t(`product:cliWorkflowTemplates.${item.id}.label`, { defaultValue: item.label })}
+              <div className={styles.workflowGrid}>
+                {getCLIWorkflowTemplatesByGroup(group).map(item => (
+                  <button key={item.id}
+                    type="button"
+                    onClick={() => {
+                      setCliStrategy(item.strategy);
+                      setCliTemplateId(item.id);
+                    }}
+                    className={cx(styles.workflowBtn, cliTemplateId === item.id && styles.workflowBtnActive)}>
+                    <div style={{ minWidth: 0 }}>
+                      <div className={styles.workflowTitle}>
+                        {t(`product:cliWorkflowTemplates.${item.id}.label`, { defaultValue: item.label })}
+                      </div>
+                      <div className={styles.workflowHint}>
+                        {t(`product:cliWorkflowTemplates.${item.id}.shortDescription`, {
+                          defaultValue: item.defaultStages.join(' / '),
+                        })}
+                      </div>
                     </div>
-                    <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>
-                      {t(`product:cliWorkflowTemplates.${item.id}.description`, { defaultValue: item.description })}
-                    </div>
-                  </div>
-                  {cliTemplateId === item.id && <Check size={16} style={{ color: '#ff6600' }} />}
-                </button>
-              ))}
+                    {cliTemplateId === item.id && <Check size={15} style={{ color: '#ff6600', flex: 'none' }} />}
+                  </button>
+                ))}
+              </div>
             </div>
           ))}
         </div>
+        {selectedCliWorkflowTemplate && (
+          <div className={styles.workflowDesc}>
+            {t(`product:cliWorkflowTemplates.${selectedCliWorkflowTemplate.id}.description`, {
+              defaultValue: selectedCliWorkflowTemplate.description,
+            })}
+          </div>
+        )}
       </div>
       {usesReviewRoles && (
         <div style={{ padding: 12, background: 'rgba(0,0,0,0.04)', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 10 }}>
