@@ -50,7 +50,8 @@ import Sidebar from './Sidebar';
 import { AdBanner, AdBannerMobile } from './AdSection';
 import { useUserStore } from '@/store/userStore';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { AIMemberLibrary } from './AIMemberLibrary';
+import { AppSettingsModal } from './AppSettingsModal';
+import type { AppSettingsSection } from '@/config/appSettings';
 import { useAIMemberStore } from '@/store/aiMemberStore';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
 import { resolveEffectiveMember } from '@/utils/aiMemberDisplay';
@@ -150,7 +151,7 @@ const useStyles = createStyles(({ token, css }) => ({
   taskSidebarExpandHandle: css`
     position: absolute;
     left: 0;
-    top: 18px;
+    top: 7px;
     z-index: 5;
     transform: translateX(-50%);
     display: inline-flex;
@@ -174,7 +175,7 @@ const useStyles = createStyles(({ token, css }) => ({
   `,
   headerBar: css`
     background: ${token.colorBgContainer};
-    border-bottom: 1px solid ${token.colorBorderSecondary};
+    border-bottom: 1px solid ${token.colorBorder};
     flex: none;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
   `,
@@ -182,7 +183,26 @@ const useStyles = createStyles(({ token, css }) => ({
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 12px;
+    gap: 12px;
+    height: 46px;
+    box-sizing: border-box;
+    overflow: hidden;
+    padding: 0 12px;
+  `,
+  headerTitleRow: css`
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    flex: 1 1 auto;
+  `,
+  headerActions: css`
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    min-width: 0;
+    flex: 1 1 auto;
   `,
   avatarStack: css`
     display: flex;
@@ -208,19 +228,34 @@ const useStyles = createStyles(({ token, css }) => ({
   chatArea: css`
     flex: 1;
     overflow: auto;
-    background: ${token.colorBgLayout};
-    padding: 12px 16px;
+    background: linear-gradient(180deg, ${token.colorBgContainer} 0%, ${token.colorFillQuaternary} 82%);
+    padding: 16px;
+    scrollbar-gutter: stable;
+    @media (min-width: 768px) {
+      padding: 20px 24px;
+    }
+  `,
+  headerCwd: css`
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    max-width: min(30vw, 360px);
+    min-width: 0;
+    flex: none;
   `,
   inputArea: css`
     background: ${token.colorBgContainer};
     border-top: 1px solid ${token.colorBorderSecondary};
-    padding: 12px 16px 16px;
+    padding: 10px 14px 14px;
   `,
   composeBox: css`
     border: 1px solid ${token.colorBorderSecondary};
-    border-radius: 12px;
+    border-radius: 8px;
     background: ${token.colorBgContainer};
     overflow: hidden;
+    width: 100%;
+    max-width: 900px;
+    margin: 0 auto;
     transition: border-color 0.2s, box-shadow 0.2s;
     &:focus-within {
       border-color: #ff6600;
@@ -232,7 +267,7 @@ const useStyles = createStyles(({ token, css }) => ({
       border: none !important;
       box-shadow: none !important;
       resize: none;
-      padding: 12px 16px 4px !important;
+      padding: 10px 12px 4px !important;
       background: transparent !important;
     }
   `,
@@ -246,7 +281,7 @@ const useStyles = createStyles(({ token, css }) => ({
     align-items: flex-end;
     justify-content: space-between;
     gap: 8px;
-    padding: 8px 16px 12px;
+    padding: 7px 10px 10px;
     border-top: 1px solid ${token.colorBorderSecondary};
   `,
   composeSendBarLeft: css`
@@ -267,6 +302,7 @@ const useStyles = createStyles(({ token, css }) => ({
       background: ${BRAND_PRIMARY} !important;
       border-color: ${BRAND_PRIMARY} !important;
       color: ${BRAND_ON_PRIMARY} !important;
+      border-radius: 7px;
       box-shadow: none;
 
       &,
@@ -352,36 +388,42 @@ const useStyles = createStyles(({ token, css }) => ({
     }
   `,
   bubbleUser: css`
-    background: linear-gradient(to top right, #f97316, #f59e0b);
+    background: #ff6600;
     color: #fff;
-    border-radius: 16px;
+    border: 1px solid rgba(194, 65, 12, 0.22);
+    border-radius: 8px;
     border-top-right-radius: 4px;
-    padding: 12px 16px;
+    padding: 9px 12px;
     margin-top: 4px;
     text-align: left;
+    line-height: 1.58;
   `,
   bubbleAI: css`
     background: ${token.colorBgContainer};
     border: 1px solid ${token.colorBorderSecondary};
-    border-radius: 16px;
+    border-radius: 8px;
     border-top-left-radius: 4px;
-    padding: 12px 16px;
+    padding: 9px 12px;
     margin-top: 4px;
     text-align: left;
+    line-height: 1.58;
   `,
   bubbleError: css`
     background: ${token.colorErrorBg};
     border: 1px solid ${token.colorErrorBorder};
-    border-radius: 16px;
+    border-radius: 8px;
     border-top-left-radius: 4px;
-    padding: 12px 16px;
+    padding: 9px 12px;
     margin-top: 4px;
     text-align: left;
+    line-height: 1.58;
   `,
   metaRow: css`
-    font-size: 12px;
+    min-height: 18px;
+    font-size: 11px;
+    font-weight: 500;
     color: ${token.colorTextTertiary};
-    padding: 0 4px;
+    padding: 0 2px;
     display: flex;
     align-items: center;
     gap: 6px;
@@ -389,12 +431,33 @@ const useStyles = createStyles(({ token, css }) => ({
   messageList: css`
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 14px;
+    width: 100%;
+    max-width: 900px;
+    margin: 0 auto;
+    padding-bottom: 4px;
   `,
   messageRow: css`
     display: flex;
     align-items: flex-start;
-    gap: 12px;
+    gap: 10px;
+    width: 100%;
+  `,
+  messageBody: css`
+    max-width: min(720px, 76%);
+    min-width: 0;
+    text-align: left;
+
+    @media (max-width: 640px) {
+      max-width: calc(100% - 44px);
+    }
+  `,
+  messageBodyUser: css`
+    text-align: right;
+  `,
+  typingCursor: css`
+    margin-left: 4px;
+    color: #ff6600;
   `,
   emptyState: css`
     display: flex;
@@ -416,13 +479,19 @@ const useStyles = createStyles(({ token, css }) => ({
     font-family: ${token.fontFamilyCode};
     font-size: 10px;
     background: ${token.colorFillTertiary};
+    color: ${token.colorTextSecondary};
     padding: 1px 6px;
     border-radius: 4px;
+    border: 1px solid ${token.colorBorderSecondary};
     cursor: pointer;
+    min-width: 0;
     max-width: 300px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    @media (min-width: 640px) {
+      max-width: 520px;
+    }
   `,
   streaming: css`
     display: inline-flex;
@@ -524,7 +593,7 @@ const useStyles = createStyles(({ token, css }) => ({
     display: flex;
     justify-content: center;
     align-items: flex-start;
-    padding: 24px 0;
+    padding: 20px 0;
     min-height: 100%;
   `,
   creationFormCard: css`
@@ -532,12 +601,12 @@ const useStyles = createStyles(({ token, css }) => ({
     max-width: 680px;
     background: ${token.colorBgContainer};
     border: 1px solid ${token.colorBorderSecondary};
-    border-radius: 16px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.05);
-    padding: 28px;
+    border-radius: 8px;
+    box-shadow: none;
+    padding: 20px;
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 16px;
   `,
   creationHeader: css`
     display: flex;
@@ -579,8 +648,8 @@ const useStyles = createStyles(({ token, css }) => ({
   `,
   templateCard: css`
     border: 1px solid ${token.colorBorderSecondary};
-    border-radius: 12px;
-    padding: 14px;
+    border-radius: 8px;
+    padding: 12px;
     background: ${token.colorFillQuaternary};
     cursor: pointer;
     transition: all 0.2s ease;
@@ -728,7 +797,8 @@ const CLITaskUI = ({
     prompt?: string;
     status?: string;
   } | null>(null);
-  const [showLibrary, setShowLibrary] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<AppSettingsSection>('general');
   const [showAd, setShowAd] = useState(false);
   const [mutedUsers, setMutedUsers] = useState<string[]>([]);
 
@@ -852,9 +922,6 @@ const CLITaskUI = ({
   const workspacePath = selectedTask
     ? selectedTask.workspacePath
     : draftWorkspacePath;
-  const headerTemplateName = selectedTask
-    ? selectedTask.templateSnapshot.name
-    : draftTemplate?.name;
 
   const userName = userStore.userInfo.nickname || t('settings:aiGroup.selfName');
 
@@ -913,6 +980,9 @@ const CLITaskUI = ({
   };
 
   const navigateToList = () => {
+    setSelectedTaskId(null);
+    setInputMessage('');
+    closeManagementPanels();
     window.history.replaceState({}, '', '?view=cli-tasks');
     saveLastView('?view=cli-tasks');
   };
@@ -1526,7 +1596,7 @@ const CLITaskUI = ({
       setTemplateSettingsReturnTo('template-list');
     } else {
       setTaskInfoOpen(false);
-      setShowLibrary(false);
+      setSettingsOpen(false);
       setTemplateListOpen(false);
       setTemplateSettingsReturnTo(null);
     }
@@ -1535,7 +1605,7 @@ const CLITaskUI = ({
 
   const openTemplateList = () => {
     setTaskInfoOpen(false);
-    setShowLibrary(false);
+    setSettingsOpen(false);
     if (templateSettingsOpen) {
       setTemplateSettingsOpen(false);
       setEditingTemplateId(null);
@@ -1636,7 +1706,7 @@ const CLITaskUI = ({
       archived: { color: 'default', labelKey: 'cli:status.archived' },
     };
     const info = map[status] || map.queued;
-    return <Tag color={info.color}>{t(info.labelKey)}</Tag>;
+    return <Tag color={info.color} style={{ flex: 'none' }}>{t(info.labelKey)}</Tag>;
   };
 
   const closeManagementPanels = () => {
@@ -1645,7 +1715,13 @@ const CLITaskUI = ({
     setTemplateSettingsOpen(false);
     setEditingTemplateId(null);
     setTemplateSettingsReturnTo(null);
-    setShowLibrary(false);
+    setSettingsOpen(false);
+  };
+
+  const openAppSettings = (section: AppSettingsSection = 'general') => {
+    closeManagementPanels();
+    setSettingsSection(section);
+    setSettingsOpen(true);
   };
 
   const handleToggleTaskInfo = (nextOpen: boolean) => {
@@ -1656,7 +1732,7 @@ const CLITaskUI = ({
     setTemplateListOpen(false);
     setTemplateSettingsOpen(false);
     setEditingTemplateId(null);
-    setShowLibrary(false);
+    setSettingsOpen(false);
     setTaskInfoOpen(true);
   };
 
@@ -1674,7 +1750,7 @@ const CLITaskUI = ({
     setTemplateSettingsOpen(false);
     setEditingTemplateId(null);
     setTemplateSettingsReturnTo(null);
-    setShowLibrary(false);
+    setSettingsOpen(false);
     setTemplateListOpen(true);
   };
 
@@ -1685,18 +1761,9 @@ const CLITaskUI = ({
     }
     setTaskInfoOpen(false);
     setTemplateListOpen(false);
-    setShowLibrary(false);
+    setSettingsOpen(false);
     setTemplateSettingsReturnTo(null);
     setTemplateSettingsOpen(true);
-  };
-
-  const handleToggleLibrary = (nextOpen: boolean) => {
-    if (!nextOpen) {
-      setShowLibrary(false);
-      return;
-    }
-    closeManagementPanels();
-    setShowLibrary(true);
   };
 
   return (
@@ -1775,7 +1842,7 @@ const CLITaskUI = ({
         onOpenChange={setCreateTemplateOpen}
         onCreateGroup={handleCreateTemplateGroup}
         fixedGroupType="cli"
-        onOpenLibrary={() => handleToggleLibrary(true)}
+        onOpenSettings={(section) => openAppSettings(section ?? 'cli')}
       />
 
       <CLIRaceResultsDrawer
@@ -1861,10 +1928,11 @@ const CLITaskUI = ({
         />
       )}
 
-      <AIMemberLibrary
-        open={showLibrary}
-        onClose={() => handleToggleLibrary(false)}
+      <AppSettingsModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
         groups={groups}
+        initialSection={settingsSection}
       />
 
       <div className={styles.page}>
@@ -1876,7 +1944,7 @@ const CLITaskUI = ({
             onSelectGroup={onSelectGroup}
             groups={groups}
             onCreateGroup={onCreateGroup}
-            onOpenLibrary={() => handleToggleLibrary(true)}
+            onOpenSettings={(section) => openAppSettings(section ?? 'cli')}
             activeView="cli-tasks"
             onNavigateCLI={() => navigateToList()}
             onNavigateHome={onNavigateHome ?? (() => { window.location.href = '?view=home'; })}
@@ -1909,33 +1977,22 @@ const CLITaskUI = ({
             )}
             <header className={styles.headerBar}>
               <div className={styles.headerInner}>
-                <div style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <Terminal size={16} color="#ff6600" />
-                      <h1 style={{ margin: 0, fontWeight: 600, fontSize: 14 }}>
-                        {selectedTask ? selectedTask.title : t('cli:taskUI.title')}
-                      </h1>
-                      {selectedTask && statusTag(selectedTask.status)}
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2, flexWrap: 'wrap' }}>
-                      {headerTemplateName && (
-                        <span style={{ fontSize: 11, opacity: 0.6 }}>
-                          {t('cli:taskUI.templatePrefix')}{headerTemplateName}
-                        </span>
-                      )}
-                      {workspacePath && (
-                        <>
-                          <span className={styles.cwdLabel}>CWD:</span>
-                          <span className={styles.cwdPath} title={workspacePath}>
-                            {workspacePath}
-                          </span>
-                        </>
-                      )}
-                    </div>
-                  </div>
+                <div className={styles.headerTitleRow}>
+                  <Terminal size={16} color="#ff6600" style={{ flex: 'none' }} />
+                  <h1 style={{ margin: 0, fontWeight: 600, fontSize: 14, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {selectedTask ? selectedTask.title : t('cli:taskUI.title')}
+                  </h1>
+                  {selectedTask && statusTag(selectedTask.status)}
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div className={styles.headerActions}>
+                  {workspacePath && (
+                    <div className={styles.headerCwd}>
+                      <span className={styles.cwdLabel}>CWD:</span>
+                      <span className={styles.cwdPath} title={workspacePath}>
+                        {workspacePath}
+                      </span>
+                    </div>
+                  )}
                   <div className={styles.desktopOnly}>
                     <AdBanner show={showAd} closeAd={() => setShowAd(false)} />
                   </div>
@@ -2191,8 +2248,8 @@ const CLITaskUI = ({
                             title={message.sender.name}
                           />
                         )}
-                        <div style={{ maxWidth: '75%' }}>
-                          <div className={styles.metaRow}>
+                        <div className={cx(styles.messageBody, isUser && styles.messageBodyUser)}>
+                          <div className={styles.metaRow} style={{ justifyContent: isUser ? 'flex-end' : 'flex-start' }}>
                             {senderDisplayName}
                             {isStreaming && (
                               <span className={styles.streaming}>
@@ -2204,7 +2261,7 @@ const CLITaskUI = ({
                           <div className={cx(bubbleClass, 'chat-message')}>
                             <ChatMarkdown content={message.content} isUser={isUser} />
                             {isStreaming && (
-                              <span className="typing-indicator" style={{ marginLeft: 4 }}>▋</span>
+                              <span className={cx('typing-indicator', styles.typingCursor)}>▋</span>
                             )}
                             {message.taskId && (
                               <div className={styles.cliTaskFooter}>

@@ -1,26 +1,24 @@
-import { createBrowserRouter } from 'react-router-dom';
-import Login from './pages/login';
+import { createBrowserRouter, Navigate } from 'react-router-dom';
 import Chat from './pages/chat';
 import BasicLayout from './layouts/BasicLayout';
-import AuthGuard from './components/AuthGuard';
 
 export const router = createBrowserRouter([
   {
-    path: '/login',
-    element: <Login />,
-  },
-  {
     path: '/',
-    element: (
-      <AuthGuard>
-        <BasicLayout />
-      </AuthGuard>
-    ),
+    element: <BasicLayout />,
     children: [
       {
         path: '',
         element: <Chat />,
       },
     ],
+  },
+  {
+    path: '/login',
+    element: <Navigate to="/" replace />,
+  },
+  {
+    path: '*',
+    element: <Navigate to="/" replace />,
   },
 ]); 

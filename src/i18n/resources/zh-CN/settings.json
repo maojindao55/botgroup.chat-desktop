@@ -27,7 +27,7 @@
     "maxRounds": "最大轮数",
     "manageExperts": "添加/管理专家群友",
     "pickExpertsPlaceholder": "选择专家群友加入群聊...",
-    "libraryHint": "如需新建或编辑专家的模型、职责、工具，请到资源库操作。",
+    "libraryHint": "如需新建或编辑专家的模型、职责、工具，请到设置中操作。",
     "experts": "专家群友（{{count}}）",
     "supervisorBadge": "👑 监督者",
     "unmute": "取消禁言",

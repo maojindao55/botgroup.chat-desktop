@@ -21,6 +21,10 @@ import {
   productGroupTypes,
   type AISpeechMode,
 } from '@/config/groupProduct';
+import {
+  groupTypeToSettingsSection,
+  type AppSettingsSection,
+} from '@/config/appSettings';
 import { brandPrimaryButtonProps } from '@/lib/theme';
 import {
   getTranslatedGroupTypeDescription,
@@ -39,8 +43,8 @@ interface CreateGroupWizardProps {
   fixedGroupType?: GroupTypeChoice;
   /** 允许创建的群类型；侧边栏入口应排除 cli */
   allowedGroupTypes?: GroupTypeChoice[];
-  /** 成员为空时跳转资源库 */
-  onOpenLibrary?: () => void;
+  /** 成员为空时打开设置 */
+  onOpenSettings?: (section?: AppSettingsSection) => void;
 }
 
 type GroupTypeChoice = 'ai' | 'cli' | 'agent';
@@ -207,7 +211,7 @@ export const CreateGroupWizard = ({
   onCreateGroup,
   fixedGroupType,
   allowedGroupTypes,
-  onOpenLibrary,
+  onOpenSettings,
 }: CreateGroupWizardProps) => {
   const { styles, cx } = useStyles();
   const { t } = useTranslation(['wizard', 'product', 'common']);
@@ -441,10 +445,10 @@ export const CreateGroupWizard = ({
     [members, memberKind],
   );
 
-  const handleOpenLibrary = () => {
+  const handleOpenSettings = () => {
     onOpenChange(false);
     reset();
-    onOpenLibrary?.();
+    onOpenSettings?.(groupTypeToSettingsSection(groupType));
   };
 
   const renderEmptyMembers = (resourceKey: 'character' | 'cliMember' | 'expert') => (
@@ -452,8 +456,8 @@ export const CreateGroupWizard = ({
       <Empty description={t('wizard:membersStep.emptyDescription', {
         resource: t(`product:memberKinds.${resourceKey}`),
       })}>
-        {onOpenLibrary ? (
-          <Button onClick={handleOpenLibrary} {...brandPrimaryButtonProps}>
+        {onOpenSettings ? (
+          <Button onClick={handleOpenSettings} {...brandPrimaryButtonProps}>
             {t('wizard:membersStep.goLibrary')}
           </Button>
         ) : (

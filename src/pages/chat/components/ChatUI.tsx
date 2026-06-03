@@ -8,7 +8,7 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useTranslation } from 'react-i18next';
 import { Send, Settings2, ChevronLeft, Bot, Terminal, PanelLeftOpen } from "lucide-react";
-import { Tooltip, Input as AntdInput, Button as AntdButton, Modal } from 'antd';
+import { Tooltip, Button as AntdButton, Modal } from 'antd';
 import { ActionIcon, Avatar as LobeAvatar } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 import { BRAND_ON_PRIMARY, brandPrimaryButtonStyle } from '@/lib/theme';
@@ -31,7 +31,8 @@ import Sidebar from './Sidebar';
 import { AdBanner, AdBannerMobile } from './AdSection';
 import { useUserStore } from '@/store/userStore';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { AIMemberLibrary, AI_MEMBER_LIBRARY_INLINE_WIDTH } from './AIMemberLibrary';
+import { AppSettingsModal } from './AppSettingsModal';
+import type { AppSettingsSection } from '@/config/appSettings';
 import { useAIMemberStore } from '@/store/aiMemberStore';
 import { resolveEffectiveMember } from '@/utils/aiMemberDisplay';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
@@ -88,7 +89,7 @@ const useStyles = createStyles(({ token, css }) => ({
   convSidebarExpandHandle: css`
     position: absolute;
     left: 0;
-    top: 18px;
+    top: 7px;
     z-index: 5;
     transform: translateX(-50%);
     display: inline-flex;
@@ -112,7 +113,7 @@ const useStyles = createStyles(({ token, css }) => ({
   `,
   headerBar: css`
     background: ${token.colorBgContainer};
-    border-bottom: 1px solid ${token.colorBorderSecondary};
+    border-bottom: 1px solid ${token.colorBorder};
     backdrop-filter: blur(12px);
     flex: none;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
@@ -121,21 +122,86 @@ const useStyles = createStyles(({ token, css }) => ({
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 12px;
+    gap: 12px;
+    height: 46px;
+    box-sizing: border-box;
+    overflow: hidden;
+    padding: 0 12px;
+    @media (max-width: 640px) {
+      padding: 0 10px;
+    }
+  `,
+  headerLeft: css`
+    display: flex;
+    align-items: center;
+    flex: 1 1 auto;
+    min-width: 0;
+  `,
+  titleRow: css`
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  `,
+  titleIcon: css`
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border: 1px solid rgba(255, 102, 0, 0.24);
+    border-radius: 7px;
+    background: rgba(255, 102, 0, 0.08);
+    color: #ff6600;
+    flex: none;
+  `,
+  titleText: css`
+    margin: 0;
+    min-width: 0;
+    max-width: min(46vw, 420px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0;
+    color: ${token.colorText};
+  `,
+  memberCount: css`
+    flex: none;
+    font-size: 12px;
+    color: ${token.colorTextTertiary};
+  `,
+  headerActions: css`
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    flex: 1 1 auto;
+    min-width: 0;
   `,
   chatArea: css`
     flex: 1;
     overflow: auto;
-    background: ${token.colorBgLayout};
-    padding: 12px 16px;
+    background: linear-gradient(180deg, ${token.colorBgContainer} 0%, ${token.colorFillQuaternary} 82%);
+    padding: 16px;
+    scrollbar-gutter: stable;
     @media (min-width: 768px) {
-      padding: 16px 20px;
+      padding: 20px 24px;
     }
+  `,
+  headerCwd: css`
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    max-width: min(30vw, 360px);
+    min-width: 0;
+    flex: none;
   `,
   inputArea: css`
     background: ${token.colorBgContainer};
     border-top: 1px solid ${token.colorBorderSecondary};
-    padding: 12px 20px;
+    padding: 10px 14px 14px;
   `,
   cwdLabel: css`
     font-size: 9px;
@@ -153,6 +219,7 @@ const useStyles = createStyles(({ token, css }) => ({
     border: 1px solid ${token.colorBorderSecondary};
     cursor: pointer;
     user-select: none;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -167,39 +234,45 @@ const useStyles = createStyles(({ token, css }) => ({
     }
   `,
   bubbleUser: css`
-    background: linear-gradient(to top right, #f97316, #f59e0b);
+    background: #ff6600;
     color: #fff;
     text-align: left;
-    border-radius: 16px;
+    border: 1px solid rgba(194, 65, 12, 0.22);
+    border-radius: 8px;
     border-top-right-radius: 4px;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-    padding: 12px 16px;
+    box-shadow: none;
+    padding: 9px 12px;
     margin-top: 4px;
+    line-height: 1.58;
   `,
   bubbleAI: css`
     background: ${token.colorBgContainer};
     border: 1px solid ${token.colorBorderSecondary};
-    border-radius: 16px;
+    border-radius: 8px;
     border-top-left-radius: 4px;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-    padding: 12px 16px;
+    box-shadow: none;
+    padding: 9px 12px;
     margin-top: 4px;
     text-align: left;
+    line-height: 1.58;
   `,
   bubbleError: css`
     background: ${token.colorErrorBg};
     border: 1px solid ${token.colorErrorBorder};
-    border-radius: 16px;
+    border-radius: 8px;
     border-top-left-radius: 4px;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-    padding: 12px 16px;
+    box-shadow: none;
+    padding: 9px 12px;
     margin-top: 4px;
     text-align: left;
+    line-height: 1.58;
   `,
   metaRow: css`
-    font-size: 12px;
+    min-height: 18px;
+    font-size: 11px;
+    font-weight: 500;
     color: ${token.colorTextTertiary};
-    padding: 0 4px;
+    padding: 0 2px;
     display: flex;
     align-items: center;
     gap: 6px;
@@ -305,12 +378,68 @@ const useStyles = createStyles(({ token, css }) => ({
   messageList: css`
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 14px;
+    width: 100%;
+    max-width: 900px;
+    margin: 0 auto;
+    padding-bottom: 4px;
   `,
   messageRow: css`
     display: flex;
     align-items: flex-start;
-    gap: 12px;
+    gap: 10px;
+    width: 100%;
+  `,
+  messageBody: css`
+    max-width: min(720px, 76%);
+    min-width: 0;
+    text-align: left;
+
+    @media (max-width: 640px) {
+      max-width: calc(100% - 44px);
+    }
+  `,
+  messageBodyUser: css`
+    text-align: right;
+  `,
+  composeShell: css`
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    width: 100%;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 6px;
+    border: 1px solid ${token.colorBorderSecondary};
+    border-radius: 8px;
+    background: ${token.colorBgContainer};
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+
+    &:focus-within {
+      border-color: rgba(255, 102, 0, 0.55);
+      box-shadow: 0 0 0 2px rgba(255, 102, 0, 0.1);
+    }
+
+    textarea {
+      border: none !important;
+      box-shadow: none !important;
+      background: transparent !important;
+      resize: none;
+      padding: 7px 8px !important;
+    }
+  `,
+  composeSendButton: css`
+    &&& {
+      width: 36px;
+      height: 36px;
+      flex: none;
+      border-radius: 7px;
+      box-shadow: none;
+    }
+  `,
+  typingCursor: css`
+    margin-left: 4px;
+    color: #ff6600;
   `,
   cliTaskFooter: css`
     display: flex;
@@ -435,7 +564,8 @@ const ChatUI = () => {
   // State
   const [groups, setGroups] = useState<Group[]>([]);
   const [selectedGroupIndex, setSelectedGroupIndex] = useState(id);
-  const [showLibrary, setShowLibrary] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<AppSettingsSection>('general');
   const { load: loadAIMembers } = useAIMemberStore();
   const aiMembers = useAIMemberStore(state => state.members);
 
@@ -516,26 +646,15 @@ const ChatUI = () => {
     [groupAiCharacters],
   );
 
-  const handleToggleSettings = (nextOpen: boolean) => {
-    if (nextOpen === showSettings) return;
-    // 与「资源库」面板互斥（同一侧位置，避免重叠）
-    if (nextOpen && showLibrary) {
-      setShowLibrary(false);
-      adjustWindowWidthForPanel(-AI_MEMBER_LIBRARY_INLINE_WIDTH);
-    }
-    setShowSettings(nextOpen);
-    adjustWindowWidthForPanel(nextOpen ? settingsPanelWidth : -settingsPanelWidth);
+  const openAppSettings = (section: AppSettingsSection = 'general') => {
+    setSettingsSection(section);
+    setSettingsOpen(true);
   };
 
-  const handleToggleLibrary = (nextOpen: boolean) => {
-    if (nextOpen === showLibrary) return;
-    // 与群设置面板互斥
-    if (nextOpen && showSettings) {
-      setShowSettings(false);
-      adjustWindowWidthForPanel(-settingsPanelWidth);
-    }
-    setShowLibrary(nextOpen);
-    adjustWindowWidthForPanel(nextOpen ? AI_MEMBER_LIBRARY_INLINE_WIDTH : -AI_MEMBER_LIBRARY_INLINE_WIDTH);
+  const handleToggleSettings = (nextOpen: boolean) => {
+    if (nextOpen === showSettings) return;
+    setShowSettings(nextOpen);
+    adjustWindowWidthForPanel(nextOpen ? settingsPanelWidth : -settingsPanelWidth);
   };
 
   useEffect(() => {
@@ -902,17 +1021,26 @@ const ChatUI = () => {
     if (index === selectedGroupIndex && !isCLIView && !isHomeView) return;
     window.history.pushState({}, '', `?id=${index}`);
     setShowSettings(false);
-    setShowLibrary(false);
+    setSettingsOpen(false);
     setViewParam(null);
     setSelectedGroupIndex(index);
   };
   const handleSelectGroup = (index: number) => goToGroup(index);
   const handleNavigateCLI = () => {
+    const params = new URLSearchParams(window.location.search);
+    const view = params.get('view');
+    if (view === 'cli-tasks' && !params.get('taskId')) return;
+    if (view === 'cli-task' || view === 'cli-template') {
+      window.history.pushState({}, '', '?view=cli-tasks');
+      setShowSettings(false);
+      setSettingsOpen(false);
+      setViewParam('cli-tasks');
+      return;
+    }
     if (isCLIView) return;
-    // 客户端切换：不重载页面（groups/用户数据已在内存），消除白屏闪烁
     window.history.pushState({}, '', '?view=cli-tasks');
     setShowSettings(false);
-    setShowLibrary(false);
+    setSettingsOpen(false);
     setViewParam('cli-tasks');
   };
   /** 客户端切换到首页：不重载页面 */
@@ -920,7 +1048,7 @@ const ChatUI = () => {
     if (isHomeView) return;
     window.history.pushState({}, '', '?view=home');
     setShowSettings(false);
-    setShowLibrary(false);
+    setSettingsOpen(false);
     setViewParam('home');
   };
 
@@ -1069,7 +1197,7 @@ const ChatUI = () => {
       setSchedulerStrategy(aiGroup.schedulerStrategy || 'tag');
     }
     setShowSettings(false);
-    setShowLibrary(false);
+    setSettingsOpen(false);
 
     const url = new URL(window.location.href);
     url.searchParams.set('id', String(newIndex));
@@ -1763,7 +1891,7 @@ const ChatUI = () => {
             onSelectGroup={handleSelectGroup}
             groups={groups}
             onCreateGroup={handleCreateGroup}
-            onOpenLibrary={() => handleToggleLibrary(true)}
+            onOpenSettings={openAppSettings}
             onNavigateCLI={handleNavigateCLI}
             onNavigateHome={handleNavigateHome}
             hiddenGroupTypes={['cli']}
@@ -1801,37 +1929,37 @@ const ChatUI = () => {
             {/* Header */}
             <header className={styles.headerBar}>
               <div className={styles.headerInner}>
-                <div style={{ display: 'flex', alignItems: 'center' }}>
+                <div className={styles.headerLeft}>
                   <div className={styles.mobileBackBtn} onClick={toggleSidebar}>
                     <ChevronLeft size={20} />
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div className={styles.titleRow}>
+                    <span className={styles.titleIcon}>
                       {group.type === 'cli' ? (
-                        <Terminal size={16} color="#ff6600" />
+                        <Terminal size={15} />
                       ) : (
-                        <Bot size={16} color="#ff6600" />
+                        <Bot size={15} />
                       )}
-                      <h1 style={{ margin: 0, fontWeight: 600, fontSize: 14, letterSpacing: '0.02em' }}>
-                        {group.name}
-                      </h1>
-                      <span style={{ fontSize: 12, opacity: 0.6 }}>({users.length})</span>
-                    </div>
-                    {group.type === 'cli' && workspacePath && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
-                        <span className={styles.cwdLabel}>CWD:</span>
-                        <span
-                          className={styles.cwdPath}
-                          onDoubleClick={() => handleToggleSettings(!showSettings)}
-                          title={t('chat:cliMeta.workspaceTitle')}
-                        >
-                          {workspacePath}
-                        </span>
-                      </div>
-                    )}
+                    </span>
+                    <h1 className={styles.titleText}>
+                      {group.name}
+                    </h1>
+                    <span className={styles.memberCount}>({users.length})</span>
                   </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div className={styles.headerActions}>
+                  {group.type === 'cli' && workspacePath && (
+                    <div className={styles.headerCwd}>
+                      <span className={styles.cwdLabel}>CWD:</span>
+                      <span
+                        className={styles.cwdPath}
+                        onDoubleClick={() => handleToggleSettings(!showSettings)}
+                        title={t('chat:cliMeta.workspaceTitle')}
+                      >
+                        {workspacePath}
+                      </span>
+                    </div>
+                  )}
                   <div className={styles.desktopOnly}>
                     <AdBanner show={showAd} closeAd={() => setShowAd(false)} />
                   </div>
@@ -1911,7 +2039,7 @@ const ChatUI = () => {
                           style={{ flexShrink: 0 }}
                         />
                       )}
-                      <div style={{ maxWidth: '75%', textAlign: isUser ? 'right' : 'left' }}>
+                      <div className={cx(styles.messageBody, isUser && styles.messageBodyUser)}>
                         <div className={styles.metaRow} style={{ justifyContent: isUser ? 'flex-end' : 'flex-start' }}>
                           {message.sender.name}
                           {isStreaming && !message.content.includes('</details>') && (
@@ -1927,7 +2055,7 @@ const ChatUI = () => {
                             isUser={isUser}
                           />
                           {isStreaming && (
-                            <span className="typing-indicator" style={{ marginLeft: 4 }}>▋</span>
+                            <span className={cx('typing-indicator', styles.typingCursor)}>▋</span>
                           )}
                           {message.taskId && (
                             <div className={styles.cliTaskFooter}>
@@ -2050,7 +2178,7 @@ const ChatUI = () => {
 
             {/* Input Area */}
             <div className={styles.inputArea}>
-              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12 }}>
+              <div className={styles.composeShell}>
                 <MentionTextArea
                   value={inputMessage}
                   onChange={setInputMessage}
@@ -2064,14 +2192,14 @@ const ChatUI = () => {
                   }}
                   autoSize={{ minRows: 1, maxRows: 6 }}
                   placeholder={isCLIGroup ? t('chat:placeholders.cliInput') : t('chat:placeholders.aiInput')}
-                  style={{ borderRadius: 12 }}
-                  containerStyle={{ flex: 1 }}
+                  containerStyle={{ flex: 1, minWidth: 0 }}
                 />
                 <AntdButton
+                  className={styles.composeSendButton}
                   onClick={handleSendMessage}
                   loading={isLoading}
                   icon={isLoading ? undefined : <Send size={16} color={BRAND_ON_PRIMARY} />}
-                  style={{ ...brandPrimaryButtonStyle, height: 36, borderRadius: 12 }}
+                  style={brandPrimaryButtonStyle}
                   styles={{
                     content: { color: BRAND_ON_PRIMARY },
                     icon: { color: BRAND_ON_PRIMARY },
@@ -2151,15 +2279,6 @@ const ChatUI = () => {
             />
           )}
 
-          {/* 资源库（Desktop Inline） */}
-          {!isMobile && (
-            <AIMemberLibrary
-              inline
-              open={showLibrary}
-              onClose={() => handleToggleLibrary(false)}
-              groups={groups}
-            />
-          )}
         </div>
       </div>
 
@@ -2167,14 +2286,12 @@ const ChatUI = () => {
         <div className={styles.mobileOverlay} onClick={toggleSidebar} />
       )}
 
-      {/* 资源库（Mobile Drawer） */}
-      {isMobile && (
-        <AIMemberLibrary
-          open={showLibrary}
-          onClose={() => handleToggleLibrary(false)}
-          groups={groups}
-        />
-      )}
+      <AppSettingsModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        groups={groups}
+        initialSection={settingsSection}
+      />
     </>
   );
 };

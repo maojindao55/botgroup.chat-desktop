@@ -59,9 +59,9 @@
   "agentChat": {
     "expertCount": "{{count}} 位专家",
     "emptyTitle": "专家群",
-    "loadingLibrary": "正在加载资源库...",
-    "unresolvedMembers": "该群引用了 {{count}} 位专家，但当前资源库中找不到。",
-    "unresolvedMembersHint": "请到「{{library}}」检查或重新添加成员。",
+    "loadingLibrary": "正在加载成员数据...",
+    "unresolvedMembers": "该群引用了 {{count}} 位专家，但当前设置中找不到。",
+    "unresolvedMembersHint": "请到「{{settings}}」检查或重新添加成员。",
     "strategyMeta": "策略: {{strategy}} | 最大轮数: {{maxRounds}}",
     "expertBadge": "专家",
     "inputPlaceholder": "输入消息，专家群友将按群规协作回复...",

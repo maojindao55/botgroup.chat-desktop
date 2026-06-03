@@ -16,9 +16,9 @@
     "characterPlaceholder": "Select characters...",
     "cliPlaceholder": "Select dev members...",
     "expertPlaceholder": "Select experts...",
-    "emptyDescription": "No {{resource}} yet. Create one in the library first.",
-    "goLibrary": "Create in library",
-    "openLibraryHint": "Open the library from the sidebar to create one"
+    "emptyDescription": "No {{resource}} yet. Create one in Settings first.",
+    "goLibrary": "Create in Settings",
+    "openLibraryHint": "Open Settings from the sidebar to create one"
   },
   "configStep": {
     "speechMode": "Speaking mode",

@@ -16,6 +16,7 @@ import sidebarEn from './resources/en-US/sidebar.json';
 import tagsEn from './resources/en-US/tags.json';
 import userEn from './resources/en-US/user.json';
 import wizardEn from './resources/en-US/wizard.json';
+import appSettingsEn from './resources/en-US/appSettings.json';
 import adZh from './resources/zh-CN/ad.json';
 import commonZh from './resources/zh-CN/common.json';
 import chatZh from './resources/zh-CN/chat.json';
@@ -31,6 +32,7 @@ import sidebarZh from './resources/zh-CN/sidebar.json';
 import tagsZh from './resources/zh-CN/tags.json';
 import userZh from './resources/zh-CN/user.json';
 import wizardZh from './resources/zh-CN/wizard.json';
+import appSettingsZh from './resources/zh-CN/appSettings.json';
 
 export type ResolvedLocale = 'zh-CN' | 'en-US';
 export type LocalePreference = 'system' | ResolvedLocale;
@@ -78,6 +80,7 @@ i18n.use(initReactI18next).init({
       engine: engineZh,
       tags: tagsZh,
       ad: adZh,
+      appSettings: appSettingsZh,
     },
     'en-US': {
       common: commonEn,
@@ -95,6 +98,7 @@ i18n.use(initReactI18next).init({
       engine: engineEn,
       tags: tagsEn,
       ad: adEn,
+      appSettings: appSettingsEn,
     },
   },
   lng: getInitialLocale(),
