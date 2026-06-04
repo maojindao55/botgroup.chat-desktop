@@ -302,6 +302,7 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
                 section={section}
                 groups={groups}
                 active={open}
+                onSectionChange={setSection}
               />
             )}
           </div>

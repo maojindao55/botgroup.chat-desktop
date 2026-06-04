@@ -163,6 +163,9 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
   // React state updates (`saving`) are async, so two rapid clicks can both
   // enter the handler before the button becomes disabled; the ref does not.
   const submittingRef = useRef(false);
+  // Pre-generated stable ID for new providers — avoids creating duplicates when
+  // handleFinish is invoked more than once.
+  const pendingProviderIdRef = useRef<string>('');
 
   const provider = providerId ? get(providerId) : undefined;
   const isBuiltin = provider?.source === 'builtin';
@@ -171,9 +174,12 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
   useEffect(() => {
     if (!open) return;
 
+    // Reset submission lock whenever the drawer opens
+    submittingRef.current = false;
     setPresetType(undefined);
 
     if (providerId) {
+      pendingProviderIdRef.current = '';
       const p = get(providerId);
       if (p) {
         form.setFieldsValue({
@@ -190,6 +196,8 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
           .catch(() => setSecretConfigured(false));
       }
     } else {
+      // Pre-generate a stable ID for the new provider
+      pendingProviderIdRef.current = `user-${Date.now()}`;
       form.resetFields();
       form.setFieldsValue({
         enabled: true,
@@ -230,7 +238,7 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
     submittingRef.current = true;
     setSaving(true);
     try {
-      const id = providerId || `user-${Date.now()}`;
+      const id = providerId || pendingProviderIdRef.current || `user-${Date.now()}`;
       if (readOnly) {
         const apiKey = (values.apiKey as string)?.trim();
         if (apiKey) {
@@ -262,7 +270,7 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
     try {
       setTesting(true);
 
-      const id = providerId || `user-${Date.now()}`;
+      const id = providerId || pendingProviderIdRef.current || `user-${Date.now()}`;
       await form.validateFields(['customParams']);
       const formValues = form.getFieldsValue();
       const baseURL = (formValues.baseURL as string)?.trim() || provider?.baseURL;

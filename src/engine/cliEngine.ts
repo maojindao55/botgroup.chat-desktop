@@ -20,6 +20,7 @@ import type { CLIAgent } from '@/config/aiCharacters';
 import { translateCliStageLabel } from '@/i18n/engineLabels';
 import { te } from '@/i18n/translate';
 import { request } from '@/utils/request';
+import { reconstructCliOutputFromLogEntries } from '@/utils/cliLogOutput';
 
 // ============ 类型定义 ============
 
@@ -199,6 +200,19 @@ async function callCLIAgent(
   let status: CLIRunStatus | undefined;
   let toolSessionId: string | undefined;
 
+  const readLogFallbackOutput = async (): Promise<string> => {
+    try {
+      const res = await request(`/api/cli/tasks/log?taskId=${encodeURIComponent(sessionId)}`);
+      const json = await res.json();
+      const lines = Array.isArray(json?.data?.lines) ? json.data.lines : [];
+      return reconstructCliOutputFromLogEntries(lines, {
+        includeStderr: options.showStderr ?? cliCfg.showStderr ?? true,
+      });
+    } catch {
+      return '';
+    }
+  };
+
   try {
     const response = await request('/api/cli/run', {
       method: 'POST',
@@ -279,6 +293,12 @@ async function callCLIAgent(
     }
 
     exitCode = exitCode ?? (failed ? -1 : 0);
+    if (!fullContent.trim()) {
+      const fallbackOutput = await readLogFallbackOutput();
+      if (fallbackOutput) {
+        fullContent = fallbackOutput;
+      }
+    }
     if (failed) {
       callbacks.onError(sessionId, errorMessage || te('errors.cliExecutionFailed'));
     } else {

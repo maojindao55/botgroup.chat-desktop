@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Drawer, Form, Input, Select, Radio, Checkbox, InputNumber, Button, Space, Divider, Switch, Tooltip } from 'antd';
 import { createStyles } from 'antd-style';
 import { useTranslation } from 'react-i18next';
@@ -80,7 +80,7 @@ interface AIMemberEditorProps {
   memberId?: string;
   defaultKind?: 'llm' | 'agent' | 'cli';
   onClose: () => void;
-  onSave?: () => void;
+  onSave?: (savedKind: 'llm' | 'agent' | 'cli') => void;
 }
 
 export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
@@ -103,6 +103,15 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
   const systemPrompt = Form.useWatch('systemPrompt', form);
   const temperature = Form.useWatch('temperature', form);
   const [dryRunOpen, setDryRunOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  // Synchronous lock to prevent double-click races on Save.
+  // React state updates (`saving`) are async, so two rapid clicks can both
+  // enter the handler before the button becomes disabled; the ref does not.
+  const submittingRef = useRef(false);
+  // Pre-generated stable ID for new members — avoids creating duplicates when
+  // handleFinish is invoked more than once (native form submit via Enter key +
+  // programmatic form.submit(), React StrictMode double-fire, etc.).
+  const pendingIdRef = useRef<string>('');
 
   const providers = useMemo(
     () => Object.values(providersRecord).filter((p) => p.enabled !== false),
@@ -117,7 +126,10 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
 
   useEffect(() => {
     if (open) {
+      // Reset submission lock whenever the drawer opens
+      submittingRef.current = false;
       if (memberId) {
+        pendingIdRef.current = '';
         const member = get(memberId);
         if (member) {
           const base: Record<string, unknown> = {
@@ -162,6 +174,8 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
           }
         }
       } else {
+        // Pre-generate a stable ID for the new member
+        pendingIdRef.current = `${defaultKind}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
         form.resetFields();
         const defaultProvider = providers[0];
         form.setFieldsValue({
@@ -192,7 +206,12 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
   };
 
   const handleFinish = async (values: Record<string, unknown>) => {
-    const id = memberId || `${values.kind}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    setSaving(true);
+    // Use the pre-generated stable ID (or memberId for edits).
+    // This guarantees idempotent upsert even if onFinish fires twice.
+    const id = memberId || pendingIdRef.current || `${values.kind}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
     const baseData = {
       id,
@@ -254,9 +273,12 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
     try {
       await upsert(updatedMember);
       onClose();
-      onSave?.();
+      onSave?.(updatedMember.kind);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t('member.saveFailed'));
+    } finally {
+      setSaving(false);
+      submittingRef.current = false;
     }
   };
 
@@ -325,7 +347,7 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
             </div>
             <div className={styles.footerActions}>
               <Button onClick={onClose}>{t('common:actions.cancel')}</Button>
-              <Button onClick={() => form.submit()} {...brandPrimaryButtonProps}>
+              <Button loading={saving} onClick={() => form.submit()} {...brandPrimaryButtonProps}>
                 {t('common:actions.save')}
               </Button>
             </div>

@@ -143,12 +143,15 @@ interface ResourceLibraryContentProps {
   groups: Group[];
   /** 父级弹框是否打开，用于触发数据加载 */
   active: boolean;
+  /** 保存成员后切换到对应分区（当保存的 kind 与当前 section 不同时） */
+  onSectionChange?: (section: ResourceSection) => void;
 }
 
 export const ResourceLibraryContent: React.FC<ResourceLibraryContentProps> = ({
   section,
   groups,
   active,
+  onSectionChange,
 }) => {
   const { t } = useTranslation(['library', 'common', 'product']);
   const { styles } = useStyles();
@@ -449,8 +452,12 @@ export const ResourceLibraryContent: React.FC<ResourceLibraryContentProps> = ({
         memberId={editingId}
         defaultKind={editorKind}
         onClose={() => setEditorOpen(false)}
-        onSave={() => {
+        onSave={(savedKind) => {
           load();
+          // 若保存的成员类型与当前分区不同，自动切换到对应分区
+          if (savedKind !== section) {
+            onSectionChange?.(savedKind);
+          }
         }}
       />
       <ProviderEditor

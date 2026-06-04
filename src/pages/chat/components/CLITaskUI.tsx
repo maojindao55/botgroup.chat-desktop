@@ -93,6 +93,7 @@ import {
 import { getCLIWorkflowLabel } from '@/config/groupProduct';
 import { adapterUsesOpenCodeSessionTitle, supportsCliToolSession } from '@/config/cliAdapters';
 import { saveLastView } from '@/utils/lastViewStorage';
+import { reconstructCliOutputFromLogEntries } from '@/utils/cliLogOutput';
 
 interface CLITaskUIProps {
   groups: Group[];
@@ -805,6 +806,7 @@ const CLITaskUI = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const executionControllersRef = useRef(new Map<string, AbortController>());
+  const hydratedLogMessageIdsRef = useRef(new Set<string>());
 
   const selectedTask = tasks.find(t => t.id === selectedTaskId) || null;
   const selectedTemplate = templates.find(t => t.id === selectedTemplateId) || templates[0];
@@ -954,6 +956,44 @@ const CLITaskUI = ({
   useEffect(() => { loadAIMembers(); }, [loadAIMembers]);
   useEffect(() => { if (isMobile !== undefined) { setSidebarOpen(!isMobile); setTaskSidebarOpen(!isMobile); } }, [isMobile]);
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMessages]);
+
+  useEffect(() => {
+    if (!selectedTask) return;
+    const emptyLoggedMessages = selectedTask.messages.filter(message =>
+      message.role === 'agent'
+      && !!message.agentTaskId
+      && !message.content.trim()
+      && message.status !== 'running'
+    );
+    if (emptyLoggedMessages.length === 0) return;
+
+    let cancelled = false;
+    const includeStderr = selectedTask.templateSnapshot.showStderr !== false;
+
+    emptyLoggedMessages.forEach((message) => {
+      const hydrateKey = `${selectedTask.id}:${message.id}:${message.agentTaskId}`;
+      if (hydratedLogMessageIdsRef.current.has(hydrateKey)) return;
+      hydratedLogMessageIdsRef.current.add(hydrateKey);
+
+      void (async () => {
+        try {
+          const res = await request(`/api/cli/tasks/log?taskId=${encodeURIComponent(message.agentTaskId!)}`);
+          const json = await res.json();
+          const lines = Array.isArray(json?.data?.lines) ? json.data.lines : [];
+          const output = reconstructCliOutputFromLogEntries(lines, { includeStderr });
+          if (!cancelled && output) {
+            updateMessage(selectedTask.id, message.id, { content: output });
+          }
+        } catch {
+          // Historical hydration is best-effort; the log modal remains available for diagnosis.
+        }
+      })();
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTask, updateMessage]);
 
   // 仅在外部 URL 的 taskId 变化时同步选中项；tasks 更新时不应覆盖用户在侧栏的手动选择
   // （navigateToTask 用 replaceState 更新 URL，不会触发 ChatUI 重渲染，initialTaskId 可能滞后）

@@ -152,6 +152,7 @@ async function loadEngine(request) {
   globalThis.__cliEngineModeTestDeps = {
     resolveExecutionPlan: groupsModule.resolveExecutionPlan,
     request,
+    reconstructCliOutputFromLogEntries: () => '',
   };
 
   return importTsModule(
@@ -164,6 +165,10 @@ async function loadEngine(request) {
       .replace(
         "import { request } from '@/utils/request';",
         'const { request } = globalThis.__cliEngineModeTestDeps;',
+      )
+      .replace(
+        "import { reconstructCliOutputFromLogEntries } from '@/utils/cliLogOutput';",
+        'const { reconstructCliOutputFromLogEntries } = globalThis.__cliEngineModeTestDeps;',
       )
       .replace(
         "import { translateCliStageLabel } from '@/i18n/engineLabels';",
