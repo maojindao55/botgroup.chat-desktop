@@ -29,6 +29,47 @@ interface AgentGroupContext {
 /** 系统保留的伪 Agent ID 前缀，避免与用户自建 Agent ID 冲突 */
 const SYSTEM_AGENT_PREFIX = '__sys_';
 
+function isCLIMember(agent: AgentMember): boolean {
+  const candidate = agent as any;
+  return candidate.kind === 'cli' || candidate.runtime === 'cli' || !!candidate.cli;
+}
+
+function isLLMCoordinatorCandidate(agent: AgentMember): boolean {
+  return !isCLIMember(agent) && !!agent.providerId && !!agent.model && Array.isArray(agent.tools);
+}
+
+function getLLMCoordinator(agents: AgentMember[]): AgentMember | undefined {
+  return agents.find(isLLMCoordinatorCandidate);
+}
+
+function hasCLIWorkspace(groupContext?: AgentGroupContext): boolean {
+  return !!groupContext?.workspacePath?.trim();
+}
+
+function getAgentRole(agent: AgentMember): string {
+  return agent.role || (isCLIMember(agent) ? 'CLI 开发成员' : '专家');
+}
+
+function assertCLIWorkspaceConfigured(
+  agents: AgentMember[],
+  mutedUsers: string[],
+  groupContext: AgentGroupContext,
+): void {
+  const activeCli = agents.find(agent => !mutedUsers.includes(agent.id) && isCLIMember(agent));
+  if (!activeCli || hasCLIWorkspace(groupContext)) return;
+  throw new Error(`Agent 群包含 CLI 成员「${activeCli.name}」，请先配置工作目录。`);
+}
+
+function emitSyntheticResult(
+  callbacks: StreamCallback,
+  result: AgentRunResult,
+): AgentRunResult {
+  callbacks.onAgentStart(result.agentId, result.agentName);
+  callbacks.onToken(result.agentId, result.content);
+  callbacks.onAgentEnd(result.agentId, result.content);
+  return result;
+}
+
 export function getGroupAgents(group: AgentGroup): AgentMember[] {
   const membersState = useAIMemberStore.getState().members;
   const dbAgents = (group.memberIds || [])
@@ -122,7 +163,7 @@ export async function callAgentLLM(
       model: agent.model,
       temperature: agent.temperature,
       messages,
-      tools: agent.tools.filter(t => t.enabled).map(t => ({
+      tools: (agent.tools || []).filter(t => t.enabled).map(t => ({
         type: 'function',
         function: {
           name: t.name,
@@ -200,8 +241,11 @@ async function runSingleAgent(
   const effectiveId = agentIdOverride || agent.id;
 
   // 检查是否为 CLI 成员
-  const isCLI = (agent as any).kind === 'cli' || (agent as any).cli;
-  if (isCLI && groupContext?.workspacePath) {
+  const isCLI = isCLIMember(agent);
+  if (isCLI) {
+    if (!hasCLIWorkspace(groupContext)) {
+      throw new Error(`CLI 成员「${agent.name}」需要先配置工作目录。`);
+    }
     return runSingleCLIAgent(
       agent, userMessage, context, callbacks, signal, effectiveId, groupContext,
     );
@@ -225,7 +269,7 @@ async function runSingleAgent(
   let fullContent = '';
 
   try {
-    const enabledTools = agent.tools.filter(t => t.enabled);
+    const enabledTools = (agent.tools || []).filter(t => t.enabled);
     const maxTurns = enabledTools.length > 0 ? (agent.maxTurns || 5) : 1;
     let turn = 0;
 
@@ -393,8 +437,8 @@ async function runRouter(
   if (activeAgents.length === 0) return [];
 
   // 用协调者 Prompt + 第一个可用 Agent 的 LLM 来做路由决策
-  const routerAgent = activeAgents[0];
-  const agentList = activeAgents.map(a => `- ${a.id}: ${a.name} (${a.role})`).join('\n');
+  const routerAgent = getLLMCoordinator(activeAgents);
+  const agentList = activeAgents.map(a => `- ${a.id}: ${a.name} (${getAgentRole(a)})`).join('\n');
 
   const routerPrompt = group.coordinatorPrompt ||
     `你是一个智能路由器。根据用户消息，从以下 Agent 列表中选择最合适的 1-2 个来回答。
@@ -411,17 +455,22 @@ ${agentList}`;
   let selectedIds: string[] = [];
   let routerFailed = false;
   try {
-    const routerResponse = await callAgentLLM(
-      { ...routerAgent, systemPrompt: routerPrompt, temperature: 0.1 },
-      routerMessages,
-      undefined,
-      signal,
-    );
-    // 解析路由结果
-    selectedIds = routerResponse
-      .split(/[,，\s]+/)
-      .map(s => s.trim())
-      .filter(id => activeAgents.some(a => a.id === id));
+    if (routerAgent) {
+      const routerResponse = await callAgentLLM(
+        { ...routerAgent, systemPrompt: routerPrompt, temperature: 0.1 },
+        routerMessages,
+        undefined,
+        signal,
+      );
+      // 解析路由结果
+      selectedIds = routerResponse
+        .split(/[,，\s]+/)
+        .map(s => s.trim())
+        .filter(id => activeAgents.some(a => a.id === id));
+    } else {
+      selectedIds = activeAgents.map(a => a.id);
+      routerFailed = true;
+    }
   } catch (e: any) {
     if (e?.name === 'AbortError') throw e;
     // 路由失败，fallback 到全员
@@ -499,12 +548,17 @@ async function runReAct(
   if (activeAgents.length === 0) return [];
 
   const results: AgentRunResult[] = [];
-  const coordinatorAgent = activeAgents[0];
+  const coordinatorAgent = getLLMCoordinator(activeAgents);
   const maxRounds = group.maxRounds || 3;
   let round = 0;
   let accumulatedContext = history;
 
-  const agentList = activeAgents.map(a => `- ${a.id}: ${a.name} (${a.role})`).join('\n');
+  const agentList = activeAgents.map(a => `- ${a.id}: ${a.name} (${getAgentRole(a)})`).join('\n');
+
+  if (!coordinatorAgent) {
+    callbacks.onInfo?.('当前自动处理策略没有可用 LLM 协调者，已回退为按成员顺序执行。');
+    return runSequential(group, userMessage, history, mutedUsers, callbacks, signal, groupContext);
+  }
 
   while (round < maxRounds) {
     round++;
@@ -719,7 +773,7 @@ ${othersOpinions}
   if (signal?.aborted) return results;
 
   // 最终裁决：由第一个 Agent（裁判）总结
-  const judgeAgent = activeAgents[0];
+  const judgeAgent = getLLMCoordinator(activeAgents);
   const allOpinions = activeAgents
     .map(a => `[${a.name}] 最终观点：${opinions[a.id] || '(无)'}`)
     .join('\n\n');
@@ -727,28 +781,37 @@ ${othersOpinions}
   const judgePrompt = group.coordinatorPrompt ||
     `你是辩论的最终裁判。请综合所有参与者的观点，给出公正的最终结论。`;
 
-  const judgeMessages: AgentMessage[] = [
-    { role: 'system', content: judgePrompt },
-    { role: 'user', content: `原始问题：${userMessage}\n\n各方观点：\n${allOpinions}\n\n请给出最终裁决和总结。` },
-  ];
-
   const judgeName = translateEngineRole('judge');
   const judgeId = `${SYSTEM_AGENT_PREFIX}judge`;
-  callbacks.onAgentStart(judgeId, judgeName);
   let judgeContent = '';
-  try {
-    judgeContent = await callAgentLLM(
-      { ...judgeAgent, systemPrompt: judgePrompt, temperature: 0.3 },
-      judgeMessages,
-      (token) => callbacks.onToken(judgeId, token),
-      signal,
-    );
-    callbacks.onAgentEnd(judgeId, judgeContent);
-  } catch (error: any) {
-    if (error?.name === 'AbortError') throw error;
-    const errMsg = error?.message || te('errors.unknownError');
-    judgeContent = te('errors.judgeExecutionError', { message: errMsg });
-    callbacks.onError(judgeId, errMsg);
+  if (judgeAgent) {
+    const judgeMessages: AgentMessage[] = [
+      { role: 'system', content: judgePrompt },
+      { role: 'user', content: `原始问题：${userMessage}\n\n各方观点：\n${allOpinions}\n\n请给出最终裁决和总结。` },
+    ];
+
+    callbacks.onAgentStart(judgeId, judgeName);
+    try {
+      judgeContent = await callAgentLLM(
+        { ...judgeAgent, systemPrompt: judgePrompt, temperature: 0.3 },
+        judgeMessages,
+        (token) => callbacks.onToken(judgeId, token),
+        signal,
+      );
+      callbacks.onAgentEnd(judgeId, judgeContent);
+    } catch (error: any) {
+      if (error?.name === 'AbortError') throw error;
+      const errMsg = error?.message || te('errors.unknownError');
+      judgeContent = te('errors.judgeExecutionError', { message: errMsg });
+      callbacks.onError(judgeId, errMsg);
+    }
+  } else {
+    judgeContent = `以下是各成员的最终观点汇总：\n\n${allOpinions}`;
+    emitSyntheticResult(callbacks, {
+      agentId: judgeId,
+      agentName: judgeName,
+      content: judgeContent,
+    });
   }
 
   results.push({
@@ -779,7 +842,7 @@ async function runMapReduce(
   if (activeAgents.length === 0) return [];
 
   const results: AgentRunResult[] = [];
-  const coordinatorAgent = activeAgents[0];
+  const coordinatorAgent = getLLMCoordinator(activeAgents);
 
   // === MAP 阶段：拆分任务 ===
   const agentCount = activeAgents.length;
@@ -795,15 +858,17 @@ async function runMapReduce(
 
   let subtasks: string[] = [];
   try {
-    const splitResponse = await callAgentLLM(
-      { ...coordinatorAgent, systemPrompt: splitPrompt, temperature: 0.2 },
-      splitMessages,
-      undefined,
-      signal,
-    );
-    const parsed = extractJSON(splitResponse);
-    if (parsed && Array.isArray(parsed.subtasks)) {
-      subtasks = parsed.subtasks;
+    if (coordinatorAgent) {
+      const splitResponse = await callAgentLLM(
+        { ...coordinatorAgent, systemPrompt: splitPrompt, temperature: 0.2 },
+        splitMessages,
+        undefined,
+        signal,
+      );
+      const parsed = extractJSON(splitResponse);
+      if (parsed && Array.isArray(parsed.subtasks)) {
+        subtasks = parsed.subtasks;
+      }
     }
   } catch (e: any) {
     if (e?.name === 'AbortError') throw e;
@@ -848,21 +913,31 @@ async function runMapReduce(
 
   const reducerName = translateEngineRole('reducer');
   const reducerId = `${SYSTEM_AGENT_PREFIX}reducer`;
-  callbacks.onAgentStart(reducerId, reducerName);
   let reduceContent = '';
-  try {
-    reduceContent = await callAgentLLM(
-      { ...coordinatorAgent, systemPrompt: reducePrompt, temperature: 0.3 },
-      reduceMessages,
-      (token) => callbacks.onToken(reducerId, token),
-      signal,
-    );
-    callbacks.onAgentEnd(reducerId, reduceContent);
-  } catch (error: any) {
-    if (error?.name === 'AbortError') throw error;
-    const errMsg = error?.message || te('errors.unknownError');
-    reduceContent = te('errors.reducerExecutionError', { message: errMsg });
-    callbacks.onError(reducerId, errMsg);
+  if (coordinatorAgent) {
+    callbacks.onAgentStart(reducerId, reducerName);
+    try {
+      reduceContent = await callAgentLLM(
+        { ...coordinatorAgent, systemPrompt: reducePrompt, temperature: 0.3 },
+        reduceMessages,
+        (token) => callbacks.onToken(reducerId, token),
+        signal,
+      );
+      callbacks.onAgentEnd(reducerId, reduceContent);
+    } catch (error: any) {
+      if (error?.name === 'AbortError') throw error;
+      const errMsg = error?.message || te('errors.unknownError');
+      reduceContent = te('errors.reducerExecutionError', { message: errMsg });
+      callbacks.onError(reducerId, errMsg);
+    }
+  } else {
+    void reduceMessages;
+    reduceContent = `以下是各子任务结果汇总：\n\n${allResults}`;
+    emitSyntheticResult(callbacks, {
+      agentId: reducerId,
+      agentName: reducerName,
+      content: reduceContent,
+    });
   }
 
   results.push({
@@ -894,16 +969,23 @@ async function runSupervisor(
   const activeAgents = getGroupAgents(group).filter(a => !mutedUsers.includes(a.id));
   if (activeAgents.length <= 1) {
     // 只有 1 个 Agent，回退到顺序执行
-    return runSequential(group, userMessage, history, mutedUsers, callbacks, signal);
+    return runSequential(group, userMessage, history, mutedUsers, callbacks, signal, groupContext);
   }
 
   const results: AgentRunResult[] = [];
-  const supervisor = activeAgents[0];
-  const workers = activeAgents.slice(1);
+  const supervisor = getLLMCoordinator(activeAgents);
+  const workers = supervisor
+    ? activeAgents.filter(agent => agent.id !== supervisor.id)
+    : activeAgents;
   const maxRounds = group.maxRounds || 3;
 
-  const workerList = workers.map(w => `- ${w.id}: ${w.name} (${w.role})`).join('\n');
+  const workerList = workers.map(w => `- ${w.id}: ${w.name} (${getAgentRole(w)})`).join('\n');
   let workerOutputs: Record<string, string> = {};
+
+  if (!supervisor) {
+    callbacks.onInfo?.('当前监督者策略没有可用 LLM 监督者，已回退为按成员顺序执行。');
+    return runSequential(group, userMessage, history, mutedUsers, callbacks, signal, groupContext);
+  }
 
   for (let round = 1; round <= maxRounds; round++) {
     if (signal?.aborted) break;
@@ -1073,6 +1155,8 @@ export async function executeAgentStrategy(
     approvalMode: group.approvalMode,
     showStderr: group.showStderr,
   };
+  const agents = getGroupAgents(group);
+  assertCLIWorkspaceConfigured(agents, mutedUsers, groupContext);
 
   switch (group.strategy) {
     case 'sequential':
