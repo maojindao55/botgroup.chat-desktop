@@ -803,7 +803,9 @@ const CLITaskUI = ({
   const [showAd, setShowAd] = useState(false);
   const [mutedUsers, setMutedUsers] = useState<string[]>([]);
 
+  const chatAreaRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const shouldStickToBottomRef = useRef(true);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const executionControllersRef = useRef(new Map<string, AbortController>());
   const hydratedLogMessageIdsRef = useRef(new Set<string>());
@@ -955,7 +957,28 @@ const CLITaskUI = ({
 
   useEffect(() => { loadAIMembers(); }, [loadAIMembers]);
   useEffect(() => { if (isMobile !== undefined) { setSidebarOpen(!isMobile); setTaskSidebarOpen(!isMobile); } }, [isMobile]);
-  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMessages]);
+
+  const handleChatAreaScroll = () => {
+    const el = chatAreaRef.current;
+    if (!el) return;
+    const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    shouldStickToBottomRef.current = distanceToBottom < 80;
+  };
+
+  const scrollMessagesToBottom = (behavior: ScrollBehavior = 'smooth') => {
+    messagesEndRef.current?.scrollIntoView({ behavior });
+  };
+
+  useEffect(() => {
+    shouldStickToBottomRef.current = true;
+    scrollMessagesToBottom('auto');
+  }, [selectedTaskId]);
+
+  useEffect(() => {
+    if (shouldStickToBottomRef.current) {
+      scrollMessagesToBottom('smooth');
+    }
+  }, [chatMessages]);
 
   useEffect(() => {
     if (!selectedTask) return;
@@ -1332,6 +1355,7 @@ const CLITaskUI = ({
     const targetAgentId = parsed.agentId;
 
     setInputMessage('');
+    shouldStickToBottomRef.current = true;
 
     let activeScope = composeKey;
     beginTaskExecution(activeScope);
@@ -2079,7 +2103,11 @@ const CLITaskUI = ({
               </div>
             </header>
 
-            <div className={styles.chatArea}>
+            <div
+              ref={chatAreaRef}
+              className={styles.chatArea}
+              onScroll={handleChatAreaScroll}
+            >
               {!selectedTask && (
                 <div className={styles.creationFormContainer}>
                   <div className={styles.creationFormCard}>

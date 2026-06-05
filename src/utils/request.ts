@@ -612,9 +612,6 @@ export async function request(url: string, options: RequestInit = {}) {
           // Subscribe BEFORE invoking, so we don't miss the first lines.
           let authErrorDetected = false;
 
-          const streamHandler = createCLIStreamHandler(adapter, { enqueueChunk, enqueueEvent });
-          const isJsonMode = streamHandler.usesJsonModeStderr;
-
           // Track whether we're inside an "intermediate" phase so we can
           // open/close a <details> wrapper around thinking+commands.
           let detailsOpen = false;
@@ -636,6 +633,13 @@ export async function request(url: string, options: RequestInit = {}) {
               enqueueChunk(`\n</details>\n\n`);
             }
           };
+
+          const streamHandler = createCLIStreamHandler(adapter, {
+            enqueueChunk,
+            enqueueEvent,
+            closeIntermediateDetails: closeDetails,
+          });
+          const isJsonMode = streamHandler.usesJsonModeStderr;
 
           unlistenFn = await listen<any>(eventName, (evt) => {
             const payload = evt.payload || {};

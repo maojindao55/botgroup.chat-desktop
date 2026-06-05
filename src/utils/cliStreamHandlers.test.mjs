@@ -165,6 +165,26 @@ function createRecorder() {
 
 {
   const recorder = createRecorder();
+  let closedIntermediate = false;
+  const handler = createCLIStreamHandler('codex', {
+    ...recorder.emitters,
+    closeIntermediateDetails: () => {
+      closedIntermediate = true;
+      recorder.chunks.push('</details>');
+    },
+  });
+
+  assert.equal(handler.handleStdoutLine(JSON.stringify({
+    type: 'item.completed',
+    item: { type: 'agent_message', text: 'final answer' },
+  })), true);
+
+  assert.equal(closedIntermediate, true);
+  assert.match(recorder.chunks.join(''), /<\/details>final answer/);
+}
+
+{
+  const recorder = createRecorder();
   const handler = createCLIStreamHandler('opencode', recorder.emitters);
 
   assert.equal(handler.streamMode, 'opencode-json');

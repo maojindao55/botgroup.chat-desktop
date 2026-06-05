@@ -1,6 +1,7 @@
 export interface CodexJsonParseResult {
   sessionId?: string;
   content?: string;
+  contentKind?: 'agent_message' | 'reasoning';
   error?: string;
   command?: CodexCommandEvent;
 }
@@ -84,9 +85,13 @@ export function parseCodexJsonLine(line: string): CodexJsonParseResult | null {
 
   if (event.type === 'item.completed' && event.item?.type === 'agent_message' && typeof event.item.text === 'string') {
     result.content = `${event.item.text}\n`;
+    result.contentKind = 'agent_message';
   } else if (event.type === 'item.completed' && event.item?.type === 'reasoning' && typeof event.item.text === 'string') {
     const text = escapeHtml(event.item.text.trim()).replace(/\n/g, '\n> ');
-    if (text) result.content = details('💭 思考', `> ${text}`, true);
+    if (text) {
+      result.content = details('💭 思考', `> ${text}`, true);
+      result.contentKind = 'reasoning';
+    }
   } else if (event.type === 'item.started' && event.item?.type === 'command_execution') {
     const command = typeof event.item.command === 'string' && event.item.command.trim()
       ? event.item.command.trim()

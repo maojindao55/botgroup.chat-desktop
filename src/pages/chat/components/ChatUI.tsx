@@ -608,7 +608,9 @@ const ChatUI = () => {
   const [cliSessionPolicy, setCliSessionPolicy] = useState<CLISessionPolicy>('task');
 
   // Refs
+  const chatAreaRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const shouldStickToBottomRef = useRef(true);
   const isInitialized = useRef(false);
   /** 正在生成标题的会话 id，避免重复请求 */
   const titleGenRef = useRef<Set<string>>(new Set());
@@ -997,8 +999,27 @@ const ChatUI = () => {
     });
   };
 
+  const handleChatAreaScroll = () => {
+    const el = chatAreaRef.current;
+    if (!el) return;
+    const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    shouldStickToBottomRef.current = distanceToBottom < 80;
+  };
 
-  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+  const scrollMessagesToBottom = (behavior: ScrollBehavior = 'smooth') => {
+    messagesEndRef.current?.scrollIntoView({ behavior });
+  };
+
+  useEffect(() => {
+    shouldStickToBottomRef.current = true;
+    scrollMessagesToBottom('auto');
+  }, [activeSessionId, group?.id]);
+
+  useEffect(() => {
+    if (shouldStickToBottomRef.current) {
+      scrollMessagesToBottom('smooth');
+    }
+  }, [messages]);
   useEffect(() => { if (messages.length > 0) setShowAd(false); }, [messages]);
 
   // 同步浏览器前进/后退：保持 view / 选中群 与 URL 一致（配合客户端视图与群切换）
@@ -1793,6 +1814,7 @@ const ChatUI = () => {
       content: inputMessage,
       isAI: false,
     };
+    shouldStickToBottomRef.current = true;
     setMessages(prev => [...prev, userMessage]);
     const prompt = inputMessage;
     setInputMessage("");
@@ -1996,7 +2018,11 @@ const ChatUI = () => {
 
 
             {/* Chat Area */}
-            <div className={styles.chatArea}>
+            <div
+              ref={chatAreaRef}
+              className={styles.chatArea}
+              onScroll={handleChatAreaScroll}
+            >
               <div className={styles.mobileOnly}>
                 <AdBannerMobile show={showAd} closeAd={() => setShowAd(false)} />
               </div>

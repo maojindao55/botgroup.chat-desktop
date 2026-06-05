@@ -25,6 +25,7 @@ assert.equal(cleanCliOutputLine('[0m→ [0mRead bubble-sort.htm'), '→ Read bub
 assert.equal(shouldSuppressCliOutputLine('✗ Skill "brainstorming" failed'), true);
 assert.equal(shouldSuppressCliOutputLine('Error: Skill or command "brainstorming" not found. Available: playwright'), true);
 assert.equal(shouldSuppressCliOutputLine('> Sisyphus - Ultraworker · deepseek-v4-flash-free'), true);
+assert.equal(shouldSuppressCliOutputLine('2026-06-05T06:14:37.109399Z ERROR codex_models_manager::manager: failed to refresh available models: timeout waiting for child process to exit'), true);
 assert.equal(shouldSuppressCliOutputLine('I detect exploratory intent'), false);
 
 console.log('cliOutput.test.mjs: ok');

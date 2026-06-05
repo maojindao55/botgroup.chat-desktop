@@ -38,6 +38,7 @@ export type CLIStreamEvent = Record<string, unknown>;
 export interface CLIStreamEmitters {
   enqueueChunk: (content: string) => void;
   enqueueEvent: (payload: CLIStreamEvent) => void;
+  closeIntermediateDetails?: () => void;
 }
 
 export interface CLIStreamHandler {
@@ -118,6 +119,9 @@ export function createCLIStreamHandler(
             }
           } else if (parsed?.content) {
             closeCommandGroups();
+            if (parsed.contentKind === 'agent_message') {
+              emitters.closeIntermediateDetails?.();
+            }
             emitters.enqueueChunk(parsed.content);
           }
         } catch {

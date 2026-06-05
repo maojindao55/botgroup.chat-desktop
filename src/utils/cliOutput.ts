@@ -13,6 +13,7 @@ export function shouldSuppressCliOutputLine(line: string): boolean {
 
   if (!clean) return true;
   if (/^>\s*Sisyphus\s+-\s+Ultraworker\b/.test(clean)) return true;
+  if (/\bERROR\s+codex_models_manager::manager:\s+failed to refresh available models:/i.test(clean)) return true;
   if (/^✗\s*Skill\s+".+"\s+failed$/.test(clean)) return true;
   if (/^Error:\s*Skill or command\s+".+"\s+not found\./.test(clean)) return true;
 

@@ -592,14 +592,34 @@ const AgentChatUI = ({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [mutedUsers, setMutedUsers] = useState<string[]>([]);
 
+  const chatAreaRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const shouldStickToBottomRef = useRef(true);
 
   useEffect(() => {
     if (isMobile !== undefined) setSidebarOpen(!isMobile);
   }, [isMobile]);
 
+  const handleChatAreaScroll = () => {
+    const el = chatAreaRef.current;
+    if (!el) return;
+    const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    shouldStickToBottomRef.current = distanceToBottom < 80;
+  };
+
+  const scrollMessagesToBottom = (behavior: ScrollBehavior = 'smooth') => {
+    messagesEndRef.current?.scrollIntoView({ behavior });
+  };
+
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    shouldStickToBottomRef.current = true;
+    scrollMessagesToBottom('auto');
+  }, [group.id]);
+
+  useEffect(() => {
+    if (shouldStickToBottomRef.current) {
+      scrollMessagesToBottom('smooth');
+    }
   }, [messages]);
 
   const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
@@ -632,6 +652,7 @@ const AgentChatUI = ({
       content: capturedInput,
       isAI: false,
     };
+    shouldStickToBottomRef.current = true;
     setMessages(prev => [...prev, userMsg]);
     setInputMessage('');
     setIsLoading(true);
@@ -820,7 +841,11 @@ const AgentChatUI = ({
 
 
             {/* Chat Area */}
-            <div className={styles.chatArea}>
+            <div
+              ref={chatAreaRef}
+              className={styles.chatArea}
+              onScroll={handleChatAreaScroll}
+            >
               {messages.length === 0 && (
                 <div className={styles.emptyState}>
                   <span className={styles.emptyIcon}>
