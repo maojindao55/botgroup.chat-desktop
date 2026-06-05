@@ -12,6 +12,19 @@ import { te } from '@/i18n/translate';
 import { request } from '@/utils/request';
 import { useAIMemberStore } from '@/store/aiMemberStore';
 import { Blackboard } from './blackboard';
+import type { CLIAgent } from '@/config/aiCharacters';
+import { mapAIMemberToLegacy } from '@/config/aiCharacters';
+import { callCLIAgent as callCLIAgentRaw } from './cliEngine';
+import type { CLIStreamCallback, CLIAgentMeta, CLIRunOptions } from './cliEngine';
+
+/** GroupContext: CLI 成员执行所需的群上下文 */
+interface AgentGroupContext {
+  groupId: string;
+  workspacePath?: string;
+  timeout?: number;
+  approvalMode?: 'auto' | 'ask';
+  showStderr?: boolean;
+}
 
 /** 系统保留的伪 Agent ID 前缀，避免与用户自建 Agent ID 冲突 */
 const SYSTEM_AGENT_PREFIX = '__sys_';
@@ -20,7 +33,7 @@ export function getGroupAgents(group: AgentGroup): AgentMember[] {
   const membersState = useAIMemberStore.getState().members;
   const dbAgents = (group.memberIds || [])
     .map(id => membersState[id])
-    .filter(m => m && m.kind === 'agent')
+    .filter(m => m && (m.kind === 'cli' || m.kind === 'agent'))
     .map(normalizeAgentMember);
   
   if (dbAgents.length > 0) {
@@ -170,7 +183,9 @@ export async function callAgentLLM(
 
 
 /**
- * 执行单个 Agent（含工具调用循环）
+ * 执行单个 Agent（支持 CLI 成员 + 兼容旧 LLM Agent）
+ * 如果成员是 CLI 类型，通过 callCLIAgent 执行本地 CLI 进程
+ * 否则回退到旧的 LLM 调用（兼容老数据）
  * @param agentIdOverride - 可选的自定义 agentId，用于多轮策略中区分同一 Agent 在不同轮次的消息
  */
 async function runSingleAgent(
@@ -180,8 +195,19 @@ async function runSingleAgent(
   callbacks: StreamCallback,
   signal?: AbortSignal,
   agentIdOverride?: string,
+  groupContext?: AgentGroupContext,
 ): Promise<AgentRunResult> {
   const effectiveId = agentIdOverride || agent.id;
+
+  // 检查是否为 CLI 成员
+  const isCLI = (agent as any).kind === 'cli' || (agent as any).cli;
+  if (isCLI && groupContext?.workspacePath) {
+    return runSingleCLIAgent(
+      agent, userMessage, context, callbacks, signal, effectiveId, groupContext,
+    );
+  }
+
+  // 兼容旧的 LLM Agent 调用
   callbacks.onAgentStart(effectiveId, agent.name);
 
   const messages: AgentMessage[] = [
@@ -212,10 +238,6 @@ async function runSingleAgent(
       }, signal);
 
       fullContent += response;
-
-      // 简易工具调用检测：如果 LLM 输出中包含 tool_call 格式标记则尝试执行
-      // 目前工具执行为模拟（返回占位结果），后续可接入真实执行
-      // 注：当 LLM 没有返回工具调用时直接结束循环
       break;
     }
 
@@ -237,6 +259,89 @@ async function runSingleAgent(
   };
 }
 
+/**
+ * 通过 CLI Agent 执行（复用 cliEngine 的 callCLIAgent）
+ */
+async function runSingleCLIAgent(
+  agent: AgentMember,
+  userMessage: string,
+  context: string,
+  callbacks: StreamCallback,
+  signal?: AbortSignal,
+  effectiveId?: string,
+  groupContext?: AgentGroupContext,
+): Promise<AgentRunResult> {
+  const agentId = effectiveId || agent.id;
+  const cwd = groupContext?.workspacePath || '';
+
+  // 将 AIMember 转换为 CLIAgent
+  const cliAgent: CLIAgent = (agent as any).cli
+    ? agent as any
+    : mapAIMemberToLegacy(agent as any) as CLIAgent;
+
+  // 构造 prompt：包含上下文 + 用户消息
+  const prompt = context
+    ? `[上下文信息]\n${context}\n\n[用户消息]\n${userMessage}`
+    : userMessage;
+
+  // 桥接 StreamCallback → CLIStreamCallback
+  const cliCallbacks: CLIStreamCallback = {
+    onAgentStart: (_taskId, _agentId, agentName, _meta) => {
+      callbacks.onAgentStart(agentId, agentName);
+    },
+    onToken: (_taskId, token) => {
+      callbacks.onToken(agentId, token);
+    },
+    onAgentEnd: (_taskId, fullContent) => {
+      callbacks.onAgentEnd(agentId, fullContent);
+    },
+    onError: (_taskId, error) => {
+      callbacks.onError(agentId, error);
+    },
+  };
+
+  const cliOptions: CLIRunOptions = {
+    timeoutMs: groupContext?.timeout ?? 300000,
+    approvalMode: groupContext?.approvalMode ?? 'auto',
+    showStderr: groupContext?.showStderr ?? true,
+    signal,
+  };
+
+  const ctx = {
+    agent: cliAgent,
+    cwd,
+    isolation: 'sameWorkspace' as const,
+  };
+
+  const meta: CLIAgentMeta = {};
+
+  try {
+    const result = await callCLIAgentRaw(
+      groupContext?.groupId || 'agent-group',
+      ctx,
+      prompt,
+      cliOptions,
+      cliCallbacks,
+      meta,
+    );
+
+    return {
+      agentId,
+      agentName: agent.name,
+      content: result.content,
+    };
+  } catch (error: any) {
+    if (error?.name === 'AbortError') throw error;
+    const errMsg = error?.message || te('errors.unknownError');
+    callbacks.onError(agentId, errMsg);
+    return {
+      agentId,
+      agentName: agent.name,
+      content: te('errors.agentExecutionError', { message: errMsg }),
+    };
+  }
+}
+
 
 // ============ 策略实现 ============
 
@@ -250,6 +355,7 @@ async function runSequential(
   mutedUsers: string[],
   callbacks: StreamCallback,
   signal?: AbortSignal,
+  groupContext?: AgentGroupContext,
 ): Promise<AgentRunResult[]> {
   const results: AgentRunResult[] = [];
   let accumulatedContext = history;
@@ -258,7 +364,7 @@ async function runSequential(
     if (mutedUsers.includes(agent.id)) continue;
     if (signal?.aborted) break;
 
-    const result = await runSingleAgent(agent, userMessage, accumulatedContext, callbacks, signal);
+    const result = await runSingleAgent(agent, userMessage, accumulatedContext, callbacks, signal, undefined, groupContext);
     results.push(result);
 
     // 后续 Agent 能看到前面的输出
@@ -281,6 +387,7 @@ async function runRouter(
   mutedUsers: string[],
   callbacks: StreamCallback,
   signal?: AbortSignal,
+  groupContext?: AgentGroupContext,
 ): Promise<AgentRunResult[]> {
   const activeAgents = getGroupAgents(group).filter(a => !mutedUsers.includes(a.id));
   if (activeAgents.length === 0) return [];
@@ -342,7 +449,7 @@ ${agentList}`;
     const agent = activeAgents.find(a => a.id === id);
     if (!agent) continue;
 
-    const result = await runSingleAgent(agent, userMessage, accumulatedContext, callbacks, signal);
+    const result = await runSingleAgent(agent, userMessage, accumulatedContext, callbacks, signal, undefined, groupContext);
     results.push(result);
     accumulatedContext += `\n${agent.name}: ${result.content}`;
     await new Promise(resolve => setTimeout(resolve, 500));
@@ -362,11 +469,12 @@ async function runDiscussion(
   mutedUsers: string[],
   callbacks: StreamCallback,
   signal?: AbortSignal,
+  groupContext?: AgentGroupContext,
 ): Promise<AgentRunResult[]> {
   const activeAgents = getGroupAgents(group).filter(a => !mutedUsers.includes(a.id));
   const settled = await Promise.allSettled(
     activeAgents.map(agent =>
-      runSingleAgent(agent, userMessage, history, callbacks, signal)
+      runSingleAgent(agent, userMessage, history, callbacks, signal, undefined, groupContext)
     )
   );
   // 收集成功的结果，失败的已通过 onError 回调通知
@@ -385,6 +493,7 @@ async function runReAct(
   mutedUsers: string[],
   callbacks: StreamCallback,
   signal?: AbortSignal,
+  groupContext?: AgentGroupContext,
 ): Promise<AgentRunResult[]> {
   const activeAgents = getGroupAgents(group).filter(a => !mutedUsers.includes(a.id));
   if (activeAgents.length === 0) return [];
@@ -457,7 +566,7 @@ ${accumulatedContext}
       const targetAgent = activeAgents.find(a => a.id === decision.agentId);
       if (targetAgent) {
         const task = decision.task || userMessage;
-        const result = await runSingleAgent(targetAgent, task, accumulatedContext, callbacks, signal, `${targetAgent.id}_r${round}`);
+        const result = await runSingleAgent(targetAgent, task, accumulatedContext, callbacks, signal, `${targetAgent.id}_r${round}`, groupContext);
         results.push(result);
         accumulatedContext += `\n${targetAgent.name}: ${result.content}`;
       }
@@ -479,6 +588,7 @@ async function runPipeline(
   mutedUsers: string[],
   callbacks: StreamCallback,
   signal?: AbortSignal,
+  groupContext?: AgentGroupContext,
 ): Promise<AgentRunResult[]> {
   const activeAgents = getGroupAgents(group).filter(a => !mutedUsers.includes(a.id));
   if (activeAgents.length === 0) return [];
@@ -514,7 +624,7 @@ ${userMessage}
 ${stageInput}`;
     }
 
-    const result = await runSingleAgent(agent, pipelinePrompt, history, callbacks, signal);
+    const result = await runSingleAgent(agent, pipelinePrompt, history, callbacks, signal, undefined, groupContext);
     results.push(result);
 
     // 当前 Agent 的输出作为下一阶段的输入
@@ -544,6 +654,7 @@ async function runDebate(
   mutedUsers: string[],
   callbacks: StreamCallback,
   signal?: AbortSignal,
+  groupContext?: AgentGroupContext,
 ): Promise<AgentRunResult[]> {
   const activeAgents = getGroupAgents(group).filter(a => !mutedUsers.includes(a.id));
   if (activeAgents.length === 0) return [];
@@ -557,7 +668,7 @@ async function runDebate(
   // Round 1：所有 Agent 并行独立回答
   const round1Settled = await Promise.allSettled(
     activeAgents.map(agent =>
-      runSingleAgent(agent, userMessage, history, callbacks, signal, `${agent.id}_r1`)
+      runSingleAgent(agent, userMessage, history, callbacks, signal, `${agent.id}_r1`, groupContext)
     )
   );
 
@@ -592,7 +703,7 @@ ${othersOpinions}
 
 请审阅以上观点，更新你的立场。你可以坚持、修正或补充自己的观点。`;
 
-        return runSingleAgent(agent, debatePrompt, '', callbacks, signal, `${agent.id}_r${round}`);
+        return runSingleAgent(agent, debatePrompt, '', callbacks, signal, `${agent.id}_r${round}`, groupContext);
       })
     );
 
@@ -662,6 +773,7 @@ async function runMapReduce(
   mutedUsers: string[],
   callbacks: StreamCallback,
   signal?: AbortSignal,
+  groupContext?: AgentGroupContext,
 ): Promise<AgentRunResult[]> {
   const activeAgents = getGroupAgents(group).filter(a => !mutedUsers.includes(a.id));
   if (activeAgents.length === 0) return [];
@@ -713,7 +825,7 @@ async function runMapReduce(
 原始需求：${userMessage}
 
 你的子任务：${task}`;
-      return runSingleAgent(agent, taskPrompt, history, callbacks, signal);
+      return runSingleAgent(agent, taskPrompt, history, callbacks, signal, undefined, groupContext);
     })
   );
   const executeResults = executeSettled
@@ -777,6 +889,7 @@ async function runSupervisor(
   mutedUsers: string[],
   callbacks: StreamCallback,
   signal?: AbortSignal,
+  groupContext?: AgentGroupContext,
 ): Promise<AgentRunResult[]> {
   const activeAgents = getGroupAgents(group).filter(a => !mutedUsers.includes(a.id));
   if (activeAgents.length <= 1) {
@@ -837,7 +950,7 @@ ${workerList}`;
         assignments.map(({ agentId, task }) => {
           const worker = workers.find(w => w.id === agentId);
           if (!worker) return Promise.reject(new Error(`Worker ${agentId} not found`));
-          return runSingleAgent(worker, task, history, callbacks, signal, `${agentId}_r${round}`);
+          return runSingleAgent(worker, task, history, callbacks, signal, `${agentId}_r${round}`, groupContext);
         })
       );
 
@@ -919,7 +1032,7 @@ ${workerOutputs[agentId] || '(无)'}
 监督者的修改要求：
 ${instruction}`;
 
-            return runSingleAgent(worker, revisionPrompt, '', callbacks, signal, `${agentId}_r${round}`);
+            return runSingleAgent(worker, revisionPrompt, '', callbacks, signal, `${agentId}_r${round}`, groupContext);
           })
         );
 
@@ -953,26 +1066,33 @@ export async function executeAgentStrategy(
   options?: AgentEngineOptions,
 ): Promise<AgentRunResult[]> {
   const signal = options?.signal;
+  const groupContext: AgentGroupContext = {
+    groupId: group.id,
+    workspacePath: group.workspacePath,
+    timeout: group.timeout,
+    approvalMode: group.approvalMode,
+    showStderr: group.showStderr,
+  };
 
   switch (group.strategy) {
     case 'sequential':
-      return runSequential(group, userMessage, history, mutedUsers, callbacks, signal);
+      return runSequential(group, userMessage, history, mutedUsers, callbacks, signal, groupContext);
     case 'router':
-      return runRouter(group, userMessage, history, mutedUsers, callbacks, signal);
+      return runRouter(group, userMessage, history, mutedUsers, callbacks, signal, groupContext);
     case 'discussion':
-      return runDiscussion(group, userMessage, history, mutedUsers, callbacks, signal);
+      return runDiscussion(group, userMessage, history, mutedUsers, callbacks, signal, groupContext);
     case 'react':
-      return runReAct(group, userMessage, history, mutedUsers, callbacks, signal);
+      return runReAct(group, userMessage, history, mutedUsers, callbacks, signal, groupContext);
     case 'pipeline':
-      return runPipeline(group, userMessage, history, mutedUsers, callbacks, signal);
+      return runPipeline(group, userMessage, history, mutedUsers, callbacks, signal, groupContext);
     case 'debate':
-      return runDebate(group, userMessage, history, mutedUsers, callbacks, signal);
+      return runDebate(group, userMessage, history, mutedUsers, callbacks, signal, groupContext);
     case 'mapreduce':
-      return runMapReduce(group, userMessage, history, mutedUsers, callbacks, signal);
+      return runMapReduce(group, userMessage, history, mutedUsers, callbacks, signal, groupContext);
     case 'supervisor':
-      return runSupervisor(group, userMessage, history, mutedUsers, callbacks, signal);
+      return runSupervisor(group, userMessage, history, mutedUsers, callbacks, signal, groupContext);
     default:
-      return runSequential(group, userMessage, history, mutedUsers, callbacks, signal);
+      return runSequential(group, userMessage, history, mutedUsers, callbacks, signal, groupContext);
   }
 }
 

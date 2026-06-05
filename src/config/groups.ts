@@ -294,11 +294,15 @@ export interface AgentGroup {
   type: 'agent';
   name: string;
   description: string;
-  memberIds: string[];              // 引用 ai_members 中的角色 id
+  memberIds: string[];              // 引用 ai_members 中的角色 id（现在引用 kind=cli 成员）
   agents?: AgentMember[];            // 兼容老版本
   strategy: AgentStrategy;          // 执行策略
   coordinatorPrompt?: string;       // 协调者提示词（react/router/discussion 模式用）
   maxRounds: number;                // 多轮协作最大轮数，默认 3
+  workspacePath?: string;           // CLI 成员执行目录（绝对路径）
+  timeout?: number;                 // 单次执行超时(ms)，默认 300000
+  approvalMode?: 'auto' | 'ask';   // 执行审批模式
+  showStderr?: boolean;             // 是否展示 stderr 输出
 }
 
 // 联合类型

@@ -8,12 +8,13 @@ import { Drawer, Input, InputNumber, Tooltip, Button } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { Avatar as LobeAvatar, ActionIcon } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
-import { Mic, MicOff, X } from 'lucide-react';
+import { Mic, MicOff, X, FolderOpen } from 'lucide-react';
 import type { AgentGroup, AgentStrategy } from '@/config/groups';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
 import { MemberPicker } from './MemberPicker';
 import { useAIMemberStore } from '@/store/aiMemberStore';
 import { agentWorkflowTemplates } from '@/config/groupProduct';
+import { invoke } from '@tauri-apps/api/core';
 
 interface AgentGroupSettingsProps {
   open: boolean;
@@ -180,7 +181,7 @@ export const AgentGroupSettings = ({
   const currentMemberIds = group.memberIds || group.agents?.map((a) => a.id) || [];
   const currentAgents = currentMemberIds
     .map((id) => allMembers[id])
-    .filter((m) => m && m.kind === 'agent');
+    .filter((m) => m && (m.kind === 'cli' || m.kind === 'agent'));
   // 模板匹配逻辑放宽：只要 strategy 和 maxRounds 匹配即高亮模板
   // 用户修改 coordinatorPrompt 不应导致模板高亮消失
   const activeTemplate = agentWorkflowTemplates.find((item) =>
@@ -312,7 +313,7 @@ export const AgentGroupSettings = ({
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
           <span style={{ fontSize: 14, fontWeight: 500 }}>{t('settings:agentGroup.manageExperts')}</span>
           <MemberPicker
-            kind="agent"
+            kind="cli"
             value={currentMemberIds}
             onChange={(newIds) => onUpdateGroup({ memberIds: newIds })}
             placeholder={t('settings:agentGroup.pickExpertsPlaceholder')}
@@ -321,6 +322,57 @@ export const AgentGroupSettings = ({
             {t('settings:agentGroup.libraryHint')}
           </div>
         </div>
+
+      {/* Workspace directory */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <label style={{ fontSize: 14, fontWeight: 500 }}>工作目录</label>
+        <div style={{ fontSize: 11, color: 'rgba(0,0,0,0.45)' }}>
+          CLI 成员执行任务的工作目录
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input
+            type="text"
+            placeholder="/Users/you/projects/your-repo"
+            value={group.workspacePath || ''}
+            onChange={(e) => onUpdateGroup({ workspacePath: e.target.value })}
+            style={{
+              flex: 1,
+              fontFamily: 'var(--ant-font-family-code)',
+              padding: '4px 8px',
+              borderRadius: 6,
+              border: '1px solid #d9d9d9',
+              fontSize: 13,
+            }}
+          />
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                const selected = await invoke<string | null>('select_directory');
+                if (selected) {
+                  onUpdateGroup({ workspacePath: selected });
+                }
+              } catch (e) {
+                console.error('Failed to select directory:', e);
+              }
+            }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '4px 12px',
+              borderRadius: 6,
+              border: '1px solid #d9d9d9',
+              background: 'transparent',
+              cursor: 'pointer',
+              fontSize: 13,
+            }}
+          >
+            <FolderOpen size={14} />
+            选择
+          </button>
+        </div>
+      </div>
 
         <div style={{ marginBottom: 12 }}>
           <span style={{ fontSize: 14, fontWeight: 500 }}>{t('settings:agentGroup.experts', { count: currentAgents.length })}</span>

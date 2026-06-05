@@ -88,7 +88,7 @@ interface CLIWorktreePrepareResult {
   runId: string;
 }
 
-interface AgentExecutionContext {
+export interface AgentExecutionContext {
   agent: CLIAgent;
   /** 实际执行 cwd */
   cwd: string;
@@ -127,7 +127,7 @@ const READ_ONLY_PROMPT_PREFIX = `你正在参与 CLI Agent 讨论模式。
 /**
  * 调用单个 CLI Agent，通过 /api/cli/run 流式执行。
  */
-async function callCLIAgent(
+export async function callCLIAgent(
   groupId: string,
   ctx: AgentExecutionContext,
   prompt: string,

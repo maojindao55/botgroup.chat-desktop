@@ -427,7 +427,7 @@ const AgentChatUI = ({
   const currentMemberIds = group.memberIds || group.agents?.map(a => a.id) || [];
   const dbAgents = currentMemberIds
     .map(id => members[id])
-    .filter(m => m && m.kind === 'agent');
+    .filter(m => m && (m.kind === 'cli' || m.kind === 'agent'));
   // 优先 store 数据；store 未 ready 时回落到群里的内联 agents（兼容旧数据）
   const currentAgents = dbAgents.length > 0 ? dbAgents : (group.agents || []);
   const mentionCandidates = useMemo(
