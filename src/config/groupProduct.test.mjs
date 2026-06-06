@@ -207,6 +207,21 @@ assert.match(agentChatUI, /useTranslation/);
 assert.match(agentChatUI, /chat:agentChat/);
 assert.match(agentChatUI, /settings:strategies/);
 assert.match(agentChatUI, /AppSettingsModal/);
+assert.match(
+  agentChatUI,
+  /const hasAnySessionForGroup = chatSessions\.some\(s => s\.groupId === group\.id\);/,
+  'AgentChatUI must not clear a selected conv while session storage is still empty during mount',
+);
+assert.match(
+  agentChatUI,
+  /if \(!hasAnySessionForGroup\) return;/,
+  'AgentChatUI should only invalidate a missing selected conv after this group has known sessions',
+);
+assert.match(
+  agentChatUI,
+  /const sessionId = ensureActiveSession\(capturedInput\);[\s\S]*const toolSessionScope = sessionId;/,
+  'AgentChatUI first-turn CLI tool sessions must use the newly created conversation id',
+);
 for (const oldCopy of ['Agent 协作群', 'AI 群员库', '专家群友将按群规协作回复', '正在加载资源库']) {
   assert.doesNotMatch(agentChatUI, new RegExp(oldCopy));
 }

@@ -38,6 +38,7 @@ export type CLIStreamEvent = Record<string, unknown>;
 export interface CLIStreamEmitters {
   enqueueChunk: (content: string) => void;
   enqueueEvent: (payload: CLIStreamEvent) => void;
+  closeIntermediateDetails?: () => void;
 }
 
 export interface CLIStreamHandler {
@@ -118,6 +119,9 @@ export function createCLIStreamHandler(
             }
           } else if (parsed?.content) {
             closeCommandGroups();
+            if (parsed.contentKind === 'agent_message') {
+              emitters.closeIntermediateDetails?.();
+            }
             emitters.enqueueChunk(parsed.content);
           }
         } catch {
@@ -255,6 +259,7 @@ export function createCLIStreamHandler(
     let commandIndex = 0;
     let thinkingBuffer = '';
     let lastSummaryText = '';
+    let pendingGeneratedImagePaths: string[] = [];
 
     const ensureCommandGroupOpen = () => {
       if (!commandGroupOpen) {
@@ -278,11 +283,26 @@ export function createCLIStreamHandler(
       thinkingBuffer = '';
     };
 
+    const consumeGeneratedImages = (text: string) => {
+      const paths = pendingGeneratedImagePaths;
+      pendingGeneratedImagePaths = [];
+      return paths.filter((path) => path && !text.includes(path));
+    };
+
+    const renderGeneratedImages = (paths: string[]) => paths
+      .map((path, index) => `![generateImage${paths.length > 1 ? ` ${index + 1}` : ''}](${path})`)
+      .join('\n\n');
+
     const enqueueSummary = (text: string) => {
-      if (!shouldEmitCursorSummary(text, lastSummaryText)) return;
+      const imagePaths = consumeGeneratedImages(text);
+      const shouldEmitSummary = shouldEmitCursorSummary(text, lastSummaryText);
+      if (!shouldEmitSummary && imagePaths.length === 0) return;
       lastSummaryText = text.trim();
       closeCommandGroups();
-      emitters.enqueueChunk(text.endsWith('\n') ? text : `${text}\n\n`);
+      const body = shouldEmitSummary
+        ? [text.trimEnd(), renderGeneratedImages(imagePaths)].filter(Boolean).join('\n\n')
+        : renderGeneratedImages(imagePaths);
+      emitters.enqueueChunk(body.endsWith('\n') ? body : `${body}\n\n`);
     };
 
     return {
@@ -322,6 +342,12 @@ export function createCLIStreamHandler(
         if (parsed?.resultContent) {
           flushThinking();
           enqueueSummary(parsed.resultContent);
+        }
+        if (parsed?.generatedImagePaths?.length) {
+          pendingGeneratedImagePaths = Array.from(new Set([
+            ...pendingGeneratedImagePaths,
+            ...parsed.generatedImagePaths,
+          ]));
         }
         if (parsed?.command) {
           if (parsed.command.phase === 'started') {

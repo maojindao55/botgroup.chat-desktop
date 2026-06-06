@@ -37,7 +37,7 @@ const {
     item: { type: 'agent_message', text: 'done' },
   }));
 
-  assert.deepEqual(parsed, { content: 'done\n' });
+  assert.deepEqual(parsed, { content: 'done\n', contentKind: 'agent_message' });
 }
 
 {
@@ -48,6 +48,7 @@ const {
 
   assert.match(parsed.content, /<details open><summary>💭 思考<\/summary>/);
   assert.match(parsed.content, /> Need inspect files/);
+  assert.equal(parsed.contentKind, 'reasoning');
 }
 
 {

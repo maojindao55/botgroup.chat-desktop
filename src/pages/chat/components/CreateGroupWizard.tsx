@@ -350,6 +350,10 @@ export const CreateGroupWizard = ({
         strategy,
         coordinatorPrompt: coordinatorPrompt || undefined,
         maxRounds,
+        workspacePath,
+        approvalMode,
+        timeout,
+        showStderr: true,
       } as AgentGroup;
     }
 
@@ -369,6 +373,7 @@ export const CreateGroupWizard = ({
         return false;
       case 'config':
         if (groupType === 'cli' && !isTemplateMode) return workspacePath.trim().length > 0;
+        if (groupType === 'agent') return workspacePath.trim().length > 0;
         return true;
       default: return true;
     }
@@ -439,7 +444,7 @@ export const CreateGroupWizard = ({
     </div>
   );
 
-  const memberKind = groupType === 'ai' ? 'llm' as const : groupType === 'cli' ? 'cli' as const : 'agent' as const;
+  const memberKind = groupType === 'ai' ? 'llm' as const : 'cli' as const;
   const pickableMemberCount = useMemo(
     () => getPickableMembers(members, memberKind).length,
     [members, memberKind],
@@ -511,7 +516,7 @@ export const CreateGroupWizard = ({
           renderEmptyMembers('expert')
         ) : (
           <MemberPicker
-            kind="agent"
+            kind="cli"
             value={selectedAgentMembers}
             onChange={setSelectedAgentMembers}
             placeholder={t('wizard:membersStep.expertPlaceholder')}
@@ -719,6 +724,25 @@ export const CreateGroupWizard = ({
 
   const renderAgentConfigStep = () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div>
+        <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 6 }}>{t('wizard:configStep.workspacePath')}</label>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Input
+            placeholder="/Users/you/projects/your-repo"
+            value={workspacePath}
+            onChange={e => setWorkspacePath(e.target.value)}
+            style={{ flex: 1, fontFamily: 'var(--ant-font-family-code)' }}
+          />
+          <Button icon={<FolderOpen size={14} />}
+            onClick={async () => {
+              try {
+                const selected = await invoke<string | null>('select_directory');
+                if (selected) setWorkspacePath(selected);
+              } catch (e) { console.error('Failed to select directory:', e); }
+            }}>{t('common:actions.select')}</Button>
+        </div>
+        <p style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginTop: 6 }}>{t('wizard:configStep.workspaceHint')}</p>
+      </div>
       <div>
         <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 8 }}>{t('wizard:configStep.agentCollaboration')}</label>
         {agentWorkflowTemplates.map(item => (

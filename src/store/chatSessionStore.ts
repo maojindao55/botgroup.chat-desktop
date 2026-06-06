@@ -247,17 +247,20 @@ export const useChatSessionStore = create<ChatSessionStore>()(
       },
 
       replaceMessages: (sessionId, messages) => {
-        set(state => ({
-          sessions: state.sessions.map(s => {
+        set(state => {
+          let changed = false;
+          const sessions = state.sessions.map(s => {
             if (s.id !== sessionId) return s;
             const clamped = clampSessionMessages(sanitizeMessagesForStorage(messages));
             // 内容无变化则不更新 updatedAt，避免会话列表无谓重排
             if (messagesSignature(s.messages) === messagesSignature(clamped)) {
               return s;
             }
+            changed = true;
             return { ...s, messages: clamped, updatedAt: bumpNow() };
-          }),
-        }));
+          });
+          return changed ? { sessions } : state;
+        });
       },
     }),
     {

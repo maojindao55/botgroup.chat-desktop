@@ -32,6 +32,7 @@ pub fn run() {
             api::get_claw_messages,
             api::send_claw_message,
             api::select_directory,
+            api::save_image_as,
             api::create_workspace_directory,
             api::list_ai_members,
             api::get_ai_member,

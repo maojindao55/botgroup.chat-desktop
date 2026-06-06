@@ -158,6 +158,51 @@ const {
 }
 
 {
+  const parsed = parseCursorJsonLine(JSON.stringify({
+    type: 'tool_call',
+    subtype: 'completed',
+    tool_call: {
+      generateImageToolCall: {
+        result: {
+          success: {
+            images: [{ path: 'vibe_images/rain-homework.png' }],
+            output: 'saved to /Users/hongbin9/out.png',
+          },
+        },
+      },
+    },
+  }));
+
+  assert.deepEqual(parsed?.command, {
+    phase: 'tool_completed',
+    label: 'generateImage 完成',
+  });
+  assert.deepEqual(parsed?.generatedImagePaths, [
+    'vibe_images/rain-homework.png',
+    '/Users/hongbin9/out.png',
+  ]);
+}
+
+{
+  const parsed = parseCursorJsonLine(JSON.stringify({
+    type: 'tool_call',
+    subtype: 'completed',
+    tool_call: {
+      generateImageToolCall: {
+        result: {
+          success: {
+            image_base64: `data:image/png;base64,${'A'.repeat(12000)}/not-a-real-file.png${'B'.repeat(12000)}`,
+            output: 'saved to /Users/hongbin9/real-output.png',
+          },
+        },
+      },
+    },
+  }));
+
+  assert.deepEqual(parsed?.generatedImagePaths, ['/Users/hongbin9/real-output.png']);
+}
+
+{
   const content = [
     renderCursorCommandGroupStart(),
     renderCursorCommandStarted('ls -la', 1),

@@ -3,6 +3,7 @@ export interface CursorJsonParseResult {
   content?: string;
   /** result 事件中的最终摘要（success） */
   resultContent?: string;
+  generatedImagePaths?: string[];
   error?: string;
   command?: CursorCommandEvent;
   thinking?: {
@@ -171,6 +172,80 @@ function nonShellToolCompleted(event: any): CursorCommandEvent | undefined {
   return { phase: 'tool_completed', label };
 }
 
+const imagePathPattern = /(?:file:\/\/|(?<![A-Za-z])[A-Za-z]:[\\/]|\/|(?:\.{1,2}\/)?[A-Za-z0-9_.-]+\/)[^\s<>"'`|]*?\.(?:png|jpe?g|gif|webp|svg|bmp|ico|avif)(?:[?#][^\s<>"'`|)]*)?/gi;
+const maxImagePathScanLength = 8192;
+const binaryLikeKeyPattern = /(?:base64|data|bytes|buffer|blob|b64)/i;
+const pathLikeKeyPattern = /(?:path|paths|file|files|filename|url|uri|href|image|images)/i;
+const textLikeKeyPattern = /(?:output|stdout|stderr|message|text|content|result|summary)/i;
+
+function stripPathPunctuation(path: string): string {
+  return path.replace(/[),.;:!?，。；：！？]+$/g, '');
+}
+
+function shouldScanImagePathString(value: string, key: string): boolean {
+  if (!value.trim()) return false;
+  if (binaryLikeKeyPattern.test(key)) return false;
+  if (/^data:image\//i.test(value.trim())) return false;
+  if (pathLikeKeyPattern.test(key)) return value.length <= maxImagePathScanLength;
+  if (textLikeKeyPattern.test(key)) return value.length <= maxImagePathScanLength;
+  if (value.length > 512) return false;
+  imagePathPattern.lastIndex = 0;
+  const matched = imagePathPattern.test(value);
+  imagePathPattern.lastIndex = 0;
+  return matched;
+}
+
+function collectImagePathCandidateStrings(value: unknown, output: string[], key = '', depth = 0): void {
+  if (depth > 8 || value === undefined || value === null) return;
+  if (typeof value === 'string') {
+    if (shouldScanImagePathString(value, key)) output.push(value);
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectImagePathCandidateStrings(item, output, key, depth + 1));
+    return;
+  }
+  if (typeof value === 'object') {
+    Object.entries(value as Record<string, unknown>).forEach(([childKey, item]) => {
+      collectImagePathCandidateStrings(item, output, childKey, depth + 1);
+    });
+  }
+}
+
+function extractImagePathsFromText(text: string): string[] {
+  const paths: string[] = [];
+  for (const match of text.matchAll(imagePathPattern)) {
+    const path = stripPathPunctuation(match[0]);
+    if (path) paths.push(path);
+  }
+  return paths;
+}
+
+function isGenerateImageToolKey(key: string): boolean {
+  const normalized = key.replace(/[^a-z0-9]/gi, '').toLowerCase();
+  return normalized.includes('generateimage') || (normalized.includes('generate') && normalized.includes('image'));
+}
+
+function extractGeneratedImagePaths(event: any): string[] {
+  const toolCall = event?.tool_call;
+  if (!toolCall || typeof toolCall !== 'object') return [];
+
+  const imageToolKey = Object.keys(toolCall).find((key) => key.endsWith('ToolCall') && isGenerateImageToolKey(key));
+  if (!imageToolKey) return [];
+
+  const imageToolCall = toolCall[imageToolKey];
+  if (!imageToolCall || typeof imageToolCall !== 'object') return [];
+
+  const resultPayload = imageToolCall.result ?? imageToolCall.output ?? imageToolCall.content;
+  if (resultPayload === undefined || resultPayload === null) return [];
+
+  const strings: string[] = [];
+  collectImagePathCandidateStrings(resultPayload, strings);
+
+  const paths = strings.flatMap(extractImagePathsFromText);
+  return Array.from(new Set(paths));
+}
+
 export function parseCursorJsonLine(line: string): CursorJsonParseResult | null {
   let event: any;
   try {
@@ -213,6 +288,8 @@ export function parseCursorJsonLine(line: string): CursorJsonParseResult | null 
     } else {
       const toolCompleted = nonShellToolCompleted(event);
       if (toolCompleted) result.command = toolCompleted;
+      const generatedImagePaths = extractGeneratedImagePaths(event);
+      if (generatedImagePaths.length) result.generatedImagePaths = generatedImagePaths;
     }
   } else if (event.type === 'result') {
     if (event.is_error) {

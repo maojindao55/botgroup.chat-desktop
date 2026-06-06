@@ -165,6 +165,26 @@ function createRecorder() {
 
 {
   const recorder = createRecorder();
+  let closedIntermediate = false;
+  const handler = createCLIStreamHandler('codex', {
+    ...recorder.emitters,
+    closeIntermediateDetails: () => {
+      closedIntermediate = true;
+      recorder.chunks.push('</details>');
+    },
+  });
+
+  assert.equal(handler.handleStdoutLine(JSON.stringify({
+    type: 'item.completed',
+    item: { type: 'agent_message', text: 'final answer' },
+  })), true);
+
+  assert.equal(closedIntermediate, true);
+  assert.match(recorder.chunks.join(''), /<\/details>final answer/);
+}
+
+{
+  const recorder = createRecorder();
   const handler = createCLIStreamHandler('opencode', recorder.emitters);
 
   assert.equal(handler.streamMode, 'opencode-json');
@@ -198,6 +218,46 @@ function createRecorder() {
     { type: 'tool_session', adapter: 'qodercli', sessionId: 'qoder-session' },
   ]);
   assert.equal(recorder.chunks.join(''), 'hello from qoder');
+}
+
+{
+  const recorder = createRecorder();
+  const handler = createCLIStreamHandler('cursor', recorder.emitters);
+
+  handler.handleStdoutLine(JSON.stringify({
+    type: 'tool_call',
+    subtype: 'started',
+    tool_call: {
+      generateImageToolCall: {
+        args: { prompt: 'rainy homework illustration' },
+      },
+    },
+  }));
+  handler.handleStdoutLine(JSON.stringify({
+    type: 'tool_call',
+    subtype: 'completed',
+    tool_call: {
+      generateImageToolCall: {
+        result: {
+          success: {
+            images: [{ path: 'vibe_images/rain-homework.png' }],
+          },
+        },
+      },
+    },
+  }));
+  handler.handleStdoutLine(JSON.stringify({
+    type: 'result',
+    subtype: 'success',
+    is_error: false,
+    result: '画好了！\n\n图片应该已经在对话里显示了。',
+  }));
+
+  const content = recorder.chunks.join('');
+  assert.match(content, /<details open data-cli-command-group="cursor">/);
+  assert.match(content, /✓ generateImage 完成/);
+  assert.match(content, /<\/details>\n\n画好了！/);
+  assert.match(content, /!\[generateImage\]\(vibe_images\/rain-homework\.png\)/);
 }
 
 {
