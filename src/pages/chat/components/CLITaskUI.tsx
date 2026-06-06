@@ -2327,7 +2327,7 @@ const CLITaskUI = ({
                             )}
                           </div>
                           <div className={cx(bubbleClass, 'chat-message')}>
-                            <ChatMarkdown content={message.content} isUser={isUser} />
+                            <ChatMarkdown content={message.content} isUser={isUser} basePath={message.cliCwd || workspacePath} />
                             {isStreaming && (
                               <span className={cx('typing-indicator', styles.typingCursor)}>▋</span>
                             )}

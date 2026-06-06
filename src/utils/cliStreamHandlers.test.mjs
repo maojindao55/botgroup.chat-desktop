@@ -222,6 +222,46 @@ function createRecorder() {
 
 {
   const recorder = createRecorder();
+  const handler = createCLIStreamHandler('cursor', recorder.emitters);
+
+  handler.handleStdoutLine(JSON.stringify({
+    type: 'tool_call',
+    subtype: 'started',
+    tool_call: {
+      generateImageToolCall: {
+        args: { prompt: 'rainy homework illustration' },
+      },
+    },
+  }));
+  handler.handleStdoutLine(JSON.stringify({
+    type: 'tool_call',
+    subtype: 'completed',
+    tool_call: {
+      generateImageToolCall: {
+        result: {
+          success: {
+            images: [{ path: 'vibe_images/rain-homework.png' }],
+          },
+        },
+      },
+    },
+  }));
+  handler.handleStdoutLine(JSON.stringify({
+    type: 'result',
+    subtype: 'success',
+    is_error: false,
+    result: '画好了！\n\n图片应该已经在对话里显示了。',
+  }));
+
+  const content = recorder.chunks.join('');
+  assert.match(content, /<details open data-cli-command-group="cursor">/);
+  assert.match(content, /✓ generateImage 完成/);
+  assert.match(content, /<\/details>\n\n画好了！/);
+  assert.match(content, /!\[generateImage\]\(vibe_images\/rain-homework\.png\)/);
+}
+
+{
+  const recorder = createRecorder();
   const handler = createCLIStreamHandler('custom-cli', recorder.emitters);
 
   assert.equal(handler.streamMode, 'raw');

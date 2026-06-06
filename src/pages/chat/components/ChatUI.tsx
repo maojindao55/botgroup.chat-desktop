@@ -2079,6 +2079,7 @@ const ChatUI = () => {
                           <ChatMarkdown
                             content={message.content}
                             isUser={isUser}
+                            basePath={message.cliCwd || workspacePath}
                           />
                           {isStreaming && (
                             <span className={cx('typing-indicator', styles.typingCursor)}>▋</span>

@@ -25,7 +25,15 @@
       "assetProtocol": {
         "enable": true,
         "scope": [
-          "$APPDATA/**"
+          "$APPDATA/**",
+          "$HOME/**",
+          "$HOME/.*/**",
+          "$HOME/**/.*/**",
+          "$TEMP/**",
+          "/tmp/**",
+          "/private/tmp/**",
+          "/var/folders/**",
+          "/private/var/folders/**"
         ]
       }
     }

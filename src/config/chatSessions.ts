@@ -18,6 +18,10 @@ export interface ChatSessionMessage {
   isAI: boolean;
   isError?: boolean;
   createdAt?: string;
+  /** CLI agent 一次任务 id，用于查执行日志 */
+  agentTaskId?: string;
+  /** CLI adapter（codex/claude/opencode/...），日志 Modal 区分输出格式时使用 */
+  adapter?: string;
 }
 
 /** 创建会话时的群行为快照，避免后续改群设置影响历史会话语义 */
@@ -123,6 +127,8 @@ export function sanitizeMessageForStorage(m: ChatSessionMessage): ChatSessionMes
   };
   if (m.isError) sanitized.isError = true;
   if (m.createdAt) sanitized.createdAt = m.createdAt;
+  if (m.agentTaskId) sanitized.agentTaskId = m.agentTaskId;
+  if (m.adapter) sanitized.adapter = m.adapter;
   return sanitized;
 }
 

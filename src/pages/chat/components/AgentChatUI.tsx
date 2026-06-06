@@ -4,21 +4,31 @@
  */
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Send, Square, Settings2, ChevronLeft, Puzzle } from 'lucide-react';
-import { Tooltip, Button as AntdButton, message as antdMessage } from 'antd';
+import { Send, Square, Settings2, ChevronLeft, Puzzle, PanelLeftOpen } from 'lucide-react';
+import { Tooltip, Button as AntdButton, Modal, message as antdMessage } from 'antd';
 import { ActionIcon, Avatar as LobeAvatar } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 import { ChatMarkdown } from '@/components/Markdown';
 import { useUserStore } from '@/store/userStore';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
+import { resolveEffectiveMember } from '@/utils/aiMemberDisplay';
 import { executeAgentStrategy } from '@/engine/agentEngine';
 import type { StreamCallback } from '@/engine/agentEngine';
 import AgentGroupSettings from './AgentGroupSettings';
 import Sidebar from './Sidebar';
+import ConversationSidebar from './ConversationSidebar';
+import CLITaskLogModal from './CLITaskLogModal';
 import type { AgentGroup, Group } from '@/config/groups';
 import { isBuiltinGroupId } from '@/config/groupStorage';
 import { useAIMemberStore } from '@/store/aiMemberStore';
+import { useChatSessionStore } from '@/store/chatSessionStore';
+import {
+  truncateSessionTitle,
+  type ChatSessionMessage,
+} from '@/config/chatSessions';
+import { resolveCliToolSessionKey } from '@/engine/cliToolSessions';
+import { supportsCliToolSession } from '@/config/cliAdapters';
 import { AppSettingsModal } from './AppSettingsModal';
 import type { AppSettingsSection } from '@/config/appSettings';
 import { MentionTextArea } from './MentionAutocomplete';
@@ -31,15 +41,9 @@ function nextMsgId(): string {
   return `msg_${++_globalMsgId}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-/** localStorage key for persisting chat messages per group */
-function chatStorageKey(groupId: string): string {
-  return `agent_chat_messages:${groupId}`;
-}
-
-/** localStorage key for the auto-summarized title per group */
-function chatTitleKey(groupId: string): string {
-  return `agent_chat_title:${groupId}`;
-}
+/** 旧版单会话 localStorage key 前缀（仅用于一次性迁移） */
+const LEGACY_MSG_KEY_PREFIX = 'agent_chat_messages:';
+const LEGACY_TITLE_KEY_PREFIX = 'agent_chat_title:';
 
 interface ChatMessage {
   id: string;
@@ -49,6 +53,10 @@ interface ChatMessage {
   isError?: boolean;
   /** 该消息是否仍在流式生成中 */
   isStreaming?: boolean;
+  /** CLI agent 一次任务 id，用于查执行日志（仅 CLI agent 产生的消息有） */
+  agentTaskId?: string;
+  /** CLI adapter（codex/claude/opencode/...），日志 Modal 用 */
+  adapter?: string;
 }
 
 interface AgentChatUIProps {
@@ -82,6 +90,32 @@ const useStyles = createStyles(({ token, css }) => ({
     flex-direction: column;
     flex: 1;
     min-width: 0;
+    position: relative;
+  `,
+  convSidebarExpandHandle: css`
+    position: absolute;
+    left: 0;
+    top: 7px;
+    z-index: 5;
+    transform: translateX(-50%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 32px;
+    padding: 0;
+    border: 1px solid ${token.colorBorderSecondary};
+    border-radius: 0 8px 8px 0;
+    background: ${token.colorBgContainer};
+    color: ${token.colorTextSecondary};
+    cursor: pointer;
+    box-shadow: 1px 0 4px rgba(0, 0, 0, 0.06);
+    transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+    &:hover {
+      color: #ff6600;
+      border-color: rgba(255, 102, 0, 0.35);
+      background: rgba(255, 102, 0, 0.06);
+    }
   `,
   headerBar: css`
     background: ${token.colorBgContainer};
@@ -221,6 +255,25 @@ const useStyles = createStyles(({ token, css }) => ({
     margin-left: 6px;
     font-size: 10px;
     color: #a855f7;
+  `,
+  cliLogBtnRow: css`
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 6px;
+  `,
+  cliLogBtn: css`
+    padding: 0 6px;
+    height: 18px;
+    font-size: 10px;
+    background: transparent;
+    color: ${token.colorTextSecondary};
+    border: 1px solid ${token.colorBorderSecondary};
+    border-radius: 3px;
+    cursor: pointer;
+    &:hover {
+      color: ${token.colorText};
+      border-color: ${token.colorBorder};
+    }
   `,
   agentTagPurple: css`
     font-size: 10px;
@@ -448,103 +501,246 @@ const AgentChatUI = ({
   const getStrategyLabel = (strategy: string) =>
     t(`settings:strategies.${strategy}.label`, { defaultValue: strategy });
 
-  // === 消息持久化：从 localStorage 加载历史消息 ===
-  const [messages, setMessages] = useState<ChatMessage[]>(() => {
-    try {
-      const stored = localStorage.getItem(chatStorageKey(group.id));
-      if (stored) {
-        const parsed = JSON.parse(stored) as ChatMessage[];
-        // 恢复时清除遗留的 streaming 标记
-        return parsed.map(m => ({ ...m, isStreaming: false }));
-      }
-    } catch { /* ignore parse errors */ }
-    return [];
-  });
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<AppSettingsSection>('general');
-  const [groupTitle, setGroupTitle] = useState<string>(() => {
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(() => {
     try {
-      return localStorage.getItem(chatTitleKey(group.id)) || '';
+      return new URLSearchParams(window.location.search).get('conv');
     } catch {
-      return '';
+      return null;
     }
   });
-  // Prevents double title generation across React strict-mode / concurrent re-renders.
-  const titleGenRef = useRef<Set<string>>(new Set());
+  const [convSidebarOpen, setConvSidebarOpen] = useState(false);
+  const [logTarget, setLogTarget] = useState<{
+    agentTaskId: string;
+    agentName?: string;
+    adapter?: string;
+  } | null>(null);
 
+  const chatSessions = useChatSessionStore(state => state.sessions);
+  const createChatSessionInStore = useChatSessionStore(state => state.createSession);
+  const replaceSessionMessages = useChatSessionStore(state => state.replaceMessages);
+  const renameChatSession = useChatSessionStore(state => state.renameSession);
+  const setChatSessionAutoTitle = useChatSessionStore(state => state.setAutoTitle);
+  const deleteChatSession = useChatSessionStore(state => state.deleteSession);
+  const toggleChatSessionPinned = useChatSessionStore(state => state.togglePinned);
+  const toggleChatSessionArchived = useChatSessionStore(state => state.toggleArchived);
+
+  const groupSessions = useMemo(
+    () => chatSessions.filter(s => s.groupId === group.id),
+    [chatSessions, group.id],
+  );
+  const activeSession = useMemo(
+    () => (activeSessionId ? chatSessions.find(s => s.id === activeSessionId) || null : null),
+    [chatSessions, activeSessionId],
+  );
+
+  /** Prevents double title generation across React strict-mode / concurrent re-renders. */
+  const titleGenRef = useRef<Set<string>>(new Set());
   /** 当前请求的 AbortController，用于取消正在进行的 Agent 策略执行 */
   const abortControllerRef = useRef<AbortController | null>(null);
+  /** 懒创建会话后跳过一次「加载历史」，避免覆盖刚输入的消息 */
+  const suppressLoadRef = useRef(false);
+  /** 一次性数据迁移：仅在首次 mount 时执行 */
+  const migratedLegacyRef = useRef(false);
 
-  // 持久化消息到 localStorage（去除 isStreaming 标记）
-  useEffect(() => {
+  const updateConvParam = (sessionId: string | null) => {
     try {
-      const toStore = messages.map(({ isStreaming: _, ...rest }) => rest);
-      localStorage.setItem(chatStorageKey(group.id), JSON.stringify(toStore.slice(-100)));
-    } catch { /* quota exceeded etc */ }
-  }, [messages, group.id]);
+      const url = new URL(window.location.href);
+      if (sessionId) url.searchParams.set('conv', sessionId);
+      else url.searchParams.delete('conv');
+      window.history.replaceState({}, '', `${url.pathname}${url.search}`);
+    } catch { /* noop */ }
+  };
 
-  // 群切换时重新加载消息
+  const storedToLocalMessages = (msgs: ChatSessionMessage[]): ChatMessage[] =>
+    msgs.map(m => ({
+      id: String(m.id),
+      sender: { id: m.sender?.id, name: m.sender?.name },
+      content: m.content || '',
+      isAI: !!m.isAI,
+      isError: !!m.isError,
+      isStreaming: false,
+      agentTaskId: m.agentTaskId,
+      adapter: m.adapter,
+    }));
+
+  const localToStoredMessages = (msgs: ChatMessage[]): ChatSessionMessage[] =>
+    msgs.map(m => ({
+      id: m.id,
+      sender: { id: m.sender?.id, name: m.sender?.name },
+      content: m.content || '',
+      isAI: !!m.isAI,
+      isError: !!m.isError,
+      agentTaskId: m.agentTaskId,
+      adapter: m.adapter,
+    }));
+
   useEffect(() => {
+    if (migratedLegacyRef.current) return;
+    migratedLegacyRef.current = true;
     try {
-      const stored = localStorage.getItem(chatStorageKey(group.id));
-      if (stored) {
-        const parsed = JSON.parse(stored) as ChatMessage[];
-        setMessages(parsed.map(m => ({ ...m, isStreaming: false })));
-      } else {
-        setMessages([]);
+      const keys = Object.keys(localStorage);
+      const msgKeys = keys.filter(k => k.startsWith(LEGACY_MSG_KEY_PREFIX));
+      if (msgKeys.length === 0) return;
+      const store = useChatSessionStore.getState();
+      for (const msgKey of msgKeys) {
+        const gid = msgKey.slice(LEGACY_MSG_KEY_PREFIX.length);
+        const titleKey = `${LEGACY_TITLE_KEY_PREFIX}${gid}`;
+        const hasExisting = store.sessions.some(s => s.groupId === gid);
+        if (!hasExisting) {
+          try {
+            const raw = localStorage.getItem(msgKey);
+            if (raw) {
+              const parsed = JSON.parse(raw) as ChatMessage[];
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                const legacyTitle = localStorage.getItem(titleKey) || '';
+                const stored: ChatSessionMessage[] = parsed.map(m => ({
+                  id: m.id,
+                  sender: { id: m.sender?.id, name: m.sender?.name },
+                  content: m.content || '',
+                  isAI: !!m.isAI,
+                  isError: !!m.isError,
+                }));
+                const session = store.createSession(gid, {
+                  title: legacyTitle || undefined,
+                  messages: stored,
+                });
+                if (legacyTitle) {
+                  store.setAutoTitle(session.id, legacyTitle);
+                }
+              }
+            }
+          } catch { /* ignore parse errors */ }
+        }
+        try { localStorage.removeItem(msgKey); } catch { /* noop */ }
+        try { localStorage.removeItem(titleKey); } catch { /* noop */ }
       }
-    } catch {
+    } catch { /* noop */ }
+  }, []);
+
+  useEffect(() => {
+    if (!activeSessionId) return;
+    if (suppressLoadRef.current) { suppressLoadRef.current = false; return; }
+    const session = chatSessions.find(s => s.id === activeSessionId);
+    if (session && session.groupId === group.id) {
+      setMessages(storedToLocalMessages(session.messages));
+    } else if (session) {
       setMessages([]);
+      setActiveSessionId(null);
+      updateConvParam(null);
+    } else {
+      const hasAnySessionForGroup = chatSessions.some(s => s.groupId === group.id);
+      if (!hasAnySessionForGroup) return;
+      setMessages([]);
+      setActiveSessionId(null);
+      updateConvParam(null);
     }
-  }, [group.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSessionId, group.id, chatSessions]);
 
-  // 群切换时重新加载已缓存的标题
   useEffect(() => {
-    try {
-      setGroupTitle(localStorage.getItem(chatTitleKey(group.id)) || '');
-    } catch {
-      setGroupTitle('');
+    if (activeSessionId) return;
+    const candidates = chatSessions
+      .filter(s => s.groupId === group.id && !s.archived)
+      .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+    if (candidates.length > 0) {
+      setActiveSessionId(candidates[0].id);
+      updateConvParam(candidates[0].id);
     }
-  }, [group.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [group.id, chatSessions, activeSessionId]);
 
-  // 首轮对话结束后用 LLM 自动总结标题（参考角色群聊 / CLI Agent 群聊）
   useEffect(() => {
+    if (!activeSessionId) return;
     if (isLoading) return;
     if (messages.length === 0) return;
-    if (groupTitle) return;
-    if (titleGenRef.current.has(group.id)) return;
 
-    const userMsg = messages.find(m => !m.isAI && (m.content || '').trim());
-    const aiMsg = messages.find(m => m.isAI && !m.isError && (m.content || '').trim());
-    const firstAgent = currentAgents[0];
-    if (!userMsg || !aiMsg || !firstAgent?.model) return;
+    replaceSessionMessages(activeSessionId, localToStoredMessages(messages));
 
-    const gid = group.id;
-    titleGenRef.current.add(gid);
-    generateSessionTitle({
-      userMessage: userMsg.content,
-      aiMessage: aiMsg.content,
-      model: firstAgent.model,
-      providerId: firstAgent.providerId,
-    })
-      .then(title => {
-        if (!title) return;
-        setGroupTitle(title);
-        try {
-          localStorage.setItem(chatTitleKey(gid), title);
-        } catch {
-          /* quota exceeded etc */
-        }
-      })
-      .finally(() => {
-        titleGenRef.current.delete(gid);
-      });
-    // currentAgents is memoized from props; no need to re-run on its identity change.
+    const session = useChatSessionStore.getState().getSession(activeSessionId);
+    if (
+      session &&
+      session.titleSource !== 'manual' &&
+      !session.titleGenerated &&
+      !titleGenRef.current.has(session.id)
+    ) {
+      const userMsg = messages.find(m => !m.isAI && (m.content || '').trim());
+      const aiMsg = messages.find(m => m.isAI && !m.isError && (m.content || '').trim());
+      const firstAgent = currentAgents[0] as { model?: string; providerId?: string } | undefined;
+      if (userMsg && aiMsg && firstAgent?.model) {
+        const sid = session.id;
+        titleGenRef.current.add(sid);
+        generateSessionTitle({
+          userMessage: userMsg.content,
+          aiMessage: aiMsg.content,
+          model: firstAgent.model,
+          providerId: firstAgent.providerId,
+        })
+          .then(title => { if (title) setChatSessionAutoTitle(sid, title); })
+          .finally(() => { titleGenRef.current.delete(sid); });
+      }
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages, isLoading, group.id, groupTitle]);
+  }, [messages, isLoading, activeSessionId]);
+
+  const ensureActiveSession = (firstText: string): string | null => {
+    if (activeSessionId && chatSessions.some(s => s.id === activeSessionId && s.groupId === group.id)) {
+      return activeSessionId;
+    }
+    const fallbackTitle = truncateSessionTitle(firstText, undefined, t('chat:conversation.untitled'));
+    const session = createChatSessionInStore(group.id, { fallbackTitle });
+    suppressLoadRef.current = true;
+    setActiveSessionId(session.id);
+    updateConvParam(session.id);
+    return session.id;
+  };
+
+  const startNewConversation = () => {
+    setMessages([]);
+    setActiveSessionId(null);
+    updateConvParam(null);
+    if (isMobile) setConvSidebarOpen(false);
+  };
+
+  const handleSelectSession = (sessionId: string) => {
+    if (sessionId === activeSessionId) {
+      if (isMobile) setConvSidebarOpen(false);
+      return;
+    }
+    setActiveSessionId(sessionId);
+    updateConvParam(sessionId);
+    if (isMobile) setConvSidebarOpen(false);
+  };
+
+  const handleDeleteSession = (sessionId: string) => {
+    const target = chatSessions.find(s => s.id === sessionId);
+    Modal.confirm({
+      title: t('chat:conversation.deleteConfirmTitle', { name: target?.title || '' }),
+      content: t('chat:conversation.deleteConfirmContent'),
+      okText: t('common:actions.delete'),
+      okType: 'danger',
+      cancelText: t('common:actions.cancel'),
+      onOk: () => {
+        deleteChatSession(sessionId);
+        if (sessionId === activeSessionId) {
+          const remaining = chatSessions
+            .filter(s => s.id !== sessionId && s.groupId === group.id && !s.archived)
+            .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+          if (remaining.length > 0) {
+            setActiveSessionId(remaining[0].id);
+            updateConvParam(remaining[0].id);
+          } else {
+            startNewConversation();
+          }
+        }
+      },
+    });
+  };
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -597,7 +793,10 @@ const AgentChatUI = ({
   const shouldStickToBottomRef = useRef(true);
 
   useEffect(() => {
-    if (isMobile !== undefined) setSidebarOpen(!isMobile);
+    if (isMobile !== undefined) {
+      setSidebarOpen(!isMobile);
+      setConvSidebarOpen(!isMobile);
+    }
   }, [isMobile]);
 
   const handleChatAreaScroll = () => {
@@ -614,7 +813,7 @@ const AgentChatUI = ({
   useEffect(() => {
     shouldStickToBottomRef.current = true;
     scrollMessagesToBottom('auto');
-  }, [group.id]);
+  }, [group.id, activeSessionId]);
 
   useEffect(() => {
     if (shouldStickToBottomRef.current) {
@@ -646,6 +845,9 @@ const AgentChatUI = ({
 
     const userName = userStore.userInfo.nickname || t('settings:aiGroup.selfName');
     const capturedInput = inputMessage;
+
+    const sessionId = ensureActiveSession(capturedInput);
+
     const userMsg: ChatMessage = {
       id: nextMsgId(),
       sender: { id: 'user', name: userName },
@@ -675,8 +877,21 @@ const AgentChatUI = ({
     // Agent 消息 ID 映射（支持多轮：每次 onAgentStart 都分配唯一 ID）
     const agentMsgIds: Record<string, string> = {};
 
+    // CLI tool session 续接：必须用 ensureActiveSession 返回值，
+    // setActiveSessionId 异步更新，同步流里读 activeSessionId 拿到的是 stale null
+    const toolSessionScope = sessionId;
+    const toolSessionWorkspace = group.workspacePath || '';
+    const toolSessionPolicy = 'task' as const;
+    const buildToolSessionKey = (agentId: string) => resolveCliToolSessionKey({
+      developmentTaskId: toolSessionScope || '',
+      templateId: group.id,
+      agentId,
+      workspacePath: toolSessionWorkspace,
+      sessionPolicy: toolSessionPolicy,
+    });
+
     const callbacks: StreamCallback = {
-      onAgentStart: (agentId, agentName) => {
+      onAgentStart: (agentId, agentName, meta) => {
         const id = nextMsgId();
         agentMsgIds[agentId] = id;
         const agentMsg: ChatMessage = {
@@ -685,6 +900,8 @@ const AgentChatUI = ({
           content: '',
           isAI: true,
           isStreaming: true,
+          agentTaskId: meta?.agentTaskId,
+          adapter: meta?.adapter,
         };
         setMessages(prev => [...prev, agentMsg]);
       },
@@ -715,11 +932,28 @@ const AgentChatUI = ({
       onInfo: (infoMsg) => {
         antdMessage.info(infoMsg);
       },
+      onToolSession: (agentId, adapter, sessionId) => {
+        if (!toolSessionScope) return;
+        if (!supportsCliToolSession(adapter)) return;
+        try {
+          localStorage.setItem(buildToolSessionKey(agentId), sessionId);
+        } catch { /* quota / private mode */ }
+      },
+    };
+
+    const toolSessionLookup = (agentId: string): string | null => {
+      if (!toolSessionScope) return null;
+      try {
+        return localStorage.getItem(buildToolSessionKey(agentId));
+      } catch {
+        return null;
+      }
     };
 
     try {
       await executeAgentStrategy(group, capturedInput, history, mutedUsers, callbacks, {
         signal: controller.signal,
+        toolSessionLookup,
       });
     } catch (error: any) {
       if (error?.name === 'AbortError') {
@@ -782,7 +1016,33 @@ const AgentChatUI = ({
             hiddenGroupTypes={['cli']}
           />
 
+          <ConversationSidebar
+            isOpen={convSidebarOpen}
+            toggleSidebar={() => setConvSidebarOpen(false)}
+            sessions={groupSessions}
+            selectedSessionId={activeSessionId}
+            groupName={group.name}
+            onSelectSession={handleSelectSession}
+            onNewSession={startNewConversation}
+            onRenameSession={renameChatSession}
+            onDeleteSession={handleDeleteSession}
+            onTogglePin={toggleChatSessionPinned}
+            onToggleArchive={toggleChatSessionArchived}
+          />
+
           <div className={styles.rightCol}>
+            {!convSidebarOpen && (
+              <Tooltip title={t('chat:conversation.expand')} placement="right">
+                <button
+                  type="button"
+                  className={styles.convSidebarExpandHandle}
+                  onClick={() => setConvSidebarOpen(true)}
+                  aria-label={t('chat:conversation.expand')}
+                >
+                  <PanelLeftOpen size={14} />
+                </button>
+              </Tooltip>
+            )}
             {/* Header */}
             <header className={styles.headerBar}>
               <div className={styles.headerInner}>
@@ -796,7 +1056,7 @@ const AgentChatUI = ({
                         <Puzzle size={15} />
                       </span>
                       <h1 className={styles.titleText}>
-                        {groupTitle || group.name}
+                        {activeSession?.title || group.name}
                       </h1>
                       <span className={styles.memberCount}>
                         ({t('chat:agentChat.expertCount', { count: currentAgents.length })})
@@ -885,14 +1145,20 @@ const AgentChatUI = ({
               <div className={styles.messageList}>
                 {messages.map((message) => {
                   const isUser = message.sender.name === userName;
-                  const a = getAvatarData(message.sender.name);
+                  // 多轮策略会用 `${agentId}_r${round}` 作为 sender.id（避免覆盖），先剥离后缀再查 store
+                  const baseAgentId = message.sender.id?.replace(/_r\d+$/, '') || '';
+                  const member = !isUser && baseAgentId
+                    ? resolveEffectiveMember(members, baseAgentId)
+                    : undefined;
+                  const avatarName = member?.name || message.sender.name;
+                  const a = getAvatarData(avatarName);
                   const url = isUser
                     ? resolveAvatarByName(
                         userName,
                         userStore.avatarDisplaySrc || userStore.userInfo?.avatar_url,
-                        32,
+                        40,
                       )
-                    : resolveAvatarByName(message.sender.name, message.sender.avatar, 32);
+                    : resolveAvatarByName(avatarName, member?.avatar || message.sender.avatar, 40);
                   const isStreaming = !!message.isStreaming;
 
                   let bubbleClass = styles.bubbleAI;
@@ -910,7 +1176,7 @@ const AgentChatUI = ({
                           avatar={url || a.text}
                           background={a.backgroundColor}
                           shape="circle"
-                          size={32}
+                          size={40}
                           title={message.sender.name}
                           style={{ flexShrink: 0 }}
                         />
@@ -923,9 +1189,24 @@ const AgentChatUI = ({
                           )}
                         </div>
                         <div className={bubbleClass}>
-                          <ChatMarkdown content={message.content} isUser={isUser} />
+                          <ChatMarkdown content={message.content} isUser={isUser} basePath={group.workspacePath} />
                           {isStreaming && (
                             <span className={cx('typing-indicator', styles.typingCursor)}>▋</span>
+                          )}
+                          {!isUser && member?.kind === 'cli' && message.agentTaskId && (
+                            <div className={styles.cliLogBtnRow}>
+                              <button
+                                type="button"
+                                className={styles.cliLogBtn}
+                                onClick={() => setLogTarget({
+                                  agentTaskId: message.agentTaskId!,
+                                  agentName: message.sender.name,
+                                  adapter: message.adapter,
+                                })}
+                              >
+                                {t('cli:taskUI.message.log', { defaultValue: '日志' })}
+                              </button>
+                            </div>
                           )}
                         </div>
                       </div>
@@ -934,7 +1215,7 @@ const AgentChatUI = ({
                           avatar={url || a.text}
                           background={a.backgroundColor}
                           shape="circle"
-                          size={32}
+                          size={40}
                           title={message.sender.name}
                           style={{ flexShrink: 0 }}
                         />
@@ -1019,6 +1300,14 @@ const AgentChatUI = ({
         onClose={() => setSettingsOpen(false)}
         groups={groups}
         initialSection={settingsSection}
+      />
+
+      <CLITaskLogModal
+        open={!!logTarget}
+        onOpenChange={(open) => { if (!open) setLogTarget(null); }}
+        agentTaskId={logTarget?.agentTaskId ?? null}
+        agentName={logTarget?.agentName}
+        adapter={logTarget?.adapter}
       />
     </>
   );

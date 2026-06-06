@@ -41,6 +41,13 @@ globalThis.__agentEngineTestDeps = {
     runtime: 'cli',
     cli: agent.cli,
   }),
+  withCliToolSession: (agent, sessionId) => ({
+    ...agent,
+    cli: {
+      ...agent.cli,
+      toolSessionId: sessionId,
+    },
+  }),
   callCLIAgent: async (_groupId, ctx, prompt, _options, callbacks) => {
     cliCalls.push({ agentId: ctx.agent.id, cwd: ctx.cwd, prompt });
     callbacks.onAgentStart('task', ctx.agent.id, ctx.agent.name, {});
@@ -84,6 +91,10 @@ const { executeAgentStrategy } = await importTsModule(
     .replace(
       "import { callCLIAgent as callCLIAgentRaw } from './cliEngine';",
       'const { callCLIAgent: callCLIAgentRaw } = globalThis.__agentEngineTestDeps;',
+    )
+    .replace(
+      "import { withCliToolSession } from './cliToolSessions';",
+      'const { withCliToolSession } = globalThis.__agentEngineTestDeps;',
     ),
 );
 

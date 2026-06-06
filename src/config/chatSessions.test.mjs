@@ -61,6 +61,34 @@ const {
   assert.ok(!serialized.includes('base64'), 'serialized stored messages contain no base64 avatar');
 }
 
+// ---- sanitizeMessageForStorage: preserves agentTaskId + adapter round-trip ----
+{
+  const msg = {
+    id: 'm2',
+    sender: { id: 'cli-agent', name: 'Codex' },
+    content: 'done',
+    isAI: true,
+    agentTaskId: 'task_abc123',
+    adapter: 'codex',
+  };
+  const sanitized = sanitizeMessageForStorage(msg);
+  assert.equal(sanitized.agentTaskId, 'task_abc123', 'agentTaskId preserved');
+  assert.equal(sanitized.adapter, 'codex', 'adapter preserved');
+
+  // round-trip: serialize → parse → sanitize again
+  const json = JSON.stringify(sanitized);
+  const parsed = JSON.parse(json);
+  const resanitized = sanitizeMessageForStorage(parsed);
+  assert.equal(resanitized.agentTaskId, 'task_abc123', 'agentTaskId survives JSON round-trip');
+  assert.equal(resanitized.adapter, 'codex', 'adapter survives JSON round-trip');
+
+  // omit when not present
+  const plain = { id: 'm3', sender: { id: 'u', name: 'Me' }, content: 'hi', isAI: false };
+  const plainSanitized = sanitizeMessageForStorage(plain);
+  assert.equal('agentTaskId' in plainSanitized, false, 'agentTaskId omitted when absent');
+  assert.equal('adapter' in plainSanitized, false, 'adapter omitted when absent');
+}
+
 // ---- truncateSessionTitle ----
 assert.equal(truncateSessionTitle('hello world'), 'hello world');
 assert.equal(truncateSessionTitle('  line1\nline2  '), 'line1', 'takes first non-empty line, trimmed');

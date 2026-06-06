@@ -16,6 +16,7 @@ import type { CLIAgent } from '@/config/aiCharacters';
 import { mapAIMemberToLegacy } from '@/config/aiCharacters';
 import { callCLIAgent as callCLIAgentRaw } from './cliEngine';
 import type { CLIStreamCallback, CLIAgentMeta, CLIRunOptions } from './cliEngine';
+import { withCliToolSession } from './cliToolSessions';
 
 /** GroupContext: CLI 成员执行所需的群上下文 */
 interface AgentGroupContext {
@@ -24,6 +25,10 @@ interface AgentGroupContext {
   timeout?: number;
   approvalMode?: 'auto' | 'ask';
   showStderr?: boolean;
+  /** 读取该 CLI agent 上一次的 tool session id（与 CLITaskUI 行为一致） */
+  toolSessionLookup?: (agentId: string) => string | null | undefined;
+  /** CLI agent 启动新 tool session 时回写（adapter 用于判断是否需要持久化） */
+  onToolSession?: (agentId: string, adapter: string, sessionId: string) => void;
 }
 
 /** 系统保留的伪 Agent ID 前缀，避免与用户自建 Agent ID 冲突 */
@@ -126,18 +131,22 @@ export interface AgentRunResult {
 }
 
 export interface StreamCallback {
-  onAgentStart: (agentId: string, agentName: string) => void;
+  onAgentStart: (agentId: string, agentName: string, meta?: { agentTaskId?: string; adapter?: string }) => void;
   onToken: (agentId: string, token: string) => void;
   onAgentEnd: (agentId: string, fullContent: string) => void;
   onError: (agentId: string, error: string) => void;
   /** 路由 fallback 等非致命信息通知 */
   onInfo?: (message: string) => void;
+  /** CLI agent 启动 tool session（远端 SDK 会话）时上报 */
+  onToolSession?: (agentId: string, adapter: string, sessionId: string) => void;
 }
 
 /** 引擎执行选项 */
 export interface AgentEngineOptions {
   /** 外部传入的 AbortSignal，用于取消正在进行的请求 */
   signal?: AbortSignal;
+  /** 读取该 CLI agent 上一次的 tool session id（透传给 groupContext） */
+  toolSessionLookup?: (agentId: string) => string | null | undefined;
 }
 
 // ============ 单个 Agent 执行 ============
@@ -319,19 +328,29 @@ async function runSingleCLIAgent(
   const cwd = groupContext?.workspacePath || '';
 
   // 将 AIMember 转换为 CLIAgent
-  const cliAgent: CLIAgent = (agent as any).cli
+  const baseCliAgent: CLIAgent = (agent as any).cli
     ? agent as any
     : mapAIMemberToLegacy(agent as any) as CLIAgent;
 
+  // 注入上次的 tool session（与 CLITaskUI 行为一致：每个 CLI agent 独立续接）
+  const priorSession = groupContext?.toolSessionLookup?.(agent.id);
+  const cliAgent: CLIAgent = priorSession
+    ? withCliToolSession(baseCliAgent, priorSession)
+    : baseCliAgent;
+
   // 构造 prompt：包含上下文 + 用户消息
+  const cliHint = '[系统提示] 你正在参与多人协作群聊，请用 Markdown 格式回复（标题、列表、代码块、表格等），回复会直接渲染为富文本。生成的图片可直接输出本地绝对路径（如 /Users/xxx/output.png），会自动渲染为内嵌图片。\n\n';
   const prompt = context
-    ? `[上下文信息]\n${context}\n\n[用户消息]\n${userMessage}`
-    : userMessage;
+    ? `${cliHint}[上下文信息]\n${context}\n\n[用户消息]\n${userMessage}`
+    : `${cliHint}${userMessage}`;
 
   // 桥接 StreamCallback → CLIStreamCallback
   const cliCallbacks: CLIStreamCallback = {
-    onAgentStart: (_taskId, _agentId, agentName, _meta) => {
-      callbacks.onAgentStart(agentId, agentName);
+    onAgentStart: (taskId, _agentId, agentName, _meta) => {
+      callbacks.onAgentStart(agentId, agentName, {
+        agentTaskId: taskId,
+        adapter: cliAgent.cli?.adapter,
+      });
     },
     onToken: (_taskId, token) => {
       callbacks.onToken(agentId, token);
@@ -341,6 +360,9 @@ async function runSingleCLIAgent(
     },
     onError: (_taskId, error) => {
       callbacks.onError(agentId, error);
+    },
+    onToolSession: (_taskId, _agentId, adapter, sessionId) => {
+      callbacks.onToolSession?.(agent.id, adapter, sessionId);
     },
   };
 
@@ -1154,6 +1176,7 @@ export async function executeAgentStrategy(
     timeout: group.timeout,
     approvalMode: group.approvalMode,
     showStderr: group.showStderr,
+    toolSessionLookup: options?.toolSessionLookup,
   };
   const agents = getGroupAgents(group);
   assertCLIWorkspaceConfigured(agents, mutedUsers, groupContext);
