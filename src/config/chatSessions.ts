@@ -66,6 +66,8 @@ export const MAX_MESSAGES_PER_SESSION = 200;
 export const MAX_SESSIONS_PER_GROUP = 50;
 /** 标题最大长度（截断 / 总结都遵守） */
 export const MAX_SESSION_TITLE_LEN = 48;
+/** 每条消息持久化保留的最大附件元数据数 */
+export const MAX_ATTACHMENTS_PER_MESSAGE = 10;
 
 /** 默认会话标题兜底（UI 通常会传入译文覆盖） */
 export const DEFAULT_SESSION_TITLE = 'New chat';
@@ -179,9 +181,14 @@ function sanitizeAttachmentForStorage(raw: unknown): ChatAttachment | null {
 
 function sanitizeAttachmentsForStorage(raw: unknown): ChatAttachment[] {
   if (!Array.isArray(raw)) return [];
-  return raw
-    .map(sanitizeAttachmentForStorage)
-    .filter((attachment): attachment is ChatAttachment => !!attachment);
+  const sanitized: ChatAttachment[] = [];
+  for (const attachment of raw) {
+    const sanitizedAttachment = sanitizeAttachmentForStorage(attachment);
+    if (!sanitizedAttachment) continue;
+    sanitized.push(sanitizedAttachment);
+    if (sanitized.length >= MAX_ATTACHMENTS_PER_MESSAGE) break;
+  }
+  return sanitized;
 }
 
 export function sanitizeMessageForStorage(m: ChatSessionMessage): ChatSessionMessage {

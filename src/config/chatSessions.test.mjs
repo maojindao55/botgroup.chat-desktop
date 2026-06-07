@@ -19,6 +19,7 @@ const mod = await importTsModule(new URL('./chatSessions.ts', import.meta.url));
 const {
   MAX_MESSAGES_PER_SESSION,
   MAX_SESSIONS_PER_GROUP,
+  MAX_ATTACHMENTS_PER_MESSAGE,
   truncateSessionTitle,
   cleanGeneratedTitle,
   clampSessionMessages,
@@ -144,6 +145,50 @@ const {
     },
   ]);
   assert.ok(!JSON.stringify(sanitized).includes('base64'), 'attachment payload bytes must not be stored');
+}
+
+// ---- sanitizeMessageForStorage: caps stored attachment metadata per message ----
+{
+  const validAttachments = Array.from({ length: 12 }, (_, i) => ({
+    id: `att-valid-${i + 1}`,
+    kind: i % 2 === 0 ? 'image' : 'document',
+    name: `file-${i + 1}.txt`,
+    path: `/Users/me/Desktop/file-${i + 1}.txt`,
+    mimeType: 'text/plain',
+    size: i + 1,
+    extension: 'txt',
+  }));
+  const invalidAttachment = {
+    id: '',
+    kind: 'image',
+    name: 'invalid.png',
+    path: '/Users/me/Desktop/invalid.png',
+  };
+  const msg = {
+    id: 'm-many-att',
+    sender: { id: 'u', name: 'Me' },
+    content: 'many files',
+    isAI: false,
+    attachments: [
+      validAttachments[0],
+      invalidAttachment,
+      ...validAttachments.slice(1),
+    ],
+  };
+
+  const sanitized = sanitizeMessageForStorage(msg);
+  assert.equal(MAX_ATTACHMENTS_PER_MESSAGE, 10, 'storage cap documents the per-message attachment limit');
+  assert.equal(sanitized.attachments.length, 10, 'stores at most 10 valid attachments per message');
+  assert.equal(
+    sanitized.attachments.some(attachment => attachment.name === 'invalid.png'),
+    false,
+    'invalid attachments are skipped',
+  );
+  assert.deepEqual(
+    sanitized.attachments.map(attachment => attachment.id),
+    validAttachments.slice(0, 10).map(attachment => attachment.id),
+    'continues past invalid entries and keeps the first 10 valid attachments in original order',
+  );
 }
 
 // ---- sanitizeMessageForStorage: rejects malformed attachment metadata payloads ----
