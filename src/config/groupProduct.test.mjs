@@ -222,6 +222,16 @@ assert.match(
   /const sessionId = ensureActiveSession\([\s\S]*?\);[\s\S]*const toolSessionScope = sessionId;/,
   'AgentChatUI first-turn CLI tool sessions must use the newly created conversation id',
 );
+assert.match(
+  agentChatUI,
+  /userAttachmentBubble: css`[\s\S]*?justify-content: flex-end;/,
+  'AgentChatUI should align separate user attachment bubbles to the right',
+);
+assert.match(
+  agentChatUI,
+  /\{!isUser && \(\s*<ChatAttachmentList[\s\S]*?\)\}[\s\S]*?\{isUser && hasAttachments && \(\s*<div className=\{styles\.userAttachmentBubble\}>[\s\S]*?<ChatAttachmentList/,
+  'AgentChatUI should render user attachments as a separate bubble after the text bubble',
+);
 for (const oldCopy of ['Agent 协作群', 'AI 群员库', '专家群友将按群规协作回复', '正在加载资源库']) {
   assert.doesNotMatch(agentChatUI, new RegExp(oldCopy));
 }

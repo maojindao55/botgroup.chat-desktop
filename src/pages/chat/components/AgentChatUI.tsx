@@ -363,6 +363,16 @@ const useStyles = createStyles(({ token, css }) => ({
   messageBodyUser: css`
     text-align: right;
   `,
+  userAttachmentBubble: css`
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 6px;
+
+    & > div {
+      justify-content: flex-end;
+      margin-top: 0;
+    }
+  `,
   emptyState: css`
     display: flex;
     flex-direction: column;
@@ -559,6 +569,8 @@ const AgentChatUI = ({
   const suppressLoadRef = useRef(false);
   /** 一次性数据迁移：仅在首次 mount 时执行 */
   const migratedLegacyRef = useRef(false);
+  /** 用户刚点击「新建会话」，跳过一次自动选中最近会话 */
+  const userStartedNewRef = useRef(false);
 
   const updateConvParam = (sessionId: string | null) => {
     try {
@@ -659,6 +671,10 @@ const AgentChatUI = ({
 
   useEffect(() => {
     if (activeSessionId) return;
+    if (userStartedNewRef.current) {
+      userStartedNewRef.current = false;
+      return;
+    }
     const candidates = chatSessions
       .filter(s => s.groupId === group.id && !s.archived)
       .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
@@ -715,6 +731,7 @@ const AgentChatUI = ({
   };
 
   const startNewConversation = () => {
+    userStartedNewRef.current = true;
     setMessages([]);
     setActiveSessionId(null);
     updateConvParam(null);
@@ -1230,6 +1247,8 @@ const AgentChatUI = ({
               <div className={styles.messageList}>
                 {messages.map((message) => {
                   const isUser = message.sender.name === userName;
+                  const hasTextContent = message.content.trim().length > 0;
+                  const hasAttachments = !!message.attachments?.length;
                   // 多轮策略会用 `${agentId}_r${round}` 作为 sender.id（避免覆盖），先剥离后缀再查 store
                   const baseAgentId = message.sender.id?.replace(/_r\d+$/, '') || '';
                   const member = !isUser && baseAgentId
@@ -1273,31 +1292,43 @@ const AgentChatUI = ({
                             <span className={styles.agentBadge}>{t('chat:agentChat.expertBadge')}</span>
                           )}
                         </div>
-                        <div className={bubbleClass}>
-                          <ChatMarkdown content={message.content} isUser={isUser} basePath={group.workspacePath} />
-                          <ChatAttachmentList
-                            attachments={message.attachments}
-                            unavailableLabel={t('chat:attachments.unavailable', { defaultValue: '文件不可用' })}
-                          />
-                          {isStreaming && (
-                            <span className={cx('typing-indicator', styles.typingCursor)}>▋</span>
-                          )}
-                          {!isUser && member?.kind === 'cli' && message.agentTaskId && (
-                            <div className={styles.cliLogBtnRow}>
-                              <button
-                                type="button"
-                                className={styles.cliLogBtn}
-                                onClick={() => setLogTarget({
-                                  agentTaskId: message.agentTaskId!,
-                                  agentName: message.sender.name,
-                                  adapter: message.adapter,
-                                })}
-                              >
-                                {t('cli:taskUI.message.log', { defaultValue: '日志' })}
-                              </button>
-                            </div>
-                          )}
-                        </div>
+                        {(!isUser || hasTextContent) && (
+                          <div className={bubbleClass}>
+                            <ChatMarkdown content={message.content} isUser={isUser} basePath={group.workspacePath} />
+                            {!isUser && (
+                              <ChatAttachmentList
+                                attachments={message.attachments}
+                                unavailableLabel={t('chat:attachments.unavailable', { defaultValue: '文件不可用' })}
+                              />
+                            )}
+                            {isStreaming && (
+                              <span className={cx('typing-indicator', styles.typingCursor)}>▋</span>
+                            )}
+                            {!isUser && member?.kind === 'cli' && message.agentTaskId && (
+                              <div className={styles.cliLogBtnRow}>
+                                <button
+                                  type="button"
+                                  className={styles.cliLogBtn}
+                                  onClick={() => setLogTarget({
+                                    agentTaskId: message.agentTaskId!,
+                                    agentName: message.sender.name,
+                                    adapter: message.adapter,
+                                  })}
+                                >
+                                  {t('cli:taskUI.message.log', { defaultValue: '日志' })}
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {isUser && hasAttachments && (
+                          <div className={styles.userAttachmentBubble}>
+                            <ChatAttachmentList
+                              attachments={message.attachments}
+                              unavailableLabel={t('chat:attachments.unavailable', { defaultValue: '文件不可用' })}
+                            />
+                          </div>
+                        )}
                       </div>
                       {isUser && (
                         <LobeAvatar

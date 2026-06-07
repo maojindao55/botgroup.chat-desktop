@@ -616,6 +616,8 @@ const ChatUI = () => {
   const titleGenRef = useRef<Set<string>>(new Set());
   /** 懒创建会话后跳过一次「加载历史」，避免覆盖刚输入的消息 */
   const suppressLoadRef = useRef(false);
+  /** 用户刚点击「新建会话」，跳过一次自动选中最近会话 */
+  const userStartedNewRef = useRef(false);
 
   /** 桌面端打开右侧 inline 面板时同步扩展 Tauri 窗口宽度（移动端跳过） */
   const adjustWindowWidthForPanel = (deltaPx: number) => {
@@ -894,6 +896,10 @@ const ChatUI = () => {
   useEffect(() => {
     if (!isAIGroup || !group) return;
     if (activeSessionId) return;
+    if (userStartedNewRef.current) {
+      userStartedNewRef.current = false;
+      return;
+    }
     const candidates = chatSessions
       .filter(s => s.groupId === group.id && !s.archived)
       .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
@@ -957,6 +963,7 @@ const ChatUI = () => {
   };
 
   const startNewConversation = () => {
+    userStartedNewRef.current = true;
     setMessages([]);
     setActiveSessionId(null);
     updateConvParam(null);
