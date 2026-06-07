@@ -98,6 +98,8 @@ interface ChatAttachmentListProps {
   unavailableLabel?: string;
 }
 
+const EMPTY_ATTACHMENTS: ChatAttachment[] = [];
+
 function attachmentSubtitle(attachment: ChatAttachment): string {
   const parts = [
     attachment.mimeType || attachment.extension || attachment.kind,
@@ -107,7 +109,7 @@ function attachmentSubtitle(attachment: ChatAttachment): string {
 }
 
 export function ChatAttachmentList({
-  attachments = [],
+  attachments = EMPTY_ATTACHMENTS,
   pending = false,
   onRemove,
   unavailableLabel = 'Unavailable',
@@ -117,7 +119,6 @@ export function ChatAttachmentList({
 
   useEffect(() => {
     if (pending || attachments.length === 0) {
-      setAvailability({});
       return;
     }
 
