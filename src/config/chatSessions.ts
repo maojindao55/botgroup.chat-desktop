@@ -132,23 +132,48 @@ export function cleanGeneratedTitle(raw: string, maxLen: number = MAX_SESSION_TI
  * 持久化前清洗单条消息：只保留必要字段，丢弃可能很大的字段（尤其是 base64 头像）。
  * 头像在渲染时按成员名称/ id 解析，无需随每条消息存储，否则极易撑爆 localStorage 配额。
  */
+const ATTACHMENT_ID_MAX_LEN = 256;
+const ATTACHMENT_NAME_MAX_LEN = 255;
+const ATTACHMENT_PATH_MAX_LEN = 4096;
+const ATTACHMENT_KIND_MAX_LEN = 16;
+const ATTACHMENT_MIME_TYPE_MAX_LEN = 255;
+const ATTACHMENT_EXTENSION_MAX_LEN = 32;
+
+function sanitizeAttachmentString(raw: unknown, maxLen: number, lowerCase = false): string | null {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw !== 'string' && typeof raw !== 'number' && typeof raw !== 'boolean') return null;
+
+  const value = String(raw).trim();
+  if (!value || value.length > maxLen) return null;
+  const normalized = value.toLowerCase();
+  if (normalized.startsWith('data:') || normalized.startsWith('blob:')) return null;
+
+  return lowerCase ? normalized : value;
+}
+
 function sanitizeAttachmentForStorage(raw: unknown): ChatAttachment | null {
   if (!raw || typeof raw !== 'object') return null;
   const attachment = raw as Partial<ChatAttachment>;
-  if (!attachment.id || !attachment.name || !attachment.path) return null;
-  if (attachment.kind !== 'image' && attachment.kind !== 'document' && attachment.kind !== 'code') return null;
+  const id = sanitizeAttachmentString(attachment.id, ATTACHMENT_ID_MAX_LEN);
+  const name = sanitizeAttachmentString(attachment.name, ATTACHMENT_NAME_MAX_LEN);
+  const path = sanitizeAttachmentString(attachment.path, ATTACHMENT_PATH_MAX_LEN);
+  const kind = sanitizeAttachmentString(attachment.kind, ATTACHMENT_KIND_MAX_LEN);
+  if (!id || !name || !path) return null;
+  if (kind !== 'image' && kind !== 'document' && kind !== 'code') return null;
 
   const sanitized: ChatAttachment = {
-    id: String(attachment.id),
-    kind: attachment.kind,
-    name: String(attachment.name),
-    path: String(attachment.path),
+    id,
+    kind,
+    name,
+    path,
   };
-  if (attachment.mimeType) sanitized.mimeType = String(attachment.mimeType);
+  const mimeType = sanitizeAttachmentString(attachment.mimeType, ATTACHMENT_MIME_TYPE_MAX_LEN);
+  if (mimeType) sanitized.mimeType = mimeType;
   if (typeof attachment.size === 'number' && Number.isFinite(attachment.size) && attachment.size >= 0) {
     sanitized.size = attachment.size;
   }
-  if (attachment.extension) sanitized.extension = String(attachment.extension).toLowerCase();
+  const extension = sanitizeAttachmentString(attachment.extension, ATTACHMENT_EXTENSION_MAX_LEN, true);
+  if (extension) sanitized.extension = extension;
   return sanitized;
 }
 

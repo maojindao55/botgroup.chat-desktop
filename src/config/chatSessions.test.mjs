@@ -146,6 +146,71 @@ const {
   assert.ok(!JSON.stringify(sanitized).includes('base64'), 'attachment payload bytes must not be stored');
 }
 
+// ---- sanitizeMessageForStorage: rejects malformed attachment metadata payloads ----
+{
+  const largePayload = 'A'.repeat(5000);
+  const msg = {
+    id: 'm-bad-att',
+    sender: { id: 'u', name: 'Me' },
+    content: 'bad file metadata',
+    isAI: false,
+    attachments: [
+      {
+        id: 'att-data-path',
+        kind: 'image',
+        name: 'inline.png',
+        path: `data:image/png;base64,${largePayload}`,
+      },
+      {
+        id: 'att-large-name',
+        kind: 'document',
+        name: largePayload,
+        path: '/Users/me/Desktop/report.pdf',
+        mimeType: 'application/pdf',
+        extension: 'pdf',
+      },
+      {
+        id: 'att-large-mime',
+        kind: 'document',
+        name: 'report.pdf',
+        path: '/Users/me/Desktop/report.pdf',
+        mimeType: largePayload,
+        extension: 'pdf',
+      },
+      {
+        id: 'att-large-extension',
+        kind: 'code',
+        name: 'main.ts',
+        path: '/Users/me/project/main.ts',
+        mimeType: 'text/typescript',
+        extension: largePayload,
+      },
+    ],
+  };
+
+  const sanitized = sanitizeMessageForStorage(msg);
+  assert.deepEqual(sanitized.attachments, [
+    {
+      id: 'att-large-mime',
+      kind: 'document',
+      name: 'report.pdf',
+      path: '/Users/me/Desktop/report.pdf',
+      extension: 'pdf',
+    },
+    {
+      id: 'att-large-extension',
+      kind: 'code',
+      name: 'main.ts',
+      path: '/Users/me/project/main.ts',
+      mimeType: 'text/typescript',
+    },
+  ]);
+
+  const serialized = JSON.stringify(sanitized);
+  assert.ok(!serialized.includes('base64'), 'serialized attachment metadata must not contain inline payload markers');
+  assert.ok(!serialized.includes(largePayload), 'serialized attachment metadata must not contain oversized payload bytes');
+}
+
 // ---- sanitizeMessageForStorage: omits attachments when absent or empty ----
 {
   const legacy = {
