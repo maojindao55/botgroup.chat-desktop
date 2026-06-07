@@ -67,6 +67,16 @@
     "inputPlaceholder": "输入消息，专家群友将按群规协作回复...",
     "settings": "设置"
   },
+  "attachments": {
+    "add": "添加附件",
+    "fallbackTitle": "附件",
+    "tauriOnly": "附件功能需要在桌面端使用。",
+    "unsupported": "{{name}} 不是支持的附件类型。",
+    "fileTooLarge": "{{name}} 超过 50 MB 附件大小限制。",
+    "maxCount": "每条消息最多添加 {{count}} 个附件。",
+    "selectFailed": "选择附件失败：{{message}}",
+    "unavailable": "文件不可用"
+  },
   "conversation": {
     "title": "会话",
     "new": "新建会话",

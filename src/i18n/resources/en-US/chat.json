@@ -67,6 +67,16 @@
     "inputPlaceholder": "Send a message — experts will collaborate per group rules...",
     "settings": "Settings"
   },
+  "attachments": {
+    "add": "Add attachment",
+    "fallbackTitle": "Attachments",
+    "tauriOnly": "Attachments require the desktop app.",
+    "unsupported": "{{name}} is not a supported attachment type.",
+    "fileTooLarge": "{{name}} exceeds the 50 MB attachment limit.",
+    "maxCount": "Each message can include up to {{count}} attachments.",
+    "selectFailed": "Failed to select attachments: {{message}}",
+    "unavailable": "File unavailable"
+  },
   "conversation": {
     "title": "Chats",
     "new": "New chat",
