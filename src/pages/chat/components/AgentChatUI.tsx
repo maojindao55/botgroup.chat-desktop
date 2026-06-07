@@ -932,8 +932,6 @@ const AgentChatUI = ({
     const capturedInput = inputMessage;
     const agentInput = composeMessageWithAttachments(capturedInput, attachmentsToSend);
 
-    // Product regression guard: keep the returned session id flowing like
-    // const sessionId = ensureActiveSession(capturedInput);
     const sessionId = ensureActiveSession(capturedInput || attachmentsToSend[0]?.name || t('chat:attachments.fallbackTitle', { defaultValue: '附件' }));
 
     const userMsg: ChatMessage = {
@@ -953,19 +951,13 @@ const AgentChatUI = ({
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
-    // 修复闭包问题：使用 setMessages 的 updater 获取最新 messages 构建 history
-    // 同时将当前用户消息包含在内
-    let history = '';
-    setMessages(prev => {
-      history = prev
-        .slice(-20)
-        .map(m => {
-          const attachmentSummary = formatAttachmentsForHistory(m.attachments);
-          return `${m.sender.name}: ${[m.content, attachmentSummary].filter(Boolean).join('\n')}`;
-        })
-        .join('\n');
-      return prev; // 不修改 state，仅读取
-    });
+    const history = [...messages, userMsg]
+      .slice(-20)
+      .map(m => {
+        const attachmentSummary = formatAttachmentsForHistory(m.attachments);
+        return `${m.sender.name}: ${[m.content, attachmentSummary].filter(Boolean).join('\n')}`;
+      })
+      .join('\n');
 
     // Agent 消息 ID 映射（支持多轮：每次 onAgentStart 都分配唯一 ID）
     const agentMsgIds: Record<string, string> = {};

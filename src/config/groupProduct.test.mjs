@@ -219,7 +219,7 @@ assert.match(
 );
 assert.match(
   agentChatUI,
-  /const sessionId = ensureActiveSession\(capturedInput\);[\s\S]*const toolSessionScope = sessionId;/,
+  /const sessionId = ensureActiveSession\([\s\S]*?\);[\s\S]*const toolSessionScope = sessionId;/,
   'AgentChatUI first-turn CLI tool sessions must use the newly created conversation id',
 );
 for (const oldCopy of ['Agent 协作群', 'AI 群员库', '专家群友将按群规协作回复', '正在加载资源库']) {
