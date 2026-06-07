@@ -89,6 +89,78 @@ const {
   assert.equal('adapter' in plainSanitized, false, 'adapter omitted when absent');
 }
 
+// ---- sanitizeMessageForStorage: preserves safe attachment metadata ----
+{
+  const msg = {
+    id: 'm-att',
+    sender: { id: 'u', name: 'Me' },
+    content: 'see files',
+    isAI: false,
+    attachments: [
+      {
+        id: 'att-1',
+        kind: 'image',
+        name: 'screen.png',
+        path: '/Users/me/Desktop/screen.png',
+        mimeType: 'image/png',
+        size: 1200,
+        extension: 'png',
+        dataUrl: `data:image/png;base64,${'A'.repeat(5000)}`,
+      },
+      {
+        id: 'att-2',
+        kind: 'code',
+        name: 'main.ts',
+        path: '/Users/me/project/main.ts',
+        extension: 'ts',
+        unknown: 'drop me',
+      },
+      {
+        id: '',
+        kind: 'image',
+        name: 'bad.png',
+        path: '/tmp/bad.png',
+      },
+    ],
+  };
+
+  const sanitized = sanitizeMessageForStorage(msg);
+  assert.deepEqual(sanitized.attachments, [
+    {
+      id: 'att-1',
+      kind: 'image',
+      name: 'screen.png',
+      path: '/Users/me/Desktop/screen.png',
+      mimeType: 'image/png',
+      size: 1200,
+      extension: 'png',
+    },
+    {
+      id: 'att-2',
+      kind: 'code',
+      name: 'main.ts',
+      path: '/Users/me/project/main.ts',
+      extension: 'ts',
+    },
+  ]);
+  assert.ok(!JSON.stringify(sanitized).includes('base64'), 'attachment payload bytes must not be stored');
+}
+
+// ---- sanitizeMessageForStorage: omits attachments when absent or empty ----
+{
+  const legacy = {
+    id: 'legacy',
+    sender: { id: 'u', name: 'Me' },
+    content: 'plain text',
+    isAI: false,
+  };
+  const sanitizedLegacy = sanitizeMessageForStorage(legacy);
+  assert.equal('attachments' in sanitizedLegacy, false, 'legacy messages stay compact');
+
+  const emptyAttachments = sanitizeMessageForStorage({ ...legacy, attachments: [] });
+  assert.equal('attachments' in emptyAttachments, false, 'empty attachment arrays are omitted');
+}
+
 // ---- truncateSessionTitle ----
 assert.equal(truncateSessionTitle('hello world'), 'hello world');
 assert.equal(truncateSessionTitle('  line1\nline2  '), 'line1', 'takes first non-empty line, trimmed');

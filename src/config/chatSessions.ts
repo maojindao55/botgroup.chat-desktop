@@ -9,6 +9,18 @@
 
 export type ChatSessionTitleSource = 'auto' | 'manual';
 
+export type ChatAttachmentKind = 'image' | 'document' | 'code';
+
+export interface ChatAttachment {
+  id: string;
+  kind: ChatAttachmentKind;
+  name: string;
+  path: string;
+  mimeType?: string;
+  size?: number;
+  extension?: string;
+}
+
 /** 单条会话消息（与 ChatUI 渲染用的消息形状保持兼容） */
 export interface ChatSessionMessage {
   /** 兼容历史：ChatUI 旧逻辑使用数字 id，这里允许 string | number */
@@ -22,6 +34,8 @@ export interface ChatSessionMessage {
   agentTaskId?: string;
   /** CLI adapter（codex/claude/opencode/...），日志 Modal 区分输出格式时使用 */
   adapter?: string;
+  /** Path-based user attachments for CLI agents. Stores metadata only, never file bytes. */
+  attachments?: ChatAttachment[];
 }
 
 /** 创建会话时的群行为快照，避免后续改群设置影响历史会话语义 */
@@ -118,6 +132,33 @@ export function cleanGeneratedTitle(raw: string, maxLen: number = MAX_SESSION_TI
  * 持久化前清洗单条消息：只保留必要字段，丢弃可能很大的字段（尤其是 base64 头像）。
  * 头像在渲染时按成员名称/ id 解析，无需随每条消息存储，否则极易撑爆 localStorage 配额。
  */
+function sanitizeAttachmentForStorage(raw: unknown): ChatAttachment | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const attachment = raw as Partial<ChatAttachment>;
+  if (!attachment.id || !attachment.name || !attachment.path) return null;
+  if (attachment.kind !== 'image' && attachment.kind !== 'document' && attachment.kind !== 'code') return null;
+
+  const sanitized: ChatAttachment = {
+    id: String(attachment.id),
+    kind: attachment.kind,
+    name: String(attachment.name),
+    path: String(attachment.path),
+  };
+  if (attachment.mimeType) sanitized.mimeType = String(attachment.mimeType);
+  if (typeof attachment.size === 'number' && Number.isFinite(attachment.size) && attachment.size >= 0) {
+    sanitized.size = attachment.size;
+  }
+  if (attachment.extension) sanitized.extension = String(attachment.extension).toLowerCase();
+  return sanitized;
+}
+
+function sanitizeAttachmentsForStorage(raw: unknown): ChatAttachment[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map(sanitizeAttachmentForStorage)
+    .filter((attachment): attachment is ChatAttachment => !!attachment);
+}
+
 export function sanitizeMessageForStorage(m: ChatSessionMessage): ChatSessionMessage {
   const sanitized: ChatSessionMessage = {
     id: m.id,
@@ -129,6 +170,8 @@ export function sanitizeMessageForStorage(m: ChatSessionMessage): ChatSessionMes
   if (m.createdAt) sanitized.createdAt = m.createdAt;
   if (m.agentTaskId) sanitized.agentTaskId = m.agentTaskId;
   if (m.adapter) sanitized.adapter = m.adapter;
+  const attachments = sanitizeAttachmentsForStorage((m as ChatSessionMessage & { attachments?: unknown }).attachments);
+  if (attachments.length > 0) sanitized.attachments = attachments;
   return sanitized;
 }
 
