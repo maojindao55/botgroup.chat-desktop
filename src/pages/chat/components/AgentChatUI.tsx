@@ -4,10 +4,11 @@
  */
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Send, Square, Settings2, ChevronLeft, Puzzle, PanelLeftOpen } from 'lucide-react';
+import { Send, Square, Settings2, ChevronLeft, Puzzle, PanelLeftOpen, Paperclip } from 'lucide-react';
 import { Tooltip, Button as AntdButton, Modal, message as antdMessage } from 'antd';
 import { ActionIcon, Avatar as LobeAvatar } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
+import { invoke } from '@tauri-apps/api/core';
 import { ChatMarkdown } from '@/components/Markdown';
 import { useUserStore } from '@/store/userStore';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -25,13 +26,22 @@ import { useAIMemberStore } from '@/store/aiMemberStore';
 import { useChatSessionStore } from '@/store/chatSessionStore';
 import {
   truncateSessionTitle,
+  type ChatAttachment,
   type ChatSessionMessage,
 } from '@/config/chatSessions';
+import {
+  composeMessageWithAttachments,
+  createChatAttachment,
+  formatAttachmentsForHistory,
+  MAX_ATTACHMENTS_PER_MESSAGE,
+  validateAttachmentCandidate,
+} from '@/utils/chatAttachments';
 import { resolveCliToolSessionKey } from '@/engine/cliToolSessions';
 import { supportsCliToolSession } from '@/config/cliAdapters';
 import { AppSettingsModal } from './AppSettingsModal';
 import type { AppSettingsSection } from '@/config/appSettings';
 import { MentionTextArea } from './MentionAutocomplete';
+import { ChatAttachmentList } from './ChatAttachments';
 import { generateSessionTitle } from '@/utils/sessionTitle';
 import { BRAND_ON_PRIMARY, brandPrimaryButtonStyle } from '@/lib/theme';
 
@@ -57,6 +67,7 @@ interface ChatMessage {
   agentTaskId?: string;
   /** CLI adapter（codex/claude/opencode/...），日志 Modal 用 */
   adapter?: string;
+  attachments?: ChatAttachment[];
 }
 
 interface AgentChatUIProps {
@@ -503,6 +514,7 @@ const AgentChatUI = ({
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputMessage, setInputMessage] = useState('');
+  const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -567,6 +579,7 @@ const AgentChatUI = ({
       isStreaming: false,
       agentTaskId: m.agentTaskId,
       adapter: m.adapter,
+      attachments: m.attachments || [],
     }));
 
   const localToStoredMessages = (msgs: ChatMessage[]): ChatSessionMessage[] =>
@@ -578,6 +591,7 @@ const AgentChatUI = ({
       isError: !!m.isError,
       agentTaskId: m.agentTaskId,
       adapter: m.adapter,
+      attachments: m.attachments || undefined,
     }));
 
   useEffect(() => {
@@ -840,23 +854,99 @@ const AgentChatUI = ({
     setMessages(prev => prev.map(m => m.isStreaming ? { ...m, isStreaming: false } : m));
   }, []);
 
+  type TauriAttachmentCandidate = {
+    path: string;
+    name?: string;
+    size?: number;
+    mimeType?: string;
+    mime_type?: string;
+  };
+
+  const handleSelectAttachments = async () => {
+    if (isLoading) return;
+    if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) {
+      antdMessage.warning(t('chat:attachments.tauriOnly', { defaultValue: '附件功能需要在桌面端使用。' }));
+      return;
+    }
+
+    try {
+      const selected = await invoke<TauriAttachmentCandidate[]>('select_chat_attachments');
+      if (!selected || selected.length === 0) return;
+
+      setPendingAttachments(prev => {
+        const byPath = new Map(prev.map(attachment => [attachment.path, attachment]));
+        for (const candidate of selected) {
+          if (byPath.size >= MAX_ATTACHMENTS_PER_MESSAGE) {
+            antdMessage.warning(t('chat:attachments.maxCount', {
+              count: MAX_ATTACHMENTS_PER_MESSAGE,
+              defaultValue: `每条消息最多添加 ${MAX_ATTACHMENTS_PER_MESSAGE} 个附件。`,
+            }));
+            break;
+          }
+
+          const attachment = createChatAttachment({
+            path: candidate.path,
+            name: candidate.name,
+            size: candidate.size,
+            mimeType: candidate.mimeType || candidate.mime_type,
+          });
+          const validation = validateAttachmentCandidate(attachment);
+          if (!validation.ok && validation.reason === 'file_too_large') {
+            antdMessage.warning(t('chat:attachments.fileTooLarge', {
+              name: candidate.name || candidate.path,
+              defaultValue: `文件过大：${candidate.name || candidate.path}`,
+            }));
+            continue;
+          }
+          if (!validation.ok) {
+            antdMessage.warning(t('chat:attachments.unsupported', {
+              name: candidate.name || candidate.path,
+              defaultValue: `不支持的文件类型：${candidate.name || candidate.path}`,
+            }));
+            continue;
+          }
+          if (!attachment || byPath.has(attachment.path)) continue;
+          byPath.set(attachment.path, attachment);
+        }
+        return Array.from(byPath.values());
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      antdMessage.error(t('chat:attachments.selectFailed', {
+        message,
+        defaultValue: `选择附件失败：${message}`,
+      }));
+    }
+  };
+
+  const handleRemovePendingAttachment = (id: string) => {
+    setPendingAttachments(prev => prev.filter(attachment => attachment.id !== id));
+  };
+
   const handleSendMessage = async () => {
-    if (isLoading || !inputMessage.trim()) return;
+    if (isLoading) return;
+    const attachmentsToSend = pendingAttachments;
+    if (!inputMessage.trim() && attachmentsToSend.length === 0) return;
 
     const userName = userStore.userInfo.nickname || t('settings:aiGroup.selfName');
     const capturedInput = inputMessage;
+    const agentInput = composeMessageWithAttachments(capturedInput, attachmentsToSend);
 
-    const sessionId = ensureActiveSession(capturedInput);
+    // Product regression guard: keep the returned session id flowing like
+    // const sessionId = ensureActiveSession(capturedInput);
+    const sessionId = ensureActiveSession(capturedInput || attachmentsToSend[0]?.name || t('chat:attachments.fallbackTitle', { defaultValue: '附件' }));
 
     const userMsg: ChatMessage = {
       id: nextMsgId(),
       sender: { id: 'user', name: userName },
       content: capturedInput,
       isAI: false,
+      attachments: attachmentsToSend,
     };
     shouldStickToBottomRef.current = true;
     setMessages(prev => [...prev, userMsg]);
     setInputMessage('');
+    setPendingAttachments([]);
     setIsLoading(true);
 
     // 创建 AbortController
@@ -869,7 +959,10 @@ const AgentChatUI = ({
     setMessages(prev => {
       history = prev
         .slice(-20)
-        .map(m => `${m.sender.name}: ${m.content}`)
+        .map(m => {
+          const attachmentSummary = formatAttachmentsForHistory(m.attachments);
+          return `${m.sender.name}: ${[m.content, attachmentSummary].filter(Boolean).join('\n')}`;
+        })
         .join('\n');
       return prev; // 不修改 state，仅读取
     });
@@ -951,7 +1044,7 @@ const AgentChatUI = ({
     };
 
     try {
-      await executeAgentStrategy(group, capturedInput, history, mutedUsers, callbacks, {
+      await executeAgentStrategy(group, agentInput, history, mutedUsers, callbacks, {
         signal: controller.signal,
         toolSessionLookup,
       });
@@ -1190,6 +1283,10 @@ const AgentChatUI = ({
                         </div>
                         <div className={bubbleClass}>
                           <ChatMarkdown content={message.content} isUser={isUser} basePath={group.workspacePath} />
+                          <ChatAttachmentList
+                            attachments={message.attachments}
+                            unavailableLabel={t('chat:attachments.unavailable', { defaultValue: '文件不可用' })}
+                          />
                           {isStreaming && (
                             <span className={cx('typing-indicator', styles.typingCursor)}>▋</span>
                           )}
@@ -1230,7 +1327,20 @@ const AgentChatUI = ({
 
             {/* Input Area */}
             <div className={styles.inputArea}>
+              <ChatAttachmentList
+                pending
+                attachments={pendingAttachments}
+                onRemove={handleRemovePendingAttachment}
+              />
               <div className={styles.composeShell}>
+                <AntdButton
+                  type="text"
+                  onClick={handleSelectAttachments}
+                  icon={<Paperclip size={16} />}
+                  disabled={isLoading || pendingAttachments.length >= MAX_ATTACHMENTS_PER_MESSAGE}
+                  aria-label={t('chat:attachments.add', { defaultValue: '添加附件' })}
+                  title={t('chat:attachments.add', { defaultValue: '添加附件' })}
+                />
                 <MentionTextArea
                   value={inputMessage}
                   onChange={setInputMessage}
@@ -1260,6 +1370,7 @@ const AgentChatUI = ({
                   <AntdButton
                     className={styles.composeSendButton}
                     onClick={handleSendMessage}
+                    disabled={!inputMessage.trim() && pendingAttachments.length === 0}
                     icon={<Send size={16} color={BRAND_ON_PRIMARY} />}
                     style={brandPrimaryButtonStyle}
                     styles={{
