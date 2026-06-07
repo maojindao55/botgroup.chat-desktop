@@ -533,6 +533,92 @@ pub fn select_directory() -> Result<Option<String>, String> {
     }
 }
 
+#[derive(Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatAttachmentCandidate {
+    pub path: String,
+    pub name: String,
+    pub size: Option<u64>,
+    pub extension: Option<String>,
+    pub mime_type: String,
+}
+
+fn attachment_extension(path: &PathBuf) -> Option<String> {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_ascii_lowercase())
+        .filter(|ext| !ext.is_empty())
+}
+
+fn attachment_mime_from_extension(ext: &str) -> &'static str {
+    match ext {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "webp" => "image/webp",
+        "gif" => "image/gif",
+        "pdf" => "application/pdf",
+        "txt" | "log" => "text/plain",
+        "md" => "text/markdown",
+        "json" => "application/json",
+        "csv" => "text/csv",
+        "ts" | "tsx" | "js" | "jsx" | "py" | "rs" | "go" | "java" | "php" | "html" | "css"
+        | "scss" | "yaml" | "yml" | "toml" | "xml" | "sh" => "text/plain",
+        _ => "application/octet-stream",
+    }
+}
+
+fn chat_attachment_candidate(path: PathBuf) -> ChatAttachmentCandidate {
+    let extension = attachment_extension(&path);
+    let mime_type = extension
+        .as_deref()
+        .map(attachment_mime_from_extension)
+        .unwrap_or("application/octet-stream")
+        .to_string();
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| name.to_string())
+        .unwrap_or_else(|| path.to_string_lossy().to_string());
+    let size = fs::metadata(&path).ok().map(|metadata| metadata.len());
+
+    ChatAttachmentCandidate {
+        path: path.to_string_lossy().to_string(),
+        name,
+        size,
+        extension,
+        mime_type,
+    }
+}
+
+fn chat_attachment_path_exists(path: &str) -> bool {
+    PathBuf::from(path.trim()).is_file()
+}
+
+#[tauri::command]
+pub fn select_chat_attachments() -> Result<Vec<ChatAttachmentCandidate>, String> {
+    let allowed_extensions = [
+        "png", "jpg", "jpeg", "webp", "gif", "pdf", "txt", "log", "md", "json", "csv", "ts",
+        "tsx", "js", "jsx", "py", "rs", "go", "java", "php", "html", "css", "scss", "yaml",
+        "yml", "toml", "xml", "sh",
+    ];
+    let files = rfd::FileDialog::new()
+        .add_filter("Supported attachments", &allowed_extensions)
+        .add_filter("All files", &["*"])
+        .pick_files()
+        .unwrap_or_default();
+
+    Ok(files
+        .into_iter()
+        .filter(|path| path.is_file())
+        .map(chat_attachment_candidate)
+        .collect())
+}
+
+#[tauri::command]
+pub fn chat_attachment_exists(path: String) -> bool {
+    chat_attachment_path_exists(&path)
+}
+
 #[tauri::command]
 pub fn save_image_as(source_path: String) -> Result<Option<String>, String> {
     let src = PathBuf::from(source_path.trim());
@@ -877,4 +963,35 @@ pub fn secret_list_names(app: AppHandle) -> std::result::Result<Vec<String>, Str
     let db_path = get_db_path(&app);
     let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
     vault::list_names(&conn).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod attachment_tests {
+    use super::*;
+
+    #[test]
+    fn attachment_mime_from_extension_supports_allowed_types() {
+        assert_eq!(attachment_mime_from_extension("png"), "image/png");
+        assert_eq!(attachment_mime_from_extension("jpg"), "image/jpeg");
+        assert_eq!(attachment_mime_from_extension("md"), "text/markdown");
+        assert_eq!(attachment_mime_from_extension("pdf"), "application/pdf");
+        assert_eq!(attachment_mime_from_extension("tsx"), "text/plain");
+    }
+
+    #[test]
+    fn attachment_extension_is_lowercase() {
+        let path = PathBuf::from("/tmp/Screen.PNG");
+        assert_eq!(attachment_extension(&path), Some("png".to_string()));
+    }
+
+    #[test]
+    fn chat_attachment_path_exists_reports_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("sample.txt");
+        fs::write(&file, "hello").unwrap();
+        assert!(chat_attachment_path_exists(file.to_string_lossy().as_ref()));
+        assert!(!chat_attachment_path_exists(
+            dir.path().join("missing.txt").to_string_lossy().as_ref()
+        ));
+    }
 }
