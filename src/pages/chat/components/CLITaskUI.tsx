@@ -94,6 +94,7 @@ import { getCLIWorkflowLabel } from '@/config/groupProduct';
 import { adapterUsesOpenCodeSessionTitle, supportsCliToolSession } from '@/config/cliAdapters';
 import { saveLastView } from '@/utils/lastViewStorage';
 import { reconstructCliOutputFromLogEntries } from '@/utils/cliLogOutput';
+import { AppPageShell } from '@/components/AppPageShell';
 
 interface CLITaskUIProps {
   groups: Group[];
@@ -128,20 +129,6 @@ const appendCliModelHint = (baseName: string, modelHint?: string) => {
 };
 
 const useStyles = createStyles(({ token, css }) => ({
-  page: css`
-    position: fixed;
-    inset: 0;
-    overflow: hidden;
-    background: ${token.colorBgContainer};
-    display: flex;
-  `,
-  container: css`
-    height: 100%;
-    display: flex;
-    width: 100%;
-    position: relative;
-    overflow: hidden;
-  `,
   rightCol: css`
     display: flex;
     flex-direction: column;
@@ -184,6 +171,7 @@ const useStyles = createStyles(({ token, css }) => ({
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: nowrap;
     gap: 12px;
     height: 46px;
     box-sizing: border-box;
@@ -196,6 +184,7 @@ const useStyles = createStyles(({ token, css }) => ({
     gap: 8px;
     min-width: 0;
     flex: 1 1 auto;
+    overflow: hidden;
   `,
   headerActions: css`
     display: flex;
@@ -203,7 +192,8 @@ const useStyles = createStyles(({ token, css }) => ({
     justify-content: flex-end;
     gap: 6px;
     min-width: 0;
-    flex: 1 1 auto;
+    flex: 0 0 auto;
+    flex-shrink: 0;
   `,
   avatarStack: css`
     display: flex;
@@ -1999,8 +1989,7 @@ const CLITaskUI = ({
         initialSection={settingsSection}
       />
 
-      <div className={styles.page}>
-        <div className={styles.container}>
+      <AppPageShell>
           <Sidebar
             isOpen={sidebarOpen}
             toggleSidebar={() => setSidebarOpen(!sidebarOpen)}
@@ -2474,12 +2463,11 @@ const CLITaskUI = ({
               </div>
             )}
           </div>
-        </div>
+      </AppPageShell>
 
-        {isMobile && sidebarOpen && (
-          <div className={styles.mobileOverlay} onClick={() => setSidebarOpen(false)} />
-        )}
-      </div>
+      {isMobile && sidebarOpen && (
+        <div className={styles.mobileOverlay} onClick={() => setSidebarOpen(false)} />
+      )}
     </>
   );
 };

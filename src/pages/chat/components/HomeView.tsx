@@ -21,6 +21,7 @@ import {
   getTranslatedGroupTypeDescription,
 } from '@/i18n/productLabels';
 import type { Group, GroupType } from '@/config/groups';
+import { AppPageShell } from '@/components/AppPageShell';
 
 interface HomeViewProps {
   groups: Group[];
@@ -41,20 +42,6 @@ const MODE_META: Record<GroupType, { icon: typeof Bot; color: string; bg: string
 };
 
 const useStyles = createStyles(({ token, css }) => ({
-  page: css`
-    position: fixed;
-    inset: 0;
-    overflow: hidden;
-    background: ${token.colorBgContainer};
-    display: flex;
-  `,
-  container: css`
-    height: 100%;
-    display: flex;
-    width: 100%;
-    position: relative;
-    overflow: hidden;
-  `,
   rightCol: css`
     display: flex;
     flex-direction: column;
@@ -318,8 +305,7 @@ const HomeView = ({
         initialSection={settingsSection}
       />
 
-      <div className={styles.page}>
-        <div className={styles.container}>
+      <AppPageShell>
           <Sidebar
             isOpen={sidebarOpen}
             toggleSidebar={toggleSidebar}
@@ -444,8 +430,7 @@ const HomeView = ({
               </div>
             </div>
           </div>
-        </div>
-      </div>
+      </AppPageShell>
     </>
   );
 };

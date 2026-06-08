@@ -50,7 +50,7 @@ const useStyles = createStyles(({ token, css }) => ({
     padding: 10px 12px;
     border-bottom: 1px solid ${token.colorBorderSecondary};
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 8px;
     align-items: center;
     justify-content: space-between;

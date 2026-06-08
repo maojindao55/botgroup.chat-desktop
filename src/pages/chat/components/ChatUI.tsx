@@ -63,22 +63,9 @@ import {
 } from '@/config/chatSessions';
 import { generateSessionTitle } from '@/utils/sessionTitle';
 import { readLastView, saveLastView, clearLastView } from '@/utils/lastViewStorage';
+import { AppPageShell } from '@/components/AppPageShell';
 
 const useStyles = createStyles(({ token, css }) => ({
-  page: css`
-    position: fixed;
-    inset: 0;
-    overflow: hidden;
-    background: ${token.colorBgContainer};
-    display: flex;
-  `,
-  container: css`
-    height: 100%;
-    display: flex;
-    width: 100%;
-    position: relative;
-    overflow: hidden;
-  `,
   rightCol: css`
     display: flex;
     flex-direction: column;
@@ -122,6 +109,7 @@ const useStyles = createStyles(({ token, css }) => ({
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: nowrap;
     gap: 12px;
     height: 46px;
     box-sizing: border-box;
@@ -136,6 +124,7 @@ const useStyles = createStyles(({ token, css }) => ({
     align-items: center;
     flex: 1 1 auto;
     min-width: 0;
+    overflow: hidden;
   `,
   titleRow: css`
     display: flex;
@@ -177,7 +166,8 @@ const useStyles = createStyles(({ token, css }) => ({
     align-items: center;
     justify-content: flex-end;
     gap: 8px;
-    flex: 1 1 auto;
+    flex: 0 0 auto;
+    flex-shrink: 0;
     min-width: 0;
   `,
   chatArea: css`
@@ -1911,8 +1901,7 @@ const ChatUI = () => {
         />
       )}
 
-      <div className={styles.page}>
-        <div className={styles.container}>
+      <AppPageShell>
           <Sidebar
             isOpen={sidebarOpen}
             toggleSidebar={toggleSidebar}
@@ -2313,8 +2302,7 @@ const ChatUI = () => {
             />
           )}
 
-        </div>
-      </div>
+      </AppPageShell>
 
       {sidebarOpen && (
         <div className={styles.mobileOverlay} onClick={toggleSidebar} />

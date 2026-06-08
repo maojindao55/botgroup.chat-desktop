@@ -9,6 +9,7 @@ import { Tooltip, Button as AntdButton, Modal, message as antdMessage } from 'an
 import { ActionIcon, Avatar as LobeAvatar } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 import { invoke } from '@tauri-apps/api/core';
+import { AppPageShell } from '@/components/AppPageShell';
 import { ChatMarkdown } from '@/components/Markdown';
 import { useUserStore } from '@/store/userStore';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -82,20 +83,6 @@ interface AgentChatUIProps {
 }
 
 const useStyles = createStyles(({ token, css }) => ({
-  page: css`
-    position: fixed;
-    inset: 0;
-    overflow: hidden;
-    background: ${token.colorBgContainer};
-    display: flex;
-  `,
-  container: css`
-    height: 100%;
-    display: flex;
-    width: 100%;
-    position: relative;
-    overflow: hidden;
-  `,
   rightCol: css`
     display: flex;
     flex-direction: column;
@@ -139,6 +126,7 @@ const useStyles = createStyles(({ token, css }) => ({
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: nowrap;
     gap: 12px;
     height: 46px;
     box-sizing: border-box;
@@ -153,6 +141,7 @@ const useStyles = createStyles(({ token, css }) => ({
     align-items: center;
     flex: 1 1 auto;
     min-width: 0;
+    overflow: hidden;
   `,
   titleStack: css`
     display: flex;
@@ -200,7 +189,8 @@ const useStyles = createStyles(({ token, css }) => ({
     align-items: center;
     justify-content: flex-end;
     gap: 8px;
-    flex: 1 1 auto;
+    flex: 0 0 auto;
+    flex-shrink: 0;
     min-width: 0;
   `,
   chatArea: css`
@@ -1103,8 +1093,7 @@ const AgentChatUI = ({
         />
       )}
 
-      <div className={styles.page}>
-        <div className={styles.container}>
+      <AppPageShell>
           <Sidebar
             isOpen={sidebarOpen}
             toggleSidebar={toggleSidebar}
@@ -1421,8 +1410,7 @@ const AgentChatUI = ({
             />
           )}
 
-        </div>
-      </div>
+      </AppPageShell>
 
       {/* Mobile overlay */}
       {sidebarOpen && (

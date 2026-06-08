@@ -323,17 +323,25 @@ const useStyles = createStyles(({ token, css }) => ({
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: nowrap;
+    gap: 8px;
     padding: 14px 16px;
     border-bottom: 1px solid ${token.colorBorderSecondary};
     height: 52px;
     flex-shrink: 0;
   `,
   inlineTitle: css`
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-size: 14px;
     font-weight: 600;
     color: ${token.colorText};
   `,
   inlineCloseBtn: css`
+    flex-shrink: 0;
     background: transparent;
     border: none;
     cursor: pointer;
