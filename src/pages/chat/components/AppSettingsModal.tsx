@@ -3,7 +3,6 @@ import { Modal } from 'antd';
 import {
   Cpu,
   Settings2,
-  Sparkles,
   Terminal,
   X,
   Server,
@@ -151,7 +150,6 @@ const SECTION_ICONS: Record<AppSettingsSection, typeof Settings2> = {
   general: Settings2,
   providers: Server,
   llm: Cpu,
-  agent: Sparkles,
   cli: Terminal,
 };
 

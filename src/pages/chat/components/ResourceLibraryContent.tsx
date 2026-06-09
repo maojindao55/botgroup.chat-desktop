@@ -1,16 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button, Tag, Modal, Empty } from 'antd';
+import { Button, Tag, Modal, Empty, Tabs } from 'antd';
 import { Avatar as LobeAvatar } from '@lobehub/ui';
 import { useAIMemberStore } from '@/store/aiMemberStore';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
 import { getVisibleMembers } from '@/utils/aiMemberDisplay';
 import { AIMember, AIMemberKind } from '@/config/aiMembers';
 import { Group } from '@/config/groups';
-import type { AppSettingsSection } from '@/config/appSettings';
+import { memberKindToSettingsSection, type AppSettingsSection } from '@/config/appSettings';
 import { AIMemberEditor } from './AIMemberEditor';
 import { ProviderLibrary } from './ProviderLibrary';
 import { ProviderEditor } from './ProviderEditor';
+import { CLIExecutorLibrary } from './CLIExecutorLibrary';
 import { useProviderStore } from '@/store/providerStore';
 import type { Provider } from '@/config/providers';
 import { Plus, Edit2, Trash2, ShieldAlert, Cpu, Terminal, Sparkles, Copy } from 'lucide-react';
@@ -133,6 +134,27 @@ const useStyles = createStyles(({ token, css }) => ({
     background: ${token.colorFillAlter} !important;
     color: ${token.colorTextSecondary} !important;
     border: 1px solid ${token.colorBorder} !important;
+  `,
+  cliTabs: css`
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+
+    .ant-tabs-nav {
+      flex-shrink: 0;
+      margin: 0;
+      padding: 0 20px;
+      background: ${token.colorBgContainer};
+      border-bottom: 1px solid ${token.colorBorderSecondary};
+    }
+
+    .ant-tabs-content-holder,
+    .ant-tabs-content,
+    .ant-tabs-tabpane {
+      flex: 1;
+      min-height: 0;
+    }
   `,
 }));
 
@@ -440,6 +462,23 @@ export const ResourceLibraryContent: React.FC<ResourceLibraryContentProps> = ({
 
   const body = section === 'providers' ? (
     <ProviderLibrary onCreate={handleCreateProvider} onEdit={handleEditProvider} />
+  ) : section === 'cli' ? (
+    <Tabs
+      className={styles.cliTabs}
+      defaultActiveKey="agents"
+      items={[
+        {
+          key: 'agents',
+          label: t('library:cliTabs.agents'),
+          children: renderMemberSection('cli'),
+        },
+        {
+          key: 'executors',
+          label: t('library:cliTabs.executors'),
+          children: <CLIExecutorLibrary />,
+        },
+      ]}
+    />
   ) : (
     renderMemberSection(section)
   );
@@ -454,9 +493,11 @@ export const ResourceLibraryContent: React.FC<ResourceLibraryContentProps> = ({
         onClose={() => setEditorOpen(false)}
         onSave={(savedKind) => {
           load();
-          // 若保存的成员类型与当前分区不同，自动切换到对应分区
-          if (savedKind !== section) {
-            onSectionChange?.(savedKind);
+          // 若保存的成员类型与当前分区不同，自动切换到对应分区。
+          // 旧版 agent 现在统一归到本地 CLI Agents 设置入口。
+          const savedSection = memberKindToSettingsSection(savedKind) as ResourceSection;
+          if (savedSection !== section) {
+            onSectionChange?.(savedSection);
           }
         }}
       />

@@ -10,7 +10,7 @@ import { TagPicker } from './TagPicker';
 import { DryRunModal, type DryRunParams } from './DryRunModal';
 import { Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { cliAdapterDefinitions } from '@/config/cliAdapters';
+import { resolveCLIExecutors, useCLIExecutorStore } from '@/store/cliExecutorStore';
 import { brandPrimaryButtonProps } from '@/lib/theme';
 
 const useStyles = createStyles(({ token, css }) => ({
@@ -95,6 +95,8 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
   const [form] = Form.useForm();
   const { get, upsert } = useAIMemberStore();
   const { providers: providersRecord, load: loadProviders } = useProviderStore();
+  const executorOverrides = useCLIExecutorStore((state) => state.overrides);
+  const executors = useMemo(() => resolveCLIExecutors(executorOverrides), [executorOverrides]);
   const kind = Form.useWatch('kind', form) || defaultKind;
   const providerId = Form.useWatch('providerId', form);
   const model = Form.useWatch('model', form);
@@ -503,7 +505,7 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
             <>
               <Form.Item label={t('member.fields.cliAdapter')} name="cliAdapter" rules={[{ required: true, message: t('member.fields.cliAdapterRequired') }]}>
                 <Select placeholder={t('member.fields.cliAdapterPlaceholder')}>
-                  {cliAdapterDefinitions.map((adapter) => (
+                  {executors.filter((executor) => executor.enabled).map((adapter) => (
                     <Select.Option key={adapter.id} value={adapter.id}>
                       {adapter.label}
                     </Select.Option>

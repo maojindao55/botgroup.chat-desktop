@@ -6,13 +6,13 @@
  * 而不是等到运行时 spawn 失败才报错。
  *
  * 设计要点：
- *  - 默认运行时检测以 adapter 为粒度（与设置面板一致，/api/cli/check 只接收 adapter）。
+ *  - 默认运行时检测以 adapter 为粒度，并携带执行器配置里的 binary override。
  *  - 配了自定义 binary 或 WSL 的成员不走默认 binary 检测，交给真正运行路径校验。
  *  - 检测调用本身失败（网络/IPC 异常、未知 adapter 等）时优雅降级为"放行"，
  *    避免因检测不可用而误伤正常执行。
  */
 import type { CLIAgent } from '@/config/aiCharacters';
-import { getCLIAdapterDefinition } from '@/config/cliAdapters';
+import { parseCLICommandInput, resolveCLIExecutorForConfig, useCLIExecutorStore } from '@/store/cliExecutorStore';
 import { te } from '@/i18n/translate';
 import { request } from '@/utils/request';
 
@@ -41,12 +41,12 @@ export interface CliPreflightResult {
  * 检测单个 adapter 是否安装。
  * @returns true=已安装, false=未安装, null=无法判定（降级放行）
  */
-async function checkAdapterInstalled(adapter: string): Promise<boolean | null> {
+async function checkAdapterInstalled(adapter: string, binary?: string): Promise<boolean | null> {
   try {
     const res = await request('/api/cli/check', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ adapter }),
+      body: JSON.stringify({ adapter, binary }),
     });
     if (!res || (typeof res.ok === 'boolean' && !res.ok)) return null;
     const json = await res.json();
@@ -81,19 +81,35 @@ export async function preflightCheckCliAgents(agents: CLIAgent[]): Promise<CliPr
 
   await Promise.all(
     Array.from(adapterToAgents.entries()).map(async ([adapter, adapterAgents]) => {
-      const installed = await checkAdapterInstalled(adapter);
+      const executor = resolveCLIExecutorForConfig(useCLIExecutorStore.getState().overrides, adapter);
+      const runtimeAdapter = executor?.runtimeAdapter || adapter;
+      if (executor?.enabled === false) {
+        const fallbackBinary = executor.binary || adapter;
+        missing.push({
+          adapter,
+          label: executor.label,
+          binary: fallbackBinary,
+          installHint: executor.installHint,
+          docsUrl: executor.docsUrl,
+          agentIds: adapterAgents.map(agent => agent.id),
+          agentNames: adapterAgents.map(agent => agent.name),
+        });
+        return;
+      }
+      const checkBinary = parseCLICommandInput(executor?.binary).binary || executor?.binary;
+      const installed = await checkAdapterInstalled(runtimeAdapter, checkBinary);
       if (installed === null) {
         skipped.push(adapter);
         return;
       }
       if (!installed) {
-        const def = getCLIAdapterDefinition(adapter);
+        const fallbackBinary = executor?.binary || adapter;
         missing.push({
           adapter,
-          label: def.label,
-          binary: def.defaultBinary || adapter,
-          installHint: def.installHint,
-          docsUrl: def.docsUrl,
+          label: executor?.label || adapter,
+          binary: fallbackBinary,
+          installHint: executor?.installHint,
+          docsUrl: executor?.docsUrl,
           agentIds: adapterAgents.map(agent => agent.id),
           agentNames: adapterAgents.map(agent => agent.name),
         });

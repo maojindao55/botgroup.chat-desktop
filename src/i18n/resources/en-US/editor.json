@@ -45,8 +45,8 @@
       "cliAdapter": "Dev tool adapter",
       "cliAdapterRequired": "Select an adapter",
       "cliAdapterPlaceholder": "Select adapter",
-      "cliBinary": "Binary path",
-      "cliBinaryPlaceholder": "Leave empty to use the global command (e.g. codex, claude, opencode)",
+      "cliBinary": "Command override",
+      "cliBinaryPlaceholder": "Command or command + fixed args, e.g. wecode codex. Leave empty to use executor settings",
       "cliExtraArgs": "Extra CLI args",
       "cliExtraArgsPlaceholder": "Arguments appended to the command",
       "cliApproval": "Execution approval",
@@ -63,9 +63,9 @@
       "cliWslDistroPlaceholder": "Leave empty for the default distribution (e.g. Ubuntu)"
     },
     "kinds": {
-      "llm": "Character",
-      "agent": "Expert",
-      "cli": "Dev member"
+      "llm": "AI character",
+      "agent": "Legacy expert",
+      "cli": "CLI Agent"
     },
     "tools": {
       "web_search": "Search the web for real-time information",

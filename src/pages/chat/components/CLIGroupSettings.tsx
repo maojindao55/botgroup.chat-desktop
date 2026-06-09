@@ -11,6 +11,7 @@ import { FolderOpen, Terminal, Mic, MicOff, CheckCircle2, XCircle, Play, FileTex
 import { MemberPicker } from './MemberPicker';
 import { cliWorkflowTemplateGroups, cliWorkflowTemplates, getCLIWorkflowTemplatesByGroup } from '@/config/groupProduct';
 import { request } from '@/utils/request';
+import { parseCLICommandInput, useCLIExecutorStore } from '@/store/cliExecutorStore';
 import { mapAIMemberToLegacy, type CLIAgent } from '@/config/aiCharacters';
 import type {
   CLICustomWorkflow,
@@ -415,6 +416,7 @@ export const CLIGroupSettings = ({
   const { styles, cx } = useStyles();
   const { t, i18n } = useTranslation(['cli', 'common', 'product']);
   const aiMembers = useAIMemberStore(s => s.members);
+  const getExecutor = useCLIExecutorStore(s => s.getResolved);
   const isTemplateMode = mode === 'template';
   const buildTemplateDraft = (): CLIGroup => ({
     ...group,
@@ -532,9 +534,12 @@ export const CLIGroupSettings = ({
         if (!adapter) continue;
         setCliStatus(prev => ({ ...prev, [m.id]: 'loading' }));
         try {
+          const executor = getExecutor(adapter);
+          const command = m.cli?.binary || executor?.binary;
+          const checkBinary = parseCLICommandInput(command).binary || command;
           const res = await request('/api/cli/check', {
             method: 'POST',
-            body: JSON.stringify({ adapter }),
+            body: JSON.stringify({ adapter, binary: checkBinary }),
           });
           const json = await res.json();
           if (!cancelled) {

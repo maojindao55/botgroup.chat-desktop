@@ -2,19 +2,19 @@
   "title": "Library",
   "closeAria": "Close library",
   "tabs": {
-    "cli": "Dev members",
+    "cli": "CLI Agents",
     "providers": "Model providers",
-    "llm": "Characters",
-    "agent": "Experts"
+    "llm": "AI characters",
+    "agent": "Legacy experts"
   },
   "empty": {
     "resources": "No resources yet",
     "providers": "No model providers yet. Use the button above to add one."
   },
   "create": {
-    "cli": "New dev member",
-    "llm": "New character",
-    "agent": "New expert",
+    "cli": "New CLI Agent",
+    "llm": "New AI character",
+    "agent": "New legacy expert",
     "provider": "New model provider"
   },
   "meta": {
@@ -53,6 +53,66 @@
     "builtinDeleteTooltip": "Built-in presets cannot be deleted",
     "copiedToast": "Copied as \"{{name}}\"",
     "copyFailed": "Copy failed"
+  },
+  "cliTabs": {
+    "agents": "Agents",
+    "executors": "Executors"
+  },
+  "executors": {
+    "hint": "Executors are local command-line tools used by CLI Agents. This version lists built-in executors and checks installation status.",
+    "description": "Local CLI execution adapter for {{label}}.",
+    "empty": "No executors yet",
+    "actions": {
+      "check": "Check",
+      "checkAll": "Check all",
+      "install": "Install",
+      "duplicate": "Duplicate",
+      "reset": "Reset"
+    },
+    "status": {
+      "unknown": "Not checked",
+      "checking": "Checking",
+      "installed": "Installed",
+      "notInstalled": "Not installed",
+      "enabled": "Enabled",
+      "disabled": "Disabled",
+      "customized": "Customized",
+      "copied": "Copy"
+    },
+    "capabilities": {
+      "toolSession": "Session resume",
+      "noToolSession": "No session resume",
+      "sessionTitle": "Session title"
+    },
+    "meta": {
+      "command": "Command:",
+      "streamMode": "Stream mode:",
+      "commandGroup": "Command group:",
+      "status": "Status:",
+      "path": "Path:",
+      "extraArgs": "Default args:",
+      "install": "Install:"
+    },
+    "editor": {
+      "title": "Edit executor",
+      "id": "Executor ID",
+      "baseAdapter": "Based on",
+      "label": "Display name",
+      "binary": "Command",
+      "binaryRequired": "Enter command",
+      "extraArgs": "Default args",
+      "extraArgsPlaceholder": "Enter an argument and press Enter, e.g. --json",
+      "installHint": "Install command",
+      "docsUrl": "Docs URL",
+      "enabled": "Enabled"
+    },
+    "toast": {
+      "installSuccess": "Install completed",
+      "installFailed": "Install failed",
+      "duplicated": "Executor duplicated",
+      "saved": "Executor settings saved",
+      "reset": "Default settings restored"
+    }
   },
   "toast": {
     "editOpenFailed": "Could not open editor"

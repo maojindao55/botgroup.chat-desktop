@@ -6,6 +6,7 @@
 //   cli_run    — spawn an adapter and stream output (returns immediately)
 //   cli_kill   — terminate a running session (drop the Child triggers SIGKILL)
 //   cli_check  — detect whether an adapter binary is installed + path/version
+//   cli_install — run an executor install command from settings
 
 use std::collections::HashMap;
 use std::process::Stdio;
@@ -944,11 +945,16 @@ pub async fn cli_runtime_list(app: AppHandle) -> Result<Vec<CliRuntime>, String>
 }
 
 #[tauri::command]
-pub async fn cli_check(app: AppHandle, adapter: String) -> Result<CliCheckResult, String> {
+pub async fn cli_check(app: AppHandle, adapter: String, binary: Option<String>) -> Result<CliCheckResult, String> {
     init_cli_environment();
 
-    let bin = adapter_binary(&adapter).ok_or_else(|| format!("unknown adapter: {}", adapter))?;
-    let path = match which::which(bin) {
+    let bin = binary
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| value.trim().to_string())
+        .or_else(|| adapter_binary(&adapter).map(|value| value.to_string()))
+        .ok_or_else(|| format!("unknown adapter: {}", adapter))?;
+    let path = match which::which(&bin) {
         Ok(p) => p,
         Err(_) => {
             upsert_runtime_check(&app, &adapter, false, None, None, Some("binary not found"));
@@ -992,6 +998,46 @@ pub async fn cli_check(app: AppHandle, adapter: String) -> Result<CliCheckResult
         None,
     );
     Ok(result)
+}
+
+#[derive(Serialize)]
+pub struct CliInstallResult {
+    pub success: bool,
+    pub exit_code: Option<i32>,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+#[tauri::command]
+pub async fn cli_install(command: String) -> Result<CliInstallResult, String> {
+    init_cli_environment();
+    let command = command.trim().to_string();
+    if command.is_empty() {
+        return Err("install command required".to_string());
+    }
+
+    let mut cmd = if cfg!(windows) {
+        let mut c = Command::new("cmd");
+        c.arg("/C").arg(&command);
+        c
+    } else {
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+        let mut c = Command::new(shell);
+        c.arg("-lc").arg(&command);
+        c
+    };
+
+    let output = tokio::time::timeout(std::time::Duration::from_secs(600), cmd.output())
+        .await
+        .map_err(|_| "install command timed out".to_string())?
+        .map_err(|e| format!("install command failed to start: {}", e))?;
+
+    Ok(CliInstallResult {
+        success: output.status.success(),
+        exit_code: output.status.code(),
+        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+    })
 }
 
 // ---------- Adapters: how each CLI is invoked in headless mode -----------
@@ -1085,12 +1131,86 @@ fn append_tool_session(argv: &mut Vec<String>, args: &CliRunArgs, flag: &str) {
     }
 }
 
-fn build_codex_command(argv: &mut Vec<String>, args: &CliRunArgs, prompt_via_stdin: bool) {
-    argv.push("exec".to_string());
-    if !has_extra_arg(args, "--skip-git-repo-check") {
-        argv.push("--skip-git-repo-check".to_string());
+fn is_codex_exec_arg(arg: &str) -> bool {
+    matches!(arg, "--json" | "--sandbox" | "--skip-git-repo-check")
+        || arg.starts_with("--sandbox=")
+}
+
+fn codex_exec_arg_takes_value(arg: &str) -> bool {
+    matches!(arg, "--sandbox")
+}
+
+fn split_custom_codex_args(extra_args: Option<&Vec<String>>) -> (Vec<String>, Vec<String>, bool) {
+    let mut launcher_args = Vec::new();
+    let mut exec_args = Vec::new();
+    let mut in_exec_args = false;
+    let mut consume_next_as_exec_value = false;
+    let mut has_skip_git_repo_check = false;
+
+    if let Some(extra) = extra_args {
+        for arg in extra {
+            if arg == "--skip-git-repo-check" {
+                has_skip_git_repo_check = true;
+                continue;
+            }
+            if consume_next_as_exec_value {
+                exec_args.push(arg.clone());
+                consume_next_as_exec_value = false;
+                continue;
+            }
+            if in_exec_args || is_codex_exec_arg(arg) {
+                in_exec_args = true;
+                exec_args.push(arg.clone());
+                if codex_exec_arg_takes_value(arg) {
+                    consume_next_as_exec_value = true;
+                }
+            } else {
+                launcher_args.push(arg.clone());
+            }
+        }
     }
-    append_extra_args(argv, args);
+
+    (launcher_args, exec_args, has_skip_git_repo_check)
+}
+
+fn command_binary_name(binary: &str) -> Option<String> {
+    std::path::Path::new(binary)
+        .file_name()
+        .and_then(|value| value.to_str())
+        .map(|value| value.trim_end_matches(".cmd").trim_end_matches(".exe").to_string())
+}
+
+fn is_default_adapter_binary(args: &CliRunArgs, default_binary: &str) -> bool {
+    args.binary
+        .as_deref()
+        .and_then(command_binary_name)
+        .map_or(true, |name| name == default_binary)
+}
+
+fn build_codex_command(argv: &mut Vec<String>, args: &CliRunArgs, prompt_via_stdin: bool) {
+    let default_binary = is_default_adapter_binary(args, "codex");
+    let mut append_skip_after_prompt = false;
+
+    if default_binary {
+        argv.push("exec".to_string());
+        if !has_extra_arg(args, "--skip-git-repo-check") {
+            argv.push("--skip-git-repo-check".to_string());
+        }
+        append_extra_args(argv, args);
+    } else {
+        // Custom Codex-compatible launchers such as `wecode codex` have two
+        // argument scopes:
+        // - launcher args before `exec`, e.g. `codex -m gpt-5.4`
+        // - Codex exec args after `exec`, e.g. `--json --sandbox workspace-write`
+        // `--skip-git-repo-check` is accepted after the prompt for wecode.
+        let (launcher_args, exec_args, _has_skip_git_repo_check) =
+            split_custom_codex_args(args.extra_args.as_ref());
+        argv.extend(launcher_args);
+        argv.push("exec".to_string());
+        argv.extend(exec_args);
+        append_skip_after_prompt = true;
+    }
+
     if !has_any_extra_arg(args, &["resume", "--last"]) {
         if let Some(tool_session_id) = &args.tool_session_id {
             if !tool_session_id.is_empty() {
@@ -1106,6 +1226,9 @@ fn build_codex_command(argv: &mut Vec<String>, args: &CliRunArgs, prompt_via_std
         argv.push("-".to_string());
     } else {
         argv.push(args.prompt.clone());
+    }
+    if append_skip_after_prompt {
+        argv.push("--skip-git-repo-check".to_string());
     }
 }
 
@@ -2425,6 +2548,73 @@ mod tests {
 
         assert!(argv.contains(&"写代码".to_string()));
         assert!(!argv.contains(&"-".to_string()));
+    }
+
+    #[test]
+    fn codex_custom_binary_places_skip_git_repo_check_after_prompt() {
+        let mut args = stdin_test_args("codex", "写代码");
+        args.binary = Some("wecode".to_string());
+        let mut argv = Vec::new();
+        super::build_codex_command(&mut argv, &args, false);
+
+        assert_eq!(
+            argv,
+            vec!["exec", "写代码", "--skip-git-repo-check"]
+                .into_iter()
+                .map(String::from)
+                .collect::<Vec<_>>(),
+        );
+    }
+
+    #[test]
+    fn codex_custom_binary_places_extra_args_before_exec() {
+        let mut args = stdin_test_args("codex", "你好");
+        args.binary = Some("wecode".to_string());
+        args.extra_args = Some(vec!["codex".to_string(), "-m".to_string(), "gpt-5.4".to_string()]);
+        let mut argv = Vec::new();
+        super::build_codex_command(&mut argv, &args, false);
+
+        assert_eq!(
+            argv,
+            vec!["codex", "-m", "gpt-5.4", "exec", "你好", "--skip-git-repo-check"]
+                .into_iter()
+                .map(String::from)
+                .collect::<Vec<_>>(),
+        );
+    }
+
+    #[test]
+    fn codex_custom_binary_keeps_json_args_after_exec() {
+        let mut args = stdin_test_args("codex", "你好");
+        args.binary = Some("wecode".to_string());
+        args.extra_args = Some(vec![
+            "codex".to_string(),
+            "-m".to_string(),
+            "gpt-5.4".to_string(),
+            "--json".to_string(),
+            "--sandbox".to_string(),
+            "workspace-write".to_string(),
+        ]);
+        let mut argv = Vec::new();
+        super::build_codex_command(&mut argv, &args, false);
+
+        assert_eq!(
+            argv,
+            vec![
+                "codex",
+                "-m",
+                "gpt-5.4",
+                "exec",
+                "--json",
+                "--sandbox",
+                "workspace-write",
+                "你好",
+                "--skip-git-repo-check",
+            ]
+                .into_iter()
+                .map(String::from)
+                .collect::<Vec<_>>(),
+        );
     }
 
     #[test]

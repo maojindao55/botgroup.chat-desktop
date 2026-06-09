@@ -32,17 +32,17 @@
     "workspace": {
       "title": "Local workspace",
       "templateTitle": "Default workspace",
-      "desc": "Dev members read and write code in this directory; choose or enter an absolute path",
+      "desc": "CLI Agents read and write code in this directory; choose or enter an absolute path",
       "templateDesc": "New tasks default to this directory; existing tasks are unaffected",
       "placeholder": "/Users/you/projects/your-repo"
     },
     "approval": {
       "title": "Auto-approve",
-      "desc": "When enabled, dev members run automatically without confirmation"
+      "desc": "When enabled, CLI Agents run automatically without confirmation"
     },
     "sessionPolicy": {
       "title": "CLI session reuse",
-      "desc": "Controls how CLI tool sessions are shared across dev members.",
+      "desc": "Controls how CLI tool sessions are shared across CLI Agents.",
       "templateDesc": "New tasks follow this policy for sharing CLI tool sessions across tasks; existing tasks keep their creation-time snapshot.",
       "highReuse": "High reuse"
     },
@@ -56,21 +56,21 @@
     },
     "collaboration": {
       "title": "Collaboration mode",
-      "raceWarning": "Requires a git repo with a clean working tree; each dev member runs in an isolated worktree.",
+      "raceWarning": "Requires a git repo with a clean working tree; each CLI Agent runs in an isolated worktree.",
       "pipelineHint": "Continues on failure by default (later members diagnose); user cancel stops later stages.",
       "reviewLoopHint": "Plan-implement-review plans first, then implements; failed review triggers fixes and re-review.",
       "customWorkflowHint": "Stages: {{stages}}.",
-      "reviewLoopMemberWarning": "Pick at least 2 dev members and assign planner/reviewer and implementer roles.",
-      "customWorkflowMemberWarning": "Pick at least 2 dev members and assign the fixer and reviewer roles."
+      "reviewLoopMemberWarning": "Pick at least 2 CLI Agents and assign planner/reviewer and implementer roles.",
+      "customWorkflowMemberWarning": "Pick at least 2 CLI Agents and assign the fixer and reviewer roles."
     },
     "strategies": {
-      "router": "Automatically picks the best dev member for one-off requests.",
-      "sequential": "Multiple dev members handle the same task independently; results are shown side by side.",
+      "router": "Automatically picks the best CLI Agent for one-off requests.",
+      "sequential": "Multiple CLI Agents handle the same task independently; results are shown side by side.",
       "pipeline": "Members work in sequence; later members see prior stage output.",
-      "race": "Each dev member gets an isolated worktree to finish the same task in parallel.",
+      "race": "Each CLI Agent gets an isolated worktree to finish the same task in parallel.",
       "review": "Implement, review, and fix in a loop—good for Codex coding with Claude Code review.",
-      "discussion": "Multiple dev members discuss plans and risks in rounds on a read-only copy.",
-      "debate": "Dev members propose independently, critique each other, then synthesize.",
+      "discussion": "Multiple CLI Agents discuss plans and risks in rounds on a read-only copy.",
+      "debate": "CLI Agents propose independently, critique each other, then synthesize.",
       "mapreduce": "Run the same task in parallel and compare aggregated results"
     },
     "roles": {
@@ -94,7 +94,7 @@
       "title": "Execution details",
       "failurePolicy": {
         "title": "Failure handling",
-        "desc": "Whether to continue later stages after a dev member fails",
+        "desc": "Whether to continue later stages after a CLI Agent fails",
         "continue": "Continue",
         "stopOnFailure": "Stop on failure",
         "stopOnCancelled": "Stop on cancel"
@@ -114,14 +114,14 @@
       "hint": "Execution details override collaboration defaults. Older data runs fine without configuring this."
     },
     "members": {
-      "manage": "Add / manage dev members",
+      "manage": "Add / manage CLI Agents",
       "templateManage": "Template members",
-      "list": "Dev members",
+      "list": "CLI Agents",
       "templateList": "Template members",
       "count": "{{label}} ({{count}})",
-      "pickerPlaceholder": "Select dev members to add...",
+      "pickerPlaceholder": "Select CLI Agents to add...",
       "templatePickerPlaceholder": "Select template members...",
-      "empty": "No template members yet. Add at least one dev member before new tasks can run.",
+      "empty": "No template members yet. Add at least one CLI Agent before new tasks can run.",
       "checking": "Checking...",
       "installed": "Installed",
       "notInstalled": "Not installed",
@@ -145,7 +145,7 @@
     },
     "worktree": {
       "title": "Race mode worktree management",
-      "hint": "Isolated race creates a separate git worktree per dev member. Worktrees are kept after runs—you can review and clean them here.",
+      "hint": "Isolated race creates a separate git worktree per CLI Agent. Worktrees are kept after runs—you can review and clean them here.",
       "empty": "No worktrees to manage.",
       "openPath": "Open path",
       "copyPath": "Copy path",
@@ -231,7 +231,7 @@
       "title": "New dev task",
       "subtitle": "Describe the request and pick a team template to start",
       "promptLabel": "Request",
-      "promptPlaceholder": "Describe your coding task; dev members will collaborate in the workspace... (e.g. add an Export CSV button with tests)",
+      "promptPlaceholder": "Describe your coding task; CLI Agents will collaborate in the workspace... (e.g. add an Export CSV button with tests)",
       "templateLabel": "Team template",
       "newTemplate": "New template",
       "manageTemplates": "Manage templates",
@@ -302,9 +302,9 @@
       "failed": "Could not delete task"
     },
     "system": {
-      "noAgents": "No enabled dev members. Add or enable members in template settings.",
+      "noAgents": "No enabled CLI Agents. Add or enable members in template settings.",
       "discussionReadOnly": "Current mode is read-only discussion and will not modify the workspace. Switch to implement-review or quick response to write code.",
-      "approvalConfirm": "Run dev members {{names}} in {{workspace}} for this task?",
+      "approvalConfirm": "Run CLI Agents {{names}} in {{workspace}} for this task?",
       "defaultWorkspace": "default directory",
       "executionFailed": "❌ Task did not start: {{error}}",
       "errorPrefix": "[Error: {{error}}]"
@@ -327,7 +327,7 @@
   },
   "raceResults": {
     "title": "Compare race results",
-    "hint": "Compare code changes vs the base commit in each dev member's isolated worktree. Mark adopted records your choice—it does not auto-merge into the main workspace.",
+    "hint": "Compare code changes vs the base commit in each CLI Agent's isolated worktree. Mark adopted records your choice—it does not auto-merge into the main workspace.",
     "summary": "{{count}} worktree results",
     "adoptedCount": " · {{count}} adopted",
     "cleanupAll": "Clean up all",

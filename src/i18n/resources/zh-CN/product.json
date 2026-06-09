@@ -13,7 +13,7 @@
     "cli": {
       "label": "开发群",
       "shortLabel": "开发",
-      "description": "邀请 Codex、Claude Code、OpenCode、KimiCode、PI 等开发成员协作改代码。"
+      "description": "邀请 Codex、Claude Code、OpenCode、KimiCode、PI 等 CLI Agent 协作改代码。"
     }
   },
   "aiSpeechModes": {
@@ -56,7 +56,7 @@
     "quick_response": {
       "label": "快速响应",
       "shortDescription": "小改动",
-      "description": "自动选择一位开发成员直接处理，适合小改动、简单修复和一次性请求。"
+      "description": "自动选择一位 CLI Agent 直接处理，适合小改动、简单修复和一次性请求。"
     },
     "diagnose_fix_review": {
       "label": "排查修复复审",
@@ -81,12 +81,12 @@
     "multi_solution": {
       "label": "多人出方案",
       "shortDescription": "方案比较",
-      "description": "多位开发成员分别给出实现或方案并列展示；适合不确定思路时比较。"
+      "description": "多位 CLI Agent 分别给出实现或方案并列展示；适合不确定思路时比较。"
     },
     "isolated_race": {
       "label": "隔离竞赛",
       "shortDescription": "隔离并行",
-      "description": "多位开发成员在独立 worktree 并行实现，最后选择采纳；适合复杂问题或多模型竞赛。"
+      "description": "多位 CLI Agent 在独立 worktree 并行实现，最后选择采纳；适合复杂问题或多模型竞赛。"
     }
   },
   "cliWorkflowTemplateGroups": {
@@ -106,7 +106,7 @@
     },
     "workspace": {
       "label": "按 Workspace 共享",
-      "description": "同一 Workspace 与开发成员下的所有任务共享 CLI 会话。"
+      "description": "同一 Workspace 与 CLI Agent 下的所有任务共享 CLI 会话。"
     },
     "template": {
       "label": "按模板共享",
@@ -114,8 +114,8 @@
     }
   },
   "memberKinds": {
-    "character": "角色",
-    "cliMember": "开发成员",
-    "expert": "专家"
+    "character": "AI 角色",
+    "cliMember": "CLI Agent",
+    "expert": "旧版专家"
   }
 }

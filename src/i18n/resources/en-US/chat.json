@@ -1,7 +1,7 @@
 {
   "memberPicker": {
     "defaultPlaceholder": "Select resources...",
-    "cliMemberSuffix": "dev member"
+    "cliMemberSuffix": "CLI Agent"
   },
   "init": {
     "loadFailed": "Failed to load. Please refresh and try again.",
@@ -25,11 +25,11 @@
     "appendError": "[Error: {{error}}]"
   },
   "messages": {
-    "noEnabledCliMembers": "No enabled dev members in this group. Add or enable members in the settings panel.",
+    "noEnabledCliMembers": "No enabled CLI Agents in this group. Add or enable members in the settings panel.",
     "readOnlyDiscussionHint": "Read-only discussion runs in a temporary copy and will not modify your workspace. Switch to diagnose/fix/review, plan/implement/review, or quick response to edit files."
   },
   "placeholders": {
-    "cliInput": "Enter a coding task for dev members to run in the workspace...",
+    "cliInput": "Enter a coding task for CLI Agents to run in the workspace...",
     "aiInput": "Send a message in the character group..."
   },
   "status": {

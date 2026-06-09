@@ -13,7 +13,7 @@
     "cli": {
       "label": "Dev Group",
       "shortLabel": "Dev",
-      "description": "Invite Codex, Claude Code, OpenCode, KimiCode, PI, and other dev members to edit code together."
+      "description": "Invite Codex, Claude Code, OpenCode, KimiCode, PI, and other CLI Agents to edit code together."
     }
   },
   "aiSpeechModes": {
@@ -56,7 +56,7 @@
     "quick_response": {
       "label": "Quick response",
       "shortDescription": "Small edits",
-      "description": "Automatically assign one dev member to handle it directly. Good for small edits, simple fixes, and one-off requests."
+      "description": "Automatically assign one CLI Agent to handle it directly. Good for small edits, simple fixes, and one-off requests."
     },
     "diagnose_fix_review": {
       "label": "Diagnose, fix, review",
@@ -81,12 +81,12 @@
     "multi_solution": {
       "label": "Multiple solutions",
       "shortDescription": "Compare options",
-      "description": "Multiple dev members propose implementations or plans side by side. Good when the direction is uncertain."
+      "description": "Multiple CLI Agents propose implementations or plans side by side. Good when the direction is uncertain."
     },
     "isolated_race": {
       "label": "Isolated race",
       "shortDescription": "Parallel worktrees",
-      "description": "Multiple dev members implement in isolated worktrees, then you choose which result to adopt. Good for complex tasks or model races."
+      "description": "Multiple CLI Agents implement in isolated worktrees, then you choose which result to adopt. Good for complex tasks or model races."
     }
   },
   "cliWorkflowTemplateGroups": {
@@ -106,7 +106,7 @@
     },
     "workspace": {
       "label": "Per workspace",
-      "description": "All tasks under the same workspace and dev member share one CLI session."
+      "description": "All tasks under the same workspace and CLI Agent share one CLI session."
     },
     "template": {
       "label": "Per template",
@@ -114,8 +114,8 @@
     }
   },
   "memberKinds": {
-    "character": "character",
-    "cliMember": "dev member",
-    "expert": "expert"
+    "character": "AI character",
+    "cliMember": "CLI Agent",
+    "expert": "legacy expert"
   }
 }

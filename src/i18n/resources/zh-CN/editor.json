@@ -45,8 +45,8 @@
       "cliAdapter": "开发工具适配器 (Adapter)",
       "cliAdapterRequired": "请选择适配器",
       "cliAdapterPlaceholder": "选择适配器",
-      "cliBinary": "可执行路径 (Binary Path)",
-      "cliBinaryPlaceholder": "不填则使用系统全局安装命令 (如 `codex`, `claude`, `opencode` 等)",
+      "cliBinary": "覆盖命令",
+      "cliBinaryPlaceholder": "可填命令或命令+固定参数，如 wecode codex；留空使用执行器配置",
       "cliExtraArgs": "额外运行参数 (Extra Args)",
       "cliExtraArgsPlaceholder": "在命令行后添加的参数",
       "cliApproval": "自动执行审批",
@@ -63,9 +63,9 @@
       "cliWslDistroPlaceholder": "留空则使用默认发行版 (如 Ubuntu)"
     },
     "kinds": {
-      "llm": "角色",
-      "agent": "专家",
-      "cli": "开发成员"
+      "llm": "AI 角色",
+      "agent": "旧版专家",
+      "cli": "CLI Agent"
     },
     "tools": {
       "web_search": "联网搜索获取实时信息",
