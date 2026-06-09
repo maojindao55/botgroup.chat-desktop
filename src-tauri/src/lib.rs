@@ -18,6 +18,17 @@ pub fn run() {
                 eprintln!("Database initialization failed: {}", e);
                 e
             })?;
+
+            // Windows/Linux: frameless window with a React title bar. macOS keeps native traffic lights.
+            #[cfg(not(target_os = "macos"))]
+            {
+                use tauri::Manager;
+
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.set_decorations(false);
+                }
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

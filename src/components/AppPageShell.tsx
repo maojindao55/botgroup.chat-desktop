@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { createStyles } from 'antd-style';
 
 import { WindowTitleBar } from '@/components/WindowTitleBar';
+import { needsCustomWindowChrome } from '@/utils/isTauri';
 
 const useStyles = createStyles(({ token, css }) => ({
   page: css`
@@ -10,7 +11,7 @@ const useStyles = createStyles(({ token, css }) => ({
     overflow: hidden;
     background: ${token.colorBgContainer};
     display: flex;
-    flex-direction: column;
+    flex-direction: ${needsCustomWindowChrome() ? 'column' : 'row'};
   `,
   container: css`
     flex: 1;

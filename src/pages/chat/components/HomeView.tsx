@@ -306,130 +306,130 @@ const HomeView = ({
       />
 
       <AppPageShell>
-          <Sidebar
-            isOpen={sidebarOpen}
-            toggleSidebar={toggleSidebar}
-            selectedGroupIndex={-1}
-            onSelectGroup={onSelectGroup}
-            groups={groups}
-            onCreateGroup={onCreateGroup}
-            onOpenSettings={(section) => {
-              setSettingsSection(section ?? 'general');
-              setSettingsOpen(true);
-            }}
-            activeView="home"
-            hiddenGroupTypes={['cli']}
-            onNavigateHome={() => {
-              if (isMobile) toggleSidebar();
-            }}
-            onNavigateCLI={onNavigateCLI}
-          />
+        <Sidebar
+          isOpen={sidebarOpen}
+          toggleSidebar={toggleSidebar}
+          selectedGroupIndex={-1}
+          onSelectGroup={onSelectGroup}
+          groups={groups}
+          onCreateGroup={onCreateGroup}
+          onOpenSettings={(section) => {
+            setSettingsSection(section ?? 'general');
+            setSettingsOpen(true);
+          }}
+          activeView="home"
+          hiddenGroupTypes={['cli']}
+          onNavigateHome={() => {
+            if (isMobile) toggleSidebar();
+          }}
+          onNavigateCLI={onNavigateCLI}
+        />
 
-          <div className={styles.rightCol}>
-            <div className={styles.headerBar}>
-              <div className={styles.headerInner}>
-                <span className={styles.mobileMenuBtn}>
-                  <ActionIcon icon={MenuIcon} size="small" onClick={toggleSidebar} title="" />
-                </span>
-                <span className={styles.headerTitle}>{t('home:header.title')}</span>
-              </div>
+        <div className={styles.rightCol}>
+          <div className={styles.headerBar}>
+            <div className={styles.headerInner}>
+              <span className={styles.mobileMenuBtn}>
+                <ActionIcon icon={MenuIcon} size="small" onClick={toggleSidebar} title="" />
+              </span>
+              <span className={styles.headerTitle}>{t('home:header.title')}</span>
             </div>
+          </div>
 
-            <div className={styles.scroll}>
-              <div className={styles.content}>
-                <div className={styles.hero}>
-                  <h1 className={styles.greeting}>{t('home:hero.greeting', { name: userName })}</h1>
-                  <p className={styles.subtitle}>{t('home:hero.subtitle')}</p>
+          <div className={styles.scroll}>
+            <div className={styles.content}>
+              <div className={styles.hero}>
+                <h1 className={styles.greeting}>{t('home:hero.greeting', { name: userName })}</h1>
+                <p className={styles.subtitle}>{t('home:hero.subtitle')}</p>
+              </div>
+
+              <div className={styles.section}>
+                <p className={styles.sectionTitle}>{t('home:sectionStart')}</p>
+                <div className={styles.cardGrid}>
+                  {modeCards.map(({ type, onClick }) => {
+                    const meta = MODE_META[type];
+                    const Icon = meta.icon;
+                    const isCreate = type !== 'cli';
+                    return (
+                      <button key={type} type="button" className={styles.modeCard} onClick={onClick}>
+                        <div className={styles.modeIcon} style={{ background: meta.bg }}>
+                          <Icon size={18} style={{ color: meta.color }} />
+                        </div>
+                        <div className={styles.modeText}>
+                          <div className={styles.modeTitle}>{getTranslatedGroupTypeLabel(t, type)}</div>
+                          <div className={styles.modeDesc}>{getTranslatedGroupTypeDescription(t, type)}</div>
+                        </div>
+                        <span className={styles.modeCta}>
+                          {isCreate ? t('home:cards.create') : t('home:cards.enter')}
+                          <ChevronRight size={15} />
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
+              </div>
 
+              {myGroups.length > 0 && (
                 <div className={styles.section}>
-                  <p className={styles.sectionTitle}>{t('home:sectionStart')}</p>
-                  <div className={styles.cardGrid}>
-                    {modeCards.map(({ type, onClick }) => {
-                      const meta = MODE_META[type];
+                  <p className={styles.sectionTitle}>{t('home:recent.groupsTitle')}</p>
+                  <div className={styles.recentGrid}>
+                    {myGroups.map(({ group, index }) => {
+                      const meta = MODE_META[group.type as GroupType] ?? MODE_META.ai;
                       const Icon = meta.icon;
-                      const isCreate = type !== 'cli';
                       return (
-                        <button key={type} type="button" className={styles.modeCard} onClick={onClick}>
-                          <div className={styles.modeIcon} style={{ background: meta.bg }}>
-                            <Icon size={18} style={{ color: meta.color }} />
+                        <button
+                          key={group.id}
+                          type="button"
+                          className={styles.recentItem}
+                          onClick={() => onSelectGroup(index)}
+                        >
+                          <div className={styles.recentIcon} style={{ background: meta.bg }}>
+                            <Icon size={16} style={{ color: meta.color }} />
                           </div>
-                          <div className={styles.modeText}>
-                            <div className={styles.modeTitle}>{getTranslatedGroupTypeLabel(t, type)}</div>
-                            <div className={styles.modeDesc}>{getTranslatedGroupTypeDescription(t, type)}</div>
+                          <div className={styles.recentBody}>
+                            <span className={styles.recentName}>{group.name}</span>
+                            <span className={styles.recentMeta}>
+                              {getTranslatedGroupTypeLabel(t, group.type as GroupType)}
+                            </span>
                           </div>
-                          <span className={styles.modeCta}>
-                            {isCreate ? t('home:cards.create') : t('home:cards.enter')}
-                            <ChevronRight size={15} />
-                          </span>
                         </button>
                       );
                     })}
                   </div>
                 </div>
+              )}
 
-                {myGroups.length > 0 && (
-                  <div className={styles.section}>
-                    <p className={styles.sectionTitle}>{t('home:recent.groupsTitle')}</p>
-                    <div className={styles.recentGrid}>
-                      {myGroups.map(({ group, index }) => {
-                        const meta = MODE_META[group.type as GroupType] ?? MODE_META.ai;
-                        const Icon = meta.icon;
-                        return (
-                          <button
-                            key={group.id}
-                            type="button"
-                            className={styles.recentItem}
-                            onClick={() => onSelectGroup(index)}
-                          >
-                            <div className={styles.recentIcon} style={{ background: meta.bg }}>
-                              <Icon size={16} style={{ color: meta.color }} />
-                            </div>
-                            <div className={styles.recentBody}>
-                              <span className={styles.recentName}>{group.name}</span>
-                              <span className={styles.recentMeta}>
-                                {getTranslatedGroupTypeLabel(t, group.type as GroupType)}
-                              </span>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
+              {recentTasks.length > 0 && (
+                <div className={styles.section}>
+                  <p className={styles.sectionTitle}>{t('home:recent.tasksTitle')}</p>
+                  <div className={styles.recentGrid}>
+                    {recentTasks.map((task) => (
+                      <button
+                        key={task.id}
+                        type="button"
+                        className={styles.recentItem}
+                        onClick={() => onSelectTask(task.id)}
+                      >
+                        <div className={styles.recentIcon} style={{ background: MODE_META.cli.bg }}>
+                          <Terminal size={16} style={{ color: MODE_META.cli.color }} />
+                        </div>
+                        <div className={styles.recentBody}>
+                          <span className={styles.recentName}>
+                            {task.title?.trim() || t('home:recent.emptyTaskTitle')}
+                          </span>
+                          <span className={styles.recentMeta}>{task.templateSnapshot?.name}</span>
+                        </div>
+                      </button>
+                    ))}
                   </div>
-                )}
-
-                {recentTasks.length > 0 && (
-                  <div className={styles.section}>
-                    <p className={styles.sectionTitle}>{t('home:recent.tasksTitle')}</p>
-                    <div className={styles.recentGrid}>
-                      {recentTasks.map((task) => (
-                        <button
-                          key={task.id}
-                          type="button"
-                          className={styles.recentItem}
-                          onClick={() => onSelectTask(task.id)}
-                        >
-                          <div className={styles.recentIcon} style={{ background: MODE_META.cli.bg }}>
-                            <Terminal size={16} style={{ color: MODE_META.cli.color }} />
-                          </div>
-                          <div className={styles.recentBody}>
-                            <span className={styles.recentName}>
-                              {task.title?.trim() || t('home:recent.emptyTaskTitle')}
-                            </span>
-                            <span className={styles.recentMeta}>{task.templateSnapshot?.name}</span>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                    <button type="button" className={styles.linkBtn} onClick={onNavigateCLI}>
-                      {t('home:recent.openDevTasks')}
-                      <ChevronRight size={15} />
-                    </button>
-                  </div>
-                )}
-              </div>
+                  <button type="button" className={styles.linkBtn} onClick={onNavigateCLI}>
+                    {t('home:recent.openDevTasks')}
+                    <ChevronRight size={15} />
+                  </button>
+                </div>
+              )}
             </div>
           </div>
+        </div>
       </AppPageShell>
     </>
   );

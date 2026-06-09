@@ -2,5 +2,8 @@ export const isTauri =
   typeof window !== 'undefined'
   && (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ !== undefined;
 
-export const isMacOS =
-  typeof navigator !== 'undefined' && /Mac|iPhone|iPod|iPad/i.test(navigator.platform);
+/** Windows/Linux Tauri builds use frameless windows with a custom title bar. */
+export function needsCustomWindowChrome(): boolean {
+  if (!isTauri || typeof navigator === 'undefined') return false;
+  return !/Macintosh|Mac OS X/.test(navigator.userAgent);
+}
