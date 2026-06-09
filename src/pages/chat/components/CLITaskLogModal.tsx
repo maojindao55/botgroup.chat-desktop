@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Modal, Button, Spin } from 'antd';
 import { createStyles } from 'antd-style';
 import { useTranslation } from 'react-i18next';
@@ -91,7 +91,7 @@ export const CLITaskLogModal = ({
     }
   }, [open, status, prompt]);
 
-  const fetchLogs = async (taskId: string) => {
+  const fetchLogs = useCallback(async (taskId: string) => {
     setLoadingLogs(true);
     try {
       const res = await request(`/api/cli/tasks/log?taskId=${taskId}`);
@@ -104,33 +104,46 @@ export const CLITaskLogModal = ({
     } finally {
       setLoadingLogs(false);
     }
-  };
+  }, []);
+
+  const fetchTaskMeta = useCallback(async (taskId: string) => {
+    try {
+      const res = await request(`/api/cli/tasks/get?taskId=${taskId}`);
+      const json = await res.json();
+      if (json.success && json.data) {
+        const nextStatus = json.data.status as string | undefined;
+        if (nextStatus) {
+          setCurrentStatus(nextStatus);
+          onStatusChange?.(nextStatus);
+        }
+        if (json.data.prompt) setCurrentPrompt(json.data.prompt);
+      }
+    } catch (e) {
+      console.error('Failed to fetch task metadata:', e);
+    }
+  }, [onStatusChange]);
+
+  const refreshTask = useCallback(async (taskId: string) => {
+    await Promise.all([
+      fetchLogs(taskId),
+      fetchTaskMeta(taskId),
+    ]);
+  }, [fetchLogs, fetchTaskMeta]);
 
   useEffect(() => {
     if (!open || !agentTaskId) return;
 
-    fetchLogs(agentTaskId);
+    refreshTask(agentTaskId);
 
     if (currentStatus !== 'running') return;
 
     const timer = setInterval(() => {
-      fetchLogs(agentTaskId);
-      request(`/api/cli/tasks/get?taskId=${agentTaskId}`)
-        .then(res => res.json())
-        .then(json => {
-          if (json.success && json.data) {
-            const nextStatus = json.data.status as string;
-            setCurrentStatus(nextStatus);
-            if (json.data.prompt) setCurrentPrompt(json.data.prompt);
-            onStatusChange?.(nextStatus);
-          }
-        })
-        .catch(console.error);
+      refreshTask(agentTaskId);
     }, 2000);
 
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- poll only by task id / running state
-  }, [open, agentTaskId, currentStatus]);
+  }, [open, agentTaskId, currentStatus, refreshTask]);
 
   const handleClose = () => {
     onOpenChange(false);
@@ -146,13 +159,7 @@ export const CLITaskLogModal = ({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ taskId: agentTaskId }),
         });
-        const res = await request(`/api/cli/tasks/get?taskId=${agentTaskId}`);
-        const json = await res.json();
-        if (json.success && json.data) {
-          const nextStatus = json.data.status as string;
-          setCurrentStatus(nextStatus);
-          onStatusChange?.(nextStatus);
-        }
+        await fetchTaskMeta(agentTaskId);
       } catch (e) {
         console.error('Failed to cancel task from log modal:', e);
       }
@@ -188,7 +195,7 @@ export const CLITaskLogModal = ({
         ),
         <Button
           key="refresh"
-          onClick={() => agentTaskId && fetchLogs(agentTaskId)}
+          onClick={() => agentTaskId && refreshTask(agentTaskId)}
           loading={loadingLogs}
         >
           {t('cli:taskLog.refresh')}

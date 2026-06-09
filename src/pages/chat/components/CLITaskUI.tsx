@@ -1258,6 +1258,12 @@ const CLITaskUI = ({
             if (abortController.signal.aborted) return;
             if (supportsCliToolSession(adapter)) {
               localStorage.setItem(getSessionKey(developmentTask, agentId), sessionId);
+              // 同步更新内存中的 agent toolSessionId，
+              // 确保 pipeline 后续阶段能复用当前阶段捕获到的 sessionId
+              const memAgent = activeAgents.find(a => a.id === agentId);
+              if (memAgent?.cli) {
+                memAgent.cli.toolSessionId = sessionId;
+              }
             }
             if (adapterUsesOpenCodeSessionTitle(adapter)) {
               opencodeSessionByAgentTask.set(agentTaskId, sessionId);

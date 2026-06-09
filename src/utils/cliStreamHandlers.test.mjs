@@ -203,6 +203,84 @@ function createRecorder() {
   assert.equal(recorder.chunks.join(''), 'hello from opencode');
 }
 
+// opencode step_start event — first event with sessionID but no renderable content
+{
+  const recorder = createRecorder();
+  const handler = createCLIStreamHandler('opencode', recorder.emitters);
+
+  assert.equal(handler.handleStdoutLine(JSON.stringify({
+    type: 'step_start',
+    sessionID: 'ses-step-start',
+    part: { id: 'prt-1', type: 'step-start' },
+  })), true);
+
+  assert.deepEqual(recorder.events, [
+    { type: 'tool_session', adapter: 'opencode', sessionId: 'ses-step-start' },
+  ]);
+  assert.equal(recorder.chunks.length, 0);
+}
+
+// opencode fallback: stream has no sessionID, but request carries toolSessionId
+{
+  const recorder = createRecorder();
+  const handler = createCLIStreamHandler('opencode', {
+    ...recorder.emitters,
+    toolSessionId: 'ses-from-request',
+  });
+
+  // text event without sessionID (edge case)
+  assert.equal(handler.handleStdoutLine(JSON.stringify({
+    type: 'text',
+    part: { text: 'response without session' },
+  })), true);
+
+  assert.equal(recorder.chunks.join(''), 'response without session');
+  assert.equal(recorder.events.length, 0, 'no tool_session from handleStdoutLine when sessionID is missing');
+
+  handler.flushDone();
+
+  assert.deepEqual(recorder.events, [
+    { type: 'tool_session', adapter: 'opencode', sessionId: 'ses-from-request' },
+  ]);
+}
+
+// opencode: stream has sessionID, request also has toolSessionId — stream wins
+{
+  const recorder = createRecorder();
+  const handler = createCLIStreamHandler('opencode', {
+    ...recorder.emitters,
+    toolSessionId: 'ses-from-request',
+  });
+
+  handler.handleStdoutLine(JSON.stringify({
+    type: 'step_start',
+    sessionID: 'ses-from-stream',
+    part: { id: 'prt-1', type: 'step-start' },
+  }));
+
+  handler.flushDone();
+
+  assert.deepEqual(recorder.events, [
+    { type: 'tool_session', adapter: 'opencode', sessionId: 'ses-from-stream' },
+    { type: 'tool_session', adapter: 'opencode', sessionId: 'ses-from-stream' },
+  ]);
+}
+
+// opencode: no sessionID in stream, no toolSessionId in request — flushDone silent
+{
+  const recorder = createRecorder();
+  const handler = createCLIStreamHandler('opencode', recorder.emitters);
+
+  handler.handleStdoutLine(JSON.stringify({
+    type: 'text',
+    part: { text: 'no session here' },
+  }));
+
+  handler.flushDone();
+
+  assert.equal(recorder.events.length, 0, 'no tool_session when neither stream nor request has sessionId');
+}
+
 {
   const recorder = createRecorder();
   const handler = createCLIStreamHandler('qodercli', recorder.emitters);

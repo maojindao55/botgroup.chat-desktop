@@ -638,6 +638,7 @@ export async function request(url: string, options: RequestInit = {}) {
             enqueueChunk,
             enqueueEvent,
             closeIntermediateDetails: closeDetails,
+            toolSessionId: toolSessionId || null,
           });
           const isJsonMode = streamHandler.usesJsonModeStderr;
 

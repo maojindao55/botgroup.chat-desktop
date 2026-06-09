@@ -1452,6 +1452,11 @@ const ChatUI = () => {
           onToolSession: (_taskId, agentId, adapter, sessionId) => {
             if (supportsCliToolSession(adapter)) {
               localStorage.setItem(cliToolSessionKey((group as CLIGroup).id, agentId, workspacePath), sessionId);
+              // 同步更新内存中的 agent toolSessionId，确保 pipeline 后续阶段能复用
+              const memAgent = activeAgents.find(a => a.id === agentId);
+              if (memAgent?.cli) {
+                memAgent.cli.toolSessionId = sessionId;
+              }
             }
           },
           onToken: (taskId, token) => {
@@ -1618,6 +1623,11 @@ const ChatUI = () => {
           onToolSession: (_taskId, agentId, adapter, sessionId) => {
             if (supportsCliToolSession(adapter)) {
               localStorage.setItem(cliToolSessionKey((group as CLIGroup).id, agentId, workspacePath), sessionId);
+              // 同步更新内存中的 agent toolSessionId，确保 pipeline 后续阶段能复用
+              const memAgent = activeAgents.find(a => a.id === agentId);
+              if (memAgent?.cli) {
+                memAgent.cli.toolSessionId = sessionId;
+              }
             }
           },
           onToken: (taskId, token) => {
