@@ -35,12 +35,6 @@
     "confirmTitle": "Delete group \"{{name}}\"?",
     "button": "Delete this group"
   },
-  "windowChrome": {
-    "minimize": "Minimize",
-    "maximize": "Maximize",
-    "restore": "Restore",
-    "close": "Close"
-  },
   "copyNameSuffix": " (copy)",
   "store": {
     "provider": {

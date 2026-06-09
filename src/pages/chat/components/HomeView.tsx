@@ -21,7 +21,7 @@ import {
   getTranslatedGroupTypeDescription,
 } from '@/i18n/productLabels';
 import type { Group, GroupType } from '@/config/groups';
-import { AppPageShell } from '@/components/AppPageShell';
+import { isTauriMacOS } from '@/utils/isTauri';
 
 interface HomeViewProps {
   groups: Group[];
@@ -42,6 +42,20 @@ const MODE_META: Record<GroupType, { icon: typeof Bot; color: string; bg: string
 };
 
 const useStyles = createStyles(({ token, css }) => ({
+  page: css`
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    background: ${token.colorBgContainer};
+    display: flex;
+  `,
+  container: css`
+    height: 100%;
+    display: flex;
+    width: 100%;
+    position: relative;
+    overflow: hidden;
+  `,
   rightCol: css`
     display: flex;
     flex-direction: column;
@@ -263,6 +277,7 @@ const HomeView = ({
   const [settingsSection, setSettingsSection] = useState<AppSettingsSection>('general');
 
   const userName = userStore.userInfo?.nickname?.trim() || t('home:hero.defaultName');
+  const hideAppHeaderBar = isTauriMacOS() && !isMobile;
 
   // 用户自建的群聊（排除内置开发群，它通过「开发群」卡片进入）
   const myGroups = groups
@@ -305,7 +320,8 @@ const HomeView = ({
         initialSection={settingsSection}
       />
 
-      <AppPageShell>
+      <div className={styles.page}>
+        <div className={styles.container}>
         <Sidebar
           isOpen={sidebarOpen}
           toggleSidebar={toggleSidebar}
@@ -326,6 +342,7 @@ const HomeView = ({
         />
 
         <div className={styles.rightCol}>
+          {!hideAppHeaderBar && (
           <div className={styles.headerBar}>
             <div className={styles.headerInner}>
               <span className={styles.mobileMenuBtn}>
@@ -334,6 +351,7 @@ const HomeView = ({
               <span className={styles.headerTitle}>{t('home:header.title')}</span>
             </div>
           </div>
+          )}
 
           <div className={styles.scroll}>
             <div className={styles.content}>
@@ -429,8 +447,9 @@ const HomeView = ({
               )}
             </div>
           </div>
+          </div>
         </div>
-      </AppPageShell>
+      </div>
     </>
   );
 };

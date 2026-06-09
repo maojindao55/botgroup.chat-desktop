@@ -35,12 +35,6 @@
     "confirmTitle": "删除群聊「{{name}}」？",
     "button": "删除此群聊"
   },
-  "windowChrome": {
-    "minimize": "最小化",
-    "maximize": "最大化",
-    "restore": "还原",
-    "close": "关闭"
-  },
   "copyNameSuffix": " (副本)",
   "store": {
     "provider": {

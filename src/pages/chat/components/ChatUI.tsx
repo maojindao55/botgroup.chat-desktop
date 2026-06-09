@@ -63,9 +63,23 @@ import {
 } from '@/config/chatSessions';
 import { generateSessionTitle } from '@/utils/sessionTitle';
 import { readLastView, saveLastView, clearLastView } from '@/utils/lastViewStorage';
-import { AppPageShell } from '@/components/AppPageShell';
+import { isTauriMacOS } from '@/utils/isTauri';
 
 const useStyles = createStyles(({ token, css }) => ({
+  page: css`
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    background: ${token.colorBgContainer};
+    display: flex;
+  `,
+  container: css`
+    height: 100%;
+    display: flex;
+    width: 100%;
+    position: relative;
+    overflow: hidden;
+  `,
   rightCol: css`
     display: flex;
     flex-direction: column;
@@ -1830,6 +1844,7 @@ const ChatUI = () => {
   // 当前用户头像从全局解析（不随消息持久化，避免 base64 撑爆存储）；历史消息也据此渲染
   const selfAvatar = userStore.avatarDisplaySrc || userStore.userInfo?.avatar_url || undefined;
   const isCLIGroup = group.type === 'cli';
+  const hideAppHeaderBar = isTauriMacOS() && !isMobile;
 
   return (
     <>
@@ -1901,7 +1916,8 @@ const ChatUI = () => {
         />
       )}
 
-      <AppPageShell>
+      <div className={styles.page}>
+        <div className={styles.container}>
         <Sidebar
           isOpen={sidebarOpen}
           toggleSidebar={toggleSidebar}
@@ -1928,6 +1944,7 @@ const ChatUI = () => {
             onDeleteSession={handleDeleteSession}
             onTogglePin={toggleChatSessionPinned}
             onToggleArchive={toggleChatSessionArchived}
+            onOpenGroupSettings={hideAppHeaderBar ? () => handleToggleSettings(true) : undefined}
           />
         )}
 
@@ -1944,7 +1961,7 @@ const ChatUI = () => {
               </button>
             </Tooltip>
           )}
-          {/* Header */}
+          {!hideAppHeaderBar && (
           <header className={styles.headerBar}>
             <div className={styles.headerInner}>
               <div className={styles.headerLeft}>
@@ -2011,6 +2028,7 @@ const ChatUI = () => {
               </div>
             </div>
           </header>
+          )}
 
 
           {/* Chat Area */}
@@ -2300,9 +2318,10 @@ const ChatUI = () => {
             }}
             onMembersChange={handleMembersChange}
           />
-        )}
+          )}
 
-      </AppPageShell>
+        </div>
+      </div>
 
       {sidebarOpen && (
         <div className={styles.mobileOverlay} onClick={toggleSidebar} />

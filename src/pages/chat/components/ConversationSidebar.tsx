@@ -16,6 +16,7 @@ import {
   Pencil,
   Trash2,
   Clock3,
+  Settings2,
 } from 'lucide-react';
 import { Input, Tooltip, Button } from 'antd';
 import { BRAND_ON_PRIMARY, brandPrimaryButtonStyle } from '@/lib/theme';
@@ -257,6 +258,7 @@ interface ConversationSidebarProps {
   onDeleteSession: (sessionId: string) => void;
   onTogglePin: (sessionId: string) => void;
   onToggleArchive: (sessionId: string) => void;
+  onOpenGroupSettings?: () => void;
 }
 
 export const CONVERSATION_SIDEBAR_WIDTH = SIDEBAR_WIDTH;
@@ -272,6 +274,7 @@ export const ConversationSidebar = ({
   onDeleteSession,
   onTogglePin,
   onToggleArchive,
+  onOpenGroupSettings,
 }: ConversationSidebarProps) => {
   const { styles, cx } = useStyles();
   const { t } = useTranslation(['chat', 'common']);
@@ -339,7 +342,17 @@ export const ConversationSidebar = ({
               <MessageSquare size={16} color="#ff6600" />
               <span className={styles.title}>{t('chat:conversation.title')}</span>
             </div>
-            <ActionIcon icon={PanelLeftClose} size="small" onClick={toggleSidebar} title="" />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+              {onOpenGroupSettings && (
+                <ActionIcon
+                  icon={Settings2}
+                  size="small"
+                  onClick={onOpenGroupSettings}
+                  title={t('chat:cliMeta.settings')}
+                />
+              )}
+              <ActionIcon icon={PanelLeftClose} size="small" onClick={toggleSidebar} title="" />
+            </div>
           </div>
 
           <div className={styles.topActions}>

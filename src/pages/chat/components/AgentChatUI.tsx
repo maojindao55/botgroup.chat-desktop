@@ -9,7 +9,7 @@ import { Tooltip, Button as AntdButton, Modal, message as antdMessage } from 'an
 import { ActionIcon, Avatar as LobeAvatar } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 import { invoke } from '@tauri-apps/api/core';
-import { AppPageShell } from '@/components/AppPageShell';
+import { isTauriMacOS } from '@/utils/isTauri';
 import { ChatMarkdown } from '@/components/Markdown';
 import { useUserStore } from '@/store/userStore';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -83,6 +83,20 @@ interface AgentChatUIProps {
 }
 
 const useStyles = createStyles(({ token, css }) => ({
+  page: css`
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    background: ${token.colorBgContainer};
+    display: flex;
+  `,
+  container: css`
+    height: 100%;
+    display: flex;
+    width: 100%;
+    position: relative;
+    overflow: hidden;
+  `,
   rightCol: css`
     display: flex;
     flex-direction: column;
@@ -1076,6 +1090,7 @@ const AgentChatUI = ({
 
 
   const userName = userStore.userInfo.nickname || t('settings:aiGroup.selfName');
+  const hideAppHeaderBar = isTauriMacOS() && !isMobile;
 
   return (
     <>
@@ -1093,7 +1108,8 @@ const AgentChatUI = ({
         />
       )}
 
-      <AppPageShell>
+      <div className={styles.page}>
+        <div className={styles.container}>
         <Sidebar
           isOpen={sidebarOpen}
           toggleSidebar={toggleSidebar}
@@ -1119,6 +1135,7 @@ const AgentChatUI = ({
           onDeleteSession={handleDeleteSession}
           onTogglePin={toggleChatSessionPinned}
           onToggleArchive={toggleChatSessionArchived}
+          onOpenGroupSettings={hideAppHeaderBar ? () => handleToggleSettings(true) : undefined}
         />
 
         <div className={styles.rightCol}>
@@ -1134,7 +1151,7 @@ const AgentChatUI = ({
               </button>
             </Tooltip>
           )}
-          {/* Header */}
+          {!hideAppHeaderBar && (
           <header className={styles.headerBar}>
             <div className={styles.headerInner}>
               <div className={styles.headerLeft}>
@@ -1189,6 +1206,7 @@ const AgentChatUI = ({
               </div>
             </div>
           </header>
+          )}
 
 
           {/* Chat Area */}
@@ -1410,7 +1428,8 @@ const AgentChatUI = ({
           />
         )}
 
-      </AppPageShell>
+        </div>
+      </div>
 
       {/* Mobile overlay */}
       {sidebarOpen && (

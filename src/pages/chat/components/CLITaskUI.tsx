@@ -94,7 +94,6 @@ import { getCLIWorkflowLabel } from '@/config/groupProduct';
 import { adapterUsesOpenCodeSessionTitle, supportsCliToolSession } from '@/config/cliAdapters';
 import { saveLastView } from '@/utils/lastViewStorage';
 import { reconstructCliOutputFromLogEntries } from '@/utils/cliLogOutput';
-import { AppPageShell } from '@/components/AppPageShell';
 
 interface CLITaskUIProps {
   groups: Group[];
@@ -129,6 +128,20 @@ const appendCliModelHint = (baseName: string, modelHint?: string) => {
 };
 
 const useStyles = createStyles(({ token, css }) => ({
+  page: css`
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    background: ${token.colorBgContainer};
+    display: flex;
+  `,
+  container: css`
+    height: 100%;
+    display: flex;
+    width: 100%;
+    position: relative;
+    overflow: hidden;
+  `,
   rightCol: css`
     display: flex;
     flex-direction: column;
@@ -1989,8 +2002,9 @@ const CLITaskUI = ({
         initialSection={settingsSection}
       />
 
-      <AppPageShell>
-        <Sidebar
+      <div className={styles.page}>
+        <div className={styles.container}>
+          <Sidebar
           isOpen={sidebarOpen}
           toggleSidebar={() => setSidebarOpen(!sidebarOpen)}
           selectedGroupIndex={selectedGroupIndex}
@@ -2462,8 +2476,9 @@ const CLITaskUI = ({
               </div>
             </div>
           )}
+          </div>
         </div>
-      </AppPageShell>
+      </div>
 
       {isMobile && sidebarOpen && (
         <div className={styles.mobileOverlay} onClick={() => setSidebarOpen(false)} />
