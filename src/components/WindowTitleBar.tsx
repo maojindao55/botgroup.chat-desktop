@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Minus, Square, X } from 'lucide-react';
 import { createStyles } from 'antd-style';
 import { useTranslation } from 'react-i18next';
 
 import { needsCustomWindowChrome } from '@/utils/isTauri';
+import { getAppWindow } from '@/utils/tauriWindow';
 
 const useStyles = createStyles(({ token, css }) => ({
   root: css`
@@ -131,27 +131,30 @@ export function WindowTitleBar() {
   const [title, setTitle] = useState('');
 
   const refreshMaximized = useCallback(async () => {
-    setMaximized(await getCurrentWindow().isMaximized());
+    const appWindow = await getAppWindow();
+    setMaximized(await appWindow.isMaximized());
   }, []);
 
   useEffect(() => {
     if (!needsCustomWindowChrome()) return;
 
-    const appWindow = getCurrentWindow();
     let disposed = false;
+    let unlisten: (() => void) | undefined;
 
     void (async () => {
+      const appWindow = await getAppWindow();
+      if (disposed) return;
+
       setTitle(await appWindow.title());
       setMaximized(await appWindow.isMaximized());
+      unlisten = await appWindow.onResized(() => {
+        if (!disposed) void refreshMaximized();
+      });
     })();
-
-    const unlistenPromise = appWindow.onResized(() => {
-      if (!disposed) void refreshMaximized();
-    });
 
     return () => {
       disposed = true;
-      void unlistenPromise.then((unlisten) => unlisten());
+      unlisten?.();
     };
   }, [refreshMaximized]);
 
@@ -164,9 +167,9 @@ export function WindowTitleBar() {
     close: t('windowChrome.close'),
   };
 
-  const handleMinimize = () => { void getCurrentWindow().minimize(); };
-  const handleToggleMaximize = () => { void getCurrentWindow().toggleMaximize(); };
-  const handleClose = () => { void getCurrentWindow().close(); };
+  const handleMinimize = () => { void getAppWindow().then((w) => w.minimize()); };
+  const handleToggleMaximize = () => { void getAppWindow().then((w) => w.toggleMaximize()); };
+  const handleClose = () => { void getAppWindow().then((w) => w.close()); };
 
   return (
     <header className={styles.root} data-tauri-drag-region>
