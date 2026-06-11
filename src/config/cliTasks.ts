@@ -1,5 +1,6 @@
 import type { CLIGroup, CLIStrategy, CLIExecutionPlan, CLISessionPolicy, CLIReviewLoopRoles, CLICustomWorkflow } from './groups';
 import { adapterUsesOpenCodeSessionTitle } from './cliAdapters';
+import { applyExecutorDefaultsToCliConfig } from '@/store/cliExecutorStore';
 import i18n from '@/i18n';
 
 export type CLITaskStatus =
@@ -309,23 +310,26 @@ export function createCLITaskMemberSnapshots(
 ): CLITaskMemberSnapshot[] {
   return members
     .filter((member): member is NonNullable<typeof member> => !!member && member.kind === 'cli' && !!member.cli?.adapter && !!member.id && !!member.name)
-    .map((member) => ({
-      id: member.id as string,
-      name: member.name as string,
-      avatar: member.avatar,
-      tags: member.tags ? [...member.tags] : undefined,
-      modelHint: inferCliModelFromArgs(member.cli!.extraArgs),
-      cli: {
-        adapter: member.cli!.adapter as string,
-        binary: member.cli!.binary,
-        extraArgs: member.cli!.extraArgs ? [...member.cli!.extraArgs] : undefined,
-        env: member.cli!.env ? { ...member.cli!.env } : undefined,
-        approvalMode: member.cli!.approvalMode,
-        showStderr: member.cli!.showStderr,
-        wsl: member.cli!.wsl,
-        wslDistro: member.cli!.wslDistro,
-      },
-    }));
+    .map((member) => {
+      const cli = applyExecutorDefaultsToCliConfig(member.cli!);
+      return {
+        id: member.id as string,
+        name: member.name as string,
+        avatar: member.avatar,
+        tags: member.tags ? [...member.tags] : undefined,
+        modelHint: inferCliModelFromArgs(cli.extraArgs),
+        cli: {
+          adapter: cli.adapter as string,
+          binary: cli.binary,
+          extraArgs: cli.extraArgs ? [...cli.extraArgs] : undefined,
+          env: cli.env ? { ...cli.env } : undefined,
+          approvalMode: cli.approvalMode,
+          showStderr: cli.showStderr,
+          wsl: cli.wsl,
+          wslDistro: cli.wslDistro,
+        },
+      };
+    });
 }
 
 export function cloneCLITaskMemberSnapshots(

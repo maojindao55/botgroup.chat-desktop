@@ -11,6 +11,7 @@ import { FolderOpen, Terminal, Mic, MicOff, CheckCircle2, XCircle, Play, FileTex
 import { MemberPicker } from './MemberPicker';
 import { cliWorkflowTemplateGroups, cliWorkflowTemplates, getCLIWorkflowTemplatesByGroup } from '@/config/groupProduct';
 import { request } from '@/utils/request';
+import { parseCLICommandInput, useCLIExecutorStore } from '@/store/cliExecutorStore';
 import { mapAIMemberToLegacy, type CLIAgent } from '@/config/aiCharacters';
 import type {
   CLICustomWorkflow,
@@ -323,17 +324,25 @@ const useStyles = createStyles(({ token, css }) => ({
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: nowrap;
+    gap: 8px;
     padding: 14px 16px;
     border-bottom: 1px solid ${token.colorBorderSecondary};
     height: 52px;
     flex-shrink: 0;
   `,
   inlineTitle: css`
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-size: 14px;
     font-weight: 600;
     color: ${token.colorText};
   `,
   inlineCloseBtn: css`
+    flex-shrink: 0;
     background: transparent;
     border: none;
     cursor: pointer;
@@ -407,6 +416,7 @@ export const CLIGroupSettings = ({
   const { styles, cx } = useStyles();
   const { t, i18n } = useTranslation(['cli', 'common', 'product']);
   const aiMembers = useAIMemberStore(s => s.members);
+  const getExecutor = useCLIExecutorStore(s => s.getResolved);
   const isTemplateMode = mode === 'template';
   const buildTemplateDraft = (): CLIGroup => ({
     ...group,
@@ -524,9 +534,12 @@ export const CLIGroupSettings = ({
         if (!adapter) continue;
         setCliStatus(prev => ({ ...prev, [m.id]: 'loading' }));
         try {
+          const executor = getExecutor(adapter);
+          const command = m.cli?.binary || executor?.binary;
+          const checkBinary = parseCLICommandInput(command).binary || command;
           const res = await request('/api/cli/check', {
             method: 'POST',
-            body: JSON.stringify({ adapter }),
+            body: JSON.stringify({ adapter, binary: checkBinary }),
           });
           const json = await res.json();
           if (!cancelled) {

@@ -63,6 +63,7 @@ import {
 } from '@/config/chatSessions';
 import { generateSessionTitle } from '@/utils/sessionTitle';
 import { readLastView, saveLastView, clearLastView } from '@/utils/lastViewStorage';
+import { isTauriMacOS } from '@/utils/isTauri';
 
 const useStyles = createStyles(({ token, css }) => ({
   page: css`
@@ -122,6 +123,7 @@ const useStyles = createStyles(({ token, css }) => ({
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: nowrap;
     gap: 12px;
     height: 46px;
     box-sizing: border-box;
@@ -136,6 +138,7 @@ const useStyles = createStyles(({ token, css }) => ({
     align-items: center;
     flex: 1 1 auto;
     min-width: 0;
+    overflow: hidden;
   `,
   titleRow: css`
     display: flex;
@@ -177,7 +180,8 @@ const useStyles = createStyles(({ token, css }) => ({
     align-items: center;
     justify-content: flex-end;
     gap: 8px;
-    flex: 1 1 auto;
+    flex: 0 0 auto;
+    flex-shrink: 0;
     min-width: 0;
   `,
   chatArea: css`
@@ -1448,6 +1452,11 @@ const ChatUI = () => {
           onToolSession: (_taskId, agentId, adapter, sessionId) => {
             if (supportsCliToolSession(adapter)) {
               localStorage.setItem(cliToolSessionKey((group as CLIGroup).id, agentId, workspacePath), sessionId);
+              // 同步更新内存中的 agent toolSessionId，确保 pipeline 后续阶段能复用
+              const memAgent = activeAgents.find(a => a.id === agentId);
+              if (memAgent?.cli) {
+                memAgent.cli.toolSessionId = sessionId;
+              }
             }
           },
           onToken: (taskId, token) => {
@@ -1614,6 +1623,11 @@ const ChatUI = () => {
           onToolSession: (_taskId, agentId, adapter, sessionId) => {
             if (supportsCliToolSession(adapter)) {
               localStorage.setItem(cliToolSessionKey((group as CLIGroup).id, agentId, workspacePath), sessionId);
+              // 同步更新内存中的 agent toolSessionId，确保 pipeline 后续阶段能复用
+              const memAgent = activeAgents.find(a => a.id === agentId);
+              if (memAgent?.cli) {
+                memAgent.cli.toolSessionId = sessionId;
+              }
             }
           },
           onToken: (taskId, token) => {
@@ -1840,6 +1854,7 @@ const ChatUI = () => {
   // 当前用户头像从全局解析（不随消息持久化，避免 base64 撑爆存储）；历史消息也据此渲染
   const selfAvatar = userStore.avatarDisplaySrc || userStore.userInfo?.avatar_url || undefined;
   const isCLIGroup = group.type === 'cli';
+  const hideAppHeaderBar = isTauriMacOS() && !isMobile;
 
   return (
     <>
@@ -1913,404 +1928,406 @@ const ChatUI = () => {
 
       <div className={styles.page}>
         <div className={styles.container}>
-          <Sidebar
-            isOpen={sidebarOpen}
-            toggleSidebar={toggleSidebar}
-            selectedGroupIndex={selectedGroupIndex}
-            onSelectGroup={handleSelectGroup}
-            groups={groups}
-            onCreateGroup={handleCreateGroup}
-            onOpenSettings={openAppSettings}
-            onNavigateCLI={handleNavigateCLI}
-            onNavigateHome={handleNavigateHome}
-            hiddenGroupTypes={['cli']}
+        <Sidebar
+          isOpen={sidebarOpen}
+          toggleSidebar={toggleSidebar}
+          selectedGroupIndex={selectedGroupIndex}
+          onSelectGroup={handleSelectGroup}
+          groups={groups}
+          onCreateGroup={handleCreateGroup}
+          onOpenSettings={openAppSettings}
+          onNavigateCLI={handleNavigateCLI}
+          onNavigateHome={handleNavigateHome}
+          hiddenGroupTypes={['cli']}
+        />
+
+        {isAIGroup && (
+          <ConversationSidebar
+            isOpen={convSidebarOpen}
+            toggleSidebar={() => setConvSidebarOpen(false)}
+            sessions={groupSessions}
+            selectedSessionId={activeSessionId}
+            groupName={group.name}
+            onSelectSession={handleSelectSession}
+            onNewSession={startNewConversation}
+            onRenameSession={renameChatSession}
+            onDeleteSession={handleDeleteSession}
+            onTogglePin={toggleChatSessionPinned}
+            onToggleArchive={toggleChatSessionArchived}
+            onOpenGroupSettings={hideAppHeaderBar ? () => handleToggleSettings(true) : undefined}
           />
+        )}
 
-          {isAIGroup && (
-            <ConversationSidebar
-              isOpen={convSidebarOpen}
-              toggleSidebar={() => setConvSidebarOpen(false)}
-              sessions={groupSessions}
-              selectedSessionId={activeSessionId}
-              groupName={group.name}
-              onSelectSession={handleSelectSession}
-              onNewSession={startNewConversation}
-              onRenameSession={renameChatSession}
-              onDeleteSession={handleDeleteSession}
-              onTogglePin={toggleChatSessionPinned}
-              onToggleArchive={toggleChatSessionArchived}
-            />
+        <div className={styles.rightCol}>
+          {isAIGroup && !convSidebarOpen && (
+            <Tooltip title={t('chat:conversation.expand')} placement="right">
+              <button
+                type="button"
+                className={styles.convSidebarExpandHandle}
+                onClick={() => setConvSidebarOpen(true)}
+                aria-label={t('chat:conversation.expand')}
+              >
+                <PanelLeftOpen size={14} />
+              </button>
+            </Tooltip>
           )}
-
-          <div className={styles.rightCol}>
-            {isAIGroup && !convSidebarOpen && (
-              <Tooltip title={t('chat:conversation.expand')} placement="right">
-                <button
-                  type="button"
-                  className={styles.convSidebarExpandHandle}
-                  onClick={() => setConvSidebarOpen(true)}
-                  aria-label={t('chat:conversation.expand')}
-                >
-                  <PanelLeftOpen size={14} />
-                </button>
-              </Tooltip>
-            )}
-            {/* Header */}
-            <header className={styles.headerBar}>
-              <div className={styles.headerInner}>
-                <div className={styles.headerLeft}>
-                  <div className={styles.mobileBackBtn} onClick={toggleSidebar}>
-                    <ChevronLeft size={20} />
-                  </div>
-                  <div className={styles.titleRow}>
-                    <span className={styles.titleIcon}>
-                      {group.type === 'cli' ? (
-                        <Terminal size={15} />
-                      ) : (
-                        <Bot size={15} />
-                      )}
-                    </span>
-                    <h1 className={styles.titleText}>
-                      {group.name}
-                    </h1>
-                    <span className={styles.memberCount}>({users.length})</span>
-                  </div>
+          {!hideAppHeaderBar && (
+          <header className={styles.headerBar}>
+            <div className={styles.headerInner}>
+              <div className={styles.headerLeft}>
+                <div className={styles.mobileBackBtn} onClick={toggleSidebar}>
+                  <ChevronLeft size={20} />
                 </div>
-                <div className={styles.headerActions}>
-                  {group.type === 'cli' && workspacePath && (
-                    <div className={styles.headerCwd}>
-                      <span className={styles.cwdLabel}>CWD:</span>
-                      <span
-                        className={styles.cwdPath}
-                        onDoubleClick={() => handleToggleSettings(!showSettings)}
-                        title={t('chat:cliMeta.workspaceTitle')}
-                      >
-                        {workspacePath}
-                      </span>
-                    </div>
-                  )}
-                  <div className={styles.desktopOnly}>
-                    <AdBanner show={showAd} closeAd={() => setShowAd(false)} />
-                  </div>
-                  <div className={styles.avatarStack}>
-                    {users.slice(0, 4).map((user) => {
-                      const a = getAvatarData(user.name);
-                      const url = resolveAvatarByName(user.name, user.avatar, 32);
-                      return (
-                        <Tooltip key={user.id} title={user.name}>
-                          <LobeAvatar
-                            avatar={url || a.text}
-                            background={a.backgroundColor}
-                            shape="circle"
-                            size={32}
-                            title={user.name}
-                            style={{ flexShrink: 0 }}
-                          />
-                        </Tooltip>
-                      );
-                    })}
-                    {users.length > 4 && (
-                      <div className={styles.avatarMore}>+{users.length - 4}</div>
+                <div className={styles.titleRow}>
+                  <span className={styles.titleIcon}>
+                    {group.type === 'cli' ? (
+                      <Terminal size={15} />
+                    ) : (
+                      <Bot size={15} />
                     )}
-                  </div>
-                  <ActionIcon
-                    icon={Settings2}
-                    size="small"
-                    onClick={() => handleToggleSettings(!showSettings)}
-                    title={t('chat:cliMeta.settings')}
-                  />
+                  </span>
+                  <h1 className={styles.titleText}>
+                    {group.name}
+                  </h1>
+                  <span className={styles.memberCount}>({users.length})</span>
                 </div>
               </div>
-            </header>
-
-
-            {/* Chat Area */}
-            <div
-              ref={chatAreaRef}
-              className={styles.chatArea}
-              onScroll={handleChatAreaScroll}
-            >
-              <div className={styles.mobileOnly}>
-                <AdBannerMobile show={showAd} closeAd={() => setShowAd(false)} />
-              </div>
-              <div className={styles.messageList}>
-                {messages.map((message) => {
-                  const isUser = message.sender.name === userName;
-                  const cliMember = message.sender?.id?.startsWith?.('cli-')
-                    ? resolveEffectiveMember(aiMembers, message.sender.id)
-                    : undefined;
-                  const cliAgentInfo = cliMember && cliMember.kind === 'cli'
-                    ? (mapAIMemberToLegacy(cliMember) as CLIAgent)
-                    : undefined;
-                  const avatarName = cliAgentInfo?.name || message.sender.name;
-                  const avatarSource = isUser
-                    ? (selfAvatar || message.sender.avatar)
-                    : (cliAgentInfo?.avatar || message.sender.avatar);
-                  const a = getAvatarData(avatarName);
-                  const url = resolveAvatarByName(avatarName, avatarSource, 40);
-                  const isLatest = messages[messages.length - 1]?.id === message.id;
-                  const isStreaming = !!message.isAI && (message.status === 'running' || (isLoading && isLatest));
-                  const isCli = !!message.sender?.id?.startsWith?.('cli-');
-                  const bubbleClass = isUser
-                    ? styles.bubbleUser
-                    : message.isError
-                      ? styles.bubbleError
-                      : styles.bubbleAI;
-                  return (
-                    <div
-                      key={message.id}
-                      className={styles.messageRow}
-                      style={{ justifyContent: isUser ? 'flex-end' : 'flex-start' }}
+              <div className={styles.headerActions}>
+                {group.type === 'cli' && workspacePath && (
+                  <div className={styles.headerCwd}>
+                    <span className={styles.cwdLabel}>CWD:</span>
+                    <span
+                      className={styles.cwdPath}
+                      onDoubleClick={() => handleToggleSettings(!showSettings)}
+                      title={t('chat:cliMeta.workspaceTitle')}
                     >
-                      {!isUser && (
+                      {workspacePath}
+                    </span>
+                  </div>
+                )}
+                <div className={styles.desktopOnly}>
+                  <AdBanner show={showAd} closeAd={() => setShowAd(false)} />
+                </div>
+                <div className={styles.avatarStack}>
+                  {users.slice(0, 4).map((user) => {
+                    const a = getAvatarData(user.name);
+                    const url = resolveAvatarByName(user.name, user.avatar, 32);
+                    return (
+                      <Tooltip key={user.id} title={user.name}>
                         <LobeAvatar
                           avatar={url || a.text}
                           background={a.backgroundColor}
                           shape="circle"
-                          size={40}
-                          title={message.sender.name}
+                          size={32}
+                          title={user.name}
                           style={{ flexShrink: 0 }}
                         />
-                      )}
-                      <div className={cx(styles.messageBody, isUser && styles.messageBodyUser)}>
-                        <div className={styles.metaRow} style={{ justifyContent: isUser ? 'flex-end' : 'flex-start' }}>
-                          {message.sender.name}
-                          {isStreaming && !message.content.includes('</details>') && (
-                            <span className={styles.streaming}>
-                              <span className={styles.streamingDot} />
-                              {message.content === '' ? t('chat:status.thinking') : (isCli ? t('chat:status.executing') : t('chat:status.running'))}
-                            </span>
-                          )}
-                        </div>
-                        <div className={cx(bubbleClass, 'chat-message')}>
-                          <ChatMarkdown
-                            content={message.content}
-                            isUser={isUser}
-                            basePath={message.cliCwd || workspacePath}
-                          />
-                          {isStreaming && (
-                            <span className={cx('typing-indicator', styles.typingCursor)}>▋</span>
-                          )}
-                          {message.taskId && (
-                            <div className={styles.cliTaskFooter}>
-                              <span className={styles.cliTaskStatus}>
-                                {message.status === 'running' && (
-                                  <>
-                                    <span className={styles.spinnerIcon} />
-                                    <span>{t('chat:status.executing')}</span>
-                                  </>
-                                )}
-                                {message.status === 'completed' && <span style={{ color: '#52c41a' }}>{t('chat:status.completed')}</span>}
-                                {message.status === 'failed' && <span style={{ color: '#ff4d4f' }}>{t('chat:status.failed')}</span>}
-                                {message.status === 'cancelled' && <span style={{ color: '#faad14' }}>{t('chat:status.cancelled')}</span>}
-                                {message.status === 'timeout' && <span style={{ color: '#ff4d4f' }}>{t('chat:status.timeout')}</span>}
-                              </span>
-                              <div className={styles.cliTaskActions}>
-                                {message.status === 'running' && (
-                                  <button
-                                    onClick={() => handleCancelTask(message.taskId)}
-                                    className={styles.cliActionBtnCancel}
-                                  >
-                                    {t('chat:cliMeta.stop')}
-                                  </button>
-                                )}
-                                {['failed', 'cancelled', 'timeout'].includes(message.status || '') && (
-                                  <button
-                                    onClick={() => handleRetryTask(message)}
-                                    className={styles.cliActionBtnRetry}
-                                  >
-                                    {t('chat:cliMeta.retry')}
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                          {message.taskId && (message.cliCwd || message.cliBranch) && message.cliCwd !== workspacePath && (
-                            <div className={styles.cliWorktreeInfo}>
-                              <div>
-                                <span style={{ fontWeight: 500 }}>{t('chat:cliMeta.workdir')}</span>
-                                <button
-                                  className={styles.cliWorktreeCopyBtn}
-                                  onClick={() => {
-                                    if (message.cliCwd && navigator.clipboard) {
-                                      navigator.clipboard.writeText(message.cliCwd).catch(() => { /* ignore */ });
-                                    }
-                                  }}
-                                >
-                                  {t('chat:cliMeta.copyPath')}
-                                </button>
-                                <button
-                                  className={styles.cliWorktreeCopyBtn}
-                                  onClick={async () => {
-                                    if (message.cliCwd) {
-                                      try {
-                                        await openPath(message.cliCwd);
-                                      } catch {
-                                        // fallback: copy cd command to clipboard
-                                        if (navigator.clipboard) {
-                                          navigator.clipboard.writeText(`cd ${message.cliCwd}`).catch(() => {});
-                                        }
-                                      }
-                                    }
-                                  }}
-                                >
-                                  {t('chat:cliMeta.openPath')}
-                                </button>
-                              </div>
-                              <div className={styles.cliWorktreePath}>{message.cliCwd}</div>
-                              {message.cliBranch && (
-                                <div>
-                                  <span style={{ fontWeight: 500 }}>{t('chat:cliMeta.branch')}</span>
-                                  <span className={styles.cliWorktreePath}>{message.cliBranch}</span>
-                                </div>
-                              )}
-                              {message.baseSha && (
-                                <div>
-                                  <span style={{ fontWeight: 500 }}>{t('chat:cliMeta.base')}</span>
-                                  <span className={styles.cliWorktreePath}>{message.baseSha.slice(0, 8)}</span>
-                                </div>
-                              )}
-                              {message.status === 'completed' && !message.adopted && (
-                                <button
-                                  className={styles.cliWorktreeCopyBtn}
-                                  style={{ marginTop: 4, marginLeft: 0, color: '#52c41a', borderColor: '#b7eb8f' }}
-                                  onClick={() => {
-                                    setMessages(prev => prev.map(m =>
-                                      m.taskId === message.taskId ? { ...m, adopted: true } : m
-                                    ));
-                                  }}
-                                >
-                                  {t('chat:cliMeta.adopt')}
-                                </button>
-                              )}
-                              {message.adopted && (
-                                <span style={{ marginTop: 4, display: 'inline-block', fontSize: 10, color: '#52c41a', fontWeight: 600 }}>
-                                  {t('chat:cliMeta.adopted')}
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      {isUser && (
-                        <LobeAvatar
-                          avatar={url || a.text}
-                          background={a.backgroundColor}
-                          shape="circle"
-                          size={40}
-                          title={message.sender.name}
-                          style={{ flexShrink: 0 }}
-                        />
-                      )}
-                    </div>
-                  );
-                })}
-                <div ref={messagesEndRef} />
+                      </Tooltip>
+                    );
+                  })}
+                  {users.length > 4 && (
+                    <div className={styles.avatarMore}>+{users.length - 4}</div>
+                  )}
+                </div>
+                <ActionIcon
+                  icon={Settings2}
+                  size="small"
+                  onClick={() => handleToggleSettings(!showSettings)}
+                  title={t('chat:cliMeta.settings')}
+                />
               </div>
             </div>
+          </header>
+          )}
 
 
-            {/* Input Area */}
-            <div className={styles.inputArea}>
-              <div className={styles.composeShell}>
-                <MentionTextArea
-                  value={inputMessage}
-                  onChange={setInputMessage}
-                  candidates={mentionCandidates}
-                  onKeyDown={(e) => {
-                    if (e.key !== 'Enter') return;
-                    if (!e.shiftKey) {
-                      e.preventDefault();
-                      handleSendMessage();
-                    }
-                  }}
-                  autoSize={{ minRows: 1, maxRows: 6 }}
-                  placeholder={isCLIGroup ? t('chat:placeholders.cliInput') : t('chat:placeholders.aiInput')}
-                  containerStyle={{ flex: 1, minWidth: 0 }}
-                />
-                <AntdButton
-                  className={styles.composeSendButton}
-                  onClick={handleSendMessage}
-                  loading={isLoading}
-                  icon={isLoading ? undefined : <Send size={16} color={BRAND_ON_PRIMARY} />}
-                  style={brandPrimaryButtonStyle}
-                  styles={{
-                    content: { color: BRAND_ON_PRIMARY },
-                    icon: { color: BRAND_ON_PRIMARY },
-                  }}
-                />
-              </div>
+          {/* Chat Area */}
+          <div
+            ref={chatAreaRef}
+            className={styles.chatArea}
+            onScroll={handleChatAreaScroll}
+          >
+            <div className={styles.mobileOnly}>
+              <AdBannerMobile show={showAd} closeAd={() => setShowAd(false)} />
+            </div>
+            <div className={styles.messageList}>
+              {messages.map((message) => {
+                const isUser = message.sender.name === userName;
+                const cliMember = message.sender?.id?.startsWith?.('cli-')
+                  ? resolveEffectiveMember(aiMembers, message.sender.id)
+                  : undefined;
+                const cliAgentInfo = cliMember && cliMember.kind === 'cli'
+                  ? (mapAIMemberToLegacy(cliMember) as CLIAgent)
+                  : undefined;
+                const avatarName = cliAgentInfo?.name || message.sender.name;
+                const avatarSource = isUser
+                  ? (selfAvatar || message.sender.avatar)
+                  : (cliAgentInfo?.avatar || message.sender.avatar);
+                const a = getAvatarData(avatarName);
+                const url = resolveAvatarByName(avatarName, avatarSource, 40);
+                const isLatest = messages[messages.length - 1]?.id === message.id;
+                const isStreaming = !!message.isAI && (message.status === 'running' || (isLoading && isLatest));
+                const isCli = !!message.sender?.id?.startsWith?.('cli-');
+                const bubbleClass = isUser
+                  ? styles.bubbleUser
+                  : message.isError
+                    ? styles.bubbleError
+                    : styles.bubbleAI;
+                return (
+                  <div
+                    key={message.id}
+                    className={styles.messageRow}
+                    style={{ justifyContent: isUser ? 'flex-end' : 'flex-start' }}
+                  >
+                    {!isUser && (
+                      <LobeAvatar
+                        avatar={url || a.text}
+                        background={a.backgroundColor}
+                        shape="circle"
+                        size={40}
+                        title={message.sender.name}
+                        style={{ flexShrink: 0 }}
+                      />
+                    )}
+                    <div className={cx(styles.messageBody, isUser && styles.messageBodyUser)}>
+                      <div className={styles.metaRow} style={{ justifyContent: isUser ? 'flex-end' : 'flex-start' }}>
+                        {message.sender.name}
+                        {isStreaming && !message.content.includes('</details>') && (
+                          <span className={styles.streaming}>
+                            <span className={styles.streamingDot} />
+                            {message.content === '' ? t('chat:status.thinking') : (isCli ? t('chat:status.executing') : t('chat:status.running'))}
+                          </span>
+                        )}
+                      </div>
+                      <div className={cx(bubbleClass, 'chat-message')}>
+                        <ChatMarkdown
+                          content={message.content}
+                          isUser={isUser}
+                          basePath={message.cliCwd || workspacePath}
+                        />
+                        {isStreaming && (
+                          <span className={cx('typing-indicator', styles.typingCursor)}>▋</span>
+                        )}
+                        {message.taskId && (
+                          <div className={styles.cliTaskFooter}>
+                            <span className={styles.cliTaskStatus}>
+                              {message.status === 'running' && (
+                                <>
+                                  <span className={styles.spinnerIcon} />
+                                  <span>{t('chat:status.executing')}</span>
+                                </>
+                              )}
+                              {message.status === 'completed' && <span style={{ color: '#52c41a' }}>{t('chat:status.completed')}</span>}
+                              {message.status === 'failed' && <span style={{ color: '#ff4d4f' }}>{t('chat:status.failed')}</span>}
+                              {message.status === 'cancelled' && <span style={{ color: '#faad14' }}>{t('chat:status.cancelled')}</span>}
+                              {message.status === 'timeout' && <span style={{ color: '#ff4d4f' }}>{t('chat:status.timeout')}</span>}
+                            </span>
+                            <div className={styles.cliTaskActions}>
+                              {message.status === 'running' && (
+                                <button
+                                  onClick={() => handleCancelTask(message.taskId)}
+                                  className={styles.cliActionBtnCancel}
+                                >
+                                  {t('chat:cliMeta.stop')}
+                                </button>
+                              )}
+                              {['failed', 'cancelled', 'timeout'].includes(message.status || '') && (
+                                <button
+                                  onClick={() => handleRetryTask(message)}
+                                  className={styles.cliActionBtnRetry}
+                                >
+                                  {t('chat:cliMeta.retry')}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                        {message.taskId && (message.cliCwd || message.cliBranch) && message.cliCwd !== workspacePath && (
+                          <div className={styles.cliWorktreeInfo}>
+                            <div>
+                              <span style={{ fontWeight: 500 }}>{t('chat:cliMeta.workdir')}</span>
+                              <button
+                                className={styles.cliWorktreeCopyBtn}
+                                onClick={() => {
+                                  if (message.cliCwd && navigator.clipboard) {
+                                    navigator.clipboard.writeText(message.cliCwd).catch(() => { /* ignore */ });
+                                  }
+                                }}
+                              >
+                                {t('chat:cliMeta.copyPath')}
+                              </button>
+                              <button
+                                className={styles.cliWorktreeCopyBtn}
+                                onClick={async () => {
+                                  if (message.cliCwd) {
+                                    try {
+                                      await openPath(message.cliCwd);
+                                    } catch {
+                                      // fallback: copy cd command to clipboard
+                                      if (navigator.clipboard) {
+                                        navigator.clipboard.writeText(`cd ${message.cliCwd}`).catch(() => {});
+                                      }
+                                    }
+                                  }
+                                }}
+                              >
+                                {t('chat:cliMeta.openPath')}
+                              </button>
+                            </div>
+                            <div className={styles.cliWorktreePath}>{message.cliCwd}</div>
+                            {message.cliBranch && (
+                              <div>
+                                <span style={{ fontWeight: 500 }}>{t('chat:cliMeta.branch')}</span>
+                                <span className={styles.cliWorktreePath}>{message.cliBranch}</span>
+                              </div>
+                            )}
+                            {message.baseSha && (
+                              <div>
+                                <span style={{ fontWeight: 500 }}>{t('chat:cliMeta.base')}</span>
+                                <span className={styles.cliWorktreePath}>{message.baseSha.slice(0, 8)}</span>
+                              </div>
+                            )}
+                            {message.status === 'completed' && !message.adopted && (
+                              <button
+                                className={styles.cliWorktreeCopyBtn}
+                                style={{ marginTop: 4, marginLeft: 0, color: '#52c41a', borderColor: '#b7eb8f' }}
+                                onClick={() => {
+                                  setMessages(prev => prev.map(m =>
+                                    m.taskId === message.taskId ? { ...m, adopted: true } : m
+                                  ));
+                                }}
+                              >
+                                {t('chat:cliMeta.adopt')}
+                              </button>
+                            )}
+                            {message.adopted && (
+                              <span style={{ marginTop: 4, display: 'inline-block', fontSize: 10, color: '#52c41a', fontWeight: 600 }}>
+                                {t('chat:cliMeta.adopted')}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {isUser && (
+                      <LobeAvatar
+                        avatar={url || a.text}
+                        background={a.backgroundColor}
+                        shape="circle"
+                        size={40}
+                        title={message.sender.name}
+                        style={{ flexShrink: 0 }}
+                      />
+                    )}
+                  </div>
+                );
+              })}
+              <div ref={messagesEndRef} />
             </div>
           </div>
 
-          {/* AI Group Settings (Desktop Inline) */}
-          {!isMobile && group.type === 'ai' && (
-            <AIGroupSettings
-              inline
-              open={showSettings}
-              onOpenChange={handleToggleSettings}
-              group={group as AIGroup}
-              users={users}
-              mutedUsers={mutedUsers}
-              onToggleMute={handleToggleMute}
-              isGroupDiscussionMode={isGroupDiscussionMode}
-              onToggleGroupDiscussion={() => setIsGroupDiscussionMode(!isGroupDiscussionMode)}
-              schedulerStrategy={schedulerStrategy}
-              onStrategyChange={setSchedulerStrategy}
-              onMembersChange={handleMembersChange}
-              onUpdateGroup={handleUpdateGroup}
-              onDeleteGroup={() => handleDeleteGroup(group)}
-              canDeleteGroup={!isBuiltinGroupId(group.id)}
-            />
-          )}
 
-          {/* CLI Group Settings (Desktop Inline) */}
-          {!isMobile && group.type === 'cli' && (
-            <CLIGroupSettings
-              inline
-              open={showSettings}
-              onOpenChange={handleToggleSettings}
-              group={{ ...(group as CLIGroup), strategy: cliStrategy, executionPlan: cliExecutionPlan }}
-              members={
-                ((group as CLIGroup).memberIds || (group as CLIGroup).members || [])
-                  .map(id => resolveEffectiveMember(aiMembers, id))
-                  .filter(m => m && m.kind === 'cli')
-                  .map(m => mapAIMemberToLegacy(m) as CLIAgent)
+          {/* Input Area */}
+          <div className={styles.inputArea}>
+            <div className={styles.composeShell}>
+              <MentionTextArea
+                value={inputMessage}
+                onChange={setInputMessage}
+                candidates={mentionCandidates}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter') return;
+                  if (!e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage();
+                  }
+                }}
+                autoSize={{ minRows: 1, maxRows: 6 }}
+                placeholder={isCLIGroup ? t('chat:placeholders.cliInput') : t('chat:placeholders.aiInput')}
+                containerStyle={{ flex: 1, minWidth: 0 }}
+              />
+              <AntdButton
+                className={styles.composeSendButton}
+                onClick={handleSendMessage}
+                loading={isLoading}
+                icon={isLoading ? undefined : <Send size={16} color={BRAND_ON_PRIMARY} />}
+                style={brandPrimaryButtonStyle}
+                styles={{
+                  content: { color: BRAND_ON_PRIMARY },
+                  icon: { color: BRAND_ON_PRIMARY },
+                }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* AI Group Settings (Desktop Inline) */}
+        {!isMobile && group.type === 'ai' && (
+          <AIGroupSettings
+            inline
+            open={showSettings}
+            onOpenChange={handleToggleSettings}
+            group={group as AIGroup}
+            users={users}
+            mutedUsers={mutedUsers}
+            onToggleMute={handleToggleMute}
+            isGroupDiscussionMode={isGroupDiscussionMode}
+            onToggleGroupDiscussion={() => setIsGroupDiscussionMode(!isGroupDiscussionMode)}
+            schedulerStrategy={schedulerStrategy}
+            onStrategyChange={setSchedulerStrategy}
+            onMembersChange={handleMembersChange}
+            onUpdateGroup={handleUpdateGroup}
+            onDeleteGroup={() => handleDeleteGroup(group)}
+            canDeleteGroup={!isBuiltinGroupId(group.id)}
+          />
+        )}
+
+        {/* CLI Group Settings (Desktop Inline) */}
+        {!isMobile && group.type === 'cli' && (
+          <CLIGroupSettings
+            inline
+            open={showSettings}
+            onOpenChange={handleToggleSettings}
+            group={{ ...(group as CLIGroup), strategy: cliStrategy, executionPlan: cliExecutionPlan }}
+            members={
+              ((group as CLIGroup).memberIds || (group as CLIGroup).members || [])
+                .map(id => resolveEffectiveMember(aiMembers, id))
+                .filter(m => m && m.kind === 'cli')
+                .map(m => mapAIMemberToLegacy(m) as CLIAgent)
+            }
+            mutedUsers={mutedUsers}
+            onToggleMute={handleToggleMute}
+            workspacePath={workspacePath}
+            onWorkspacePathChange={(p) => {
+              setWorkspacePath(p);
+              if (group.id) {
+                if (p) localStorage.setItem(`workspace:${group.id}`, p);
+                else localStorage.removeItem(`workspace:${group.id}`);
               }
-              mutedUsers={mutedUsers}
-              onToggleMute={handleToggleMute}
-              workspacePath={workspacePath}
-              onWorkspacePathChange={(p) => {
-                setWorkspacePath(p);
-                if (group.id) {
-                  if (p) localStorage.setItem(`workspace:${group.id}`, p);
-                  else localStorage.removeItem(`workspace:${group.id}`);
-                }
-              }}
-              approvalMode={approvalMode}
-              onApprovalModeChange={setApprovalMode}
-              timeout={cliTimeout}
-              onTimeoutChange={setCliTimeout}
-              showStderr={cliShowStderr}
-              onShowStderrChange={setCliShowStderr}
-              strategy={cliStrategy}
-              onStrategyChange={handleCLIStrategyChange}
-              onExecutionPlanChange={handleCLIExecutionPlanChange}
-              sessionPolicy={cliSessionPolicy}
-              onSessionPolicyChange={handleCliSessionPolicyChange}
-              onRetryTask={(agentId, prompt) => {
-                const m = resolveEffectiveMember(aiMembers, agentId);
-                const agent = m && m.kind === 'cli' ? mapAIMemberToLegacy(m) as CLIAgent : undefined;
-                if (agent) {
-                  handleRetryTask({
-                    prompt,
-                    sender: { id: agentId, name: agent.name }
-                  });
-                  handleToggleSettings(false);
-                }
-              }}
-              onMembersChange={handleMembersChange}
-            />
+            }}
+            approvalMode={approvalMode}
+            onApprovalModeChange={setApprovalMode}
+            timeout={cliTimeout}
+            onTimeoutChange={setCliTimeout}
+            showStderr={cliShowStderr}
+            onShowStderrChange={setCliShowStderr}
+            strategy={cliStrategy}
+            onStrategyChange={handleCLIStrategyChange}
+            onExecutionPlanChange={handleCLIExecutionPlanChange}
+            sessionPolicy={cliSessionPolicy}
+            onSessionPolicyChange={handleCliSessionPolicyChange}
+            onRetryTask={(agentId, prompt) => {
+              const m = resolveEffectiveMember(aiMembers, agentId);
+              const agent = m && m.kind === 'cli' ? mapAIMemberToLegacy(m) as CLIAgent : undefined;
+              if (agent) {
+                handleRetryTask({
+                  prompt,
+                  sender: { id: agentId, name: agent.name }
+                });
+                handleToggleSettings(false);
+              }
+            }}
+            onMembersChange={handleMembersChange}
+          />
           )}
 
         </div>

@@ -20,6 +20,9 @@ globalThis.__cliTasksI18n = {
   t: (_key, opts) => opts?.defaultValue ?? _key,
   language: 'zh-CN',
 };
+globalThis.__cliTasksExecutorStore = {
+  applyExecutorDefaultsToCliConfig: (cli) => cli,
+};
 const mod = await importTsModule(
   new URL('./cliTasks.ts', import.meta.url),
   source => source
@@ -30,14 +33,29 @@ const mod = await importTsModule(
     .replace(
       "import i18n from '@/i18n';",
       'const i18n = globalThis.__cliTasksI18n;',
+    )
+    .replace(
+      "import { applyExecutorDefaultsToCliConfig } from '@/store/cliExecutorStore';",
+      'const { applyExecutorDefaultsToCliConfig } = globalThis.__cliTasksExecutorStore;',
     ),
 );
+globalThis.__cliTasksExecutorStoreForSessions = {
+  parseCLICommandInput: () => ({ args: [] }),
+  mergeCLIExtraArgs: (executorArgs, memberArgs) => [...(executorArgs || []), ...(memberArgs || [])].filter(Boolean),
+  resolveCLIExecutorForConfig: () => undefined,
+  useCLIExecutorStore: { getState: () => ({ overrides: {} }) },
+};
 const sessions = await importTsModule(
   new URL('../engine/cliToolSessions.ts', import.meta.url),
-  source => source.replace(
-    "import { hasExplicitToolSessionArg, supportsCliToolSession } from '@/config/cliAdapters';",
-    'const { hasExplicitToolSessionArg, supportsCliToolSession } = globalThis.__cliTasksTestDeps;',
-  ),
+  source => source
+    .replace(
+      "import { hasExplicitToolSessionArg, supportsCliToolSession } from '@/config/cliAdapters';",
+      'const { hasExplicitToolSessionArg, supportsCliToolSession } = globalThis.__cliTasksTestDeps;',
+    )
+    .replace(
+      "import { mergeCLIExtraArgs, parseCLICommandInput, resolveCLIExecutorForConfig, useCLIExecutorStore } from '@/store/cliExecutorStore';",
+      'const { mergeCLIExtraArgs, parseCLICommandInput, resolveCLIExecutorForConfig, useCLIExecutorStore } = globalThis.__cliTasksExecutorStoreForSessions;',
+    ),
 );
 
 const sampleGroup = {

@@ -184,6 +184,7 @@ const useStyles = createStyles(({ token, css }) => ({
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: nowrap;
     gap: 12px;
     height: 46px;
     box-sizing: border-box;
@@ -196,6 +197,7 @@ const useStyles = createStyles(({ token, css }) => ({
     gap: 8px;
     min-width: 0;
     flex: 1 1 auto;
+    overflow: hidden;
   `,
   headerActions: css`
     display: flex;
@@ -203,7 +205,8 @@ const useStyles = createStyles(({ token, css }) => ({
     justify-content: flex-end;
     gap: 6px;
     min-width: 0;
-    flex: 1 1 auto;
+    flex: 0 0 auto;
+    flex-shrink: 0;
   `,
   avatarStack: css`
     display: flex;
@@ -1255,6 +1258,12 @@ const CLITaskUI = ({
             if (abortController.signal.aborted) return;
             if (supportsCliToolSession(adapter)) {
               localStorage.setItem(getSessionKey(developmentTask, agentId), sessionId);
+              // 同步更新内存中的 agent toolSessionId，
+              // 确保 pipeline 后续阶段能复用当前阶段捕获到的 sessionId
+              const memAgent = activeAgents.find(a => a.id === agentId);
+              if (memAgent?.cli) {
+                memAgent.cli.toolSessionId = sessionId;
+              }
             }
             if (adapterUsesOpenCodeSessionTitle(adapter)) {
               opencodeSessionByAgentTask.set(agentTaskId, sessionId);
@@ -2002,484 +2011,484 @@ const CLITaskUI = ({
       <div className={styles.page}>
         <div className={styles.container}>
           <Sidebar
-            isOpen={sidebarOpen}
-            toggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-            selectedGroupIndex={selectedGroupIndex}
-            onSelectGroup={onSelectGroup}
-            groups={groups}
-            onCreateGroup={onCreateGroup}
-            onOpenSettings={(section) => openAppSettings(section ?? 'cli')}
-            activeView="cli-tasks"
-            onNavigateCLI={() => navigateToList()}
-            onNavigateHome={onNavigateHome ?? (() => { window.location.href = '?view=home'; })}
-            hiddenGroupTypes={['cli']}
-          />
+          isOpen={sidebarOpen}
+          toggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+          selectedGroupIndex={selectedGroupIndex}
+          onSelectGroup={onSelectGroup}
+          groups={groups}
+          onCreateGroup={onCreateGroup}
+          onOpenSettings={(section) => openAppSettings(section ?? 'cli')}
+          activeView="cli-tasks"
+          onNavigateCLI={() => navigateToList()}
+          onNavigateHome={onNavigateHome ?? (() => { window.location.href = '?view=home'; })}
+          hiddenGroupTypes={['cli']}
+        />
 
-          <CLITaskSidebar
-            isOpen={taskSidebarOpen}
-            toggleSidebar={() => setTaskSidebarOpen(!taskSidebarOpen)}
-            tasks={tasks}
-            selectedTaskId={selectedTaskId}
-            onSelectTask={navigateToTask}
-            onNewTask={startNewTask}
-            onOpenTemplateList={openTemplateList}
-            onDeleteTask={confirmDeleteTask}
-          />
+        <CLITaskSidebar
+          isOpen={taskSidebarOpen}
+          toggleSidebar={() => setTaskSidebarOpen(!taskSidebarOpen)}
+          tasks={tasks}
+          selectedTaskId={selectedTaskId}
+          onSelectTask={navigateToTask}
+          onNewTask={startNewTask}
+          onOpenTemplateList={openTemplateList}
+          onDeleteTask={confirmDeleteTask}
+        />
 
-          <div className={styles.rightCol}>
-            {!taskSidebarOpen && (
-              <Tooltip title={t('cli:taskUI.expandTaskList')} placement="right">
-                <button
-                  type="button"
-                  className={styles.taskSidebarExpandHandle}
-                  onClick={() => setTaskSidebarOpen(true)}
-                  aria-label={t('cli:taskUI.expandTaskListAria')}
-                >
-                  <PanelLeftOpen size={14} />
-                </button>
-              </Tooltip>
-            )}
-            <header className={styles.headerBar}>
-              <div className={styles.headerInner}>
-                <div className={styles.headerTitleRow}>
-                  <Terminal size={16} color="#ff6600" style={{ flex: 'none' }} />
-                  <h1 style={{ margin: 0, fontWeight: 600, fontSize: 14, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {selectedTask ? selectedTask.title : t('cli:taskUI.title')}
-                  </h1>
-                  {selectedTask && statusTag(selectedTask.status)}
-                </div>
-                <div className={styles.headerActions}>
-                  {workspacePath && (
-                    <div className={styles.headerCwd}>
-                      <span className={styles.cwdLabel}>CWD:</span>
-                      <span className={styles.cwdPath} title={workspacePath}>
-                        {workspacePath}
-                      </span>
-                    </div>
-                  )}
-                  <div className={styles.desktopOnly}>
-                    <AdBanner show={showAd} closeAd={() => setShowAd(false)} />
-                  </div>
-                  {headerTeamMembers.length > 0 && (
-                    <div className={styles.avatarStack}>
-                      {headerTeamMembers.slice(0, 4).map((member) => {
-                        const a = getAvatarData(member.name);
-                        const url = resolveAvatarByName(member.name, member.avatar, 32);
-                        return (
-                          <Tooltip key={member.id} title={member.name}>
-                            <LobeAvatar
-                              avatar={url || a.text}
-                              background={a.backgroundColor}
-                              shape="circle"
-                              size={32}
-                              title={member.name}
-                              style={{ flexShrink: 0 }}
-                            />
-                          </Tooltip>
-                        );
-                      })}
-                      {headerTeamMembers.length > 4 && (
-                        <div className={styles.avatarMore}>+{headerTeamMembers.length - 4}</div>
-                      )}
-                    </div>
-                  )}
-                  {selectedTask && (
-                    <ActionIcon
-                      icon={Info}
-                      size="small"
-                      onClick={() => handleToggleTaskInfo(!taskInfoOpen)}
-                      title={t('cli:taskUI.taskInfo')}
-                    />
-                  )}
-                  {raceEntries.length > 0 && (
-                    <ActionIcon
-                      icon={GitCompare}
-                      size="small"
-                      onClick={() => setRaceDrawerOpen(true)}
-                      title={t('cli:taskUI.raceCompare')}
-                    />
-                  )}
-                </div>
+        <div className={styles.rightCol}>
+          {!taskSidebarOpen && (
+            <Tooltip title={t('cli:taskUI.expandTaskList')} placement="right">
+              <button
+                type="button"
+                className={styles.taskSidebarExpandHandle}
+                onClick={() => setTaskSidebarOpen(true)}
+                aria-label={t('cli:taskUI.expandTaskListAria')}
+              >
+                <PanelLeftOpen size={14} />
+              </button>
+            </Tooltip>
+          )}
+          <header className={styles.headerBar}>
+            <div className={styles.headerInner}>
+              <div className={styles.headerTitleRow}>
+                <Terminal size={16} color="#ff6600" style={{ flex: 'none' }} />
+                <h1 style={{ margin: 0, fontWeight: 600, fontSize: 14, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {selectedTask ? selectedTask.title : t('cli:taskUI.title')}
+                </h1>
+                {selectedTask && statusTag(selectedTask.status)}
               </div>
-            </header>
-
-            <div
-              ref={chatAreaRef}
-              className={styles.chatArea}
-              onScroll={handleChatAreaScroll}
-            >
-              {!selectedTask && (
-                <div className={styles.creationFormContainer}>
-                  <div className={styles.creationFormCard}>
-                    <div className={styles.creationHeader}>
-                      <h2 className={styles.creationTitle}>{t('cli:taskUI.create.title')}</h2>
-                      <span className={styles.creationSubtitle}>{t('cli:taskUI.create.subtitle')}</span>
-                    </div>
-
-                    <div className={styles.formField}>
-                      <span className={styles.formLabel}>{t('cli:taskUI.create.promptLabel')}</span>
-                      <MentionTextArea
-                        value={inputMessage}
-                        onChange={setInputMessage}
-                        candidates={headerTeamMembers}
-                        placeholder={t('cli:taskUI.create.promptPlaceholder')}
-                        autoSize={{ minRows: 4, maxRows: 8 }}
-                        disabled={isComposeBusy}
-                        style={{ borderRadius: 10, padding: '10px 12px' }}
-                      />
-                    </div>
-
-                    <div className={styles.formField}>
-                      <div className={styles.formFieldHeader}>
-                        <span className={styles.formLabel}>{t('cli:taskUI.create.templateLabel')}</span>
-                        <div style={{ display: 'flex', gap: 12 }}>
-                          <AntdButton
-                            type="link"
-                            size="small"
-                            onClick={openCreateTemplate}
-                            icon={<Plus size={12} />}
-                            style={{ padding: 0, height: 'auto', fontSize: 12 }}
-                          >
-                            {t('cli:taskUI.create.newTemplate')}
-                          </AntdButton>
-                          {templates.length > 0 && (
-                            <AntdButton
-                              type="link"
-                              size="small"
-                              onClick={openTemplateList}
-                              style={{ padding: 0, height: 'auto', fontSize: 12 }}
-                            >
-                              {t('cli:taskUI.create.manageTemplates')}
-                            </AntdButton>
-                          )}
-                        </div>
-                      </div>
-
-                      {templates.length === 0 ? (
-                        <div className={styles.templateEmpty}>
-                          <span>{t('cli:taskUI.create.emptyTemplates')}</span>
-                          <AntdButton
-                            size="small"
-                            onClick={openCreateTemplate}
-                            icon={<Plus size={14} color={BRAND_ON_PRIMARY} />}
-                            {...brandPrimaryButtonProps}
-                          >
-                            {t('cli:templateList.create')}
-                          </AntdButton>
-                        </div>
-                      ) : (
-                        <div className={styles.templateGrid}>
-                          {templates.map(tmpl => {
-                            const isCardSelected = selectedTemplateId === tmpl.id;
-                            const workflowLabel = getCLIWorkflowLabel(tmpl.strategy, tmpl.workflowTemplateId);
-                            const workflowKey = tmpl.workflowTemplateId;
-                            const templateMembers = tmpl.memberIds
-                              .map((id) => resolveEffectiveMember(aiMembers, id))
-                              .filter((member) => member && member.kind === 'cli');
-                            return (
-                              <div
-                                key={tmpl.id}
-                                className={cx(styles.templateCard, isCardSelected && styles.templateCardActive)}
-                                onClick={() => setSelectedTemplateId(tmpl.id)}
-                              >
-                                <div className={styles.templateCardTitle}>{tmpl.name}</div>
-                                <div className={styles.templateCardMeta}>
-                                  <span>
-                                    {workflowKey
-                                      ? t(`product:cliWorkflowTemplates.${workflowKey}.label`, { defaultValue: workflowLabel })
-                                      : workflowLabel}
-                                  </span>
-                                </div>
-                                <div className={styles.templateMemberRow}>
-                                  {templateMembers.length > 0 ? (
-                                    templateMembers.map((member) => {
-                                      const avatar = getAvatarData(member.name);
-                                      const url = resolveAvatarByName(member.name, member.avatar, 16);
-                                      return (
-                                        <span
-                                          key={member.id}
-                                          className={styles.templateMemberChip}
-                                          title={member.name}
-                                        >
-                                          <LobeAvatar
-                                            avatar={url || avatar.text}
-                                            background={avatar.backgroundColor}
-                                            shape="circle"
-                                            size={16}
-                                            title={member.name}
-                                            style={{ flexShrink: 0 }}
-                                          />
-                                          <span className={styles.templateMemberName}>{member.name}</span>
-                                        </span>
-                                      );
-                                    })
-                                  ) : (
-                                    <span className={styles.templateCardMeta}>
-                                      {t('cli:taskUI.create.memberCount', { count: tmpl.memberIds.length })}
-                                    </span>
-                                  )}
-                                </div>
-                                {tmpl.description && (
-                                  <div className={styles.templateCardDesc} title={tmpl.description}>
-                                    {tmpl.description}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className={styles.formField}>
-                      <span className={styles.formLabel}>{t('cli:taskUI.create.workspaceLabel')}</span>
-                      <div className={styles.workspaceRow}>
-                        <AntdInput
-                          className={styles.workspaceInput}
-                          placeholder={t('cli:groupSettings.workspace.placeholder')}
-                          value={draftWorkspacePath}
-                          onChange={(e) => handleDraftWorkspaceChange(e.target.value)}
-                          style={{ borderRadius: 10, height: 36 }}
-                        />
-                        <AntdButton
-                          icon={<FolderOpen size={14} />}
-                          onClick={handleSelectDraftWorkspace}
-                          style={{ height: 36, borderRadius: 10 }}
-                        >
-                          {t('cli:taskUI.create.selectWorkspace')}
-                        </AntdButton>
-                        <AntdButton
-                          icon={<FolderPlus size={14} />}
-                          onClick={openCreateWorkspaceModal}
-                          style={{ height: 36, borderRadius: 10 }}
-                        >
-                          {t('cli:taskUI.create.createWorkspace')}
-                        </AntdButton>
-                      </div>
-                    </div>
-
-                    <div className={styles.submitBtnRow}>
-                      {renderComposeSendBar(t('cli:taskUI.create.submit'))}
-                    </div>
+              <div className={styles.headerActions}>
+                {workspacePath && (
+                  <div className={styles.headerCwd}>
+                    <span className={styles.cwdLabel}>CWD:</span>
+                    <span className={styles.cwdPath} title={workspacePath}>
+                      {workspacePath}
+                    </span>
                   </div>
+                )}
+                <div className={styles.desktopOnly}>
+                  <AdBanner show={showAd} closeAd={() => setShowAd(false)} />
                 </div>
-              )}
-
-              {selectedTask && (
-                <div className={styles.messageList}>
-                  {chatMessages.map((message, idx) => {
-                    const isUser = !message.isAI;
-                    const cliMember = message.sender?.id?.startsWith?.('cli-')
-                      ? resolveEffectiveMember(aiMembers, message.sender.id)
-                      : undefined;
-                    const cliAgentInfo = cliMember?.kind === 'cli'
-                      ? mapAIMemberToLegacy(cliMember) as CLIAgent
-                      : undefined;
-                    const snapshotMember = selectedTask.memberSnapshots?.find(member => member.id === message.sender.id);
-                    const modelHint = snapshotMember?.modelHint
-                      || (cliMember?.kind === 'cli' ? inferCliModelFromArgs(cliMember.cli?.extraArgs) : undefined);
-                    const displayNameParts = splitAgentDisplayName(message.sender.name, message.stageLabel);
-                    const senderDisplayName = isUser
-                      ? message.sender.name
-                      : modelHint && message.sender.name.includes(` · ${modelHint}`)
-                        ? message.sender.name
-                        : [
-                            appendCliModelHint(displayNameParts.baseName, modelHint),
-                            displayNameParts.stageName,
-                          ].filter(Boolean).join(' · ');
-                    const avatarName = cliAgentInfo?.name || message.sender.name;
-                    const a = getAvatarData(avatarName);
-                    const url = resolveAvatarByName(avatarName, cliAgentInfo?.avatar, 40);
-                    const isLatest = idx === chatMessages.length - 1;
-                    const isStreaming = message.isAI && (
-                      message.status === 'running'
-                      || (executingTaskIds.has(selectedTask!.id) && isLatest)
-                    );
-                    const bubbleClass = isUser
-                      ? styles.bubbleUser
-                      : message.isError
-                        ? styles.bubbleError
-                        : styles.bubbleAI;
-
-                    return (
-                      <div
-                        key={message.id}
-                        className={styles.messageRow}
-                        style={{ justifyContent: isUser ? 'flex-end' : 'flex-start' }}
-                      >
-                        {!isUser && (
+                {headerTeamMembers.length > 0 && (
+                  <div className={styles.avatarStack}>
+                    {headerTeamMembers.slice(0, 4).map((member) => {
+                      const a = getAvatarData(member.name);
+                      const url = resolveAvatarByName(member.name, member.avatar, 32);
+                      return (
+                        <Tooltip key={member.id} title={member.name}>
                           <LobeAvatar
                             avatar={url || a.text}
                             background={a.backgroundColor}
                             shape="circle"
-                            size={40}
-                            title={message.sender.name}
+                            size={32}
+                            title={member.name}
+                            style={{ flexShrink: 0 }}
                           />
-                        )}
-                        <div className={cx(styles.messageBody, isUser && styles.messageBodyUser)}>
-                          <div className={styles.metaRow} style={{ justifyContent: isUser ? 'flex-end' : 'flex-start' }}>
-                            {senderDisplayName}
-                            {isStreaming && (
-                              <span className={styles.streaming}>
-                                <span className={styles.streamingDot} />
-                                {message.content === '' ? t('cli:taskUI.message.thinking') : t('cli:taskUI.message.executing')}
-                              </span>
-                            )}
-                          </div>
-                          <div className={cx(bubbleClass, 'chat-message')}>
-                            <ChatMarkdown content={message.content} isUser={isUser} basePath={message.cliCwd || workspacePath} />
-                            {isStreaming && (
-                              <span className={cx('typing-indicator', styles.typingCursor)}>▋</span>
-                            )}
-                            {message.taskId && (
-                              <div className={styles.cliTaskFooter}>
-                                <span className={styles.cliTaskStatus}>
-                                  {message.status === 'running' && (
-                                    <>
-                                      <span className={styles.spinnerIcon} />
-                                      <span>{t('cli:taskUI.message.executing')}</span>
-                                    </>
-                                  )}
-                                  {message.status === 'completed' && <span style={{ color: '#52c41a' }}>{t('cli:taskUI.message.completed')}</span>}
-                                  {message.status === 'failed' && <span style={{ color: '#ff4d4f' }}>{t('cli:taskUI.message.failed')}</span>}
-                                  {message.status === 'cancelled' && <span style={{ color: '#faad14' }}>{t('cli:taskUI.message.cancelled')}</span>}
-                                  {message.status === 'timeout' && <span style={{ color: '#ff4d4f' }}>{t('cli:taskUI.message.timeout')}</span>}
-                                </span>
-                                <div className={styles.cliTaskActions}>
-                                  <button
-                                    type="button"
-                                    className={styles.cliActionBtnLog}
-                                    onClick={() => openTaskLog(message)}
-                                  >
-                                    {t('cli:taskUI.message.log')}
-                                  </button>
-                                  {message.status === 'running' && message.taskId && isComposeBusy && (
-                                    <button
-                                      type="button"
-                                      className={styles.cliActionBtnCancel}
-                                      onClick={handleStopExecution}
-                                    >
-                                      {t('cli:taskUI.message.stop')}
-                                    </button>
-                                  )}
-                                  {['failed', 'cancelled', 'timeout'].includes(message.status || '') && (
-                                    <button
-                                      type="button"
-                                      className={styles.cliActionBtnRetry}
-                                      onClick={() => handleRetryTask(message)}
-                                    >
-                                      {t('cli:taskUI.message.retry')}
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-                            {message.cliCwd && message.cliCwd !== workspacePath && (
-                              <div className={styles.cliWorktreeInfo}>
-                                <div style={{ fontWeight: 500 }}>{t('cli:taskUI.message.worktreeTitle')}</div>
-                                <div className={styles.cliWorktreePath}>{message.cliCwd}</div>
-                                {message.cliBranch && (
-                                  <div>
-                                    <span style={{ fontWeight: 500 }}>{t('cli:taskUI.message.branch')}</span>
-                                    <span className={styles.cliWorktreePath}>{message.cliBranch}</span>
-                                  </div>
-                                )}
-                                {message.baseSha && (
-                                  <div>
-                                    <span style={{ fontWeight: 500 }}>{t('cli:taskUI.message.base')}</span>
-                                    <span className={styles.cliWorktreePath}>{message.baseSha.slice(0, 8)}</span>
-                                  </div>
-                                )}
-                                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
-                                  <button
-                                    type="button"
-                                    className={styles.cliWorktreeActionBtn}
-                                    onClick={() => openPath(message.cliCwd!).catch(() => {})}
-                                  >
-                                    {t('cli:taskUI.message.openPath')}
-                                  </button>
-                                  {message.status === 'completed' && !message.adopted && (
-                                    <button
-                                      type="button"
-                                      className={styles.cliWorktreeActionBtn}
-                                      style={{ color: '#52c41a', borderColor: '#b7eb8f' }}
-                                      onClick={() => handleAdoptRaceResult(message.id)}
-                                    >
-                                      {t('cli:taskUI.message.markAdopted')}
-                                    </button>
-                                  )}
-                                  <button
-                                    type="button"
-                                    className={styles.cliWorktreeActionBtn}
-                                    style={{ color: '#ff4d4f', borderColor: '#ffccc7' }}
-                                    onClick={() => handleCleanupWorktree(message.cliCwd!, message.sender.name)}
-                                  >
-                                    {t('cli:taskUI.message.cleanup')}
-                                  </button>
-                                  {message.adopted && (
-                                    <span style={{ fontSize: 11, color: '#52c41a', fontWeight: 600 }}>
-                                      {t('cli:taskUI.message.adopted')}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  <div ref={messagesEndRef} />
-                </div>
-              )}
-            </div>
-
-            {selectedTask && (
-              <div className={styles.inputArea}>
-                <div style={{ position: 'relative' }}>
-                  <MentionSuggestionPanel
-                    open={taskMention.open}
-                    suggestions={taskMention.suggestions}
-                    selectedIndex={taskMention.selectedIndex}
-                    onHover={taskMention.setSelectedIndex}
-                    onSelect={taskMention.selectCandidate}
-                  />
-                  <div className={styles.composeBox}>
-                    <ChatInputArea.Inner
-                      ref={inputRef}
-                      className={styles.composeTextarea}
-                      value={inputMessage}
-                      onInput={setInputMessage}
-                      onSend={handleTaskComposeSend}
-                      onKeyDown={(event) => {
-                        taskMention.handleKeyDown(event);
-                      }}
-                      loading={isComposeBusy}
-                      placeholder={t('cli:taskUI.compose.placeholder')}
-                      disabled={isComposeBusy}
-                      autoSize={{ minRows: 4, maxRows: 12 }}
-                      variant="borderless"
-                    />
-                    {renderComposeSendBar(
-                      t('cli:taskUI.compose.send'),
-                      <>
-                        <Tag color="orange">{selectedTask.templateSnapshot.name}</Tag>
-                        <span className={styles.composeHint}>
-                          {t('cli:taskUI.compose.hint')}
-                        </span>
-                      </>,
+                        </Tooltip>
+                      );
+                    })}
+                    {headerTeamMembers.length > 4 && (
+                      <div className={styles.avatarMore}>+{headerTeamMembers.length - 4}</div>
                     )}
+                  </div>
+                )}
+                {selectedTask && (
+                  <ActionIcon
+                    icon={Info}
+                    size="small"
+                    onClick={() => handleToggleTaskInfo(!taskInfoOpen)}
+                    title={t('cli:taskUI.taskInfo')}
+                  />
+                )}
+                {raceEntries.length > 0 && (
+                  <ActionIcon
+                    icon={GitCompare}
+                    size="small"
+                    onClick={() => setRaceDrawerOpen(true)}
+                    title={t('cli:taskUI.raceCompare')}
+                  />
+                )}
+              </div>
+            </div>
+          </header>
+
+          <div
+            ref={chatAreaRef}
+            className={styles.chatArea}
+            onScroll={handleChatAreaScroll}
+          >
+            {!selectedTask && (
+              <div className={styles.creationFormContainer}>
+                <div className={styles.creationFormCard}>
+                  <div className={styles.creationHeader}>
+                    <h2 className={styles.creationTitle}>{t('cli:taskUI.create.title')}</h2>
+                    <span className={styles.creationSubtitle}>{t('cli:taskUI.create.subtitle')}</span>
+                  </div>
+
+                  <div className={styles.formField}>
+                    <span className={styles.formLabel}>{t('cli:taskUI.create.promptLabel')}</span>
+                    <MentionTextArea
+                      value={inputMessage}
+                      onChange={setInputMessage}
+                      candidates={headerTeamMembers}
+                      placeholder={t('cli:taskUI.create.promptPlaceholder')}
+                      autoSize={{ minRows: 4, maxRows: 8 }}
+                      disabled={isComposeBusy}
+                      style={{ borderRadius: 10, padding: '10px 12px' }}
+                    />
+                  </div>
+
+                  <div className={styles.formField}>
+                    <div className={styles.formFieldHeader}>
+                      <span className={styles.formLabel}>{t('cli:taskUI.create.templateLabel')}</span>
+                      <div style={{ display: 'flex', gap: 12 }}>
+                        <AntdButton
+                          type="link"
+                          size="small"
+                          onClick={openCreateTemplate}
+                          icon={<Plus size={12} />}
+                          style={{ padding: 0, height: 'auto', fontSize: 12 }}
+                        >
+                          {t('cli:taskUI.create.newTemplate')}
+                        </AntdButton>
+                        {templates.length > 0 && (
+                          <AntdButton
+                            type="link"
+                            size="small"
+                            onClick={openTemplateList}
+                            style={{ padding: 0, height: 'auto', fontSize: 12 }}
+                          >
+                            {t('cli:taskUI.create.manageTemplates')}
+                          </AntdButton>
+                        )}
+                      </div>
+                    </div>
+
+                    {templates.length === 0 ? (
+                      <div className={styles.templateEmpty}>
+                        <span>{t('cli:taskUI.create.emptyTemplates')}</span>
+                        <AntdButton
+                          size="small"
+                          onClick={openCreateTemplate}
+                          icon={<Plus size={14} color={BRAND_ON_PRIMARY} />}
+                          {...brandPrimaryButtonProps}
+                        >
+                          {t('cli:templateList.create')}
+                        </AntdButton>
+                      </div>
+                    ) : (
+                      <div className={styles.templateGrid}>
+                        {templates.map(tmpl => {
+                          const isCardSelected = selectedTemplateId === tmpl.id;
+                          const workflowLabel = getCLIWorkflowLabel(tmpl.strategy, tmpl.workflowTemplateId);
+                          const workflowKey = tmpl.workflowTemplateId;
+                          const templateMembers = tmpl.memberIds
+                            .map((id) => resolveEffectiveMember(aiMembers, id))
+                            .filter((member) => member && member.kind === 'cli');
+                          return (
+                            <div
+                              key={tmpl.id}
+                              className={cx(styles.templateCard, isCardSelected && styles.templateCardActive)}
+                              onClick={() => setSelectedTemplateId(tmpl.id)}
+                            >
+                              <div className={styles.templateCardTitle}>{tmpl.name}</div>
+                              <div className={styles.templateCardMeta}>
+                                <span>
+                                  {workflowKey
+                                    ? t(`product:cliWorkflowTemplates.${workflowKey}.label`, { defaultValue: workflowLabel })
+                                    : workflowLabel}
+                                </span>
+                              </div>
+                              <div className={styles.templateMemberRow}>
+                                {templateMembers.length > 0 ? (
+                                  templateMembers.map((member) => {
+                                    const avatar = getAvatarData(member.name);
+                                    const url = resolveAvatarByName(member.name, member.avatar, 16);
+                                    return (
+                                      <span
+                                        key={member.id}
+                                        className={styles.templateMemberChip}
+                                        title={member.name}
+                                      >
+                                        <LobeAvatar
+                                          avatar={url || avatar.text}
+                                          background={avatar.backgroundColor}
+                                          shape="circle"
+                                          size={16}
+                                          title={member.name}
+                                          style={{ flexShrink: 0 }}
+                                        />
+                                        <span className={styles.templateMemberName}>{member.name}</span>
+                                      </span>
+                                    );
+                                  })
+                                ) : (
+                                  <span className={styles.templateCardMeta}>
+                                    {t('cli:taskUI.create.memberCount', { count: tmpl.memberIds.length })}
+                                  </span>
+                                )}
+                              </div>
+                              {tmpl.description && (
+                                <div className={styles.templateCardDesc} title={tmpl.description}>
+                                  {tmpl.description}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className={styles.formField}>
+                    <span className={styles.formLabel}>{t('cli:taskUI.create.workspaceLabel')}</span>
+                    <div className={styles.workspaceRow}>
+                      <AntdInput
+                        className={styles.workspaceInput}
+                        placeholder={t('cli:groupSettings.workspace.placeholder')}
+                        value={draftWorkspacePath}
+                        onChange={(e) => handleDraftWorkspaceChange(e.target.value)}
+                        style={{ borderRadius: 10, height: 36 }}
+                      />
+                      <AntdButton
+                        icon={<FolderOpen size={14} />}
+                        onClick={handleSelectDraftWorkspace}
+                        style={{ height: 36, borderRadius: 10 }}
+                      >
+                        {t('cli:taskUI.create.selectWorkspace')}
+                      </AntdButton>
+                      <AntdButton
+                        icon={<FolderPlus size={14} />}
+                        onClick={openCreateWorkspaceModal}
+                        style={{ height: 36, borderRadius: 10 }}
+                      >
+                        {t('cli:taskUI.create.createWorkspace')}
+                      </AntdButton>
+                    </div>
+                  </div>
+
+                  <div className={styles.submitBtnRow}>
+                    {renderComposeSendBar(t('cli:taskUI.create.submit'))}
                   </div>
                 </div>
               </div>
             )}
+
+            {selectedTask && (
+              <div className={styles.messageList}>
+                {chatMessages.map((message, idx) => {
+                  const isUser = !message.isAI;
+                  const cliMember = message.sender?.id?.startsWith?.('cli-')
+                    ? resolveEffectiveMember(aiMembers, message.sender.id)
+                    : undefined;
+                  const cliAgentInfo = cliMember?.kind === 'cli'
+                    ? mapAIMemberToLegacy(cliMember) as CLIAgent
+                    : undefined;
+                  const snapshotMember = selectedTask.memberSnapshots?.find(member => member.id === message.sender.id);
+                  const modelHint = snapshotMember?.modelHint
+                    || (cliMember?.kind === 'cli' ? inferCliModelFromArgs(cliMember.cli?.extraArgs) : undefined);
+                  const displayNameParts = splitAgentDisplayName(message.sender.name, message.stageLabel);
+                  const senderDisplayName = isUser
+                    ? message.sender.name
+                    : modelHint && message.sender.name.includes(` · ${modelHint}`)
+                      ? message.sender.name
+                      : [
+                          appendCliModelHint(displayNameParts.baseName, modelHint),
+                          displayNameParts.stageName,
+                        ].filter(Boolean).join(' · ');
+                  const avatarName = cliAgentInfo?.name || message.sender.name;
+                  const a = getAvatarData(avatarName);
+                  const url = resolveAvatarByName(avatarName, cliAgentInfo?.avatar, 40);
+                  const isLatest = idx === chatMessages.length - 1;
+                  const isStreaming = message.isAI && (
+                    message.status === 'running'
+                    || (executingTaskIds.has(selectedTask!.id) && isLatest)
+                  );
+                  const bubbleClass = isUser
+                    ? styles.bubbleUser
+                    : message.isError
+                      ? styles.bubbleError
+                      : styles.bubbleAI;
+
+                  return (
+                    <div
+                      key={message.id}
+                      className={styles.messageRow}
+                      style={{ justifyContent: isUser ? 'flex-end' : 'flex-start' }}
+                    >
+                      {!isUser && (
+                        <LobeAvatar
+                          avatar={url || a.text}
+                          background={a.backgroundColor}
+                          shape="circle"
+                          size={40}
+                          title={message.sender.name}
+                        />
+                      )}
+                      <div className={cx(styles.messageBody, isUser && styles.messageBodyUser)}>
+                        <div className={styles.metaRow} style={{ justifyContent: isUser ? 'flex-end' : 'flex-start' }}>
+                          {senderDisplayName}
+                          {isStreaming && (
+                            <span className={styles.streaming}>
+                              <span className={styles.streamingDot} />
+                              {message.content === '' ? t('cli:taskUI.message.thinking') : t('cli:taskUI.message.executing')}
+                            </span>
+                          )}
+                        </div>
+                        <div className={cx(bubbleClass, 'chat-message')}>
+                          <ChatMarkdown content={message.content} isUser={isUser} basePath={message.cliCwd || workspacePath} />
+                          {isStreaming && (
+                            <span className={cx('typing-indicator', styles.typingCursor)}>▋</span>
+                          )}
+                          {message.taskId && (
+                            <div className={styles.cliTaskFooter}>
+                              <span className={styles.cliTaskStatus}>
+                                {message.status === 'running' && (
+                                  <>
+                                    <span className={styles.spinnerIcon} />
+                                    <span>{t('cli:taskUI.message.executing')}</span>
+                                  </>
+                                )}
+                                {message.status === 'completed' && <span style={{ color: '#52c41a' }}>{t('cli:taskUI.message.completed')}</span>}
+                                {message.status === 'failed' && <span style={{ color: '#ff4d4f' }}>{t('cli:taskUI.message.failed')}</span>}
+                                {message.status === 'cancelled' && <span style={{ color: '#faad14' }}>{t('cli:taskUI.message.cancelled')}</span>}
+                                {message.status === 'timeout' && <span style={{ color: '#ff4d4f' }}>{t('cli:taskUI.message.timeout')}</span>}
+                              </span>
+                              <div className={styles.cliTaskActions}>
+                                <button
+                                  type="button"
+                                  className={styles.cliActionBtnLog}
+                                  onClick={() => openTaskLog(message)}
+                                >
+                                  {t('cli:taskUI.message.log')}
+                                </button>
+                                {message.status === 'running' && message.taskId && isComposeBusy && (
+                                  <button
+                                    type="button"
+                                    className={styles.cliActionBtnCancel}
+                                    onClick={handleStopExecution}
+                                  >
+                                    {t('cli:taskUI.message.stop')}
+                                  </button>
+                                )}
+                                {['failed', 'cancelled', 'timeout'].includes(message.status || '') && (
+                                  <button
+                                    type="button"
+                                    className={styles.cliActionBtnRetry}
+                                    onClick={() => handleRetryTask(message)}
+                                  >
+                                    {t('cli:taskUI.message.retry')}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                          {message.cliCwd && message.cliCwd !== workspacePath && (
+                            <div className={styles.cliWorktreeInfo}>
+                              <div style={{ fontWeight: 500 }}>{t('cli:taskUI.message.worktreeTitle')}</div>
+                              <div className={styles.cliWorktreePath}>{message.cliCwd}</div>
+                              {message.cliBranch && (
+                                <div>
+                                  <span style={{ fontWeight: 500 }}>{t('cli:taskUI.message.branch')}</span>
+                                  <span className={styles.cliWorktreePath}>{message.cliBranch}</span>
+                                </div>
+                              )}
+                              {message.baseSha && (
+                                <div>
+                                  <span style={{ fontWeight: 500 }}>{t('cli:taskUI.message.base')}</span>
+                                  <span className={styles.cliWorktreePath}>{message.baseSha.slice(0, 8)}</span>
+                                </div>
+                              )}
+                              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+                                <button
+                                  type="button"
+                                  className={styles.cliWorktreeActionBtn}
+                                  onClick={() => openPath(message.cliCwd!).catch(() => {})}
+                                >
+                                  {t('cli:taskUI.message.openPath')}
+                                </button>
+                                {message.status === 'completed' && !message.adopted && (
+                                  <button
+                                    type="button"
+                                    className={styles.cliWorktreeActionBtn}
+                                    style={{ color: '#52c41a', borderColor: '#b7eb8f' }}
+                                    onClick={() => handleAdoptRaceResult(message.id)}
+                                  >
+                                    {t('cli:taskUI.message.markAdopted')}
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  className={styles.cliWorktreeActionBtn}
+                                  style={{ color: '#ff4d4f', borderColor: '#ffccc7' }}
+                                  onClick={() => handleCleanupWorktree(message.cliCwd!, message.sender.name)}
+                                >
+                                  {t('cli:taskUI.message.cleanup')}
+                                </button>
+                                {message.adopted && (
+                                  <span style={{ fontSize: 11, color: '#52c41a', fontWeight: 600 }}>
+                                    {t('cli:taskUI.message.adopted')}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                <div ref={messagesEndRef} />
+              </div>
+            )}
+          </div>
+
+          {selectedTask && (
+            <div className={styles.inputArea}>
+              <div style={{ position: 'relative' }}>
+                <MentionSuggestionPanel
+                  open={taskMention.open}
+                  suggestions={taskMention.suggestions}
+                  selectedIndex={taskMention.selectedIndex}
+                  onHover={taskMention.setSelectedIndex}
+                  onSelect={taskMention.selectCandidate}
+                />
+                <div className={styles.composeBox}>
+                  <ChatInputArea.Inner
+                    ref={inputRef}
+                    className={styles.composeTextarea}
+                    value={inputMessage}
+                    onInput={setInputMessage}
+                    onSend={handleTaskComposeSend}
+                    onKeyDown={(event) => {
+                      taskMention.handleKeyDown(event);
+                    }}
+                    loading={isComposeBusy}
+                    placeholder={t('cli:taskUI.compose.placeholder')}
+                    disabled={isComposeBusy}
+                    autoSize={{ minRows: 4, maxRows: 12 }}
+                    variant="borderless"
+                  />
+                  {renderComposeSendBar(
+                    t('cli:taskUI.compose.send'),
+                    <>
+                      <Tag color="orange">{selectedTask.templateSnapshot.name}</Tag>
+                      <span className={styles.composeHint}>
+                        {t('cli:taskUI.compose.hint')}
+                      </span>
+                    </>,
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
           </div>
         </div>
-
-        {isMobile && sidebarOpen && (
-          <div className={styles.mobileOverlay} onClick={() => setSidebarOpen(false)} />
-        )}
       </div>
+
+      {isMobile && sidebarOpen && (
+        <div className={styles.mobileOverlay} onClick={() => setSidebarOpen(false)} />
+      )}
     </>
   );
 };

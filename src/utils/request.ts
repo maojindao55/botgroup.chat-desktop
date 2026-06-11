@@ -638,6 +638,7 @@ export async function request(url: string, options: RequestInit = {}) {
             enqueueChunk,
             enqueueEvent,
             closeIntermediateDetails: closeDetails,
+            toolSessionId: toolSessionId || null,
           });
           const isJsonMode = streamHandler.usesJsonModeStderr;
 
@@ -937,11 +938,29 @@ export async function request(url: string, options: RequestInit = {}) {
       if (!adapter) {
         return mockResponse({ success: false, message: 'adapter required' }, 400);
       }
-      const result = await invoke('cli_check', { adapter });
+      const result = await invoke('cli_check', { adapter, binary: body?.binary || null });
       return mockResponse({ success: true, data: result });
     }
 
-    // 10b. OpenCode session title — used to auto-name tasks when OpenCode speaks first.
+    // 10b. CLI executor install command.
+    if (cleanUrl === '/api/cli/install') {
+      const body = JSON.parse(options.body as string);
+      const command = body?.command;
+      if (!command || typeof command !== 'string') {
+        return mockResponse({ success: false, message: 'command required' }, 400);
+      }
+      try {
+        const result = await invoke('cli_install', { command });
+        return mockResponse({ success: true, data: result });
+      } catch (e: unknown) {
+        return mockResponse(
+          { success: false, message: typeof e === 'string' ? e : (e as Error)?.message || 'install failed' },
+          400,
+        );
+      }
+    }
+
+    // 10c. OpenCode session title — used to auto-name tasks when OpenCode speaks first.
     if (cleanUrl === '/api/cli/opencode/session-title') {
       const body = JSON.parse(options.body as string);
       const sessionId = body?.sessionId;

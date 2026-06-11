@@ -32,17 +32,17 @@
     "workspace": {
       "title": "本地 Workspace",
       "templateTitle": "默认 Workspace",
-      "desc": "开发成员将在此目录下读写代码，支持选择或输入绝对路径",
+      "desc": "CLI Agent 将在此目录下读写代码，支持选择或输入绝对路径",
       "templateDesc": "新任务将默认使用此目录；已有任务不受影响",
       "placeholder": "/Users/you/projects/your-repo"
     },
     "approval": {
       "title": "自动审批",
-      "desc": "开启后开发成员自动执行，无需确认"
+      "desc": "开启后 CLI Agent 自动执行，无需确认"
     },
     "sessionPolicy": {
       "title": "CLI 会话复用",
-      "desc": "决定开发成员 CLI tool session 的复用范围。",
+      "desc": "决定 CLI Agent CLI tool session 的复用范围。",
       "templateDesc": "新任务将按此策略决定 CLI tool session 是否跨任务共享；已有任务仍使用创建时的快照。",
       "highReuse": "高复用"
     },
@@ -56,26 +56,26 @@
     },
     "collaboration": {
       "title": "协作方式",
-      "raceWarning": "需要 git 仓库，且当前工作区不能有未提交改动；每位开发成员在独立 worktree 中执行。",
-      "pipelineHint": "默认失败继续（让后续开发成员诊断）；用户取消会停止后续阶段。",
+      "raceWarning": "需要 git 仓库，且当前工作区不能有未提交改动；每位 CLI Agent 在独立 worktree 中执行。",
+      "pipelineHint": "默认失败继续（让后续 CLI Agent 诊断）；用户取消会停止后续阶段。",
       "reviewLoopHint": "规划实现复审会先规划、再实现；评审不通过时，按反馈修正并再次复审。",
       "customWorkflowHint": "执行阶段：{{stages}}。",
-      "reviewLoopMemberWarning": "建议至少选择 2 个开发成员，并分别指定规划/评审者与实现者。",
-      "customWorkflowMemberWarning": "建议至少选择 2 个开发成员，并分别指定定位修复者与复审者。"
+      "reviewLoopMemberWarning": "建议至少选择 2 个 CLI Agent，并分别指定规划/评审者与实现者。",
+      "customWorkflowMemberWarning": "建议至少选择 2 个 CLI Agent，并分别指定定位修复者与复审者。"
     },
     "strategies": {
-      "router": "自动选择最合适的开发成员处理当前任务，适合大多数一次性请求。",
-      "sequential": "多个开发成员独立处理同一任务，结果并列展示，适合比较不同方案。",
-      "pipeline": "按成员顺序接力开发，后续开发成员会看到上一阶段输出。",
-      "race": "为每位开发成员创建独立 worktree 并行完成同一任务，适合隔离对比代码结果。",
+      "router": "自动选择最合适的 CLI Agent 处理当前任务，适合大多数一次性请求。",
+      "sequential": "多个 CLI Agent 独立处理同一任务，结果并列展示，适合比较不同方案。",
+      "pipeline": "按成员顺序接力开发，后续 CLI Agent 会看到上一阶段输出。",
+      "race": "为每位 CLI Agent 创建独立 worktree 并行完成同一任务，适合隔离对比代码结果。",
       "review": "实现、审核、修正形成闭环，适合 Codex 写代码、Claude Code 审核这类开发协作。",
-      "discussion": "多位开发成员分轮讨论方案和风险，在临时只读副本中执行。",
-      "debate": "多位开发成员独立提案、互评，再形成最终建议。",
+      "discussion": "多位 CLI Agent 分轮讨论方案和风险，在临时只读副本中执行。",
+      "debate": "多位 CLI Agent 独立提案、互评，再形成最终建议。",
       "mapreduce": "并行执行同一任务，汇总所有结果对比查看"
     },
     "roles": {
       "title": "角色分工",
-      "desc": "指定谁负责规划、谁按方案写代码、谁做复审。规划者和评审者可以是同一个开发成员。",
+      "desc": "指定谁负责规划、谁按方案写代码、谁做复审。规划者和评审者可以是同一个 CLI Agent。",
       "customTitle": "排查修复角色",
       "customDesc": "执行阶段：{{stages}}。定位修复者负责排查并改代码，复审者负责检查修复质量。",
       "planner": "规划者",
@@ -94,7 +94,7 @@
       "title": "执行细节",
       "failurePolicy": {
         "title": "失败处理",
-        "desc": "开发成员失败后是否继续执行后续阶段",
+        "desc": "CLI Agent 失败后是否继续执行后续阶段",
         "continue": "继续执行",
         "stopOnFailure": "失败停止",
         "stopOnCancelled": "取消停止"
@@ -114,14 +114,14 @@
       "hint": "执行细节会覆盖协作方式的默认值。老数据不需要配置即可正常运行。"
     },
     "members": {
-      "manage": "添加/管理开发成员",
+      "manage": "添加/管理 CLI Agent",
       "templateManage": "模板成员",
-      "list": "开发成员",
+      "list": "CLI Agent",
       "templateList": "模板成员",
       "count": "{{label}}（{{count}}）",
-      "pickerPlaceholder": "选择开发成员加入群聊...",
+      "pickerPlaceholder": "选择 CLI Agent 加入群聊...",
       "templatePickerPlaceholder": "选择模板成员...",
-      "empty": "还没有模板成员。添加至少 1 位开发成员后，新任务才能执行。",
+      "empty": "还没有模板成员。添加至少 1 位 CLI Agent 后，新任务才能执行。",
       "checking": "检测中...",
       "installed": "已安装",
       "notInstalled": "未安装",
@@ -145,7 +145,7 @@
     },
     "worktree": {
       "title": "竞争模式 Worktree 管理",
-      "hint": "隔离竞赛会为每位开发成员创建独立的 git worktree。执行完成后 worktree 默认保留，你可以在此处查看和清理。",
+      "hint": "隔离竞赛会为每位 CLI Agent 创建独立的 git worktree。执行完成后 worktree 默认保留，你可以在此处查看和清理。",
       "empty": "暂无可管理的 worktree 记录。",
       "openPath": "打开路径",
       "copyPath": "复制路径",
@@ -231,7 +231,7 @@
       "title": "新建开发任务",
       "subtitle": "描述需求并选择团队模板以开始执行任务",
       "promptLabel": "需求描述",
-      "promptPlaceholder": "描述你的代码任务，开发成员会在 workspace 中协作执行... (例如: 添加一个导出 CSV 的按钮，并且编写对应的测试)",
+      "promptPlaceholder": "描述你的代码任务，CLI Agent 会在 workspace 中协作执行... (例如: 添加一个导出 CSV 的按钮，并且编写对应的测试)",
       "templateLabel": "选择团队模板",
       "newTemplate": "新建模板",
       "manageTemplates": "管理模板",
@@ -252,7 +252,7 @@
       "submit": "创建并启动任务"
     },
     "compose": {
-      "placeholder": "继续这个任务… 输入 @开发成员名 可指定执行者",
+      "placeholder": "继续这个任务… 输入 @CLI Agent 名 可指定执行者",
       "hint": "继续此任务 · 配置以创建时快照为准",
       "send": "发送",
       "stop": "停止",
@@ -260,7 +260,7 @@
       "stopped": "任务已终止",
       "stopNothing": "当前没有正在执行的任务",
       "stopFailed": "终止失败，请重试",
-      "footerHint": "继续任务会复用此任务的 CLI 会话；输入 @开发成员名 可只让该成员执行。"
+      "footerHint": "继续任务会复用此任务的 CLI 会话；输入 @CLI Agent 名 可只让该成员执行。"
     },
     "message": {
       "thinking": "思考中",
@@ -302,9 +302,9 @@
       "failed": "无法删除该任务"
     },
     "system": {
-      "noAgents": "没有启用的开发成员。请在模板设置中添加或开启成员。",
+      "noAgents": "没有启用的 CLI Agent。请在模板设置中添加或开启成员。",
       "discussionReadOnly": "当前协作方式是「只读讨论」，不会修改 workspace。要写代码请切换到「规划实现复审」或「快速响应」模板。",
-      "approvalConfirm": "确认让开发成员 {{names}} 在 {{workspace}} 协作处理这次任务？",
+      "approvalConfirm": "确认让 CLI Agent {{names}} 在 {{workspace}} 协作处理这次任务？",
       "defaultWorkspace": "默认目录",
       "executionFailed": "❌ 任务执行未启动：{{error}}",
       "errorPrefix": "[错误: {{error}}]"
@@ -327,12 +327,12 @@
   },
   "raceResults": {
     "title": "Race 结果对比",
-    "hint": "对比各开发成员在独立 worktree 中相对基准 commit 的代码变更。标记采纳仅记录你的选择，不会自动 merge 到主 workspace。",
+    "hint": "对比各 CLI Agent 在独立 worktree 中相对基准 commit 的代码变更。标记采纳仅记录你的选择，不会自动 merge 到主 workspace。",
     "summary": "{{count}} 个 worktree 结果",
     "adoptedCount": " · 已采纳 {{count}}",
     "cleanupAll": "清理全部",
     "empty": "暂无 race worktree 结果。请使用「隔离竞赛」模板运行任务后再查看。",
-    "defaultAgent": "开发成员",
+    "defaultAgent": "CLI Agent",
     "adopted": "已采纳",
     "noPreview": "（无输出摘要）",
     "openPath": "打开路径",

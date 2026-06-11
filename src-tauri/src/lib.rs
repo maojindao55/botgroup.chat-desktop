@@ -18,6 +18,7 @@ pub fn run() {
                 eprintln!("Database initialization failed: {}", e);
                 e
             })?;
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -59,6 +60,7 @@ pub fn run() {
             cli::cli_run,
             cli::cli_kill,
             cli::cli_check,
+            cli::cli_install,
             cli::cli_opencode_session_title,
             cli::cli_task_list,
             cli::cli_task_get,

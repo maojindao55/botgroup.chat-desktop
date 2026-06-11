@@ -32,7 +32,7 @@ export function getVisibleMembers(
   return list.sort((a, b) => {
     const rank = (m: AIMember) => {
       if (m.source === 'user' && m.forkedFrom) return 0;
-      if (m.source === 'builtin') return 1;
+      if (m.source === 'user') return 1;
       return 2;
     };
     const diff = rank(a) - rank(b);

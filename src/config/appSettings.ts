@@ -1,11 +1,10 @@
 /** 应用设置弹框中的导航分区 */
-export type AppSettingsSection = 'general' | 'providers' | 'llm' | 'agent' | 'cli';
+export type AppSettingsSection = 'general' | 'providers' | 'llm' | 'cli';
 
 export const APP_SETTINGS_SECTIONS: AppSettingsSection[] = [
   'general',
   'providers',
   'llm',
-  'agent',
   'cli',
 ];
 
@@ -15,13 +14,13 @@ export const APP_SETTINGS_NAV_GROUPS: {
   sections: readonly AppSettingsSection[];
 }[] = [
   { labelKey: 'navGroup.preferences', sections: ['general'] },
-  { labelKey: 'navGroup.resources', sections: ['providers', 'llm', 'agent', 'cli'] },
+  { labelKey: 'navGroup.resources', sections: ['providers', 'llm', 'cli'] },
 ];
 
 export function memberKindToSettingsSection(
   kind: 'llm' | 'agent' | 'cli',
 ): AppSettingsSection {
-  return kind;
+  return kind === 'agent' ? 'cli' : kind;
 }
 
 export function groupTypeToSettingsSection(
@@ -31,7 +30,6 @@ export function groupTypeToSettingsSection(
     case 'ai':
       return 'llm';
     case 'agent':
-      return 'agent';
     case 'cli':
       return 'cli';
   }

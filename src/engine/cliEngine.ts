@@ -17,6 +17,7 @@ import type {
 } from '@/config/groups';
 import { resolveExecutionPlan } from '@/config/groups';
 import type { CLIAgent } from '@/config/aiCharacters';
+import { mergeCLIExtraArgs, parseCLICommandInput, resolveCLIExecutorForConfig, useCLIExecutorStore } from '@/store/cliExecutorStore';
 import { translateCliStageLabel } from '@/i18n/engineLabels';
 import { te } from '@/i18n/translate';
 import { request } from '@/utils/request';
@@ -172,18 +173,30 @@ export async function callCLIAgent(
 
   const startTime = Date.now();
   const cliCfg = agent.cli || { adapter: 'codex' as const };
-  const resolvedTimeoutMs = resolveAgentTimeoutMs(options.timeoutMs, meta, cliCfg.adapter);
+  const executor = resolveCLIExecutorForConfig(
+    useCLIExecutorStore.getState().overrides,
+    cliCfg.adapter,
+    cliCfg.binary,
+  );
+  const runtimeAdapter = executor?.runtimeAdapter || cliCfg.adapter;
+  const resolvedTimeoutMs = resolveAgentTimeoutMs(options.timeoutMs, meta, runtimeAdapter);
+  const executorCommand = parseCLICommandInput(executor?.binary);
+  const memberCommand = parseCLICommandInput(cliCfg.binary);
+  const resolvedBinary = memberCommand.binary || executorCommand.binary || executor?.binary || null;
+  const executorExtraArgs = [...executorCommand.args, ...(executor?.extraArgs || [])];
+  const memberExtraArgs = [...memberCommand.args, ...(cliCfg.extraArgs || [])];
+  const resolvedExtraArgs = mergeCLIExtraArgs(executorExtraArgs, memberExtraArgs);
 
   const requestBody = {
     sessionId,
     groupId,
     agentId: agent.id,
     agentName: displayName,
-    adapter: cliCfg.adapter,
+    adapter: runtimeAdapter,
     prompt,
     cwd: ctx.cwd || null,
-    binary: cliCfg.binary || null,
-    extraArgs: cliCfg.extraArgs || null,
+    binary: resolvedBinary,
+    extraArgs: resolvedExtraArgs.length > 0 ? resolvedExtraArgs : null,
     toolSessionId: cliCfg.toolSessionId || null,
     env: cliCfg.env || null,
     timeoutMs: resolvedTimeoutMs,
@@ -272,7 +285,7 @@ export async function callCLIAgent(
             }
             if (data.type === 'tool_session' && typeof data.sessionId === 'string') {
               toolSessionId = data.sessionId;
-              callbacks.onToolSession?.(sessionId, agent.id, data.adapter || cliCfg.adapter, data.sessionId);
+              callbacks.onToolSession?.(sessionId, agent.id, data.adapter || runtimeAdapter, data.sessionId);
             }
             if (data.type === 'done') {
               exitCode = typeof data.exitCode === 'number' ? data.exitCode : exitCode;

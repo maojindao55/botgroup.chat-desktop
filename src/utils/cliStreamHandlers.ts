@@ -39,6 +39,8 @@ export interface CLIStreamEmitters {
   enqueueChunk: (content: string) => void;
   enqueueEvent: (payload: CLIStreamEvent) => void;
   closeIntermediateDetails?: () => void;
+  /** 请求中传入的 toolSessionId，作为 opencode handler 在 flushDone 时的后备值 */
+  toolSessionId?: string | null;
 }
 
 export interface CLIStreamHandler {
@@ -159,8 +161,9 @@ export function createCLIStreamHandler(
       hasCommandGroupOpen: () => commandGroupOpen,
       closeCommandGroups,
       flushDone: () => {
-        if (adapterUsesOpenCodeSessionTitle(adapter) && sessionId) {
-          emitters.enqueueEvent({ type: 'tool_session', adapter, sessionId });
+        const sid = sessionId || emitters.toolSessionId;
+        if (adapterUsesOpenCodeSessionTitle(adapter) && sid) {
+          emitters.enqueueEvent({ type: 'tool_session', adapter, sessionId: sid });
         }
       },
       handleStdoutLine: (line) => {

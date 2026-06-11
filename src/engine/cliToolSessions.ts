@@ -1,5 +1,6 @@
 import type { CLIAgent } from '@/config/aiCharacters';
 import { hasExplicitToolSessionArg, supportsCliToolSession } from '@/config/cliAdapters';
+import { mergeCLIExtraArgs, parseCLICommandInput, resolveCLIExecutorForConfig, useCLIExecutorStore } from '@/store/cliExecutorStore';
 
 export type CLISessionPolicy = 'task' | 'workspace' | 'template';
 
@@ -46,11 +47,22 @@ export function resolveCliToolSessionKey(params: {
 }
 
 export function withCliToolSession(agent: CLIAgent, sessionId: string | null | undefined): CLIAgent {
-  if (!supportsCliToolSession(agent.cli?.adapter)) return agent;
+  const executor = resolveCLIExecutorForConfig(
+    useCLIExecutorStore.getState().overrides,
+    agent.cli?.adapter,
+    agent.cli?.binary,
+  );
+  const runtimeAdapter = executor?.runtimeAdapter || agent.cli?.adapter;
+  if (!supportsCliToolSession(runtimeAdapter)) return agent;
   if (!sessionId) return agent;
 
-  const extraArgs = agent.cli.extraArgs || [];
-  const hasExplicitSession = hasExplicitToolSessionArg(agent.cli.adapter, extraArgs);
+  const executorCommand = parseCLICommandInput(executor?.binary);
+  const memberCommand = parseCLICommandInput(agent.cli.binary);
+  const extraArgs = mergeCLIExtraArgs(
+    [...executorCommand.args, ...(executor?.extraArgs || [])],
+    [...memberCommand.args, ...(agent.cli.extraArgs || [])],
+  );
+  const hasExplicitSession = hasExplicitToolSessionArg(runtimeAdapter, extraArgs);
   if (hasExplicitSession) return agent;
 
   return {

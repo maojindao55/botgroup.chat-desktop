@@ -153,6 +153,10 @@ async function loadEngine(request) {
     resolveExecutionPlan: groupsModule.resolveExecutionPlan,
     request,
     reconstructCliOutputFromLogEntries: () => '',
+    parseCLICommandInput: () => ({ args: [] }),
+    mergeCLIExtraArgs: (executorArgs, memberArgs) => [...(executorArgs || []), ...(memberArgs || [])].filter(Boolean),
+    resolveCLIExecutorForConfig: () => undefined,
+    useCLIExecutorStore: { getState: () => ({ overrides: {} }) },
   };
 
   return importTsModule(
@@ -169,6 +173,10 @@ async function loadEngine(request) {
       .replace(
         "import { reconstructCliOutputFromLogEntries } from '@/utils/cliLogOutput';",
         'const { reconstructCliOutputFromLogEntries } = globalThis.__cliEngineModeTestDeps;',
+      )
+      .replace(
+        "import { mergeCLIExtraArgs, parseCLICommandInput, resolveCLIExecutorForConfig, useCLIExecutorStore } from '@/store/cliExecutorStore';",
+        'const { mergeCLIExtraArgs, parseCLICommandInput, resolveCLIExecutorForConfig, useCLIExecutorStore } = globalThis.__cliEngineModeTestDeps;',
       )
       .replace(
         "import { translateCliStageLabel } from '@/i18n/engineLabels';",

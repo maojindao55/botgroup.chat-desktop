@@ -9,6 +9,7 @@ import { Tooltip, Button as AntdButton, Modal, message as antdMessage } from 'an
 import { ActionIcon, Avatar as LobeAvatar } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 import { invoke } from '@tauri-apps/api/core';
+import { isTauriMacOS } from '@/utils/isTauri';
 import { ChatMarkdown } from '@/components/Markdown';
 import { useUserStore } from '@/store/userStore';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -139,6 +140,7 @@ const useStyles = createStyles(({ token, css }) => ({
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: nowrap;
     gap: 12px;
     height: 46px;
     box-sizing: border-box;
@@ -153,6 +155,7 @@ const useStyles = createStyles(({ token, css }) => ({
     align-items: center;
     flex: 1 1 auto;
     min-width: 0;
+    overflow: hidden;
   `,
   titleStack: css`
     display: flex;
@@ -200,7 +203,8 @@ const useStyles = createStyles(({ token, css }) => ({
     align-items: center;
     justify-content: flex-end;
     gap: 8px;
-    flex: 1 1 auto;
+    flex: 0 0 auto;
+    flex-shrink: 0;
     min-width: 0;
   `,
   chatArea: css`
@@ -1086,6 +1090,7 @@ const AgentChatUI = ({
 
 
   const userName = userStore.userInfo.nickname || t('settings:aiGroup.selfName');
+  const hideAppHeaderBar = isTauriMacOS() && !isMobile;
 
   return (
     <>
@@ -1105,321 +1110,323 @@ const AgentChatUI = ({
 
       <div className={styles.page}>
         <div className={styles.container}>
-          <Sidebar
-            isOpen={sidebarOpen}
-            toggleSidebar={toggleSidebar}
-            selectedGroupIndex={selectedGroupIndex}
-            onSelectGroup={onSelectGroup}
-            groups={groups}
-            onCreateGroup={onCreateGroup}
-            onOpenSettings={openAppSettings}
-            onNavigateCLI={() => { window.location.href = '?view=cli-tasks'; }}
-            onNavigateHome={() => { window.location.href = '?view=home'; }}
-            hiddenGroupTypes={['cli']}
-          />
+        <Sidebar
+          isOpen={sidebarOpen}
+          toggleSidebar={toggleSidebar}
+          selectedGroupIndex={selectedGroupIndex}
+          onSelectGroup={onSelectGroup}
+          groups={groups}
+          onCreateGroup={onCreateGroup}
+          onOpenSettings={openAppSettings}
+          onNavigateCLI={() => { window.location.href = '?view=cli-tasks'; }}
+          onNavigateHome={() => { window.location.href = '?view=home'; }}
+          hiddenGroupTypes={['cli']}
+        />
 
-          <ConversationSidebar
-            isOpen={convSidebarOpen}
-            toggleSidebar={() => setConvSidebarOpen(false)}
-            sessions={groupSessions}
-            selectedSessionId={activeSessionId}
-            groupName={group.name}
-            onSelectSession={handleSelectSession}
-            onNewSession={startNewConversation}
-            onRenameSession={renameChatSession}
-            onDeleteSession={handleDeleteSession}
-            onTogglePin={toggleChatSessionPinned}
-            onToggleArchive={toggleChatSessionArchived}
-          />
+        <ConversationSidebar
+          isOpen={convSidebarOpen}
+          toggleSidebar={() => setConvSidebarOpen(false)}
+          sessions={groupSessions}
+          selectedSessionId={activeSessionId}
+          groupName={group.name}
+          onSelectSession={handleSelectSession}
+          onNewSession={startNewConversation}
+          onRenameSession={renameChatSession}
+          onDeleteSession={handleDeleteSession}
+          onTogglePin={toggleChatSessionPinned}
+          onToggleArchive={toggleChatSessionArchived}
+          onOpenGroupSettings={hideAppHeaderBar ? () => handleToggleSettings(true) : undefined}
+        />
 
-          <div className={styles.rightCol}>
-            {!convSidebarOpen && (
-              <Tooltip title={t('chat:conversation.expand')} placement="right">
-                <button
-                  type="button"
-                  className={styles.convSidebarExpandHandle}
-                  onClick={() => setConvSidebarOpen(true)}
-                  aria-label={t('chat:conversation.expand')}
-                >
-                  <PanelLeftOpen size={14} />
-                </button>
-              </Tooltip>
-            )}
-            {/* Header */}
-            <header className={styles.headerBar}>
-              <div className={styles.headerInner}>
-                <div className={styles.headerLeft}>
-                  <div className={styles.mobileBackBtn} onClick={toggleSidebar}>
-                    <ChevronLeft size={20} />
-                  </div>
-                  <div className={styles.titleStack}>
-                    <div className={styles.titleRow}>
-                      <span className={styles.titleIcon}>
-                        <Puzzle size={15} />
-                      </span>
-                      <h1 className={styles.titleText}>
-                        {activeSession?.title || group.name}
-                      </h1>
-                      <span className={styles.memberCount}>
-                        ({t('chat:agentChat.expertCount', { count: currentAgents.length })})
-                      </span>
-                    </div>
-                  </div>
+        <div className={styles.rightCol}>
+          {!convSidebarOpen && (
+            <Tooltip title={t('chat:conversation.expand')} placement="right">
+              <button
+                type="button"
+                className={styles.convSidebarExpandHandle}
+                onClick={() => setConvSidebarOpen(true)}
+                aria-label={t('chat:conversation.expand')}
+              >
+                <PanelLeftOpen size={14} />
+              </button>
+            </Tooltip>
+          )}
+          {!hideAppHeaderBar && (
+          <header className={styles.headerBar}>
+            <div className={styles.headerInner}>
+              <div className={styles.headerLeft}>
+                <div className={styles.mobileBackBtn} onClick={toggleSidebar}>
+                  <ChevronLeft size={20} />
                 </div>
-                <div className={styles.headerActions}>
-                  <div className={styles.avatarStack}>
-                    {currentAgents.slice(0, 4).map(agent => {
-                      const a = getAvatarData(agent.name);
-                      const url = resolveAvatarByName(agent.name, agent.avatar, 32);
-                      return (
-                        <Tooltip key={agent.id} title={`${agent.name} - ${agent.role}`}>
-                          <LobeAvatar
-                            avatar={url || a.text}
-                            background={a.backgroundColor}
-                            shape="circle"
-                            size={32}
-                            title={agent.name}
-                            style={{ flexShrink: 0 }}
-                          />
-                        </Tooltip>
-                      );
-                    })}
-                    {currentAgents.length > 4 && (
-                      <div className={styles.avatarMore}>+{currentAgents.length - 4}</div>
-                    )}
+                <div className={styles.titleStack}>
+                  <div className={styles.titleRow}>
+                    <span className={styles.titleIcon}>
+                      <Puzzle size={15} />
+                    </span>
+                    <h1 className={styles.titleText}>
+                      {activeSession?.title || group.name}
+                    </h1>
+                    <span className={styles.memberCount}>
+                      ({t('chat:agentChat.expertCount', { count: currentAgents.length })})
+                    </span>
                   </div>
-                  <span className={styles.agentTagPurple}>
-                    {getStrategyLabel(group.strategy)}
-                  </span>
-                  <ActionIcon
-                    icon={Settings2}
-                    size="small"
-                    onClick={() => handleToggleSettings(!showSettings)}
-                    title={t('chat:agentChat.settings')}
-                  />
                 </div>
               </div>
-            </header>
-
-
-            {/* Chat Area */}
-            <div
-              ref={chatAreaRef}
-              className={styles.chatArea}
-              onScroll={handleChatAreaScroll}
-            >
-              {messages.length === 0 && (
-                <div className={styles.emptyState}>
-                  <span className={styles.emptyIcon}>
-                    <Puzzle size={26} />
-                  </span>
-                  <p className={styles.emptyTitle}>{t('chat:agentChat.emptyTitle')}</p>
-                  <p className={styles.emptyDescription}>
-                    {group.description}
-                  </p>
-                  {isResolvingMembers && (
-                    <p className={styles.emptyMeta}>
-                      {t('chat:agentChat.loadingLibrary')}
-                    </p>
-                  )}
-                  {hasUnresolvedMembers && (
-                    <p className={styles.emptyMeta} style={{ color: '#ef4444' }}>
-                      {t('chat:agentChat.unresolvedMembers', { count: currentMemberIds.length })}<br />
-                      {t('chat:agentChat.unresolvedMembersHint', { settings: t('appSettings:title') })}
-                    </p>
-                  )}
-                  <div className={styles.emptyAgentList}>
-                    {currentAgents.map(a => (
-                      <span key={a.id} className={styles.emptyAgentTag}>
-                        {a.name}: {('role' in a ? a.role : '')}
-                      </span>
-                    ))}
-                  </div>
-                  <p className={styles.emptyMeta}>
-                    {t('chat:agentChat.strategyMeta', {
-                      strategy: getStrategyLabel(group.strategy),
-                      maxRounds: group.maxRounds,
-                    })}
-                  </p>
-                </div>
-              )}
-
-              <div className={styles.messageList}>
-                {messages.map((message) => {
-                  const isUser = message.sender.name === userName;
-                  const hasTextContent = message.content.trim().length > 0;
-                  const hasAttachments = !!message.attachments?.length;
-                  // 多轮策略会用 `${agentId}_r${round}` 作为 sender.id（避免覆盖），先剥离后缀再查 store
-                  const baseAgentId = message.sender.id?.replace(/_r\d+$/, '') || '';
-                  const member = !isUser && baseAgentId
-                    ? resolveEffectiveMember(members, baseAgentId)
-                    : undefined;
-                  const avatarName = member?.name || message.sender.name;
-                  const a = getAvatarData(avatarName);
-                  const url = isUser
-                    ? resolveAvatarByName(
-                        userName,
-                        userStore.avatarDisplaySrc || userStore.userInfo?.avatar_url,
-                        40,
-                      )
-                    : resolveAvatarByName(avatarName, member?.avatar || message.sender.avatar, 40);
-                  const isStreaming = !!message.isStreaming;
-
-                  let bubbleClass = styles.bubbleAI;
-                  if (isUser) bubbleClass = styles.bubbleUser;
-                  else if (message.isError) bubbleClass = styles.bubbleError;
-
-                  return (
-                    <div
-                      key={message.id}
-                      className={styles.messageRow}
-                      style={{ justifyContent: isUser ? 'flex-end' : 'flex-start' }}
-                    >
-                      {!isUser && (
+              <div className={styles.headerActions}>
+                <div className={styles.avatarStack}>
+                  {currentAgents.slice(0, 4).map(agent => {
+                    const a = getAvatarData(agent.name);
+                    const url = resolveAvatarByName(agent.name, agent.avatar, 32);
+                    return (
+                      <Tooltip key={agent.id} title={`${agent.name} - ${agent.role}`}>
                         <LobeAvatar
                           avatar={url || a.text}
                           background={a.backgroundColor}
                           shape="circle"
-                          size={40}
-                          title={message.sender.name}
+                          size={32}
+                          title={agent.name}
                           style={{ flexShrink: 0 }}
                         />
-                      )}
-                      <div className={cx(styles.messageBody, isUser && styles.messageBodyUser)}>
-                        <div className={styles.metaRow} style={{ justifyContent: isUser ? 'flex-end' : 'flex-start' }}>
-                          {message.sender.name}
-                          {!isUser && (
-                            <span className={styles.agentBadge}>{t('chat:agentChat.expertBadge')}</span>
-                          )}
-                        </div>
-                        {(!isUser || hasTextContent) && (
-                          <div className={bubbleClass}>
-                            <ChatMarkdown content={message.content} isUser={isUser} basePath={group.workspacePath} />
-                            {!isUser && (
-                              <ChatAttachmentList
-                                attachments={message.attachments}
-                                unavailableLabel={t('chat:attachments.unavailable', { defaultValue: '文件不可用' })}
-                              />
-                            )}
-                            {isStreaming && (
-                              <span className={cx('typing-indicator', styles.typingCursor)}>▋</span>
-                            )}
-                            {!isUser && member?.kind === 'cli' && message.agentTaskId && (
-                              <div className={styles.cliLogBtnRow}>
-                                <button
-                                  type="button"
-                                  className={styles.cliLogBtn}
-                                  onClick={() => setLogTarget({
-                                    agentTaskId: message.agentTaskId!,
-                                    agentName: message.sender.name,
-                                    adapter: message.adapter,
-                                  })}
-                                >
-                                  {t('cli:taskUI.message.log', { defaultValue: '日志' })}
-                                </button>
-                              </div>
-                            )}
-                          </div>
+                      </Tooltip>
+                    );
+                  })}
+                  {currentAgents.length > 4 && (
+                    <div className={styles.avatarMore}>+{currentAgents.length - 4}</div>
+                  )}
+                </div>
+                <span className={styles.agentTagPurple}>
+                  {getStrategyLabel(group.strategy)}
+                </span>
+                <ActionIcon
+                  icon={Settings2}
+                  size="small"
+                  onClick={() => handleToggleSettings(!showSettings)}
+                  title={t('chat:agentChat.settings')}
+                />
+              </div>
+            </div>
+          </header>
+          )}
+
+
+          {/* Chat Area */}
+          <div
+            ref={chatAreaRef}
+            className={styles.chatArea}
+            onScroll={handleChatAreaScroll}
+          >
+            {messages.length === 0 && (
+              <div className={styles.emptyState}>
+                <span className={styles.emptyIcon}>
+                  <Puzzle size={26} />
+                </span>
+                <p className={styles.emptyTitle}>{t('chat:agentChat.emptyTitle')}</p>
+                <p className={styles.emptyDescription}>
+                  {group.description}
+                </p>
+                {isResolvingMembers && (
+                  <p className={styles.emptyMeta}>
+                    {t('chat:agentChat.loadingLibrary')}
+                  </p>
+                )}
+                {hasUnresolvedMembers && (
+                  <p className={styles.emptyMeta} style={{ color: '#ef4444' }}>
+                    {t('chat:agentChat.unresolvedMembers', { count: currentMemberIds.length })}<br />
+                    {t('chat:agentChat.unresolvedMembersHint', { settings: t('appSettings:title') })}
+                  </p>
+                )}
+                <div className={styles.emptyAgentList}>
+                  {currentAgents.map(a => (
+                    <span key={a.id} className={styles.emptyAgentTag}>
+                      {a.name}: {('role' in a ? a.role : '')}
+                    </span>
+                  ))}
+                </div>
+                <p className={styles.emptyMeta}>
+                  {t('chat:agentChat.strategyMeta', {
+                    strategy: getStrategyLabel(group.strategy),
+                    maxRounds: group.maxRounds,
+                  })}
+                </p>
+              </div>
+            )}
+
+            <div className={styles.messageList}>
+              {messages.map((message) => {
+                const isUser = message.sender.name === userName;
+                const hasTextContent = message.content.trim().length > 0;
+                const hasAttachments = !!message.attachments?.length;
+                // 多轮策略会用 `${agentId}_r${round}` 作为 sender.id（避免覆盖），先剥离后缀再查 store
+                const baseAgentId = message.sender.id?.replace(/_r\d+$/, '') || '';
+                const member = !isUser && baseAgentId
+                  ? resolveEffectiveMember(members, baseAgentId)
+                  : undefined;
+                const avatarName = member?.name || message.sender.name;
+                const a = getAvatarData(avatarName);
+                const url = isUser
+                  ? resolveAvatarByName(
+                      userName,
+                      userStore.avatarDisplaySrc || userStore.userInfo?.avatar_url,
+                      40,
+                    )
+                  : resolveAvatarByName(avatarName, member?.avatar || message.sender.avatar, 40);
+                const isStreaming = !!message.isStreaming;
+
+                let bubbleClass = styles.bubbleAI;
+                if (isUser) bubbleClass = styles.bubbleUser;
+                else if (message.isError) bubbleClass = styles.bubbleError;
+
+                return (
+                  <div
+                    key={message.id}
+                    className={styles.messageRow}
+                    style={{ justifyContent: isUser ? 'flex-end' : 'flex-start' }}
+                  >
+                    {!isUser && (
+                      <LobeAvatar
+                        avatar={url || a.text}
+                        background={a.backgroundColor}
+                        shape="circle"
+                        size={40}
+                        title={message.sender.name}
+                        style={{ flexShrink: 0 }}
+                      />
+                    )}
+                    <div className={cx(styles.messageBody, isUser && styles.messageBodyUser)}>
+                      <div className={styles.metaRow} style={{ justifyContent: isUser ? 'flex-end' : 'flex-start' }}>
+                        {message.sender.name}
+                        {!isUser && (
+                          <span className={styles.agentBadge}>{t('chat:agentChat.expertBadge')}</span>
                         )}
-                        {isUser && hasAttachments && (
-                          <div className={styles.userAttachmentBubble}>
+                      </div>
+                      {(!isUser || hasTextContent) && (
+                        <div className={bubbleClass}>
+                          <ChatMarkdown content={message.content} isUser={isUser} basePath={group.workspacePath} />
+                          {!isUser && (
                             <ChatAttachmentList
                               attachments={message.attachments}
                               unavailableLabel={t('chat:attachments.unavailable', { defaultValue: '文件不可用' })}
                             />
-                          </div>
-                        )}
-                      </div>
-                      {isUser && (
-                        <LobeAvatar
-                          avatar={url || a.text}
-                          background={a.backgroundColor}
-                          shape="circle"
-                          size={40}
-                          title={message.sender.name}
-                          style={{ flexShrink: 0 }}
-                        />
+                          )}
+                          {isStreaming && (
+                            <span className={cx('typing-indicator', styles.typingCursor)}>▋</span>
+                          )}
+                          {!isUser && member?.kind === 'cli' && message.agentTaskId && (
+                            <div className={styles.cliLogBtnRow}>
+                              <button
+                                type="button"
+                                className={styles.cliLogBtn}
+                                onClick={() => setLogTarget({
+                                  agentTaskId: message.agentTaskId!,
+                                  agentName: message.sender.name,
+                                  adapter: message.adapter,
+                                })}
+                              >
+                                {t('cli:taskUI.message.log', { defaultValue: '日志' })}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {isUser && hasAttachments && (
+                        <div className={styles.userAttachmentBubble}>
+                          <ChatAttachmentList
+                            attachments={message.attachments}
+                            unavailableLabel={t('chat:attachments.unavailable', { defaultValue: '文件不可用' })}
+                          />
+                        </div>
                       )}
                     </div>
-                  );
-                })}
-                <div ref={messagesEndRef} />
-              </div>
-            </div>
-
-
-            {/* Input Area */}
-            <div className={styles.inputArea}>
-              <ChatAttachmentList
-                pending
-                attachments={pendingAttachments}
-                onRemove={handleRemovePendingAttachment}
-              />
-              <div className={styles.composeShell}>
-                <AntdButton
-                  type="text"
-                  onClick={handleSelectAttachments}
-                  icon={<Paperclip size={16} />}
-                  disabled={isLoading || pendingAttachments.length >= MAX_ATTACHMENTS_PER_MESSAGE}
-                  aria-label={t('chat:attachments.add', { defaultValue: '添加附件' })}
-                  title={t('chat:attachments.add', { defaultValue: '添加附件' })}
-                />
-                <MentionTextArea
-                  value={inputMessage}
-                  onChange={setInputMessage}
-                  candidates={mentionCandidates}
-                  onKeyDown={(e) => {
-                    if (e.key !== 'Enter') return;
-                    if (!e.shiftKey) {
-                      e.preventDefault();
-                      handleSendMessage();
-                    }
-                  }}
-                  autoSize={{ minRows: 1, maxRows: 6 }}
-                  placeholder={t('chat:agentChat.inputPlaceholder')}
-                  containerStyle={{ flex: 1, minWidth: 0 }}
-                  disabled={isLoading}
-                />
-                {isLoading ? (
-                  <AntdButton
-                    className={styles.composeStopButton}
-                    danger
-                    onClick={handleAbort}
-                    icon={<Square size={16} />}
-                  >
-                    {t('chat:agentChat.stop', { defaultValue: '停止' })}
-                  </AntdButton>
-                ) : (
-                  <AntdButton
-                    className={styles.composeSendButton}
-                    onClick={handleSendMessage}
-                    disabled={!inputMessage.trim() && pendingAttachments.length === 0}
-                    icon={<Send size={16} color={BRAND_ON_PRIMARY} />}
-                    style={brandPrimaryButtonStyle}
-                    styles={{
-                      content: { color: BRAND_ON_PRIMARY },
-                      icon: { color: BRAND_ON_PRIMARY },
-                    }}
-                  />
-                )}
-              </div>
+                    {isUser && (
+                      <LobeAvatar
+                        avatar={url || a.text}
+                        background={a.backgroundColor}
+                        shape="circle"
+                        size={40}
+                        title={message.sender.name}
+                        style={{ flexShrink: 0 }}
+                      />
+                    )}
+                  </div>
+                );
+              })}
+              <div ref={messagesEndRef} />
             </div>
           </div>
 
-          {/* Agent Group Settings (Desktop Inline) */}
-          {!isMobile && (
-            <AgentGroupSettings
-              inline
-              open={showSettings}
-              onOpenChange={handleToggleSettings}
-              group={group}
-              mutedUsers={mutedUsers}
-              onToggleMute={handleToggleMute}
-              onUpdateGroup={(updates) => onUpdateGroup?.(updates)}
-              onDeleteGroup={() => onDeleteGroup?.(group)}
-              canDeleteGroup={!isBuiltinGroupId(group.id)}
+
+          {/* Input Area */}
+          <div className={styles.inputArea}>
+            <ChatAttachmentList
+              pending
+              attachments={pendingAttachments}
+              onRemove={handleRemovePendingAttachment}
             />
-          )}
+            <div className={styles.composeShell}>
+              <AntdButton
+                type="text"
+                onClick={handleSelectAttachments}
+                icon={<Paperclip size={16} />}
+                disabled={isLoading || pendingAttachments.length >= MAX_ATTACHMENTS_PER_MESSAGE}
+                aria-label={t('chat:attachments.add', { defaultValue: '添加附件' })}
+                title={t('chat:attachments.add', { defaultValue: '添加附件' })}
+              />
+              <MentionTextArea
+                value={inputMessage}
+                onChange={setInputMessage}
+                candidates={mentionCandidates}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter') return;
+                  if (!e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage();
+                  }
+                }}
+                autoSize={{ minRows: 1, maxRows: 6 }}
+                placeholder={t('chat:agentChat.inputPlaceholder')}
+                containerStyle={{ flex: 1, minWidth: 0 }}
+                disabled={isLoading}
+              />
+              {isLoading ? (
+                <AntdButton
+                  className={styles.composeStopButton}
+                  danger
+                  onClick={handleAbort}
+                  icon={<Square size={16} />}
+                >
+                  {t('chat:agentChat.stop', { defaultValue: '停止' })}
+                </AntdButton>
+              ) : (
+                <AntdButton
+                  className={styles.composeSendButton}
+                  onClick={handleSendMessage}
+                  disabled={!inputMessage.trim() && pendingAttachments.length === 0}
+                  icon={<Send size={16} color={BRAND_ON_PRIMARY} />}
+                  style={brandPrimaryButtonStyle}
+                  styles={{
+                    content: { color: BRAND_ON_PRIMARY },
+                    icon: { color: BRAND_ON_PRIMARY },
+                  }}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Agent Group Settings (Desktop Inline) */}
+        {!isMobile && (
+          <AgentGroupSettings
+            inline
+            open={showSettings}
+            onOpenChange={handleToggleSettings}
+            group={group}
+            mutedUsers={mutedUsers}
+            onToggleMute={handleToggleMute}
+            onUpdateGroup={(updates) => onUpdateGroup?.(updates)}
+            onDeleteGroup={() => onDeleteGroup?.(group)}
+            canDeleteGroup={!isBuiltinGroupId(group.id)}
+          />
+        )}
 
         </div>
       </div>

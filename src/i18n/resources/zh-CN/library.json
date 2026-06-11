@@ -2,19 +2,19 @@
   "title": "资源库",
   "closeAria": "关闭资源库",
   "tabs": {
-    "cli": "开发成员",
+    "cli": "CLI Agents",
     "providers": "模型服务",
-    "llm": "角色",
-    "agent": "专家"
+    "llm": "AI 角色",
+    "agent": "旧版专家"
   },
   "empty": {
     "resources": "暂无资源",
     "providers": "暂无模型服务，点击上方按钮添加"
   },
   "create": {
-    "cli": "新增开发成员",
-    "llm": "新增角色",
-    "agent": "新增专家",
+    "cli": "新增 CLI Agent",
+    "llm": "新增 AI 角色",
+    "agent": "新增旧版专家",
     "provider": "新增模型服务"
   },
   "meta": {
@@ -53,6 +53,66 @@
     "builtinDeleteTooltip": "内置预设服务无法删除",
     "copiedToast": "已复制为「{{name}}」",
     "copyFailed": "复制失败"
+  },
+  "cliTabs": {
+    "agents": "成员",
+    "executors": "执行器"
+  },
+  "executors": {
+    "hint": "执行器是 CLI Agents 使用的本地命令行工具。当前版本展示内置执行器并支持安装检测。",
+    "description": "{{label}} 的本地 CLI 执行适配器。",
+    "empty": "暂无执行器",
+    "actions": {
+      "check": "检测",
+      "checkAll": "全部检测",
+      "install": "直接安装",
+      "duplicate": "复制",
+      "reset": "恢复默认"
+    },
+    "status": {
+      "unknown": "未检测",
+      "checking": "检测中",
+      "installed": "已安装",
+      "notInstalled": "未安装",
+      "enabled": "已启用",
+      "disabled": "已禁用",
+      "customized": "已自定义",
+      "copied": "副本"
+    },
+    "capabilities": {
+      "toolSession": "支持会话续接",
+      "noToolSession": "不支持会话续接",
+      "sessionTitle": "会话标题"
+    },
+    "meta": {
+      "command": "命令:",
+      "streamMode": "输出模式:",
+      "commandGroup": "命令组:",
+      "status": "状态:",
+      "path": "路径:",
+      "extraArgs": "默认参数:",
+      "install": "安装:"
+    },
+    "editor": {
+      "title": "编辑执行器",
+      "id": "执行器 ID",
+      "baseAdapter": "基于",
+      "label": "显示名称",
+      "binary": "命令",
+      "binaryRequired": "请输入命令",
+      "extraArgs": "默认参数",
+      "extraArgsPlaceholder": "输入参数后回车，例如 --json",
+      "installHint": "安装命令",
+      "docsUrl": "文档地址",
+      "enabled": "启用"
+    },
+    "toast": {
+      "installSuccess": "安装完成",
+      "installFailed": "安装失败",
+      "duplicated": "已复制执行器",
+      "saved": "执行器配置已保存",
+      "reset": "已恢复默认配置"
+    }
   },
   "toast": {
     "editOpenFailed": "无法打开编辑"

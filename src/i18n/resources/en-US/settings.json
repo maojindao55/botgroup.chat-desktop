@@ -16,7 +16,7 @@
     "selfName": "Me"
   },
   "agentGroup": {
-    "title": "Expert group settings",
+    "title": "Agent group settings",
     "basicInfo": "Basic info",
     "groupNamePlaceholder": "Group name",
     "groupDescriptionPlaceholder": "Description (optional)",
@@ -25,10 +25,10 @@
     "coordinatorPrompt": "Coordinator prompt",
     "coordinatorPromptPlaceholder": "Define how the coordinator delegates tasks...",
     "maxRounds": "Max rounds",
-    "manageExperts": "Add / manage experts",
-    "pickExpertsPlaceholder": "Select experts to join...",
-    "libraryHint": "Create or edit expert models, roles, and tools in Settings.",
-    "experts": "Experts ({{count}})",
+    "manageExperts": "Add / manage CLI Agents",
+    "pickExpertsPlaceholder": "Select CLI Agents to join...",
+    "libraryHint": "Create or edit CLI Agents in Settings → CLI Agents.",
+    "experts": "Members ({{count}})",
     "supervisorBadge": "👑 Supervisor",
     "unmute": "Unmute",
     "mute": "Mute",
@@ -37,23 +37,23 @@
   "strategies": {
     "sequential": {
       "label": "Sequential",
-      "description": "Experts run in order; later steps can see earlier output"
+      "description": "CLI Agents run in order; later steps can see earlier output"
     },
     "router": {
       "label": "Intent routing",
-      "description": "Analyze intent and pick the most relevant expert"
+      "description": "Analyze intent and pick the most relevant CLI Agent"
     },
     "discussion": {
       "label": "Full discussion",
-      "description": "All experts reply to the same message in parallel"
+      "description": "All CLI Agents reply to the same message in parallel"
     },
     "react": {
       "label": "ReAct",
-      "description": "Coordinator analyzes → delegates → executes → loops until done"
+      "description": "Coordinator analyzes → delegates to CLI Agents → executes → loops until done"
     },
     "pipeline": {
       "label": "Pipeline",
-      "description": "Role-based stages where each output feeds the next"
+      "description": "CLI Agent stages where each output feeds the next"
     },
     "debate": {
       "label": "Debate",
