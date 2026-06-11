@@ -1421,6 +1421,7 @@ fn extend_path_with_common_dirs_windows() {
             "scoop\\shims",          // scoop
             ".cargo\\bin",           // rustup / cargo install
             ".volta\\bin",           // volta (alternate layout)
+            ".mimocode\\bin",        // MimoCode CLI
             "AppData\\Roaming\\npm", // npm global (alternate, if APPDATA unset)
             "bin",
         ] {
@@ -1472,19 +1473,25 @@ fn extend_path_from_login_shell() {
 }
 
 #[cfg(unix)]
+fn common_user_cli_bin_subdirs() -> &'static [&'static str] {
+    &[
+        "bin",
+        ".local/bin",
+        ".npm-global/bin",
+        ".volta/bin",
+        ".cargo/bin",
+        ".mimocode/bin",
+    ]
+}
+
+#[cfg(unix)]
 fn extend_path_with_common_dirs() {
     let mut extra_dirs = vec![
         "/opt/homebrew/bin".to_string(),
         "/usr/local/bin".to_string(),
     ];
     if let Ok(home) = std::env::var("HOME") {
-        for sub in [
-            "bin",
-            ".local/bin",
-            ".npm-global/bin",
-            ".volta/bin",
-            ".cargo/bin",
-        ] {
+        for sub in common_user_cli_bin_subdirs() {
             extra_dirs.push(format!("{home}/{sub}"));
         }
     }
@@ -2530,6 +2537,12 @@ mod tests {
     fn prompt_summary_collapses_newlines() {
         assert_eq!(prompt_summary("第一行\n第二行", 60), "第一行 第二行");
         assert!(!prompt_summary(MULTILINE_PROMPT, 48).contains('\n'));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn common_user_cli_bins_include_mimocode() {
+        assert!(super::common_user_cli_bin_subdirs().contains(&".mimocode/bin"));
     }
 
     #[test]
