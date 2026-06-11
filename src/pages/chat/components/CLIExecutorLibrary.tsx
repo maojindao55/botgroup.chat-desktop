@@ -1,11 +1,11 @@
 import React, { useMemo, useState } from 'react';
-import { Button, Empty, Form, Input, Modal, Select, Switch, Tag, Tooltip } from 'antd';
+import { Button, Empty, Tag, Tooltip } from 'antd';
 import { createStyles } from 'antd-style';
 import { useTranslation } from 'react-i18next';
-import { CheckCircle2, Copy, Download, Edit2, Play, RefreshCw, RotateCcw, Terminal, XCircle } from 'lucide-react';
+import { CheckCircle2, Download, Play, RefreshCw, RotateCcw, Terminal, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { parseCLICommandInput, resolveCLIExecutors, type ResolvedCLIExecutor, type CLIExecutorOverride } from '@/store/cliExecutorStore';
+import { parseCLICommandInput, resolveCLIExecutors, type ResolvedCLIExecutor } from '@/store/cliExecutorStore';
 import { useCLIExecutorStore } from '@/store/cliExecutorStore';
 import { request } from '@/utils/request';
 
@@ -134,11 +134,6 @@ const useStyles = createStyles(({ token, css }) => ({
       padding-left: 44px;
     }
   `,
-  modalForm: css`
-    .ant-form-item {
-      margin-bottom: 14px;
-    }
-  `,
 }));
 
 type TranslationFn = ReturnType<typeof useTranslation>['t'];
@@ -170,15 +165,11 @@ function getStatusNode(status: StatusValue, t: TranslationFn, styles: StyleMap) 
 export const CLIExecutorLibrary: React.FC = () => {
   const { t } = useTranslation(['library', 'common']);
   const { styles } = useStyles();
-  const [form] = Form.useForm();
   const overrides = useCLIExecutorStore((state) => state.overrides);
-  const upsertOverride = useCLIExecutorStore((state) => state.upsertOverride);
   const resetOverride = useCLIExecutorStore((state) => state.resetOverride);
-  const duplicateExecutor = useCLIExecutorStore((state) => state.duplicateExecutor);
   const executors = useMemo(() => resolveCLIExecutors(overrides), [overrides]);
   const [statusMap, setStatusMap] = useState<Record<string, StatusValue>>({});
   const [installingMap, setInstallingMap] = useState<Record<string, boolean>>({});
-  const [editingExecutor, setEditingExecutor] = useState<ResolvedCLIExecutor | null>(null);
 
   const checkExecutor = async (executor: ResolvedCLIExecutor) => {
     setStatusMap(prev => ({ ...prev, [executor.id]: 'loading' }));
@@ -230,35 +221,6 @@ export const CLIExecutorLibrary: React.FC = () => {
     }
   };
 
-  const openEditor = (executor: ResolvedCLIExecutor) => {
-    setEditingExecutor(executor);
-    form.setFieldsValue({
-      label: executor.label,
-      binary: executor.binary,
-      extraArgs: executor.extraArgs || [],
-      installHint: executor.installHint || '',
-      docsUrl: executor.docsUrl || '',
-      enabled: executor.enabled,
-    });
-  };
-
-  const handleSave = async () => {
-    if (!editingExecutor) return;
-    const values = await form.validateFields();
-    upsertOverride({
-      id: editingExecutor.id,
-      baseAdapter: editingExecutor.baseAdapter as CLIExecutorOverride['baseAdapter'],
-      label: values.label,
-      binary: values.binary,
-      extraArgs: values.extraArgs || [],
-      installHint: values.installHint,
-      docsUrl: values.docsUrl,
-      enabled: values.enabled !== false,
-    });
-    setEditingExecutor(null);
-    toast.success(t('library:executors.toast.saved'));
-  };
-
   const handleReset = (executor: ResolvedCLIExecutor) => {
     resetOverride(executor.id);
     setStatusMap(prev => {
@@ -267,14 +229,6 @@ export const CLIExecutorLibrary: React.FC = () => {
       return next;
     });
     toast.success(t('library:executors.toast.reset'));
-  };
-
-  const handleDuplicate = (executor: ResolvedCLIExecutor) => {
-    const copied = duplicateExecutor(executor.id);
-    if (copied) {
-      toast.success(t('library:executors.toast.duplicated'));
-      openEditor(copied);
-    }
   };
 
   const renderExecutor = (executor: ResolvedCLIExecutor) => {
@@ -373,22 +327,6 @@ export const CLIExecutorLibrary: React.FC = () => {
               {t('library:executors.actions.install')}
             </Button>
           )}
-          <Button
-            type="text"
-            icon={<Copy size={14} />}
-            onClick={() => handleDuplicate(executor)}
-            style={{ padding: '3px 8px', height: 26, borderRadius: 6 }}
-          >
-            {t('library:executors.actions.duplicate')}
-          </Button>
-          <Button
-            type="text"
-            icon={<Edit2 size={14} />}
-            onClick={() => openEditor(executor)}
-            style={{ padding: '3px 8px', height: 26, borderRadius: 6 }}
-          >
-            {t('common:actions.edit')}
-          </Button>
           {executor.source === 'customized' && (
             <Button
               type="text"
@@ -420,49 +358,6 @@ export const CLIExecutorLibrary: React.FC = () => {
       ) : (
         <div className={styles.listContainer}>{executors.map(renderExecutor)}</div>
       )}
-
-      <Modal
-        title={t('library:executors.editor.title')}
-        open={!!editingExecutor}
-        onCancel={() => setEditingExecutor(null)}
-        onOk={handleSave}
-        okText={t('common:actions.save')}
-        cancelText={t('common:actions.cancel')}
-        destroyOnClose
-      >
-        <Form form={form} layout="vertical" className={styles.modalForm} preserve={false}>
-          <Form.Item label={t('library:executors.editor.id')}>
-            <Input value={editingExecutor?.id} disabled />
-          </Form.Item>
-          {editingExecutor?.baseAdapter && (
-            <Form.Item label={t('library:executors.editor.baseAdapter')}>
-              <Input value={editingExecutor.baseAdapter} disabled />
-            </Form.Item>
-          )}
-          <Form.Item label={t('library:executors.editor.label')} name="label">
-            <Input placeholder={editingExecutor?.label} />
-          </Form.Item>
-          <Form.Item
-            label={t('library:executors.editor.binary')}
-            name="binary"
-            rules={[{ required: true, message: t('library:executors.editor.binaryRequired') }]}
-          >
-            <Input placeholder={editingExecutor?.defaultBinary || editingExecutor?.id} />
-          </Form.Item>
-          <Form.Item label={t('library:executors.editor.extraArgs')} name="extraArgs">
-            <Select mode="tags" tokenSeparators={[' ']} placeholder={t('library:executors.editor.extraArgsPlaceholder')} />
-          </Form.Item>
-          <Form.Item label={t('library:executors.editor.installHint')} name="installHint">
-            <Input placeholder={editingExecutor?.installHint} />
-          </Form.Item>
-          <Form.Item label={t('library:executors.editor.docsUrl')} name="docsUrl">
-            <Input placeholder={editingExecutor?.docsUrl} />
-          </Form.Item>
-          <Form.Item label={t('library:executors.editor.enabled')} name="enabled" valuePropName="checked">
-            <Switch />
-          </Form.Item>
-        </Form>
-      </Modal>
     </>
   );
 };

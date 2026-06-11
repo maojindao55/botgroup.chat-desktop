@@ -116,24 +116,26 @@ export function parseCLICommandInput(input: string | null | undefined): { binary
   const parts: string[] = [];
   let current = '';
   let quote: '"' | "'" | null = null;
-  let escaped = false;
 
-  for (const char of text) {
-    if (escaped) {
-      current += char;
-      escaped = false;
-      continue;
-    }
-    if (char === '\\') {
-      escaped = true;
-      continue;
-    }
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const next = text[index + 1];
     if (quote) {
+      if (quote === '"' && char === '\\' && (next === '"' || /\s/.test(next || ''))) {
+        current += next;
+        index += 1;
+        continue;
+      }
       if (char === quote) {
         quote = null;
       } else {
         current += char;
       }
+      continue;
+    }
+    if (char === '\\' && (next === '"' || next === "'" || /\s/.test(next || ''))) {
+      current += next;
+      index += 1;
       continue;
     }
     if (char === '"' || char === "'") {
@@ -149,7 +151,6 @@ export function parseCLICommandInput(input: string | null | undefined): { binary
     }
     current += char;
   }
-  if (escaped) current += '\\';
   if (current) parts.push(current);
 
   return {
@@ -185,16 +186,7 @@ export function mergeCLIExtraArgs(
   executorExtraArgs: string[] | null | undefined,
   memberExtraArgs: string[] | null | undefined,
 ): string[] {
-  const seen = new Set<string>();
-  const merged: string[] = [];
-  [...(executorExtraArgs || []), ...(memberExtraArgs || [])]
-    .filter(Boolean)
-    .forEach((arg) => {
-      if (seen.has(arg)) return;
-      seen.add(arg);
-      merged.push(arg);
-    });
-  return merged;
+  return [...(executorExtraArgs || []), ...(memberExtraArgs || [])].filter(Boolean);
 }
 
 export function applyExecutorDefaultsToCliConfig<T extends {

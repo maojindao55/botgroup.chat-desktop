@@ -29,6 +29,9 @@ globalThis.__cliPreflightRequest = async (url, options) => {
 
 globalThis.__cliPreflightTestDeps = {
   getCLIAdapterDefinition: adapterModule.getCLIAdapterDefinition,
+  parseCLICommandInput: () => ({ args: [] }),
+  resolveCLIExecutorForConfig: () => undefined,
+  useCLIExecutorStore: { getState: () => ({ overrides: {} }) },
   te: (key, values = {}) => `${key}:${JSON.stringify(values)}`,
   request: (...args) => globalThis.__cliPreflightRequest(...args),
 };
@@ -37,8 +40,8 @@ const mod = await importTsModule(
   new URL('./cliPreflight.ts', import.meta.url),
   source => source
     .replace(
-      "import { getCLIAdapterDefinition } from '@/config/cliAdapters';",
-      'const { getCLIAdapterDefinition } = globalThis.__cliPreflightTestDeps;',
+      "import { parseCLICommandInput, resolveCLIExecutorForConfig, useCLIExecutorStore } from '@/store/cliExecutorStore';",
+      'const { parseCLICommandInput, resolveCLIExecutorForConfig, useCLIExecutorStore } = globalThis.__cliPreflightTestDeps;',
     )
     .replace(
       "import { te } from '@/i18n/translate';",

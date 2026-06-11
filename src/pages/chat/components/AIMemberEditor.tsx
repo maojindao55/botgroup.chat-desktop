@@ -98,6 +98,7 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
   const executorOverrides = useCLIExecutorStore((state) => state.overrides);
   const executors = useMemo(() => resolveCLIExecutors(executorOverrides), [executorOverrides]);
   const kind = Form.useWatch('kind', form) || defaultKind;
+  const showLegacyAgentKind = !!memberId && kind === 'agent';
   const providerId = Form.useWatch('providerId', form);
   const model = Form.useWatch('model', form);
   const name = Form.useWatch('name', form);
@@ -365,7 +366,9 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
           <Form.Item label={t('member.fields.kind')} name="kind">
             <Radio.Group disabled={!!memberId}>
               <Radio.Button value="llm">{t('member.kinds.llm')}</Radio.Button>
-              <Radio.Button value="agent">{t('member.kinds.agent')}</Radio.Button>
+              {showLegacyAgentKind && (
+                <Radio.Button value="agent">{t('member.kinds.agent')}</Radio.Button>
+              )}
               <Radio.Button value="cli">{t('member.kinds.cli')}</Radio.Button>
             </Radio.Group>
           </Form.Item>

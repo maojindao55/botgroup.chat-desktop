@@ -16,13 +16,24 @@ async function importTsModule(url, transform = (source) => source) {
 
 const adapterModule = await importTsModule(new URL('../config/cliAdapters.ts', import.meta.url));
 globalThis.__cliToolSessionTestDeps = adapterModule;
+globalThis.__cliToolSessionExecutorStore = {
+  parseCLICommandInput: () => ({ args: [] }),
+  mergeCLIExtraArgs: (executorArgs, memberArgs) => [...(executorArgs || []), ...(memberArgs || [])].filter(Boolean),
+  resolveCLIExecutorForConfig: () => undefined,
+  useCLIExecutorStore: { getState: () => ({ overrides: {} }) },
+};
 
 const { cliToolSessionKey, resolveCliToolSessionKey, withCliToolSession } = await importTsModule(
   new URL('./cliToolSessions.ts', import.meta.url),
-  source => source.replace(
-    "import { hasExplicitToolSessionArg, supportsCliToolSession } from '@/config/cliAdapters';",
-    'const { hasExplicitToolSessionArg, supportsCliToolSession } = globalThis.__cliToolSessionTestDeps;',
-  ),
+  source => source
+    .replace(
+      "import { hasExplicitToolSessionArg, supportsCliToolSession } from '@/config/cliAdapters';",
+      'const { hasExplicitToolSessionArg, supportsCliToolSession } = globalThis.__cliToolSessionTestDeps;',
+    )
+    .replace(
+      "import { mergeCLIExtraArgs, parseCLICommandInput, resolveCLIExecutorForConfig, useCLIExecutorStore } from '@/store/cliExecutorStore';",
+      'const { mergeCLIExtraArgs, parseCLICommandInput, resolveCLIExecutorForConfig, useCLIExecutorStore } = globalThis.__cliToolSessionExecutorStore;',
+    ),
 );
 
 assert.equal(

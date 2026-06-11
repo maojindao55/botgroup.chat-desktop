@@ -1026,6 +1026,7 @@ pub async fn cli_install(command: String) -> Result<CliInstallResult, String> {
         c.arg("-lc").arg(&command);
         c
     };
+    cmd.kill_on_drop(true);
 
     let output = tokio::time::timeout(std::time::Duration::from_secs(600), cmd.output())
         .await
@@ -1132,12 +1133,15 @@ fn append_tool_session(argv: &mut Vec<String>, args: &CliRunArgs, flag: &str) {
 }
 
 fn is_codex_exec_arg(arg: &str) -> bool {
-    matches!(arg, "--json" | "--sandbox" | "--skip-git-repo-check")
+    matches!(
+        arg,
+        "--json" | "--sandbox" | "--skip-git-repo-check" | "--last" | "resume"
+    )
         || arg.starts_with("--sandbox=")
 }
 
 fn codex_exec_arg_takes_value(arg: &str) -> bool {
-    matches!(arg, "--sandbox")
+    matches!(arg, "--sandbox" | "resume")
 }
 
 fn split_custom_codex_args(extra_args: Option<&Vec<String>>) -> (Vec<String>, Vec<String>, bool) {
@@ -2609,6 +2613,39 @@ mod tests {
                 "--sandbox",
                 "workspace-write",
                 "你好",
+                "--skip-git-repo-check",
+            ]
+                .into_iter()
+                .map(String::from)
+                .collect::<Vec<_>>(),
+        );
+    }
+
+    #[test]
+    fn codex_custom_binary_keeps_resume_args_after_exec() {
+        let mut args = stdin_test_args("codex", "继续");
+        args.binary = Some("wecode".to_string());
+        args.extra_args = Some(vec![
+            "codex".to_string(),
+            "-m".to_string(),
+            "gpt-5.4".to_string(),
+            "resume".to_string(),
+            "ses_manual".to_string(),
+        ]);
+        args.tool_session_id = Some("ses_auto".to_string());
+        let mut argv = Vec::new();
+        super::build_codex_command(&mut argv, &args, false);
+
+        assert_eq!(
+            argv,
+            vec![
+                "codex",
+                "-m",
+                "gpt-5.4",
+                "exec",
+                "resume",
+                "ses_manual",
+                "继续",
                 "--skip-git-repo-check",
             ]
                 .into_iter()
