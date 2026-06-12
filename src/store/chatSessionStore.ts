@@ -50,7 +50,15 @@ function bumpNow(): string {
 /** 轻量内容签名，用于判断 replaceMessages 是否真的发生了变化 */
 function messagesSignature(messages: ChatSessionMessage[]): string {
   return JSON.stringify(
-    messages.map(m => [m.id, m.content, m.isAI ? 1 : 0, m.isError ? 1 : 0]),
+    messages.map(m => [
+      m.id,
+      m.content,
+      m.isAI ? 1 : 0,
+      m.isError ? 1 : 0,
+      m.workflowRun?.id,
+      m.workflowRun?.status,
+      m.workflowRun?.updatedAt,
+    ]),
   );
 }
 

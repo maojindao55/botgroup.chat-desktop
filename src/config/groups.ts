@@ -248,6 +248,7 @@ export function resolveExecutionPlan(
 }
 
 // ============ Agent 群聊 ============
+import type { AgentWorkflowDefaults } from './agentWorkflow';
 
 /** 每个 Agent 的 LLM 连接配置（PR4：密钥统一在 Provider 管理页） */
 export interface AgentLLMConfig {
@@ -262,7 +263,7 @@ export interface AgentTool {
   enabled: boolean;
 }
 
-/** Agent 群的单个成员 */
+/** Agent 群的单个成员（仅作为 cliEngine 类型适配的中间结构保留） */
 export interface AgentMember {
   id: string;
   name: string;
@@ -278,31 +279,25 @@ export interface AgentMember {
   temperature: number;
 }
 
-/** Agent 群的执行策略 */
-export type AgentStrategy =
-  | 'sequential'     // 顺序执行：按成员顺序依次执行，后者看到前者输出
-  | 'react'          // ReAct：协调者分析→分派→执行→判断→循环
-  | 'discussion'     // 全员讨论：所有Agent并行回复，再由协调者总结
-  | 'router'         // 意图路由：根据用户输入智能选择1-N个Agent响应
-  | 'pipeline'       // 流水线：按角色分工，产出作为下一环节输入
-  | 'debate'         // 辩论：多 Agent 独立回答→互评→最终裁决
-  | 'mapreduce'      // 拆分-并行-汇总：自动拆任务→并行执行→合并结果
-  | 'supervisor';    // 监督者：一个 Agent 监督，可多轮分派+反馈修正
-
+/**
+ * Agent 群（专家群）配置。
+ *
+ * 第二版重构：移除固定的 8 种策略模板与协调者 prompt，改为运行时
+ * 动态生成 AgentWorkflowPlan。用户只需要选择成员、配置 workspace
+ * 与默认协作偏好；planner 在每次发送消息时自动生成执行计划。
+ */
 export interface AgentGroup {
   id: string;
   type: 'agent';
   name: string;
   description: string;
-  memberIds: string[];              // 引用 ai_members 中的角色 id（现在引用 kind=cli 成员）
-  agents?: AgentMember[];            // 兼容老版本
-  strategy: AgentStrategy;          // 执行策略
-  coordinatorPrompt?: string;       // 协调者提示词（react/router/discussion 模式用）
-  maxRounds: number;                // 多轮协作最大轮数，默认 3
-  workspacePath?: string;           // CLI 成员执行目录（绝对路径）
-  timeout?: number;                 // 单次执行超时(ms)，默认 300000
-  approvalMode?: 'auto' | 'ask';   // 执行审批模式
-  showStderr?: boolean;             // 是否展示 stderr 输出
+  memberIds: string[];               // 引用 ai_members 中的 cli/agent 成员
+  workspacePath?: string;            // CLI 成员执行目录（绝对路径）
+  timeout?: number;                  // 单次执行超时(ms)，默认 300000
+  approvalMode?: 'auto' | 'ask';    // 执行审批模式
+  showStderr?: boolean;              // 是否展示 stderr 输出
+  /** 默认 workflow 偏好，会作为 planner/runner 的约束输入 */
+  workflowDefaults: AgentWorkflowDefaults;
 }
 
 // 联合类型

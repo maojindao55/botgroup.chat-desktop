@@ -1,5 +1,6 @@
-import type { Group } from './groups';
+import type { AgentGroup, Group } from './groups';
 import { defaultGroups } from './groups';
+import { createDefaultAgentWorkflowDefaults } from './agentWorkflow';
 import {
   applyCLITemplateOverrides,
   filterDeletedCLITemplates,
@@ -27,10 +28,37 @@ export function markChatGroupDeleted(groupId: string) {
   localStorage.setItem(DELETED_CHAT_GROUPS_KEY, JSON.stringify([...ids, groupId]));
 }
 
+export function normalizeStoredGroup(group: Group): Group {
+  if (group.type !== 'agent') return group;
+  const legacy = group as Group & {
+    agents?: Array<{ id?: string } | string>;
+  };
+  const inlineIds = Array.isArray(legacy.agents)
+    ? legacy.agents
+        .map(a => (typeof a === 'string' ? a : a?.id))
+        .filter((id): id is string => typeof id === 'string' && id.length > 0)
+    : [];
+  const existing = Array.isArray(group.memberIds) ? group.memberIds : [];
+  const mergedIds = Array.from(new Set([...existing, ...inlineIds]));
+  const next: AgentGroup & { agents?: unknown } = {
+    ...(group as AgentGroup),
+    memberIds: mergedIds,
+    workflowDefaults: {
+      ...createDefaultAgentWorkflowDefaults(),
+      ...((group as AgentGroup).workflowDefaults || {}),
+    },
+  };
+  // Keep legacy inline agents available until the ai_members migration has run.
+  // AgentChatUI uses this as a compatibility fallback when memberIds cannot
+  // resolve to store members yet.
+  return next as Group;
+}
+
 export function loadCustomGroups(): Group[] {
   try {
     const stored = localStorage.getItem(CUSTOM_GROUPS_KEY);
-    return stored ? JSON.parse(stored) : [];
+    const parsed = stored ? JSON.parse(stored) : [];
+    return Array.isArray(parsed) ? parsed.map(normalizeStoredGroup) : [];
   } catch {
     return [];
   }
@@ -79,13 +107,13 @@ export function mergeStaticAndCustomGroups(staticGroups: Group[], customGroups: 
 
   const merged: Group[] = staticGroups.map((g) => {
     const override = overrideMap.get(g.id);
-    if (!override) return g;
-    return { ...g, ...override, type: g.type } as Group;
+    if (!override) return normalizeStoredGroup(g);
+    return normalizeStoredGroup({ ...g, ...override, type: g.type } as Group);
   });
 
   customGroups.forEach((g) => {
     if (!staticIds.has(g.id)) {
-      merged.push(g);
+      merged.push(normalizeStoredGroup(g));
     }
   });
 

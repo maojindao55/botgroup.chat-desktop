@@ -71,6 +71,17 @@ const candidates = [
 }
 
 {
+  assert.deepEqual(
+    mod.extractMentionedCandidateIds('fix @Codex and ask @Reviewer', candidates),
+    ['cli-codex', 'llm-reviewer'],
+  );
+  assert.deepEqual(
+    mod.extractMentionedCandidateIds('请 @通义灵码 看下', candidates),
+    ['cli-qwen'],
+  );
+}
+
+{
   assert.equal(mod.shouldBlockMentionAutocompleteSend(true), true);
   assert.equal(mod.shouldBlockMentionAutocompleteSend(false), false);
 }

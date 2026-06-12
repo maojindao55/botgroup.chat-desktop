@@ -20,52 +20,31 @@
     "basicInfo": "基础信息",
     "groupNamePlaceholder": "群名称",
     "groupDescriptionPlaceholder": "群描述（可选）",
-    "collaboration": "群内协作方式",
-    "advancedStrategy": "高级策略",
-    "coordinatorPrompt": "协调者 Prompt",
-    "coordinatorPromptPlaceholder": "定义协调者如何分派任务...",
-    "maxRounds": "最大轮数",
+    "workflowDefaults": "默认协作偏好",
+    "advanced": "高级选项",
+    "maxPhases": "最大阶段数",
+    "maxParallelAgents": "最大并发成员数",
+    "alwaysShowPlan": "总是展示协作计划卡",
     "manageExperts": "添加/管理 CLI Agents",
     "pickExpertsPlaceholder": "选择 CLI Agent 加入群聊...",
     "libraryHint": "如需新建或编辑 CLI Agent，请到设置 → CLI Agents 中操作。",
     "experts": "群成员（{{count}}）",
-    "supervisorBadge": "👑 监督者",
     "unmute": "取消禁言",
     "mute": "禁言",
-    "removeMember": "移除成员"
-  },
-  "strategies": {
-    "sequential": {
-      "label": "顺序执行",
-      "description": "按 CLI Agent 顺序依次执行，后者可看到前者的输出"
-    },
-    "router": {
-      "label": "意图路由",
-      "description": "智能分析用户意图，选择最相关的 CLI Agent 回答"
-    },
-    "discussion": {
-      "label": "全员讨论",
-      "description": "所有 CLI Agents 并行回复同一消息"
-    },
-    "react": {
-      "label": "ReAct",
-      "description": "协调者分析→分派给 CLI Agent→执行→判断是否完成→循环"
-    },
-    "pipeline": {
-      "label": "流水线",
-      "description": "按 CLI Agent 分工形成流水线，每阶段产出作为下一阶段输入"
-    },
-    "debate": {
-      "label": "辩论",
-      "description": "多位 CLI Agents 独立回答→互相评论→最终综合裁决"
-    },
-    "mapreduce": {
-      "label": "MapReduce",
-      "description": "自动拆分任务→各 CLI Agents 并行处理→汇总合并结果"
-    },
-    "supervisor": {
-      "label": "监督者",
-      "description": "监督者分派任务→审查质量→反馈修改→直到满意"
+    "removeMember": "移除成员",
+    "effort": {
+      "fast": {
+        "label": "快速",
+        "description": "更少阶段，优先快速响应。"
+      },
+      "standard": {
+        "label": "标准",
+        "description": "在规划、执行和复审之间保持平衡。"
+      },
+      "deep": {
+        "label": "深入",
+        "description": "更多阶段和更充分协作，适合复杂任务。"
+      }
     }
   }
 }

@@ -20,52 +20,31 @@
     "basicInfo": "Basic info",
     "groupNamePlaceholder": "Group name",
     "groupDescriptionPlaceholder": "Description (optional)",
-    "collaboration": "In-group collaboration",
-    "advancedStrategy": "Advanced strategy",
-    "coordinatorPrompt": "Coordinator prompt",
-    "coordinatorPromptPlaceholder": "Define how the coordinator delegates tasks...",
-    "maxRounds": "Max rounds",
+    "workflowDefaults": "Default workflow preference",
+    "advanced": "Advanced options",
+    "maxPhases": "Max phases",
+    "maxParallelAgents": "Max parallel members",
+    "alwaysShowPlan": "Always show workflow plan",
     "manageExperts": "Add / manage CLI Agents",
     "pickExpertsPlaceholder": "Select CLI Agents to join...",
     "libraryHint": "Create or edit CLI Agents in Settings → CLI Agents.",
     "experts": "Members ({{count}})",
-    "supervisorBadge": "👑 Supervisor",
     "unmute": "Unmute",
     "mute": "Mute",
-    "removeMember": "Remove member"
-  },
-  "strategies": {
-    "sequential": {
-      "label": "Sequential",
-      "description": "CLI Agents run in order; later steps can see earlier output"
-    },
-    "router": {
-      "label": "Intent routing",
-      "description": "Analyze intent and pick the most relevant CLI Agent"
-    },
-    "discussion": {
-      "label": "Full discussion",
-      "description": "All CLI Agents reply to the same message in parallel"
-    },
-    "react": {
-      "label": "ReAct",
-      "description": "Coordinator analyzes → delegates to CLI Agents → executes → loops until done"
-    },
-    "pipeline": {
-      "label": "Pipeline",
-      "description": "CLI Agent stages where each output feeds the next"
-    },
-    "debate": {
-      "label": "Debate",
-      "description": "Independent answers → cross-review → final synthesis"
-    },
-    "mapreduce": {
-      "label": "MapReduce",
-      "description": "Split tasks → parallel work → merge results"
-    },
-    "supervisor": {
-      "label": "Supervisor",
-      "description": "Supervisor delegates → reviews quality → feedback loop"
+    "removeMember": "Remove member",
+    "effort": {
+      "fast": {
+        "label": "Fast",
+        "description": "Fewer phases, optimized for quick answers."
+      },
+      "standard": {
+        "label": "Standard",
+        "description": "Balanced planning, execution, and review."
+      },
+      "deep": {
+        "label": "Deep",
+        "description": "More phases and broader collaboration for complex tasks."
+      }
     }
   }
 }

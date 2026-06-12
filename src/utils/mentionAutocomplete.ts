@@ -64,6 +64,21 @@ export function applyMention(
   };
 }
 
+export function extractMentionedCandidateIds(value: string, candidates: MentionCandidate[]): string[] {
+  const text = value || '';
+  const mentioned: string[] = [];
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    if (!candidate.id || !candidate.name || seen.has(candidate.id)) continue;
+    const escapedName = candidate.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`(^|\\s)@${escapedName}(?=\\s|$)`, 'u');
+    if (!re.test(text)) continue;
+    seen.add(candidate.id);
+    mentioned.push(candidate.id);
+  }
+  return mentioned;
+}
+
 export function shouldBlockMentionAutocompleteSend(open: boolean): boolean {
   return open;
 }

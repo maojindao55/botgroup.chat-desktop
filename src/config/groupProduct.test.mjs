@@ -27,9 +27,16 @@ assert.deepEqual(
 );
 
 assert.deepEqual(
-  mod.agentWorkflowTemplates.map((item) => item.label),
-  ['专家会诊', '方案产出', '评审决策', '接力修改', '自动处理'],
+  mod.agentWorkflowEfforts.map((item) => item.value),
+  ['fast', 'standard', 'deep'],
 );
+
+assert.deepEqual(
+  mod.workflowIntentPresets.map((item) => item.id),
+  ['smart', 'discuss', 'multi_solution', 'review', 'isolated'],
+);
+
+assert.ok(!('agentWorkflowTemplates' in mod), 'agentWorkflowTemplates must be removed');
 
 assert.deepEqual(
   mod.cliWorkflowTemplates.map((item) => item.label),
@@ -99,7 +106,8 @@ assert.equal(mod.getCLIWorkflowLabel('sequential', 'multi_solution'), '多人出
 
 const labels = JSON.stringify({
   groups: mod.productGroupTypes,
-  agent: mod.agentWorkflowTemplates,
+  agentEfforts: mod.agentWorkflowEfforts,
+  agentIntents: mod.workflowIntentPresets,
   cli: mod.cliWorkflowTemplates,
 });
 assert.doesNotMatch(labels, /工作台/);
@@ -110,12 +118,15 @@ const wizard = await readFile(new URL('../pages/chat/components/CreateGroupWizar
 for (const symbol of [
   'productGroupTypes',
   'aiSpeechModes',
-  'agentWorkflowTemplates',
+  'agentWorkflowEfforts',
   'cliWorkflowTemplates',
   'applyAISpeechMode',
 ]) {
   assert.match(wizard, new RegExp(symbol));
 }
+
+assert.doesNotMatch(wizard, /agentWorkflowTemplates/);
+assert.doesNotMatch(wizard, /AgentStrategy/);
 
 for (const oldCopy of ['选择你要创建的群聊类型', 'AI 群聊', 'Agent 群聊', 'CLI Agent 群']) {
   assert.doesNotMatch(wizard, new RegExp(oldCopy));
@@ -135,8 +146,11 @@ const agentSettings = await readFile(new URL('../pages/chat/components/AgentGrou
 
 assert.match(agentSettings, /useTranslation/);
 assert.match(agentSettings, /settings:agentGroup/);
-assert.match(agentSettings, /agentWorkflowTemplates/);
-assert.match(agentSettings, /settings:strategies/);
+assert.match(agentSettings, /agentWorkflowEfforts/);
+assert.doesNotMatch(agentSettings, /agentWorkflowTemplates/);
+assert.doesNotMatch(agentSettings, /AgentStrategy/);
+assert.doesNotMatch(agentSettings, /coordinatorPrompt/);
+assert.doesNotMatch(agentSettings, /settings:strategies/);
 
 const cliSettings = await readFile(new URL('../pages/chat/components/CLIGroupSettings.tsx', import.meta.url), 'utf8');
 
@@ -205,8 +219,9 @@ const agentChatUI = await readFile(new URL('../pages/chat/components/AgentChatUI
 
 assert.match(agentChatUI, /useTranslation/);
 assert.match(agentChatUI, /chat:agentChat/);
-assert.match(agentChatUI, /settings:strategies/);
 assert.match(agentChatUI, /AppSettingsModal/);
+assert.doesNotMatch(agentChatUI, /settings:strategies/);
+assert.doesNotMatch(agentChatUI, /executeAgentStrategy/);
 assert.match(
   agentChatUI,
   /const hasAnySessionForGroup = chatSessions\.some\(s => s\.groupId === group\.id\);/,
@@ -219,8 +234,13 @@ assert.match(
 );
 assert.match(
   agentChatUI,
-  /const sessionId = ensureActiveSession\([\s\S]*?\);[\s\S]*const toolSessionScope = sessionId;/,
-  'AgentChatUI first-turn CLI tool sessions must use the newly created conversation id',
+  /const sessionId = ensureActiveSession\([\s\S]*?\);[\s\S]*sessionId,/,
+  'AgentChatUI should store the newly created conversation id with pending workflow data',
+);
+assert.match(
+  agentChatUI,
+  /developmentTaskId: pending\.sessionId,/,
+  'AgentChatUI first-turn CLI tool sessions must use the pending workflow conversation id',
 );
 assert.match(
   agentChatUI,
@@ -229,7 +249,7 @@ assert.match(
 );
 assert.match(
   agentChatUI,
-  /\{!isUser && \(\s*<ChatAttachmentList[\s\S]*?\)\}[\s\S]*?\{isUser && hasAttachments && \(\s*<div className=\{styles\.userAttachmentBubble\}>[\s\S]*?<ChatAttachmentList/,
+  /\{!isUser && !isWorkflowMessage && \(\s*<ChatAttachmentList[\s\S]*?\)\}[\s\S]*?\{isUser && hasAttachments && \(\s*<div className=\{styles\.userAttachmentBubble\}>[\s\S]*?<ChatAttachmentList/,
   'AgentChatUI should render user attachments as a separate bubble after the text bubble',
 );
 for (const oldCopy of ['Agent 协作群', 'AI 群员库', '专家群友将按群规协作回复', '正在加载资源库']) {

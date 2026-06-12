@@ -1,19 +1,21 @@
 /**
  * 专家群设置面板
- * 管理专家群友、群内协作方式和高级策略。
  *
- * 注意：成员（含 LLM/Prompt/Tools）统一由资源库管理。
+ * 重构后：移除固定的 8 种策略模板。用户只配置成员、工作目录、
+ * 权限和默认协作偏好；运行时由 planner/runner 动态生成执行计划。
  */
-import { Drawer, Input, InputNumber, Tooltip, Button } from 'antd';
+import { Drawer, Input, InputNumber, Switch, Tooltip, Button } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { Avatar as LobeAvatar, ActionIcon } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 import { Mic, MicOff, X, FolderOpen } from 'lucide-react';
-import type { AgentGroup, AgentStrategy } from '@/config/groups';
+import type { AgentGroup } from '@/config/groups';
+import type { AgentWorkflowEffort } from '@/config/agentWorkflow';
+import { createDefaultAgentWorkflowDefaults } from '@/config/agentWorkflow';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
 import { MemberPicker } from './MemberPicker';
 import { useAIMemberStore } from '@/store/aiMemberStore';
-import { agentWorkflowTemplates } from '@/config/groupProduct';
+import { agentWorkflowEfforts } from '@/config/groupProduct';
 import { invoke } from '@tauri-apps/api/core';
 
 interface AgentGroupSettingsProps {
@@ -37,20 +39,21 @@ const useStyles = createStyles(({ token, css }) => ({
   `,
   strategyGrid: css`
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     gap: 8px;
   `,
   strategyBtn: css`
-    padding: 8px;
+    padding: 10px;
     border-radius: 8px;
     border: 1px solid ${token.colorBorderSecondary};
     background: transparent;
     cursor: pointer;
-    font-size: 12px;
-    font-weight: 500;
     transition: all 0.15s;
     text-align: center;
     color: ${token.colorText};
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
     &:hover {
       background: ${token.colorFillTertiary};
     }
@@ -67,6 +70,15 @@ const useStyles = createStyles(({ token, css }) => ({
     font-size: 11px;
     color: ${token.colorTextTertiary};
     margin-top: 6px;
+  `,
+  capabilityTag: css`
+    display: inline-block;
+    margin-right: 4px;
+    padding: 1px 6px;
+    font-size: 10px;
+    border-radius: 4px;
+    background: rgba(255, 102, 0, 0.1);
+    color: #ff6600;
   `,
   templateBtn: css`
     width: 100%;
@@ -186,42 +198,18 @@ export const AgentGroupSettings = ({
   const { styles, cx } = useStyles();
   const { members: allMembers } = useAIMemberStore();
 
-  const currentMemberIds = group.memberIds || group.agents?.map((a) => a.id) || [];
+  const currentMemberIds = group.memberIds || [];
   const currentAgents = currentMemberIds
     .map((id) => allMembers[id])
     .filter((m) => m && (m.kind === 'cli' || m.kind === 'agent'));
-  // 模板匹配逻辑放宽：只要 strategy 和 maxRounds 匹配即高亮模板
-  // 用户修改 coordinatorPrompt 不应导致模板高亮消失
-  const activeTemplate = agentWorkflowTemplates.find((item) =>
-    item.strategy === group.strategy &&
-    item.maxRounds === group.maxRounds
-  );
 
-  const strategyOptions: { value: AgentStrategy; label: string }[] = [
-    { value: 'sequential', label: t('settings:strategies.sequential.label', { defaultValue: '顺序执行' }) },
-    { value: 'router', label: t('settings:strategies.router.label', { defaultValue: '意图路由' }) },
-    { value: 'discussion', label: t('settings:strategies.discussion.label', { defaultValue: '全员讨论' }) },
-    { value: 'react', label: t('settings:strategies.react.label', { defaultValue: 'ReAct' }) },
-    { value: 'pipeline', label: t('settings:strategies.pipeline.label', { defaultValue: '流水线' }) },
-    { value: 'debate', label: t('settings:strategies.debate.label', { defaultValue: '辩论' }) },
-    { value: 'mapreduce', label: t('settings:strategies.mapreduce.label', { defaultValue: 'MapReduce' }) },
-    { value: 'supervisor', label: t('settings:strategies.supervisor.label', { defaultValue: '监督者' }) },
-  ];
+  const defaults = group.workflowDefaults || createDefaultAgentWorkflowDefaults();
 
-  const strategyDescriptions: Record<AgentStrategy, string> = {
-    sequential: t('settings:strategies.sequential.description', { defaultValue: '按专家群友顺序依次执行，后者可看到前者的输出' }),
-    router: t('settings:strategies.router.description', { defaultValue: '智能分析用户意图，选择最相关的专家群友回答' }),
-    discussion: t('settings:strategies.discussion.description', { defaultValue: '所有专家群友并行回复同一消息' }),
-    react: t('settings:strategies.react.description', { defaultValue: '协调者分析→分派任务→执行→判断是否完成→循环' }),
-    pipeline: t('settings:strategies.pipeline.description', { defaultValue: '按角色分工形成流水线，每阶段产出作为下一阶段输入' }),
-    debate: t('settings:strategies.debate.description', { defaultValue: '多位专家群友独立回答→互相评论→最终综合裁决' }),
-    mapreduce: t('settings:strategies.mapreduce.description', { defaultValue: '自动拆分任务→各专家群友并行处理→汇总合并结果' }),
-    supervisor: t('settings:strategies.supervisor.description', { defaultValue: '监督者分派任务→审查质量→反馈修改→直到满意' }),
+  const updateDefaults = (patch: Partial<AgentGroup['workflowDefaults']>) => {
+    onUpdateGroup({
+      workflowDefaults: { ...defaults, ...patch },
+    });
   };
-
-  const showCoordinatorPrompt = ['router', 'react', 'discussion', 'supervisor', 'debate', 'mapreduce'].includes(
-    group.strategy,
-  );
 
   const settingsContent = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -245,76 +233,74 @@ export const AgentGroupSettings = ({
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <label style={{ fontSize: 14, fontWeight: 500 }}>{t('settings:agentGroup.collaboration')}</label>
-        {agentWorkflowTemplates.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => onUpdateGroup({
-              strategy: item.strategy,
-              maxRounds: item.maxRounds,
-              coordinatorPrompt: item.coordinatorPrompt || group.coordinatorPrompt,
-            })}
-            className={cx(
-              styles.templateBtn,
-              activeTemplate?.id === item.id && styles.templateBtnActive,
-            )}
-          >
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 500 }}>
-                {t(`product:agentWorkflowTemplates.${item.id}.label`, { defaultValue: item.label })}
-              </div>
-              <div style={{ fontSize: 11, opacity: 0.65, marginTop: 2 }}>
-                {t(`product:agentWorkflowTemplates.${item.id}.description`, { defaultValue: item.description })}
-              </div>
-            </div>
-          </button>
-        ))}
-      </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <label style={{ fontSize: 14, fontWeight: 500 }}>{t('settings:agentGroup.advancedStrategy')}</label>
+        <label style={{ fontSize: 14, fontWeight: 500 }}>
+          {t('settings:agentGroup.workflowDefaults', { defaultValue: '默认协作偏好' })}
+        </label>
         <div className={styles.strategyGrid}>
-          {strategyOptions.map((item) => (
+          {agentWorkflowEfforts.map((item) => (
             <button
               key={item.value}
               type="button"
-              onClick={() => onUpdateGroup({ strategy: item.value })}
+              onClick={() => updateDefaults({
+                effort: item.value as AgentWorkflowEffort,
+                maxPhases: item.recommendedMaxPhases,
+                maxParallelAgents: item.recommendedMaxParallelAgents,
+              })}
               className={cx(
                 styles.strategyBtn,
-                group.strategy === item.value && styles.strategyBtnActive,
+                defaults.effort === item.value && styles.strategyBtnActive,
               )}
             >
-              {item.label}
+              <span style={{ fontSize: 13, fontWeight: 600 }}>
+                {t(`settings:agentGroup.effort.${item.value}.label`, { defaultValue: item.label })}
+              </span>
+              <span style={{ fontSize: 11, opacity: 0.7 }}>
+                {t(`settings:agentGroup.effort.${item.value}.description`, {
+                  defaultValue: item.description,
+                })}
+              </span>
             </button>
           ))}
         </div>
-        <p className={styles.strategyDesc}>{strategyDescriptions[group.strategy]}</p>
       </div>
 
-      {/* 协调者 Prompt */}
-      {showCoordinatorPrompt && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <label style={{ fontSize: 14, fontWeight: 500 }}>{t('settings:agentGroup.coordinatorPrompt')}</label>
-          <Input.TextArea
-            autoSize={{ minRows: 3, maxRows: 6 }}
-            placeholder={t('settings:agentGroup.coordinatorPromptPlaceholder')}
-            value={group.coordinatorPrompt || ''}
-            onChange={(e) => onUpdateGroup({ coordinatorPrompt: e.target.value })}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <label style={{ fontSize: 14, fontWeight: 500 }}>
+          {t('settings:agentGroup.advanced', { defaultValue: '高级选项' })}
+        </label>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <span style={{ fontSize: 13 }}>
+            {t('settings:agentGroup.maxPhases', { defaultValue: '最大阶段数' })}
+          </span>
+          <InputNumber
+            value={defaults.maxPhases}
+            min={1}
+            max={10}
+            style={{ width: 80 }}
+            onChange={(v) => updateDefaults({ maxPhases: Number(v) || 1 })}
           />
         </div>
-      )}
-
-      {/* 最大轮数 */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <label style={{ fontSize: 14, fontWeight: 500, whiteSpace: 'nowrap' }}>{t('settings:agentGroup.maxRounds')}</label>
-        <InputNumber
-          value={group.maxRounds}
-          min={1}
-          max={10}
-          style={{ width: 80 }}
-          onChange={(v) => onUpdateGroup({ maxRounds: Number(v) })}
-        />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <span style={{ fontSize: 13 }}>
+            {t('settings:agentGroup.maxParallelAgents', { defaultValue: '最大并发成员数' })}
+          </span>
+          <InputNumber
+            value={defaults.maxParallelAgents}
+            min={1}
+            max={5}
+            style={{ width: 80 }}
+            onChange={(v) => updateDefaults({ maxParallelAgents: Number(v) || 1 })}
+          />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <span style={{ fontSize: 13 }}>
+            {t('settings:agentGroup.alwaysShowPlan', { defaultValue: '总是展示协作计划卡' })}
+          </span>
+          <Switch
+            checked={defaults.alwaysShowPlan}
+            onChange={(v) => updateDefaults({ alwaysShowPlan: v })}
+          />
+        </div>
       </div>
 
       <div>
@@ -392,8 +378,8 @@ export const AgentGroupSettings = ({
             if (!agent) return null;
             const avatarData = getAvatarData(agent.name || 'A');
             const avatarUrl = resolveAvatarByName(agent.name || 'A', agent.avatar, 32);
-            const isSupervisor = group.strategy === 'supervisor' && currentMemberIds[0] === agent.id;
             const muted = mutedUsers.includes(agent.id);
+            const capabilities = (agent as { capabilities?: string[] }).capabilities || [];
 
             return (
               <div key={agent.id} className={styles.memberRow}>
@@ -417,7 +403,6 @@ export const AgentGroupSettings = ({
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {agent.name}
                       </span>
-                      {isSupervisor && <span className={styles.supervisorBadge}>{t('settings:agentGroup.supervisorBadge')}</span>}
                     </div>
                     {agent.description && (
                       <div
@@ -430,6 +415,13 @@ export const AgentGroupSettings = ({
                         }}
                       >
                         {agent.description}
+                      </div>
+                    )}
+                    {capabilities.length > 0 && (
+                      <div style={{ marginTop: 4 }}>
+                        {capabilities.map((cap) => (
+                          <span key={cap} className={styles.capabilityTag}>{cap}</span>
+                        ))}
                       </div>
                     )}
                   </div>

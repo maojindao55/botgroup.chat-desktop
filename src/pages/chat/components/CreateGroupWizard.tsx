@@ -9,11 +9,11 @@ import {
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type {
-  CLICustomWorkflow, Group, AIGroup, CLIGroup, CLIStrategy, CLISessionPolicy, AgentGroup, AgentStrategy, CLIReviewLoopRoles,
+  CLICustomWorkflow, Group, AIGroup, CLIGroup, CLIStrategy, CLISessionPolicy, AgentGroup, CLIReviewLoopRoles,
 } from '@/config/groups';
 import {
   aiSpeechModes,
-  agentWorkflowTemplates,
+  agentWorkflowEfforts,
   applyAISpeechMode,
   cliWorkflowTemplateGroups,
   cliWorkflowTemplates,
@@ -21,6 +21,8 @@ import {
   productGroupTypes,
   type AISpeechMode,
 } from '@/config/groupProduct';
+import { createDefaultAgentWorkflowDefaults } from '@/config/agentWorkflow';
+import type { AgentWorkflowEffort } from '@/config/agentWorkflow';
 import {
   groupTypeToSettingsSection,
   type AppSettingsSection,
@@ -56,7 +58,6 @@ const groupTypeIcons = {
   agent: Puzzle,
 };
 
-const defaultAgentTemplate = agentWorkflowTemplates[0];
 const defaultCliWorkflowTemplate =
   cliWorkflowTemplates.find((item) => item.id === 'implement_review') || cliWorkflowTemplates[0];
 
@@ -249,10 +250,18 @@ export const CreateGroupWizard = ({
 
   // Agent group
   const [selectedAgentMembers, setSelectedAgentMembers] = useState<string[]>([]);
-  const [strategy, setStrategy] = useState<AgentStrategy>(defaultAgentTemplate.strategy);
-  const [coordinatorPrompt, setCoordinatorPrompt] = useState(defaultAgentTemplate.coordinatorPrompt || '');
-  const [maxRounds, setMaxRounds] = useState(defaultAgentTemplate.maxRounds);
-  const [agentTemplateId, setAgentTemplateId] = useState(defaultAgentTemplate.id);
+  const [agentWorkflowEffort, setAgentWorkflowEffort] = useState<AgentWorkflowEffort>(
+    createDefaultAgentWorkflowDefaults().effort,
+  );
+  const [agentMaxPhases, setAgentMaxPhases] = useState<number>(
+    createDefaultAgentWorkflowDefaults().maxPhases,
+  );
+  const [agentMaxParallelAgents, setAgentMaxParallelAgents] = useState<number>(
+    createDefaultAgentWorkflowDefaults().maxParallelAgents,
+  );
+  const [agentAlwaysShowPlan, setAgentAlwaysShowPlan] = useState<boolean>(
+    createDefaultAgentWorkflowDefaults().alwaysShowPlan,
+  );
 
   useEffect(() => {
     if (open) {
@@ -295,10 +304,10 @@ export const CreateGroupWizard = ({
     setCliSessionPolicy('task');
     setReviewLoopRoles(buildDefaultReviewLoopRoles([]));
     setSelectedAgentMembers([]);
-    setStrategy(defaultAgentTemplate.strategy);
-    setCoordinatorPrompt(defaultAgentTemplate.coordinatorPrompt || '');
-    setMaxRounds(defaultAgentTemplate.maxRounds);
-    setAgentTemplateId(defaultAgentTemplate.id);
+    setAgentWorkflowEffort(createDefaultAgentWorkflowDefaults().effort);
+    setAgentMaxPhases(createDefaultAgentWorkflowDefaults().maxPhases);
+    setAgentMaxParallelAgents(createDefaultAgentWorkflowDefaults().maxParallelAgents);
+    setAgentAlwaysShowPlan(createDefaultAgentWorkflowDefaults().alwaysShowPlan);
   };
 
 
@@ -347,13 +356,16 @@ export const CreateGroupWizard = ({
       group = {
         id, type: 'agent', name, description,
         memberIds: selectedAgentMembers,
-        strategy,
-        coordinatorPrompt: coordinatorPrompt || undefined,
-        maxRounds,
         workspacePath,
         approvalMode,
         timeout,
         showStderr: true,
+        workflowDefaults: {
+          effort: agentWorkflowEffort,
+          maxPhases: agentMaxPhases,
+          maxParallelAgents: agentMaxParallelAgents,
+          alwaysShowPlan: agentAlwaysShowPlan,
+        },
       } as AgentGroup;
     }
 
@@ -744,40 +756,34 @@ export const CreateGroupWizard = ({
         <p style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginTop: 6 }}>{t('wizard:configStep.workspaceHint')}</p>
       </div>
       <div>
-        <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 8 }}>{t('wizard:configStep.agentCollaboration')}</label>
-        {agentWorkflowTemplates.map(item => (
-          <button key={item.id}
+        <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 8 }}>
+          {t('wizard:configStep.agentEffort', { defaultValue: '默认协作偏好' })}
+        </label>
+        {agentWorkflowEfforts.map(item => (
+          <button key={item.value}
             onClick={() => {
-              setAgentTemplateId(item.id);
-              setStrategy(item.strategy);
-              setMaxRounds(item.maxRounds);
-              setCoordinatorPrompt(item.coordinatorPrompt || '');
+              setAgentWorkflowEffort(item.value);
+              setAgentMaxPhases(item.recommendedMaxPhases);
+              setAgentMaxParallelAgents(item.recommendedMaxParallelAgents);
             }}
-            className={cx(styles.strategyBtn, agentTemplateId === item.id && styles.strategyBtnActive)}>
+            className={cx(styles.strategyBtn, agentWorkflowEffort === item.value && styles.strategyBtnActive)}>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 14, fontWeight: 500 }}>
-                {t(`product:agentWorkflowTemplates.${item.id}.label`, { defaultValue: item.label })}
+                {t(`settings:agentGroup.effort.${item.value}.label`, { defaultValue: item.label })}
               </div>
               <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>
-                {t(`product:agentWorkflowTemplates.${item.id}.description`, { defaultValue: item.description })}
+                {t(`settings:agentGroup.effort.${item.value}.description`, { defaultValue: item.description })}
               </div>
             </div>
-            {agentTemplateId === item.id && <Check size={16} style={{ color: '#ff6600' }} />}
+            {agentWorkflowEffort === item.value && <Check size={16} style={{ color: '#ff6600' }} />}
           </button>
         ))}
       </div>
-      {(strategy === 'router' || strategy === 'react' || strategy === 'discussion') && (
-        <div>
-          <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 6 }}>{t('wizard:configStep.coordinatorPrompt')}</label>
-          <Input.TextArea autoSize={{ minRows: 2, maxRows: 6 }}
-            placeholder={t('wizard:configStep.coordinatorPromptPlaceholder')}
-            value={coordinatorPrompt} onChange={e => setCoordinatorPrompt(e.target.value)} />
-        </div>
-      )}
-      <div>
-        <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 6 }}>{t('wizard:configStep.maxRounds')}</label>
-        <InputNumber value={maxRounds} min={1} max={10}
-          onChange={(v) => setMaxRounds(Number(v))} style={{ width: 100 }} />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <label style={{ fontSize: 14, fontWeight: 500 }}>
+          {t('settings:agentGroup.alwaysShowPlan', { defaultValue: '总是展示协作计划卡' })}
+        </label>
+        <Switch checked={agentAlwaysShowPlan} onChange={(v) => setAgentAlwaysShowPlan(v)} />
       </div>
     </div>
   );

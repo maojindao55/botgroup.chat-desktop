@@ -30,28 +30,6 @@
       "description": "每轮所有角色都发言，适合脑暴和多模型观点对比。"
     }
   },
-  "agentWorkflowTemplates": {
-    "expert_consult": {
-      "label": "专家会诊",
-      "description": "多位专家群友独立分析同一问题，再形成综合意见。"
-    },
-    "proposal": {
-      "label": "方案产出",
-      "description": "按调研、起草、审查、定稿的方式协作产出方案。"
-    },
-    "decision_review": {
-      "label": "评审决策",
-      "description": "从多角色视角提出收益、风险、约束和最终建议。"
-    },
-    "relay_edit": {
-      "label": "接力修改",
-      "description": "一个专家起草，一个专家审核，一个专家修订。"
-    },
-    "auto_delegate": {
-      "label": "自动处理",
-      "description": "由协调者多轮分派任务，适合目标明确但步骤未定的问题。"
-    }
-  },
   "cliWorkflowTemplates": {
     "quick_response": {
       "label": "快速响应",

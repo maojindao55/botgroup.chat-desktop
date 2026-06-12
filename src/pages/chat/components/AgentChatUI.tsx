@@ -1,6 +1,6 @@
 /**
  * 专家群聊对话组件
- * 独立的聊天 UI，使用 agentEngine 策略引擎驱动对话
+ * 独立的聊天 UI，使用 planner -> workflow runner 驱动对话
  */
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -15,8 +15,9 @@ import { useUserStore } from '@/store/userStore';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
 import { resolveEffectiveMember } from '@/utils/aiMemberDisplay';
-import { executeAgentStrategy } from '@/engine/agentEngine';
-import type { StreamCallback } from '@/engine/agentEngine';
+import { planAgentWorkflowSmart } from '@/engine/agentWorkflowPlanner';
+import { runAgentWorkflowPlan } from '@/engine/agentWorkflowRunner';
+import type { AgentWorkflowRunnerCallbacks } from '@/engine/agentWorkflowRunner';
 import AgentGroupSettings from './AgentGroupSettings';
 import Sidebar from './Sidebar';
 import ConversationSidebar from './ConversationSidebar';
@@ -25,6 +26,7 @@ import type { AgentGroup, Group } from '@/config/groups';
 import { isBuiltinGroupId } from '@/config/groupStorage';
 import { useAIMemberStore } from '@/store/aiMemberStore';
 import { useChatSessionStore } from '@/store/chatSessionStore';
+import { useAgentWorkflowPlannerSettings } from '@/store/agentWorkflowPlannerSettings';
 import {
   truncateSessionTitle,
   type ChatAttachment,
@@ -39,9 +41,12 @@ import {
 } from '@/utils/chatAttachments';
 import { resolveCliToolSessionKey } from '@/engine/cliToolSessions';
 import { supportsCliToolSession } from '@/config/cliAdapters';
+import { getWorkflowPlanApprovalReason, newAgentWorkflowRun, type AgentWorkflowPlan, type AgentWorkflowRun } from '@/config/agentWorkflow';
+import AgentWorkflowPlanCard from './AgentWorkflowPlanCard';
 import { AppSettingsModal } from './AppSettingsModal';
 import type { AppSettingsSection } from '@/config/appSettings';
 import { MentionTextArea } from './MentionAutocomplete';
+import { extractMentionedCandidateIds } from '@/utils/mentionAutocomplete';
 import { ChatAttachmentList } from './ChatAttachments';
 import { generateSessionTitle } from '@/utils/sessionTitle';
 import { BRAND_ON_PRIMARY, brandPrimaryButtonStyle } from '@/lib/theme';
@@ -69,6 +74,28 @@ interface ChatMessage {
   /** CLI adapter（codex/claude/opencode/...），日志 Modal 用 */
   adapter?: string;
   attachments?: ChatAttachment[];
+  workflowRun?: ChatSessionMessage['workflowRun'];
+}
+
+interface PendingWorkflowExecution {
+  plan: AgentWorkflowPlan;
+  userMessage: string;
+  history: string;
+  sessionId: string;
+  mentionedAgentIds?: string[];
+  revisionInstruction?: string;
+}
+
+function cloneWorkflowRun(run: AgentWorkflowRun): AgentWorkflowRun {
+  return {
+    ...run,
+    phaseStates: Object.fromEntries(
+      Object.entries(run.phaseStates).map(([key, value]) => [
+        key,
+        { ...value, selectedAgentIds: [...value.selectedAgentIds], outputs: value.outputs.map(output => ({ ...output })) },
+      ]),
+    ),
+  };
 }
 
 interface AgentChatUIProps {
@@ -497,17 +524,38 @@ const AgentChatUI = ({
   const members = useAIMemberStore(s => s.members);
   const membersLoading = useAIMemberStore(s => s.loading);
   const loadMembers = useAIMemberStore(s => s.load);
+  const plannerSettings = useAgentWorkflowPlannerSettings(s => s.settings);
+  const buildPlannerSmartOptions = useCallback(() => {
+    if (plannerSettings.mode !== 'llm' || !plannerSettings.providerId || !plannerSettings.model) {
+      return undefined;
+    }
+    return {
+      llm: {
+        providerId: plannerSettings.providerId,
+        model: plannerSettings.model,
+        temperature: plannerSettings.temperature,
+      },
+      llmLabel: plannerSettings.model,
+    };
+  }, [plannerSettings.mode, plannerSettings.providerId, plannerSettings.model, plannerSettings.temperature]);
 
   useEffect(() => {
     loadMembers();
   }, [loadMembers]);
 
-  const currentMemberIds = group.memberIds || group.agents?.map(a => a.id) || [];
+  const currentMemberIds = group.memberIds || [];
   const dbAgents = currentMemberIds
     .map(id => members[id])
     .filter(m => m && (m.kind === 'cli' || m.kind === 'agent'));
-  // 优先 store 数据；store 未 ready 时回落到群里的内联 agents（兼容旧数据）
-  const currentAgents = dbAgents.length > 0 ? dbAgents : (group.agents || []);
+  // 兼容遗留 agent group：旧版本把成员内联在 group.agents 中。
+  // 若 store 中找不到任何匹配成员，则回退使用 inline 数据，保证旧数据仍可使用。
+  const legacyInlineAgents = Array.isArray((group as { agents?: unknown }).agents)
+    ? ((group as { agents?: unknown[] }).agents as unknown[]).filter(
+        (a): a is { id: string; kind?: string } =>
+          !!a && typeof a === 'object' && typeof (a as { id?: unknown }).id === 'string'
+      )
+    : [];
+  const currentAgents = dbAgents.length > 0 ? dbAgents : (legacyInlineAgents as typeof dbAgents);
   const mentionCandidates = useMemo(
     () => currentAgents.map(agent => ({
       id: agent.id,
@@ -522,9 +570,6 @@ const AgentChatUI = ({
   // store 仍在首次加载中且暂时拿不到成员
   const isResolvingMembers =
     membersLoading && currentMemberIds.length > 0 && currentAgents.length === 0;
-
-  const getStrategyLabel = (strategy: string) =>
-    t(`settings:strategies.${strategy}.label`, { defaultValue: strategy });
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputMessage, setInputMessage] = useState('');
@@ -567,14 +612,25 @@ const AgentChatUI = ({
 
   /** Prevents double title generation across React strict-mode / concurrent re-renders. */
   const titleGenRef = useRef<Set<string>>(new Set());
-  /** 当前请求的 AbortController，用于取消正在进行的 Agent 策略执行 */
+  /** 当前请求的 AbortController，用于取消正在进行的 Agent workflow */
   const abortControllerRef = useRef<AbortController | null>(null);
+  const pendingWorkflowsRef = useRef<Record<string, PendingWorkflowExecution>>({});
+  const [pendingWorkflowsVersion, setPendingWorkflowsVersion] = useState(0);
+  const bumpPendingWorkflows = useCallback(() => {
+    setPendingWorkflowsVersion(v => v + 1);
+  }, []);
+  const pendingPlanIds = useMemo(() => {
+    void pendingWorkflowsVersion;
+    return new Set(Object.keys(pendingWorkflowsRef.current));
+  }, [pendingWorkflowsVersion]);
   /** 懒创建会话后跳过一次「加载历史」，避免覆盖刚输入的消息 */
   const suppressLoadRef = useRef(false);
   /** 一次性数据迁移：仅在首次 mount 时执行 */
   const migratedLegacyRef = useRef(false);
   /** 用户刚点击「新建会话」，跳过一次自动选中最近会话 */
   const userStartedNewRef = useRef(false);
+  const lastPersistedSignatureRef = useRef<string | null>(null);
+  const lastLoadedSignatureRef = useRef<string | null>(null);
 
   const updateConvParam = (sessionId: string | null) => {
     try {
@@ -596,6 +652,7 @@ const AgentChatUI = ({
       agentTaskId: m.agentTaskId,
       adapter: m.adapter,
       attachments: m.attachments || [],
+      workflowRun: m.workflowRun,
     }));
 
   const localToStoredMessages = (msgs: ChatMessage[]): ChatSessionMessage[] =>
@@ -608,7 +665,21 @@ const AgentChatUI = ({
       agentTaskId: m.agentTaskId,
       adapter: m.adapter,
       attachments: m.attachments || undefined,
+      workflowRun: m.workflowRun,
     }));
+
+  const messageSyncSignature = (msgs: Array<Pick<ChatMessage, 'id' | 'content' | 'isAI' | 'isError' | 'agentTaskId' | 'adapter' | 'workflowRun'>>) =>
+    JSON.stringify(msgs.map(m => [
+      m.id,
+      m.content || '',
+      m.isAI ? 1 : 0,
+      m.isError ? 1 : 0,
+      m.agentTaskId || '',
+      m.adapter || '',
+      m.workflowRun?.id || '',
+      m.workflowRun?.status || '',
+      m.workflowRun?.updatedAt || 0,
+    ]));
 
   useEffect(() => {
     if (migratedLegacyRef.current) return;
@@ -654,11 +725,57 @@ const AgentChatUI = ({
   }, []);
 
   useEffect(() => {
+    lastPersistedSignatureRef.current = null;
+    lastLoadedSignatureRef.current = null;
+  }, [activeSessionId]);
+
+  const rehydratePendingWorkflows = useCallback((msgs: ChatMessage[], sessionId: string) => {
+    let added = false;
+    for (let i = 0; i < msgs.length; i++) {
+      const m = msgs[i];
+      const run = m.workflowRun;
+      if (!run || run.status !== 'planned') continue;
+      if (pendingWorkflowsRef.current[m.id]) continue;
+      let userMessage = '';
+      for (let j = i - 1; j >= 0; j--) {
+        const prior = msgs[j];
+        if (!prior.isAI) {
+          const attachmentSummary = formatAttachmentsForHistory(prior.attachments);
+          userMessage = [prior.content || '', attachmentSummary].filter(Boolean).join('\n');
+          break;
+        }
+      }
+      const history = msgs.slice(Math.max(0, i - 20), i)
+        .map(prev => {
+          const attachmentSummary = formatAttachmentsForHistory(prev.attachments);
+          return `${prev.sender.name}: ${[prev.content, attachmentSummary].filter(Boolean).join('\n')}`;
+        })
+        .join('\n');
+      pendingWorkflowsRef.current[m.id] = {
+        plan: run.plan,
+        userMessage,
+        history,
+        sessionId,
+      };
+      added = true;
+    }
+    if (added) bumpPendingWorkflows();
+  }, [bumpPendingWorkflows]);
+
+  useEffect(() => {
     if (!activeSessionId) return;
     if (suppressLoadRef.current) { suppressLoadRef.current = false; return; }
     const session = chatSessions.find(s => s.id === activeSessionId);
     if (session && session.groupId === group.id) {
-      setMessages(storedToLocalMessages(session.messages));
+      const nextMessages = storedToLocalMessages(session.messages);
+      const nextSig = messageSyncSignature(nextMessages);
+      if (lastLoadedSignatureRef.current === nextSig) return;
+      lastLoadedSignatureRef.current = nextSig;
+      lastPersistedSignatureRef.current = nextSig;
+      setMessages(prev => (
+        messageSyncSignature(prev) === nextSig ? prev : nextMessages
+      ));
+      rehydratePendingWorkflows(nextMessages, session.id);
     } else if (session) {
       setMessages([]);
       setActiveSessionId(null);
@@ -693,6 +810,11 @@ const AgentChatUI = ({
     if (!activeSessionId) return;
     if (isLoading) return;
     if (messages.length === 0) return;
+
+    const sig = messageSyncSignature(messages);
+    if (lastPersistedSignatureRef.current === sig) return;
+    lastPersistedSignatureRef.current = sig;
+    lastLoadedSignatureRef.current = sig;
 
     replaceSessionMessages(activeSessionId, localToStoredMessages(messages));
 
@@ -944,6 +1066,173 @@ const AgentChatUI = ({
     setPendingAttachments(prev => prev.filter(attachment => attachment.id !== id));
   };
 
+  const runWorkflowMessage = async (messageId: string, force = false) => {
+    if (isLoading && !force) return;
+    const pending = pendingWorkflowsRef.current[messageId];
+    if (!pending) return;
+
+    const eligibleMembers = currentAgents
+      .filter((m): m is NonNullable<typeof m> => !!m && !mutedUsers.includes(m.id));
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    setIsLoading(true);
+
+    const agentMsgIds: Record<string, string> = {};
+    const updateWorkflowMessage = (run: AgentWorkflowRun) => {
+      const cloned = cloneWorkflowRun(run);
+      setMessages(prev => prev.map(m => m.id === messageId ? { ...m, workflowRun: cloned } : m));
+    };
+    const buildToolSessionKey = (agentId: string) => resolveCliToolSessionKey({
+      developmentTaskId: pending.sessionId,
+      templateId: group.id,
+      agentId,
+      workspacePath: group.workspacePath || '',
+      sessionPolicy: 'task',
+    });
+    const toolSessionLookup = (agentId: string): string | null => {
+      try {
+        return localStorage.getItem(buildToolSessionKey(agentId));
+      } catch {
+        return null;
+      }
+    };
+
+    const callbacks: AgentWorkflowRunnerCallbacks = {
+      onRunStart: updateWorkflowMessage,
+      onPlanUpdate: updateWorkflowMessage,
+      onRunEnd: updateWorkflowMessage,
+      onPhaseStart: () => {},
+      onPhaseEnd: () => {},
+      onAgentStart: (agentId, agentName, meta) => {
+        const id = nextMsgId();
+        agentMsgIds[agentId] = id;
+        const agentMsg: ChatMessage = {
+          id,
+          sender: { id: agentId, name: agentName },
+          content: '',
+          isAI: true,
+          isStreaming: true,
+          agentTaskId: meta?.agentTaskId,
+          adapter: meta?.adapter,
+        };
+        setMessages(prev => [...prev, agentMsg]);
+      },
+      onToken: (agentId, token) => {
+        const msgId = agentMsgIds[agentId];
+        if (!msgId) return;
+        setMessages(prev =>
+          prev.map(m => m.id === msgId ? { ...m, content: m.content + token } : m)
+        );
+      },
+      onAgentEnd: (agentId) => {
+        const msgId = agentMsgIds[agentId];
+        if (!msgId) return;
+        setMessages(prev =>
+          prev.map(m => m.id === msgId ? { ...m, isStreaming: false } : m)
+        );
+      },
+      onError: (agentId, error) => {
+        const msgId = agentMsgIds[agentId];
+        if (!msgId) return;
+        setMessages(prev =>
+          prev.map(m => m.id === msgId
+            ? { ...m, content: t('chat:errors.appendError', { error }), isError: true, isStreaming: false }
+            : m
+          )
+        );
+      },
+      onInfo: (infoMsg) => {
+        antdMessage.info(infoMsg);
+      },
+      onToolSession: (agentId, adapter, sessionId) => {
+        if (!supportsCliToolSession(adapter)) return;
+        try {
+          localStorage.setItem(buildToolSessionKey(agentId), sessionId);
+        } catch { /* quota / private mode */ }
+      },
+    };
+
+    try {
+      await runAgentWorkflowPlan(group, eligibleMembers, pending.plan, pending.userMessage, callbacks, {
+        signal: controller.signal,
+        history: pending.history,
+        toolSessionLookup,
+      });
+      delete pendingWorkflowsRef.current[messageId];
+      bumpPendingWorkflows();
+    } catch (error: any) {
+      if (error?.name === 'AbortError') {
+        antdMessage.info(t('chat:agentChat.aborted', { defaultValue: '已停止生成' }));
+      } else {
+        console.error('Agent workflow execution failed:', error);
+        const errorMsg = error?.message || t('chat:errors.unknownError', { defaultValue: '未知错误' });
+        antdMessage.error(t('chat:errors.strategyFailed', { defaultValue: `工作流执行失败: ${errorMsg}` }));
+        const errChatMsg: ChatMessage = {
+          id: nextMsgId(),
+          sender: { id: '__system__', name: t('chat:agentChat.system', { defaultValue: '系统' }) },
+          content: t('chat:errors.strategyFailed', { defaultValue: `工作流执行失败: ${errorMsg}` }),
+          isAI: true,
+          isError: true,
+        };
+        setMessages(prev => [...prev, errChatMsg]);
+      }
+    } finally {
+      abortControllerRef.current = null;
+      setIsLoading(false);
+      setMessages(prev => prev.map(m => m.isStreaming ? { ...m, isStreaming: false } : m));
+    }
+  };
+
+  const cancelWorkflowMessage = (messageId: string) => {
+    delete pendingWorkflowsRef.current[messageId];
+    bumpPendingWorkflows();
+    setMessages(prev => prev.map(m => {
+      if (m.id !== messageId || !m.workflowRun) return m;
+      return {
+        ...m,
+        workflowRun: {
+          ...m.workflowRun,
+          status: 'cancelled',
+          updatedAt: Date.now(),
+        },
+      };
+    }));
+  };
+
+  const reviseWorkflowMessage = async (messageId: string, instruction: string) => {
+    const pending = pendingWorkflowsRef.current[messageId];
+    if (!pending || !instruction.trim()) return;
+    const eligibleMembers = currentAgents
+      .filter((m): m is NonNullable<typeof m> => !!m && !mutedUsers.includes(m.id));
+    const { plan, warnings } = await planAgentWorkflowSmart(
+      {
+        group,
+        members: eligibleMembers,
+        userMessage: pending.userMessage,
+        history: pending.history,
+        mentionedAgentIds: pending.mentionedAgentIds,
+        revisionInstruction: instruction.trim(),
+        workspaceReady: !!group.workspacePath?.trim(),
+        t,
+      },
+      buildPlannerSmartOptions(),
+    );
+    for (const w of warnings) antdMessage.warning(w);
+    pendingWorkflowsRef.current[messageId] = {
+      ...pending,
+      plan,
+      revisionInstruction: instruction.trim(),
+    };
+    bumpPendingWorkflows();
+    const revisedRun = newAgentWorkflowRun(plan);
+    setMessages(prev => prev.map(m => m.id === messageId ? {
+      ...m,
+      content: [instruction.trim(), ...warnings].join('\n'),
+      workflowRun: revisedRun,
+    } : m));
+  };
+
   const handleSendMessage = async () => {
     if (isLoading) return;
     const attachmentsToSend = pendingAttachments;
@@ -968,10 +1257,6 @@ const AgentChatUI = ({
     setPendingAttachments([]);
     setIsLoading(true);
 
-    // 创建 AbortController
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-
     const history = [...messages, userMsg]
       .slice(-20)
       .map(m => {
@@ -980,111 +1265,65 @@ const AgentChatUI = ({
       })
       .join('\n');
 
-    // Agent 消息 ID 映射（支持多轮：每次 onAgentStart 都分配唯一 ID）
-    const agentMsgIds: Record<string, string> = {};
-
-    // CLI tool session 续接：必须用 ensureActiveSession 返回值，
-    // setActiveSessionId 异步更新，同步流里读 activeSessionId 拿到的是 stale null
-    const toolSessionScope = sessionId;
-    const toolSessionWorkspace = group.workspacePath || '';
-    const toolSessionPolicy = 'task' as const;
-    const buildToolSessionKey = (agentId: string) => resolveCliToolSessionKey({
-      developmentTaskId: toolSessionScope || '',
-      templateId: group.id,
-      agentId,
-      workspacePath: toolSessionWorkspace,
-      sessionPolicy: toolSessionPolicy,
-    });
-
-    const callbacks: StreamCallback = {
-      onAgentStart: (agentId, agentName, meta) => {
-        const id = nextMsgId();
-        agentMsgIds[agentId] = id;
-        const agentMsg: ChatMessage = {
-          id,
-          sender: { id: agentId, name: agentName },
-          content: '',
-          isAI: true,
-          isStreaming: true,
-          agentTaskId: meta?.agentTaskId,
-          adapter: meta?.adapter,
-        };
-        setMessages(prev => [...prev, agentMsg]);
-      },
-      onToken: (agentId, token) => {
-        const msgId = agentMsgIds[agentId];
-        if (!msgId) return;
-        setMessages(prev =>
-          prev.map(m => m.id === msgId ? { ...m, content: m.content + token } : m)
-        );
-      },
-      onAgentEnd: (agentId, _fullContent) => {
-        const msgId = agentMsgIds[agentId];
-        if (!msgId) return;
-        setMessages(prev =>
-          prev.map(m => m.id === msgId ? { ...m, isStreaming: false } : m)
-        );
-      },
-      onError: (agentId, error) => {
-        const msgId = agentMsgIds[agentId];
-        if (!msgId) return;
-        setMessages(prev =>
-          prev.map(m => m.id === msgId
-            ? { ...m, content: t('chat:errors.appendError', { error }), isError: true, isStreaming: false }
-            : m
-          )
-        );
-      },
-      onInfo: (infoMsg) => {
-        antdMessage.info(infoMsg);
-      },
-      onToolSession: (agentId, adapter, sessionId) => {
-        if (!toolSessionScope) return;
-        if (!supportsCliToolSession(adapter)) return;
-        try {
-          localStorage.setItem(buildToolSessionKey(agentId), sessionId);
-        } catch { /* quota / private mode */ }
-      },
-    };
-
-    const toolSessionLookup = (agentId: string): string | null => {
-      if (!toolSessionScope) return null;
-      try {
-        return localStorage.getItem(buildToolSessionKey(agentId));
-      } catch {
-        return null;
-      }
-    };
-
     try {
-      await executeAgentStrategy(group, agentInput, history, mutedUsers, callbacks, {
-        signal: controller.signal,
-        toolSessionLookup,
-      });
-    } catch (error: any) {
-      if (error?.name === 'AbortError') {
-        // 用户主动取消，不需要报错
-        antdMessage.info(t('chat:agentChat.aborted', { defaultValue: '已停止生成' }));
-      } else {
-        console.error('Agent strategy execution failed:', error);
-        // 顶层错误提示用户
-        const errorMsg = error?.message || t('chat:errors.unknownError', { defaultValue: '未知错误' });
-        antdMessage.error(t('chat:errors.strategyFailed', { defaultValue: `策略执行失败: ${errorMsg}` }));
-        // 同时在聊天中添加错误消息
-        const errChatMsg: ChatMessage = {
-          id: nextMsgId(),
-          sender: { id: '__system__', name: t('chat:agentChat.system', { defaultValue: '系统' }) },
-          content: t('chat:errors.strategyFailed', { defaultValue: `策略执行失败: ${errorMsg}` }),
-          isAI: true,
-          isError: true,
-        };
-        setMessages(prev => [...prev, errChatMsg]);
+      const eligibleMembers = currentAgents
+        .filter((m): m is NonNullable<typeof m> => !!m && !mutedUsers.includes(m.id));
+
+      const mentionedAgentIds = extractMentionedCandidateIds(capturedInput, mentionCandidates);
+      const { plan, warnings } = await planAgentWorkflowSmart(
+        {
+          group,
+          members: eligibleMembers,
+          userMessage: agentInput,
+          history,
+          mentionedAgentIds,
+          workspaceReady: !!group.workspacePath?.trim(),
+          t,
+        },
+        buildPlannerSmartOptions(),
+      );
+      for (const w of warnings) antdMessage.warning(w);
+
+      const workflowMessageId = nextMsgId();
+      const plannedRun = newAgentWorkflowRun(plan);
+      const approvalReason = getWorkflowPlanApprovalReason(plan);
+      pendingWorkflowsRef.current[workflowMessageId] = {
+        plan,
+        userMessage: agentInput,
+        history,
+        sessionId,
+        mentionedAgentIds,
+      };
+      bumpPendingWorkflows();
+
+      const workflowMsg: ChatMessage = {
+        id: workflowMessageId,
+        sender: { id: '__workflow__', name: t('chat:agentWorkflow.sender', { defaultValue: '协作计划' }) },
+        content: approvalReason || warnings.join('\n'),
+        isAI: true,
+        workflowRun: plannedRun,
+      };
+      setMessages(prev => [...prev, workflowMsg]);
+
+      if (approvalReason || group.workflowDefaults?.alwaysShowPlan) {
+        return;
       }
+
+      await runWorkflowMessage(workflowMessageId, true);
+    } catch (error: any) {
+      console.error('Agent workflow planning failed:', error);
+      const errorMsg = error?.message || t('chat:errors.unknownError', { defaultValue: '未知错误' });
+      antdMessage.error(t('chat:errors.strategyFailed', { defaultValue: `工作流规划失败: ${errorMsg}` }));
+      const errChatMsg: ChatMessage = {
+        id: nextMsgId(),
+        sender: { id: '__system__', name: t('chat:agentChat.system', { defaultValue: '系统' }) },
+        content: t('chat:errors.strategyFailed', { defaultValue: `工作流规划失败: ${errorMsg}` }),
+        isAI: true,
+        isError: true,
+      };
+      setMessages(prev => [...prev, errChatMsg]);
     } finally {
-      abortControllerRef.current = null;
       setIsLoading(false);
-      // 确保所有消息的 streaming 状态被清除
-      setMessages(prev => prev.map(m => m.isStreaming ? { ...m, isStreaming: false } : m));
     }
   };
 
@@ -1194,9 +1433,6 @@ const AgentChatUI = ({
                     <div className={styles.avatarMore}>+{currentAgents.length - 4}</div>
                   )}
                 </div>
-                <span className={styles.agentTagPurple}>
-                  {getStrategyLabel(group.strategy)}
-                </span>
                 <ActionIcon
                   icon={Settings2}
                   size="small"
@@ -1242,12 +1478,6 @@ const AgentChatUI = ({
                     </span>
                   ))}
                 </div>
-                <p className={styles.emptyMeta}>
-                  {t('chat:agentChat.strategyMeta', {
-                    strategy: getStrategyLabel(group.strategy),
-                    maxRounds: group.maxRounds,
-                  })}
-                </p>
               </div>
             )}
 
@@ -1256,8 +1486,9 @@ const AgentChatUI = ({
                 const isUser = message.sender.name === userName;
                 const hasTextContent = message.content.trim().length > 0;
                 const hasAttachments = !!message.attachments?.length;
-                // 多轮策略会用 `${agentId}_r${round}` 作为 sender.id（避免覆盖），先剥离后缀再查 store
-                const baseAgentId = message.sender.id?.replace(/_r\d+$/, '') || '';
+                const isWorkflowMessage = !!message.workflowRun;
+                // 多 phase workflow 会用 `${agentId}__${phaseId}` 作为 sender.id（避免覆盖），先剥离后缀再查 store
+                const baseAgentId = message.sender.id?.replace(/__.+$/, '').replace(/_r\d+$/, '') || '';
                 const member = !isUser && baseAgentId
                   ? resolveEffectiveMember(members, baseAgentId)
                   : undefined;
@@ -1295,14 +1526,26 @@ const AgentChatUI = ({
                     <div className={cx(styles.messageBody, isUser && styles.messageBodyUser)}>
                       <div className={styles.metaRow} style={{ justifyContent: isUser ? 'flex-end' : 'flex-start' }}>
                         {message.sender.name}
-                        {!isUser && (
+                        {!isUser && !isWorkflowMessage && (
                           <span className={styles.agentBadge}>{t('chat:agentChat.expertBadge')}</span>
                         )}
                       </div>
-                      {(!isUser || hasTextContent) && (
+                      {(!isUser || hasTextContent || isWorkflowMessage) && (
                         <div className={bubbleClass}>
-                          <ChatMarkdown content={message.content} isUser={isUser} basePath={group.workspacePath} />
-                          {!isUser && (
+                          {message.workflowRun ? (
+                            <AgentWorkflowPlanCard
+                              plan={message.workflowRun.plan}
+                              run={message.workflowRun}
+                              warnings={message.content ? message.content.split('\n').filter(Boolean) : []}
+                              running={message.workflowRun.status === 'running'}
+                              onRun={pendingPlanIds.has(message.id) ? () => runWorkflowMessage(message.id) : undefined}
+                              onCancel={pendingPlanIds.has(message.id) ? () => cancelWorkflowMessage(message.id) : undefined}
+                              onRevise={pendingPlanIds.has(message.id) ? (instruction) => reviseWorkflowMessage(message.id, instruction) : undefined}
+                            />
+                          ) : (
+                            <ChatMarkdown content={message.content} isUser={isUser} basePath={group.workspacePath} />
+                          )}
+                          {!isUser && !isWorkflowMessage && (
                             <ChatAttachmentList
                               attachments={message.attachments}
                               unavailableLabel={t('chat:attachments.unavailable', { defaultValue: '文件不可用' })}
