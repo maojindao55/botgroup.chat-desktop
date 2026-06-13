@@ -69,6 +69,7 @@
   "agentWorkflow": {
     "sender": "Workflow plan",
     "planning": "Generating workflow plan…",
+    "plannerBadge": "Planner",
     "approvalTitle": "Confirm workflow execution",
     "planTitle": "Workflow plan",
     "confirmRun": "Run",
@@ -111,7 +112,8 @@
       "mode": {
         "readOnly": "read-only",
         "review": "review",
-        "write": "write"
+        "write": "write",
+        "verifier": "verifier"
       },
       "schedule": {
         "single": "single",
@@ -120,88 +122,27 @@
       },
       "agentsLabel": "Agents",
       "autoSuffix": "auto",
-      "errorTag": "error"
+      "errorTag": "error",
+      "attempt": "attempt {{count}}",
+      "verdictLabel": "verdict",
+      "verdict": {
+        "pass": "pass",
+        "fail": "fail"
+      }
     },
     "planner": {
       "emptyTitle": "No-op",
       "emptyExplanation": "No eligible members found.",
       "warnings": {
-        "noMembers": "No agent members available in this group.",
-        "revisionReadOnly": "Revision requested read-only execution; using discussion plan instead of write workflow.",
-        "noWorkspace": "No workspace configured; downgrading to read-only discussion.",
-        "phaseTruncated": "Plan truncated to {{count}} phase(s) by group.workflowDefaults.maxPhases.",
-        "phaseRevisionReadOnly": "Phase \"{{label}}\" downgraded to read-only by revision instruction.",
-        "phaseNoWorkspace": "Phase \"{{label}}\" requires workspace; downgraded to read-only.",
-        "phaseParallelWrite": "Phase \"{{label}}\" cannot run write in parallel; serialized to single.",
-        "llmFallback": "LLM planner ({{model}}) failed, using rule planner: {{error}}"
+        "noMembers": "No agent members available in this group."
       },
       "intents": {
-        "discuss": {
-          "title": "Parallel discussion",
-          "explanation": "Members analyze the question in parallel, then we synthesize their views."
-        },
-        "multi_solution": {
-          "title": "Parallel proposals",
-          "explanation": "Each member proposes one solution; the last phase reviews and recommends."
-        },
-        "implement": {
-          "title": "Plan -> Implement -> Review",
-          "explanation": "Plan changes, implement them in the workspace, then review the diff."
-        },
-        "review": {
-          "title": "Review current changes",
-          "explanation": "One or more reviewers inspect the requested target read-only."
-        },
-        "audit": {
-          "title": "Audit (parallel) + synthesize",
-          "explanation": "Auditors inspect different angles in parallel; a synthesizer summarizes findings."
-        },
         "quick": {
           "title": "Quick answer",
           "explanation": "A single agent answers the question directly."
         }
       },
       "phases": {
-        "analyze": {
-          "label": "Analyze",
-          "prompt": "Analyze the user request and share your perspective. Do not modify any files."
-        },
-        "synthesize": {
-          "label": "Synthesize",
-          "prompt": "Synthesize the previous perspectives into a concise actionable answer."
-        },
-        "propose": {
-          "label": "Propose",
-          "prompt": "Independently propose one solution to the user request. Do not modify files."
-        },
-        "reviewRecommend": {
-          "label": "Review & Recommend",
-          "prompt": "Compare the proposals, list trade-offs, and recommend one."
-        },
-        "plan": {
-          "label": "Plan",
-          "prompt": "Read the workspace and produce a concrete change plan. Do not modify files."
-        },
-        "implement": {
-          "label": "Implement",
-          "prompt": "Follow the plan and apply the changes in the workspace."
-        },
-        "review": {
-          "label": "Review",
-          "prompt": "Review the applied diff for correctness, tests, and obvious issues."
-        },
-        "reviewTarget": {
-          "label": "Review",
-          "prompt": "Review the requested target read-only and list findings (issues, risks, suggestions)."
-        },
-        "audit": {
-          "label": "Audit",
-          "prompt": "Audit the target read-only. Focus on your area of expertise. Do not modify files."
-        },
-        "synthesizeFindings": {
-          "label": "Synthesize findings",
-          "prompt": "Combine the audit findings into a prioritized list."
-        },
         "answer": {
           "label": "Answer",
           "prompt": "Answer the user request directly. Do not modify files unless explicitly required."
@@ -239,6 +180,8 @@
     "archivedTag": "Archived",
     "deleteConfirmTitle": "Delete chat \"{{name}}\"?",
     "deleteConfirmContent": "This chat's history will be permanently deleted and cannot be recovered.",
-    "expand": "Expand chat list"
+    "expand": "Expand chat list",
+    "runningTip": "Running in background",
+    "unreadTip": "New result available"
   }
 }

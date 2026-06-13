@@ -175,6 +175,7 @@ function callbacks() {
   assert.equal(cliCalls[0].agentId, 'cli-1');
   assert.match(cliCalls[0].prompt, /\[Context\]\ncontext/);
   assert.match(cliCalls[0].prompt, /\[User\]\nfix bug/);
+  assert.match(cliCalls[0].prompt, /Reply in English/);
   assert.equal(result.content, 'CLI:Codex');
   assert.equal(result.agentName, 'Codex');
   // phaseId propagated through cb meta
@@ -194,6 +195,22 @@ function callbacks() {
   );
 }
 
+// ---------- runSingleAgent CLI uses Chinese hint when locale is zh-CN ----------
+{
+  cliCalls.length = 0;
+  llmRequestCalls = 0;
+  const cb = callbacks();
+  await runtime.runSingleAgent(
+    cliAgent('cli-zh', 'Codex'),
+    'fix bug', 'context',
+    cb,
+    { groupId: 'g', workspacePath: '/ws', locale: 'zh-CN' },
+    { phaseId: 'p1' },
+  );
+  assert.equal(cliCalls.length, 1);
+  assert.match(cliCalls[0].prompt, /请使用简体中文回复/);
+}
+
 // ---------- runSingleAgent dispatches LLM path for non-CLI member ----------
 {
   cliCalls.length = 0;
@@ -211,6 +228,19 @@ function callbacks() {
   assert.equal(result.agentId, 'llm-1_r1');
   assert.equal(result.content, 'hello');
   assert.ok(cb.events.some(e => e[0] === 'tok' && e[1] === 'llm-1_r1' && e[2] === 'hello' && e[3] === 'p2'));
+}
+
+// ---------- runSingleAgent LLM uses Chinese system hint when locale is zh-CN ----------
+{
+  cliCalls.length = 0;
+  llmRequestCalls = 0;
+  await runtime.runSingleAgent(
+    llmAgent('llm-zh', 'Reviewer'),
+    'question?', '',
+    callbacks(),
+    { groupId: 'g', locale: 'zh-CN' },
+  );
+  assert.equal(llmRequestCalls, 1);
 }
 
 // ---------- toolSessionLookup is invoked for CLI agents ----------

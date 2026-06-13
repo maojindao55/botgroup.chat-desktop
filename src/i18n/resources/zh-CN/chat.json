@@ -69,6 +69,7 @@
   "agentWorkflow": {
     "sender": "协作计划",
     "planning": "正在生成协作计划…",
+    "plannerBadge": "规划者",
     "approvalTitle": "确认执行工作流",
     "planTitle": "协作计划",
     "confirmRun": "开始执行",
@@ -111,7 +112,8 @@
       "mode": {
         "readOnly": "只读",
         "review": "复审",
-        "write": "写入"
+        "write": "写入",
+        "verifier": "校验"
       },
       "schedule": {
         "single": "单成员",
@@ -120,88 +122,27 @@
       },
       "agentsLabel": "成员",
       "autoSuffix": "自动",
-      "errorTag": "错误"
+      "errorTag": "错误",
+      "attempt": "第 {{count}} 次执行",
+      "verdictLabel": "判定",
+      "verdict": {
+        "pass": "通过",
+        "fail": "未通过"
+      }
     },
     "planner": {
       "emptyTitle": "无操作",
       "emptyExplanation": "未找到可用的成员。",
       "warnings": {
-        "noMembers": "当前群聊没有可用的 agent 成员。",
-        "revisionReadOnly": "修订要求仅执行只读操作，已改用讨论计划而非写入流程。",
-        "noWorkspace": "未配置工作目录，已降级为只读讨论。",
-        "phaseTruncated": "计划已按 group.workflowDefaults.maxPhases 截断为 {{count}} 个阶段。",
-        "phaseRevisionReadOnly": "阶段「{{label}}」按修订要求降级为只读。",
-        "phaseNoWorkspace": "阶段「{{label}}」需要工作目录，已降级为只读。",
-        "phaseParallelWrite": "阶段「{{label}}」不能并行写入，已改为串行单成员执行。",
-        "llmFallback": "LLM planner（{{model}}）失败，已回退到规则 planner：{{error}}"
+        "noMembers": "当前群聊没有可用的 agent 成员。"
       },
       "intents": {
-        "discuss": {
-          "title": "并行讨论",
-          "explanation": "成员并行分析问题，最后汇总各自观点。"
-        },
-        "multi_solution": {
-          "title": "并行提案",
-          "explanation": "每位成员独立提出一个方案，最后由一位成员对比并推荐。"
-        },
-        "implement": {
-          "title": "规划 → 实现 → 复审",
-          "explanation": "先规划改动，再在工作目录中实现，最后复审改动。"
-        },
-        "review": {
-          "title": "复审当前内容",
-          "explanation": "由一位或多位复审者以只读方式检查目标。"
-        },
-        "audit": {
-          "title": "并行审计 + 汇总",
-          "explanation": "审计成员并行从不同角度检查，最后由一位成员汇总结论。"
-        },
         "quick": {
           "title": "快速回答",
           "explanation": "由单个成员直接回答问题。"
         }
       },
       "phases": {
-        "analyze": {
-          "label": "分析",
-          "prompt": "分析用户请求并给出你的观点。不要修改任何文件。"
-        },
-        "synthesize": {
-          "label": "汇总",
-          "prompt": "把前一阶段的观点整合成简洁、可执行的答案。"
-        },
-        "propose": {
-          "label": "提案",
-          "prompt": "独立地给出一个方案。不要修改任何文件。"
-        },
-        "reviewRecommend": {
-          "label": "对比与推荐",
-          "prompt": "对比各个方案，列出权衡，并推荐其中一个。"
-        },
-        "plan": {
-          "label": "规划",
-          "prompt": "阅读工作目录，给出具体的改动计划。不要修改任何文件。"
-        },
-        "implement": {
-          "label": "实现",
-          "prompt": "按计划在工作目录中实现改动。"
-        },
-        "review": {
-          "label": "复审",
-          "prompt": "复审已应用的 diff，关注正确性、测试与明显问题。"
-        },
-        "reviewTarget": {
-          "label": "复审",
-          "prompt": "以只读方式复审目标，列出问题、风险与建议。"
-        },
-        "audit": {
-          "label": "审计",
-          "prompt": "以只读方式审计目标。聚焦你的专长。不要修改任何文件。"
-        },
-        "synthesizeFindings": {
-          "label": "汇总发现",
-          "prompt": "将审计发现整合为按优先级排序的列表。"
-        },
         "answer": {
           "label": "回答",
           "prompt": "直接回答用户请求。除非明确要求，否则不要修改文件。"
@@ -239,6 +180,8 @@
     "archivedTag": "已归档",
     "deleteConfirmTitle": "删除会话「{{name}}」？",
     "deleteConfirmContent": "该会话的聊天记录将被永久删除，无法恢复。",
-    "expand": "展开会话列表"
+    "expand": "展开会话列表",
+    "runningTip": "后台执行中",
+    "unreadTip": "有新结果"
   }
 }

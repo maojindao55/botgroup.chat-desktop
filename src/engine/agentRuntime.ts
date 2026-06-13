@@ -48,6 +48,7 @@ export interface AgentGroupContext {
   approvalMode?: 'auto' | 'ask';
   showStderr?: boolean;
   toolSessionLookup?: (agentId: string) => string | null | undefined;
+  locale?: string;
 }
 
 export function isCLIMember(agent: AgentMember | any): boolean {
@@ -191,7 +192,7 @@ export async function runSingleAgent(
   callbacks.onAgentStart(effectiveId, agent.name, { phaseId });
 
   const messages: AgentMessage[] = [
-    { role: 'system', content: agent.systemPrompt || `You are ${agent.name}, ${agent.role}.` },
+    { role: 'system', content: `${agent.systemPrompt || `You are ${agent.name}, ${agent.role}.`}\n\n${buildLanguageHint(groupContext.locale)}` },
   ];
 
   if (context) {
@@ -235,6 +236,18 @@ export async function runSingleAgent(
   };
 }
 
+function buildLanguageHint(locale?: string): string {
+  if (locale?.toLowerCase().startsWith('zh')) {
+    return '请使用简体中文回复，保持 Markdown 格式（标题、列表、代码块、表格）。';
+  }
+  return 'Reply in English, using Markdown (headings, lists, code blocks, tables).';
+}
+
+function buildCliHint(locale?: string): string {
+  const lang = buildLanguageHint(locale);
+  return `[System] You are in a multi-agent collaborative chat. ${lang} Generated images can be returned as local absolute paths (e.g. /Users/xxx/output.png) and will render inline.\n\n`;
+}
+
 /**
  * Run a single CLI agent via cliEngine.callCLIAgent.
  * Bridges CLIStreamCallback -> AgentRuntimeCallback.
@@ -260,8 +273,7 @@ export async function runSingleCLIAgent(
   const cliAgent: CLIAgent = priorSession
     ? withCliToolSession(baseCliAgent, priorSession)
     : baseCliAgent;
-
-  const cliHint = '[System] You are in a multi-agent collaborative chat. Reply in Markdown (headings, lists, code blocks, tables). Generated images can be returned as local absolute paths (e.g. /Users/xxx/output.png) and will render inline.\n\n';
+  const cliHint = buildCliHint(groupContext.locale);
   const prompt = context
     ? cliHint + '[Context]\n' + context + '\n\n[User]\n' + userMessage
     : cliHint + userMessage;
