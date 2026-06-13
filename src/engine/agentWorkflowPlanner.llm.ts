@@ -65,9 +65,24 @@ function buildSystemPrompt(group: AgentGroup, members: AIMember[]): string {
     capabilities: memberCapabilities(m),
   }));
 
+  const now = new Date();
+  const isoDate = now.toISOString().slice(0, 10);
+  const tz = (() => {
+    try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; }
+  })();
+  const localized = (() => {
+    try {
+      return new Intl.DateTimeFormat(undefined, {
+        year: 'numeric', month: 'long', day: 'numeric', weekday: 'long', timeZone: tz,
+      }).format(now);
+    } catch { return isoDate; }
+  })();
+
   return [
     'You are a planner that produces a JSON AgentWorkflowPlan for a multi-agent group.',
     'Return ONLY a JSON object, no prose, no markdown fences.',
+    '',
+    `Current date: ${isoDate} (${localized}, timezone ${tz}). Treat this as ground truth and prefer it over any date implied by your training data when writing phase prompts.`,
     '',
     'Plan schema (TypeScript-like):',
     `{
@@ -100,6 +115,7 @@ Phase = {
     '- agentSelection of type "specific" must reference only known agent ids listed below.',
     '- phase ids must be unique and lower-case slugs.',
     '- dependsOn must reference earlier phase ids.',
+    `- When the user asks about recent or "today/tonight/yesterday" facts, anchor phase prompts to ${isoDate}; never write "as of YYYY" with a year earlier than ${isoDate.slice(0, 4)} unless the user explicitly asked for that historical year.`,
     '',
     'Available agents (use ONLY these ids):',
     JSON.stringify(memberList, null, 2),
@@ -111,6 +127,9 @@ Phase = {
 
 function buildUserPrompt(input: AgentWorkflowPlannerInput): string {
   const parts: string[] = [];
+  const todayIso = new Date().toISOString().slice(0, 10);
+  parts.push(`Today is ${todayIso}.`);
+  parts.push('');
   if (input.history) {
     parts.push('Recent conversation:');
     parts.push(input.history);

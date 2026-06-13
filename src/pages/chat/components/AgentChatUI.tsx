@@ -9,7 +9,6 @@ import { Tooltip, Button as AntdButton, Modal, message as antdMessage } from 'an
 import { ActionIcon, Avatar as LobeAvatar } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 import { invoke } from '@tauri-apps/api/core';
-import { isTauriMacOS } from '@/utils/isTauri';
 import { ChatMarkdown } from '@/components/Markdown';
 import { useUserStore } from '@/store/userStore';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -158,7 +157,6 @@ const useStyles = createStyles(({ token, css }) => ({
   `,
   headerBar: css`
     background: ${token.colorBgContainer};
-    border-bottom: 1px solid ${token.colorBorder};
     backdrop-filter: blur(12px);
     flex: none;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
@@ -173,6 +171,7 @@ const useStyles = createStyles(({ token, css }) => ({
     box-sizing: border-box;
     overflow: hidden;
     padding: 0 12px;
+    border-bottom: 1px solid ${token.colorBorder};
     @media (max-width: 640px) {
       padding: 0 10px;
     }
@@ -616,6 +615,7 @@ const AgentChatUI = ({
   const abortControllerRef = useRef<AbortController | null>(null);
   const pendingWorkflowsRef = useRef<Record<string, PendingWorkflowExecution>>({});
   const [pendingWorkflowsVersion, setPendingWorkflowsVersion] = useState(0);
+  const [revisingPlanIds, setRevisingPlanIds] = useState<Set<string>>(() => new Set());
   const bumpPendingWorkflows = useCallback(() => {
     setPendingWorkflowsVersion(v => v + 1);
   }, []);
@@ -1203,34 +1203,53 @@ const AgentChatUI = ({
   const reviseWorkflowMessage = async (messageId: string, instruction: string) => {
     const pending = pendingWorkflowsRef.current[messageId];
     if (!pending || !instruction.trim()) return;
-    const eligibleMembers = currentAgents
-      .filter((m): m is NonNullable<typeof m> => !!m && !mutedUsers.includes(m.id));
-    const { plan, warnings } = await planAgentWorkflowSmart(
-      {
-        group,
-        members: eligibleMembers,
-        userMessage: pending.userMessage,
-        history: pending.history,
-        mentionedAgentIds: pending.mentionedAgentIds,
+    if (revisingPlanIds.has(messageId)) return;
+    setRevisingPlanIds(prev => {
+      const next = new Set(prev);
+      next.add(messageId);
+      return next;
+    });
+    try {
+      const eligibleMembers = currentAgents
+        .filter((m): m is NonNullable<typeof m> => !!m && !mutedUsers.includes(m.id));
+      const { plan, warnings } = await planAgentWorkflowSmart(
+        {
+          group,
+          members: eligibleMembers,
+          userMessage: pending.userMessage,
+          history: pending.history,
+          mentionedAgentIds: pending.mentionedAgentIds,
+          revisionInstruction: instruction.trim(),
+          workspaceReady: !!group.workspacePath?.trim(),
+          t,
+        },
+        buildPlannerSmartOptions(),
+      );
+      for (const w of warnings) antdMessage.warning(w);
+      pendingWorkflowsRef.current[messageId] = {
+        ...pending,
+        plan,
         revisionInstruction: instruction.trim(),
-        workspaceReady: !!group.workspacePath?.trim(),
-        t,
-      },
-      buildPlannerSmartOptions(),
-    );
-    for (const w of warnings) antdMessage.warning(w);
-    pendingWorkflowsRef.current[messageId] = {
-      ...pending,
-      plan,
-      revisionInstruction: instruction.trim(),
-    };
-    bumpPendingWorkflows();
-    const revisedRun = newAgentWorkflowRun(plan);
-    setMessages(prev => prev.map(m => m.id === messageId ? {
-      ...m,
-      content: [instruction.trim(), ...warnings].join('\n'),
-      workflowRun: revisedRun,
-    } : m));
+      };
+      bumpPendingWorkflows();
+      const revisedRun = newAgentWorkflowRun(plan);
+      setMessages(prev => prev.map(m => m.id === messageId ? {
+        ...m,
+        content: [instruction.trim(), ...warnings].join('\n'),
+        workflowRun: revisedRun,
+      } : m));
+    } catch (error: any) {
+      console.error('Agent workflow revision failed:', error);
+      const errorMsg = error?.message || t('chat:errors.unknownError', { defaultValue: '未知错误' });
+      antdMessage.error(t('chat:errors.strategyFailed', { defaultValue: `工作流规划失败: ${errorMsg}` }));
+    } finally {
+      setRevisingPlanIds(prev => {
+        if (!prev.has(messageId)) return prev;
+        const next = new Set(prev);
+        next.delete(messageId);
+        return next;
+      });
+    }
   };
 
   const handleSendMessage = async () => {
@@ -1256,6 +1275,16 @@ const AgentChatUI = ({
     setInputMessage('');
     setPendingAttachments([]);
     setIsLoading(true);
+
+    const planningMsgId = nextMsgId();
+    const planningMsg: ChatMessage = {
+      id: planningMsgId,
+      sender: { id: '__workflow__', name: t('chat:agentWorkflow.sender', { defaultValue: '协作计划' }) },
+      content: t('chat:agentWorkflow.planning', { defaultValue: '正在生成协作计划…' }),
+      isAI: true,
+      isStreaming: true,
+    };
+    setMessages(prev => [...prev, planningMsg]);
 
     const history = [...messages, userMsg]
       .slice(-20)
@@ -1284,10 +1313,9 @@ const AgentChatUI = ({
       );
       for (const w of warnings) antdMessage.warning(w);
 
-      const workflowMessageId = nextMsgId();
       const plannedRun = newAgentWorkflowRun(plan);
       const approvalReason = getWorkflowPlanApprovalReason(plan);
-      pendingWorkflowsRef.current[workflowMessageId] = {
+      pendingWorkflowsRef.current[planningMsgId] = {
         plan,
         userMessage: agentInput,
         history,
@@ -1296,32 +1324,35 @@ const AgentChatUI = ({
       };
       bumpPendingWorkflows();
 
-      const workflowMsg: ChatMessage = {
-        id: workflowMessageId,
-        sender: { id: '__workflow__', name: t('chat:agentWorkflow.sender', { defaultValue: '协作计划' }) },
-        content: approvalReason || warnings.join('\n'),
-        isAI: true,
-        workflowRun: plannedRun,
-      };
-      setMessages(prev => [...prev, workflowMsg]);
+      setMessages(prev => prev.map(m => m.id === planningMsgId
+        ? {
+            ...m,
+            content: approvalReason || warnings.join('\n'),
+            isStreaming: false,
+            workflowRun: plannedRun,
+          }
+        : m));
 
-      if (approvalReason || group.workflowDefaults?.alwaysShowPlan) {
+      const llmConfirmAlways =
+        plannerSettings.mode === 'llm' && plannerSettings.alwaysConfirmBeforeRun;
+      if (approvalReason || group.workflowDefaults?.alwaysShowPlan || llmConfirmAlways) {
         return;
       }
 
-      await runWorkflowMessage(workflowMessageId, true);
+      await runWorkflowMessage(planningMsgId, true);
     } catch (error: any) {
       console.error('Agent workflow planning failed:', error);
       const errorMsg = error?.message || t('chat:errors.unknownError', { defaultValue: '未知错误' });
       antdMessage.error(t('chat:errors.strategyFailed', { defaultValue: `工作流规划失败: ${errorMsg}` }));
-      const errChatMsg: ChatMessage = {
-        id: nextMsgId(),
-        sender: { id: '__system__', name: t('chat:agentChat.system', { defaultValue: '系统' }) },
-        content: t('chat:errors.strategyFailed', { defaultValue: `工作流规划失败: ${errorMsg}` }),
-        isAI: true,
-        isError: true,
-      };
-      setMessages(prev => [...prev, errChatMsg]);
+      setMessages(prev => prev.map(m => m.id === planningMsgId
+        ? {
+            ...m,
+            sender: { id: '__system__', name: t('chat:agentChat.system', { defaultValue: '系统' }) },
+            content: t('chat:errors.strategyFailed', { defaultValue: `工作流规划失败: ${errorMsg}` }),
+            isStreaming: false,
+            isError: true,
+          }
+        : m));
     } finally {
       setIsLoading(false);
     }
@@ -1329,7 +1360,6 @@ const AgentChatUI = ({
 
 
   const userName = userStore.userInfo.nickname || t('settings:aiGroup.selfName');
-  const hideAppHeaderBar = isTauriMacOS() && !isMobile;
 
   return (
     <>
@@ -1374,7 +1404,6 @@ const AgentChatUI = ({
           onDeleteSession={handleDeleteSession}
           onTogglePin={toggleChatSessionPinned}
           onToggleArchive={toggleChatSessionArchived}
-          onOpenGroupSettings={hideAppHeaderBar ? () => handleToggleSettings(true) : undefined}
         />
 
         <div className={styles.rightCol}>
@@ -1390,7 +1419,6 @@ const AgentChatUI = ({
               </button>
             </Tooltip>
           )}
-          {!hideAppHeaderBar && (
           <header className={styles.headerBar}>
             <div className={styles.headerInner}>
               <div className={styles.headerLeft}>
@@ -1442,7 +1470,6 @@ const AgentChatUI = ({
               </div>
             </div>
           </header>
-          )}
 
 
           {/* Chat Area */}
@@ -1538,6 +1565,7 @@ const AgentChatUI = ({
                               run={message.workflowRun}
                               warnings={message.content ? message.content.split('\n').filter(Boolean) : []}
                               running={message.workflowRun.status === 'running'}
+                              revising={revisingPlanIds.has(message.id)}
                               onRun={pendingPlanIds.has(message.id) ? () => runWorkflowMessage(message.id) : undefined}
                               onCancel={pendingPlanIds.has(message.id) ? () => cancelWorkflowMessage(message.id) : undefined}
                               onRevise={pendingPlanIds.has(message.id) ? (instruction) => reviseWorkflowMessage(message.id, instruction) : undefined}

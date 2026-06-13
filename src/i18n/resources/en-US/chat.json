@@ -68,6 +68,7 @@
   },
   "agentWorkflow": {
     "sender": "Workflow plan",
+    "planning": "Generating workflow plan…",
     "approvalTitle": "Confirm workflow execution",
     "planTitle": "Workflow plan",
     "confirmRun": "Run",
@@ -77,6 +78,7 @@
       "cancel": "Cancel",
       "modify": "Modify plan",
       "replan": "Re-plan",
+      "revising": "Regenerating plan…",
       "cancelEdit": "Cancel edit",
       "warningPrefix": "Warning",
       "requiresApproval": "requires approval",

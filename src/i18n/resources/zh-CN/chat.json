@@ -68,6 +68,7 @@
   },
   "agentWorkflow": {
     "sender": "协作计划",
+    "planning": "正在生成协作计划…",
     "approvalTitle": "确认执行工作流",
     "planTitle": "协作计划",
     "confirmRun": "开始执行",
@@ -77,6 +78,7 @@
       "cancel": "取消",
       "modify": "修改计划",
       "replan": "重新生成",
+      "revising": "正在重新生成计划…",
       "cancelEdit": "取消修改",
       "warningPrefix": "提示",
       "requiresApproval": "需要确认",

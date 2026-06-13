@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { createStyles } from 'antd-style';
 import type { AgentWorkflowPlan, AgentWorkflowRun } from '@/config/agentWorkflow';
 import { summarizeWorkflowPlan } from '@/config/agentWorkflow';
 import AgentWorkflowTimeline from './AgentWorkflowTimeline';
@@ -10,68 +11,201 @@ interface AgentWorkflowPlanCardProps {
   warnings?: string[];
   approvalReason?: string | null;
   running?: boolean;
+  revising?: boolean;
   onRun?: () => void;
   onCancel?: () => void;
   onRevise?: (instruction: string) => void;
 }
 
-const riskColor: Record<string, { bg: string; color: string; border: string }> = {
-  low: { bg: '#f0fdf4', color: '#16a34a', border: '#bbf7d0' },
-  medium: { bg: '#fffbeb', color: '#d97706', border: '#fde68a' },
-  high: { bg: '#fef2f2', color: '#dc2626', border: '#fecaca' },
-};
+type Tone = 'low' | 'medium' | 'high' | 'planned' | 'running' | 'completed' | 'failed' | 'cancelled' | 'skipped' | 'pending';
 
-function Pill({ children, tone }: { children: string; tone?: string }) {
-  const theme = tone ? riskColor[tone] : undefined;
-  return (
-    <span style={{
-      display: 'inline-flex',
-      alignItems: 'center',
-      minHeight: 20,
-      padding: '1px 7px',
-      borderRadius: 999,
-      fontSize: 12,
-      lineHeight: '18px',
-      border: `1px solid ${theme?.border || '#e2e8f0'}`,
-      background: theme?.bg || '#f8fafc',
-      color: theme?.color || '#475569',
-    }}>
-      {children}
-    </span>
-  );
-}
+const useStyles = createStyles(({ token, css }) => ({
+  root: css`
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    color: ${token.colorText};
+  `,
+  header: css`
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  `,
+  title: css`
+    font-weight: 600;
+    color: ${token.colorText};
+  `,
+  description: css`
+    margin-top: 6px;
+    color: ${token.colorTextSecondary};
+    white-space: pre-wrap;
+  `,
+  approvalBanner: css`
+    padding: 8px 10px;
+    border-radius: ${token.borderRadius}px;
+    background: ${token.colorWarningBg};
+    color: ${token.colorWarningText};
+    border: 1px solid ${token.colorWarningBorder};
+  `,
+  warningList: css`
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  `,
+  warningItem: css`
+    color: ${token.colorWarningText};
+  `,
+  reviseBox: css`
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  `,
+  textarea: css`
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid ${token.colorBorder};
+    border-radius: ${token.borderRadius}px;
+    padding: 8px;
+    resize: vertical;
+    font: inherit;
+    background: ${token.colorBgContainer};
+    color: ${token.colorText};
+    outline: none;
+    transition: border-color 0.15s;
 
-function PlainButton({
-  children,
-  primary = false,
-  disabled = false,
-  onClick,
-}: {
-  children: string;
-  primary?: boolean;
-  disabled?: boolean;
-  onClick?: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      style={{
-        border: primary ? '1px solid #f97316' : '1px solid #e2e8f0',
-        background: primary ? '#f97316' : '#fff',
-        color: primary ? '#fff' : '#334155',
-        borderRadius: 8,
-        padding: '6px 12px',
-        fontSize: 13,
-        fontWeight: 600,
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled ? 0.55 : 1,
-      }}
-    >
-      {children}
-    </button>
-  );
+    &::placeholder {
+      color: ${token.colorTextPlaceholder};
+    }
+
+    &:focus {
+      border-color: ${token.colorPrimary};
+    }
+  `,
+  buttonRow: css`
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  `,
+  pill: css`
+    display: inline-flex;
+    align-items: center;
+    min-height: 20px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-size: 12px;
+    line-height: 18px;
+    border: 1px solid ${token.colorBorderSecondary};
+    background: ${token.colorFillQuaternary};
+    color: ${token.colorTextSecondary};
+  `,
+  pillLow: css`
+    background: ${token.colorSuccessBg};
+    color: ${token.colorSuccessText};
+    border-color: ${token.colorSuccessBorder};
+  `,
+  pillMedium: css`
+    background: ${token.colorWarningBg};
+    color: ${token.colorWarningText};
+    border-color: ${token.colorWarningBorder};
+  `,
+  pillHigh: css`
+    background: ${token.colorErrorBg};
+    color: ${token.colorErrorText};
+    border-color: ${token.colorErrorBorder};
+  `,
+  pillRunning: css`
+    background: ${token.colorInfoBg};
+    color: ${token.colorInfoText};
+    border-color: ${token.colorInfoBorder};
+  `,
+  btn: css`
+    border: 1px solid ${token.colorBorder};
+    background: ${token.colorBgContainer};
+    color: ${token.colorText};
+    border-radius: ${token.borderRadius}px;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+
+    &:hover:not(:disabled) {
+      background: ${token.colorFillTertiary};
+    }
+
+    &:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
+  `,
+  btnPrimary: css`
+    border: 1px solid ${token.colorPrimary};
+    background: ${token.colorPrimary};
+    color: #fff;
+    border-radius: ${token.borderRadius}px;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+
+    &:hover:not(:disabled) {
+      background: ${token.colorPrimaryHover};
+      border-color: ${token.colorPrimaryHover};
+    }
+
+    &:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
+  `,
+  revisingRow: css`
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: ${token.borderRadius}px;
+    background: ${token.colorInfoBg};
+    color: ${token.colorInfoText};
+    border: 1px solid ${token.colorInfoBorder};
+    font-size: 13px;
+  `,
+  spinner: css`
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid ${token.colorInfoBorder};
+    border-top-color: ${token.colorInfo};
+    animation: agentPlanCardSpin 0.8s linear infinite;
+    flex: none;
+
+    @keyframes agentPlanCardSpin {
+      to { transform: rotate(360deg); }
+    }
+  `,
+}));
+
+function toneToPillClass(
+  styles: { pillLow: string; pillMedium: string; pillHigh: string; pillRunning: string },
+  tone?: Tone,
+): string {
+  switch (tone) {
+    case 'low':
+    case 'completed':
+      return styles.pillLow;
+    case 'medium':
+    case 'cancelled':
+    case 'skipped':
+      return styles.pillMedium;
+    case 'high':
+    case 'failed':
+      return styles.pillHigh;
+    case 'running':
+      return styles.pillRunning;
+    default:
+      return '';
+  }
 }
 
 export function AgentWorkflowPlanCard({
@@ -80,74 +214,79 @@ export function AgentWorkflowPlanCard({
   warnings = [],
   approvalReason,
   running = false,
+  revising = false,
   onRun,
   onCancel,
   onRevise,
 }: AgentWorkflowPlanCardProps) {
   const { t } = useTranslation('chat');
+  const { styles, cx } = useStyles();
   const [editing, setEditing] = useState(false);
   const [instruction, setInstruction] = useState('');
-  const canRun = !!onRun && !running && (!run || run.status === 'planned');
+  const busy = running || revising;
+  const canRun = !!onRun && !busy && (!run || run.status === 'planned');
   const canCancel = !!onCancel && (running || run?.status === 'planned' || run?.status === 'running');
-  const canRevise = !!onRevise && !running && (!run || run.status === 'planned');
+  const canRevise = !!onRevise && !busy && (!run || run.status === 'planned');
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div className={styles.root}>
       <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <strong>{plan.title}</strong>
-          <Pill tone={plan.riskLevel}>{t(`agentWorkflow.risk.${plan.riskLevel}`, plan.riskLevel)}</Pill>
-          <Pill>{t(`agentWorkflow.intent.${plan.intent}`, plan.intent)}</Pill>
-          {plan.requiresApproval ? <Pill tone="high">{t('agentWorkflow.card.requiresApproval')}</Pill> : null}
+        <div className={styles.header}>
+          <strong className={styles.title}>{plan.title}</strong>
+          <span className={cx(styles.pill, toneToPillClass(styles, plan.riskLevel as Tone))}>
+            {t(`agentWorkflow.risk.${plan.riskLevel}`, plan.riskLevel)}
+          </span>
+          <span className={styles.pill}>{t(`agentWorkflow.intent.${plan.intent}`, plan.intent)}</span>
+          {plan.requiresApproval ? (
+            <span className={cx(styles.pill, styles.pillHigh)}>{t('agentWorkflow.card.requiresApproval')}</span>
+          ) : null}
           {run ? (
-            <Pill tone={run.status === 'completed' ? 'low' : run.status === 'failed' ? 'high' : 'medium'}>
+            <span className={cx(styles.pill, toneToPillClass(styles, run.status as Tone))}>
               {t(`agentWorkflow.status.${run.status}`, run.status)}
-            </Pill>
+            </span>
           ) : null}
         </div>
-        <div style={{ marginTop: 6, color: '#64748b', whiteSpace: 'pre-wrap' }}>
+        <div className={styles.description}>
           {plan.explanation || summarizeWorkflowPlan(plan)}
         </div>
       </div>
 
       {approvalReason ? (
-        <div style={{ color: '#b45309', background: 'rgba(251,191,36,0.12)', padding: 8, borderRadius: 8 }}>
-          {approvalReason}
-        </div>
+        <div className={styles.approvalBanner}>{approvalReason}</div>
       ) : null}
 
       {warnings.length > 0 ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div className={styles.warningList}>
           {warnings.map((warning, idx) => (
-            <div key={`${idx}-${warning}`} style={{ color: '#b45309' }}>
+            <div key={`${idx}-${warning}`} className={styles.warningItem}>
               {t('agentWorkflow.card.warningPrefix')}: {warning}
             </div>
           ))}
         </div>
       ) : null}
 
+      {revising ? (
+        <div className={styles.revisingRow}>
+          <span className={styles.spinner} />
+          <span>{t('agentWorkflow.card.revising', { defaultValue: '正在重新生成计划…' })}</span>
+        </div>
+      ) : null}
+
       <AgentWorkflowTimeline run={run} plan={plan} compact />
 
       {canRevise && editing ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div className={styles.reviseBox}>
           <textarea
             value={instruction}
             onChange={(event) => setInstruction(event.target.value)}
             rows={3}
             placeholder={t('agentWorkflow.card.instructionPlaceholder')}
-            style={{
-              width: '100%',
-              boxSizing: 'border-box',
-              border: '1px solid #e2e8f0',
-              borderRadius: 8,
-              padding: 8,
-              resize: 'vertical',
-              font: 'inherit',
-            }}
+            className={styles.textarea}
           />
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <PlainButton
-              primary
+          <div className={styles.buttonRow}>
+            <button
+              type="button"
+              className={styles.btnPrimary}
               disabled={!instruction.trim()}
               onClick={() => {
                 const text = instruction.trim();
@@ -158,17 +297,31 @@ export function AgentWorkflowPlanCard({
               }}
             >
               {t('agentWorkflow.card.replan')}
-            </PlainButton>
-            <PlainButton onClick={() => setEditing(false)}>{t('agentWorkflow.card.cancelEdit')}</PlainButton>
+            </button>
+            <button type="button" className={styles.btn} onClick={() => setEditing(false)}>
+              {t('agentWorkflow.card.cancelEdit')}
+            </button>
           </div>
         </div>
       ) : null}
 
       {(canRun || canCancel || canRevise) ? (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {canRun ? <PlainButton primary onClick={onRun}>{t('agentWorkflow.card.run')}</PlainButton> : null}
-          {canRevise ? <PlainButton onClick={() => setEditing(value => !value)}>{t('agentWorkflow.card.modify')}</PlainButton> : null}
-          {canCancel ? <PlainButton onClick={onCancel}>{t('agentWorkflow.card.cancel')}</PlainButton> : null}
+        <div className={styles.buttonRow}>
+          {canRun ? (
+            <button type="button" className={styles.btnPrimary} onClick={onRun}>
+              {t('agentWorkflow.card.run')}
+            </button>
+          ) : null}
+          {canRevise ? (
+            <button type="button" className={styles.btn} onClick={() => setEditing(value => !value)}>
+              {t('agentWorkflow.card.modify')}
+            </button>
+          ) : null}
+          {canCancel ? (
+            <button type="button" className={styles.btn} onClick={onCancel}>
+              {t('agentWorkflow.card.cancel')}
+            </button>
+          ) : null}
         </div>
       ) : null}
     </div>

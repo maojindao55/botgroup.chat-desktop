@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next';
+import { createStyles } from 'antd-style';
 import type { AgentWorkflowPlan, AgentWorkflowRun, AgentWorkflowPhaseState } from '@/config/agentWorkflow';
 import { ChatMarkdown } from '@/components/Markdown';
 
@@ -8,51 +9,145 @@ interface AgentWorkflowTimelineProps {
   compact?: boolean;
 }
 
-const statusColor: Record<string, { bg: string; color: string; border: string }> = {
-  pending: { bg: '#f8fafc', color: '#475569', border: '#cbd5e1' },
-  running: { bg: '#eff6ff', color: '#2563eb', border: '#bfdbfe' },
-  completed: { bg: '#f0fdf4', color: '#16a34a', border: '#bbf7d0' },
-  failed: { bg: '#fef2f2', color: '#dc2626', border: '#fecaca' },
-  skipped: { bg: '#fffbeb', color: '#d97706', border: '#fde68a' },
-  cancelled: { bg: '#fffbeb', color: '#d97706', border: '#fde68a' },
-};
+type StatusKey = 'pending' | 'running' | 'completed' | 'failed' | 'skipped' | 'cancelled';
 
-function Pill({ children, color }: { children: string; color?: string }) {
-  const theme = color ? statusColor[color] : undefined;
-  return (
-    <span
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        minHeight: 20,
-        padding: '1px 7px',
-        borderRadius: 999,
-        fontSize: 12,
-        lineHeight: '18px',
-        border: `1px solid ${theme?.border || '#e2e8f0'}`,
-        background: theme?.bg || '#f8fafc',
-        color: theme?.color || '#475569',
-      }}
-    >
-      {children}
-    </span>
-  );
+const useStyles = createStyles(({ token, css }) => ({
+  root: css`
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  `,
+  phase: css`
+    border: 1px solid ${token.colorBorderSecondary};
+    border-radius: ${token.borderRadius}px;
+    padding: 8px 10px;
+    background: ${token.colorFillQuaternary};
+    color: ${token.colorText};
+  `,
+  summary: css`
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  `,
+  summaryIndex: css`
+    font-weight: 600;
+    color: ${token.colorText};
+  `,
+  body: css`
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
+  `,
+  agentsLabel: css`
+    color: ${token.colorTextSecondary};
+    font-size: ${token.fontSizeSM}px;
+  `,
+  promptText: css`
+    white-space: pre-wrap;
+    font-size: 13px;
+    color: ${token.colorText};
+  `,
+  errorText: css`
+    color: ${token.colorErrorText};
+  `,
+  outputs: css`
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  `,
+  outputItem: css`
+    border-top: 1px solid ${token.colorBorderSecondary};
+    padding-top: 8px;
+  `,
+  outputHeader: css`
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: ${token.colorText};
+  `,
+  pill: css`
+    display: inline-flex;
+    align-items: center;
+    min-height: 20px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-size: 12px;
+    line-height: 18px;
+    border: 1px solid ${token.colorBorderSecondary};
+    background: ${token.colorFillQuaternary};
+    color: ${token.colorTextSecondary};
+  `,
+  pillPending: css`
+    background: ${token.colorFillQuaternary};
+    color: ${token.colorTextSecondary};
+    border-color: ${token.colorBorderSecondary};
+  `,
+  pillRunning: css`
+    background: ${token.colorInfoBg};
+    color: ${token.colorInfoText};
+    border-color: ${token.colorInfoBorder};
+  `,
+  pillCompleted: css`
+    background: ${token.colorSuccessBg};
+    color: ${token.colorSuccessText};
+    border-color: ${token.colorSuccessBorder};
+  `,
+  pillFailed: css`
+    background: ${token.colorErrorBg};
+    color: ${token.colorErrorText};
+    border-color: ${token.colorErrorBorder};
+  `,
+  pillSkipped: css`
+    background: ${token.colorWarningBg};
+    color: ${token.colorWarningText};
+    border-color: ${token.colorWarningBorder};
+  `,
+}));
+
+function statusToPillClass(
+  styles: {
+    pillPending: string;
+    pillRunning: string;
+    pillCompleted: string;
+    pillFailed: string;
+    pillSkipped: string;
+  },
+  status?: string,
+): string {
+  switch (status as StatusKey) {
+    case 'running':
+      return styles.pillRunning;
+    case 'completed':
+      return styles.pillCompleted;
+    case 'failed':
+      return styles.pillFailed;
+    case 'skipped':
+    case 'cancelled':
+      return styles.pillSkipped;
+    case 'pending':
+    default:
+      return styles.pillPending;
+  }
 }
 
-function renderPhaseSummary(state?: AgentWorkflowPhaseState) {
+function renderPhaseSummary(state: AgentWorkflowPhaseState | undefined, errorClass: string) {
   if (!state) return null;
   if (state.summary) return <ChatMarkdown content={state.summary} />;
-  if (state.error) return <div style={{ color: '#ef4444' }}>{state.error}</div>;
+  if (state.error) return <div className={errorClass}>{state.error}</div>;
   return null;
 }
 
 export function AgentWorkflowTimeline({ run, plan, compact = false }: AgentWorkflowTimelineProps) {
   const { t } = useTranslation('chat');
+  const { styles, cx } = useStyles();
   const effectivePlan = run?.plan || plan;
   if (!effectivePlan) return null;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <div className={styles.root}>
       {effectivePlan.phases.map((phase, index) => {
         const state = run?.phaseStates?.[phase.id];
         const status = state?.status || 'pending';
@@ -66,40 +161,33 @@ export function AgentWorkflowTimeline({ run, plan, compact = false }: AgentWorkf
           <details
             key={phase.id}
             open={status === 'running' || status === 'failed'}
-            style={{
-              border: '1px solid rgba(148,163,184,0.25)',
-              borderRadius: 8,
-              padding: '8px 10px',
-              background: 'rgba(248,250,252,0.65)',
-            }}
+            className={styles.phase}
           >
-            <summary
-              style={{
-                cursor: 'pointer',
-                listStyle: 'none',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                flexWrap: 'wrap',
-              }}
-            >
-              <span style={{ fontWeight: 600 }}>{index + 1}. {phase.label}</span>
-              <Pill color={status}>{t(`agentWorkflow.status.${status}`, status)}</Pill>
-              <Pill>{t(`agentWorkflow.phase.mode.${phase.mode}`, phase.mode)}</Pill>
-              <Pill>{t(`agentWorkflow.phase.schedule.${phase.schedule}`, phase.schedule)}</Pill>
+            <summary className={styles.summary}>
+              <span className={styles.summaryIndex}>{index + 1}. {phase.label}</span>
+              <span className={cx(styles.pill, statusToPillClass(styles, status))}>
+                {t(`agentWorkflow.status.${status}`, status)}
+              </span>
+              <span className={styles.pill}>{t(`agentWorkflow.phase.mode.${phase.mode}`, phase.mode)}</span>
+              <span className={styles.pill}>{t(`agentWorkflow.phase.schedule.${phase.schedule}`, phase.schedule)}</span>
             </summary>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
-              <div style={{ color: '#64748b', fontSize: 12 }}>
+            <div className={styles.body}>
+              <div className={styles.agentsLabel}>
                 {t('agentWorkflow.phase.agentsLabel')}: {agents || '-'}
               </div>
-              {!compact && <div style={{ whiteSpace: 'pre-wrap', fontSize: 13 }}>{phase.prompt}</div>}
-              {renderPhaseSummary(state)}
+              {!compact && <div className={styles.promptText}>{phase.prompt}</div>}
+              {renderPhaseSummary(state, styles.errorText)}
               {state?.outputs?.length ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div className={styles.outputs}>
                   {state.outputs.map(output => (
-                    <div key={`${phase.id}-${output.agentId}`} style={{ borderTop: '1px solid rgba(148,163,184,0.25)', paddingTop: 8 }}>
-                      <div style={{ fontWeight: 600, marginBottom: 4 }}>
-                        {output.agentName} {output.isError ? <Pill color="failed">{t('agentWorkflow.phase.errorTag')}</Pill> : null}
+                    <div key={`${phase.id}-${output.agentId}`} className={styles.outputItem}>
+                      <div className={styles.outputHeader}>
+                        {output.agentName}{' '}
+                        {output.isError ? (
+                          <span className={cx(styles.pill, styles.pillFailed)}>
+                            {t('agentWorkflow.phase.errorTag')}
+                          </span>
+                        ) : null}
                       </div>
                       <ChatMarkdown content={output.content || ''} />
                     </div>

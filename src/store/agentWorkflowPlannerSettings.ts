@@ -17,6 +17,7 @@ export interface AgentWorkflowPlannerSettings {
   providerId: string;
   model: string;
   temperature: number;
+  alwaysConfirmBeforeRun: boolean;
 }
 
 interface AgentWorkflowPlannerSettingsStore {
@@ -33,6 +34,7 @@ const DEFAULTS: AgentWorkflowPlannerSettings = {
   providerId: '',
   model: '',
   temperature: 0.2,
+  alwaysConfirmBeforeRun: true,
 };
 
 function safeRead(): AgentWorkflowPlannerSettings {
@@ -49,6 +51,10 @@ function safeRead(): AgentWorkflowPlannerSettings {
         typeof parsed.temperature === 'number' && Number.isFinite(parsed.temperature)
           ? Math.max(0, Math.min(2, parsed.temperature))
           : DEFAULTS.temperature,
+      alwaysConfirmBeforeRun:
+        typeof parsed.alwaysConfirmBeforeRun === 'boolean'
+          ? parsed.alwaysConfirmBeforeRun
+          : DEFAULTS.alwaysConfirmBeforeRun,
     };
   } catch {
     return { ...DEFAULTS };

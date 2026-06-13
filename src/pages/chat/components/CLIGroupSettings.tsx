@@ -326,9 +326,10 @@ const useStyles = createStyles(({ token, css }) => ({
     justify-content: space-between;
     flex-wrap: nowrap;
     gap: 8px;
-    padding: 14px 16px;
-    border-bottom: 1px solid ${token.colorBorderSecondary};
-    height: 52px;
+    height: 46px;
+    box-sizing: border-box;
+    padding: 0 12px 0 16px;
+    border-bottom: 1px solid ${token.colorBorder};
     flex-shrink: 0;
   `,
   inlineTitle: css`

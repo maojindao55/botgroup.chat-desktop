@@ -261,6 +261,18 @@ export function GeneralSettingsPanel() {
                   size="small"
                 />
               </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Switch
+                  checked={plannerSettings.alwaysConfirmBeforeRun}
+                  onChange={(checked) => updatePlannerSettings({ alwaysConfirmBeforeRun: checked })}
+                />
+                <span style={{ fontSize: 13 }}>
+                  {t('appSettings:generalPanel.workflowPlannerAlwaysConfirm')}
+                </span>
+              </div>
+              <div style={{ fontSize: 12, color: '#64748b' }}>
+                {t('appSettings:generalPanel.workflowPlannerAlwaysConfirmDescription')}
+              </div>
             </>
           ) : null}
         </div>

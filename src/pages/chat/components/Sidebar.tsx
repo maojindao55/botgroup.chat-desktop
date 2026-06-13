@@ -51,8 +51,10 @@ const useStyles = createStyles(({ token, css }) => ({
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    padding: 12px 10px 10px;
-    border-bottom: 1px solid ${token.colorBorderSecondary};
+    height: 46px;
+    box-sizing: border-box;
+    padding: 0 10px 0 12px;
+    border-bottom: 1px solid ${token.colorBorder};
     background: ${token.colorBgContainer};
     flex: none;
   `,

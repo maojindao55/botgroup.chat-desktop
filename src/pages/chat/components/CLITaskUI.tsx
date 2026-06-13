@@ -176,7 +176,6 @@ const useStyles = createStyles(({ token, css }) => ({
   `,
   headerBar: css`
     background: ${token.colorBgContainer};
-    border-bottom: 1px solid ${token.colorBorder};
     flex: none;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
   `,
@@ -190,6 +189,7 @@ const useStyles = createStyles(({ token, css }) => ({
     box-sizing: border-box;
     overflow: hidden;
     padding: 0 12px;
+    border-bottom: 1px solid ${token.colorBorder};
   `,
   headerTitleRow: css`
     display: flex;
