@@ -34,6 +34,8 @@ import type {
   AgentGroupContext,
   AgentRunResult,
 } from './agentRuntime';
+import { applyOutputPolicy, type SummaryOptions } from './agentWorkflowOutputPolicy';
+import { parseVerdict, wrapVerifierPrompt } from './agentWorkflowVerifier';
 
 export interface AgentWorkflowRunnerCallbacks extends AgentRuntimeCallback {
   onRunStart?: (run: AgentWorkflowRun) => void;
@@ -50,6 +52,9 @@ export interface AgentWorkflowRunnerOptions {
   history?: string;
   /** Lookup the previous CLI tool session id for a given agent. */
   toolSessionLookup?: (agentId: string) => string | null | undefined;
+  /** Cheap LLM credentials used by outputPolicy='summary'. Falls back to truncation when absent. */
+  summaryOptions?: SummaryOptions;
+  locale?: string;
 }
 
 /** Topologically sort phases respecting `dependsOn`. */
@@ -80,12 +85,26 @@ function truncate(content: string, max = 1200): string {
   return content.slice(0, max) + '\n... (truncated)';
 }
 
-function summarizePhaseState(state: AgentWorkflowPhaseState): string {
+function summarizePhaseStateLegacy(state: AgentWorkflowPhaseState): string {
   if (state.outputs.length === 0) return state.error ? `Failed: ${state.error}` : '(no output)';
   if (state.outputs.length === 1) return truncate(state.outputs[0].content);
   return state.outputs
     .map(o => `### ${o.agentName}\n${truncate(o.content, 600)}`)
     .join('\n\n');
+}
+
+async function buildPhaseSummary(
+  phase: AgentWorkflowPhase,
+  state: AgentWorkflowPhaseState,
+  summaryOptions: SummaryOptions | undefined,
+): Promise<string> {
+  if (state.outputs.length === 0) {
+    return state.error ? `Failed: ${state.error}` : '(no output)';
+  }
+  return applyOutputPolicy(state.outputs, {
+    policy: phase.outputPolicy,
+    summary: summaryOptions,
+  });
 }
 
 function buildPhaseContext(
@@ -99,7 +118,8 @@ function buildPhaseContext(
     const depState = runState.phaseStates[depId];
     if (!depState) continue;
     const depPhase = runState.plan.phases.find(p => p.id === depId);
-    parts.push(`[Output of phase "${depPhase?.label || depId}"]\n${depState.summary || summarizePhaseState(depState)}`);
+    const depSummary = depState.summary || summarizePhaseStateLegacy(depState);
+    parts.push(`[Output of phase "${depPhase?.label || depId}"]\n${depSummary}`);
   }
   return parts.join('\n\n');
 }
@@ -121,6 +141,165 @@ function selectAgentsForPhase(
   return members.slice(0, wanted);
 }
 
+function buildAttemptFeedback(
+  phase: AgentWorkflowPhase,
+  state: AgentWorkflowPhaseState,
+  run: AgentWorkflowRun,
+): string {
+  const parts: string[] = [];
+  const fbId = phase.retry?.feedbackFromPhaseId;
+  if (fbId) {
+    const fbState = run.phaseStates[fbId];
+    const fbPhase = run.plan.phases.find(p => p.id === fbId);
+    if (fbState?.summary) {
+      parts.push(`The previous attempt was not accepted. Feedback from "${fbPhase?.label || fbId}":\n${fbState.summary}`);
+    }
+  }
+  const lastAttempt = state.attemptHistory && state.attemptHistory.length > 0
+    ? state.attemptHistory[state.attemptHistory.length - 1]
+    : undefined;
+  if (parts.length === 0 && lastAttempt) {
+    if (lastAttempt.error) {
+      parts.push(`The previous attempt failed with: ${lastAttempt.error}`);
+    } else if (lastAttempt.summary) {
+      parts.push(`Previous attempt output:\n${truncate(lastAttempt.summary, 600)}`);
+    }
+  }
+  parts.push('Please address the issues above and try again.');
+  return parts.join('\n\n');
+}
+
+function triggerUpstreamRetry(
+  verifierPhase: AgentWorkflowPhase,
+  run: AgentWorkflowRun,
+  ordered: AgentWorkflowPhase[],
+  remaining: Set<string>,
+  hardCap: number,
+): boolean {
+  let triggered = false;
+  for (const upstreamId of verifierPhase.dependsOn || []) {
+    const upstream = ordered.find(p => p.id === upstreamId);
+    if (!upstream) continue;
+    const upstreamState = run.phaseStates[upstreamId];
+    const retryPolicy = upstream.retry;
+    if (!retryPolicy) continue;
+    const attempts = upstreamState.attempts || 0;
+    if (attempts >= retryPolicy.maxAttempts || attempts >= hardCap) continue;
+
+    const visited = new Set<string>();
+    const stack = [upstreamId];
+    while (stack.length > 0) {
+      const id = stack.pop()!;
+      if (visited.has(id)) continue;
+      visited.add(id);
+      const s = run.phaseStates[id];
+      run.phaseStates[id] = {
+        phaseId: id,
+        status: 'pending',
+        selectedAgentIds: [],
+        outputs: [],
+        attempts: s.attempts,
+        attemptHistory: s.attemptHistory,
+      };
+      remaining.add(id);
+      for (const ph of ordered) {
+        if ((ph.dependsOn || []).includes(id)) {
+          stack.push(ph.id);
+        }
+      }
+    }
+    triggered = true;
+  }
+  return triggered;
+}
+
+async function executePhase(
+  phase: AgentWorkflowPhase,
+  selected: AIMember[],
+  promptForPhase: string,
+  context: string,
+  callbacks: AgentWorkflowRunnerCallbacks,
+  groupContext: AgentGroupContext,
+  signal: AbortSignal | undefined,
+  totalPhaseCount: number,
+): Promise<AgentWorkflowAgentOutput[]> {
+  const outputs: AgentWorkflowAgentOutput[] = [];
+
+  const runOne = async (agent: AIMember): Promise<AgentRunResult> => {
+    const normalized = normalizeAgentMember(agent);
+    const phaseAgentId = totalPhaseCount > 1
+      ? `${agent.id}__${phase.id}`
+      : agent.id;
+    return runSingleAgent(
+      normalized,
+      promptForPhase,
+      context,
+      callbacks,
+      groupContext,
+      { signal, phaseId: phase.id, agentIdOverride: phaseAgentId },
+    );
+  };
+
+  if (phase.schedule === 'parallel' && selected.length > 1) {
+    const results = await Promise.allSettled(selected.map(a => runOne(a)));
+    for (let i = 0; i < results.length; i++) {
+      const r = results[i];
+      const member = selected[i];
+      if (r.status === 'fulfilled') {
+        outputs.push({
+          agentId: r.value.agentId,
+          agentName: r.value.agentName,
+          content: r.value.content,
+          isError: r.value.isError,
+        });
+      } else {
+        outputs.push({
+          agentId: member.id,
+          agentName: member.name,
+          content: r.reason?.message || 'phase execution failed',
+          isError: true,
+        });
+      }
+    }
+  } else if (phase.schedule === 'sequential') {
+    let accumulatedContext = context;
+    for (let i = 0; i < selected.length; i++) {
+      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+      const member = selected[i];
+      const normalized = normalizeAgentMember(member);
+      const phaseAgentId = `${member.id}__${phase.id}`;
+      const result = await runSingleAgent(
+        normalized,
+        promptForPhase,
+        accumulatedContext,
+        callbacks,
+        groupContext,
+        { signal, phaseId: phase.id, agentIdOverride: phaseAgentId },
+      );
+      outputs.push({
+        agentId: result.agentId,
+        agentName: result.agentName,
+        content: result.content,
+        isError: result.isError,
+      });
+      if (!result.isError) {
+        accumulatedContext += `\n\n[${result.agentName} said]\n${truncate(result.content, 600)}`;
+      }
+    }
+  } else {
+    const member = selected[0];
+    const result = await runOne(member);
+    outputs.push({
+      agentId: result.agentId,
+      agentName: result.agentName,
+      content: result.content,
+      isError: result.isError,
+    });
+  }
+
+  return outputs;
+}
+
 /** Public entry point. Runs the plan and resolves with the final run record. */
 export async function runAgentWorkflowPlan(
   group: AgentGroup,
@@ -140,6 +319,7 @@ export async function runAgentWorkflowPlan(
     approvalMode: group.approvalMode,
     showStderr: group.showStderr,
     toolSessionLookup: options.toolSessionLookup,
+    locale: options.locale,
   };
 
   // Validate parallel-write up front so we fail before any side effects.
@@ -170,8 +350,30 @@ export async function runAgentWorkflowPlan(
 
   const signal = options.signal;
   const history = options.history || '';
+  const summaryOptions = options.summaryOptions;
 
-  for (const phase of ordered) {
+  const orderedById = new Map(ordered.map(p => [p.id, p]));
+  const remaining = new Set(ordered.map(p => p.id));
+
+  const pickNextRunnable = (): AgentWorkflowPhase | null => {
+    for (const phase of ordered) {
+      if (!remaining.has(phase.id)) continue;
+      const state = run.phaseStates[phase.id];
+      if (state.status === 'running') continue;
+      const deps = phase.dependsOn || [];
+      const depsReady = deps.every(d => {
+        const ds = run.phaseStates[d];
+        return ds && ds.status !== 'pending' && ds.status !== 'running';
+      });
+      if (depsReady) return phase;
+    }
+    return null;
+  };
+
+  // 防御性死循环防护：每个 phase 总执行次数硬上限
+  const HARD_ATTEMPT_CAP = 8;
+
+  while (remaining.size > 0) {
     if (signal?.aborted) {
       run.status = 'cancelled';
       run.updatedAt = Date.now();
@@ -179,9 +381,36 @@ export async function runAgentWorkflowPlan(
       return run;
     }
 
+    const phase = pickNextRunnable();
+    if (!phase) {
+      run.status = 'failed';
+      run.updatedAt = Date.now();
+      callbacks.onInfo?.('Workflow stalled: no runnable phase remaining (likely a stopped upstream).');
+      callbacks.onRunEnd?.(run);
+      return run;
+    }
+
     const state = run.phaseStates[phase.id];
+    state.attempts = (state.attempts || 0) + 1;
+    state.attemptHistory = state.attemptHistory || [];
+    if (state.attempts > HARD_ATTEMPT_CAP) {
+      state.status = 'failed';
+      state.error = `Phase "${phase.label}" exceeded hard attempt cap (${HARD_ATTEMPT_CAP}).`;
+      state.endedAt = Date.now();
+      run.updatedAt = state.endedAt;
+      callbacks.onPhaseEnd?.(phase, state);
+      callbacks.onPlanUpdate?.(run);
+      run.status = 'failed';
+      callbacks.onRunEnd?.(run);
+      return run;
+    }
     state.status = 'running';
     state.startedAt = Date.now();
+    state.outputs = [];
+    state.error = undefined;
+    state.summary = undefined;
+    state.verdict = undefined;
+    state.verdictReasoning = undefined;
     run.updatedAt = state.startedAt;
 
     // Resolve agents for this phase
@@ -195,6 +424,7 @@ export async function runAgentWorkflowPlan(
       run.updatedAt = state.endedAt;
       callbacks.onPhaseEnd?.(phase, state);
       callbacks.onPlanUpdate?.(run);
+      remaining.delete(phase.id);
       if ((phase.onFailure || 'stop') === 'stop') {
         run.status = 'failed';
         callbacks.onRunEnd?.(run);
@@ -212,6 +442,7 @@ export async function runAgentWorkflowPlan(
       run.updatedAt = state.endedAt;
       callbacks.onPhaseEnd?.(phase, state);
       callbacks.onPlanUpdate?.(run);
+      remaining.delete(phase.id);
       if ((phase.onFailure || 'stop') === 'stop') {
         run.status = 'failed';
         run.updatedAt = Date.now();
@@ -224,125 +455,154 @@ export async function runAgentWorkflowPlan(
     callbacks.onPhaseStart?.(phase, state);
     callbacks.onPlanUpdate?.(run);
 
-    const context = buildPhaseContext(phase, history, run);
-    const promptForPhase = `${phase.prompt}\n\n[User request]\n${userMessage}`;
+    // Build feedback for retry attempts
+    const feedbackText = state.attempts > 1
+      ? buildAttemptFeedback(phase, state, run)
+      : '';
+    const baseContext = buildPhaseContext(phase, history, run);
+    const context = feedbackText
+      ? `${baseContext}\n\n[Previous attempt feedback]\n${feedbackText}`.trim()
+      : baseContext;
+    const promptForPhase = phase.mode === 'verifier'
+      ? wrapVerifierPrompt({ phase, run, userMessage })
+      : [
+        `You are participating in a multi-phase workflow. This is phase "${phase.label}".`,
+        '',
+        '[Phase task]',
+        phase.prompt,
+        '',
+        '[Background user request]',
+        userMessage,
+        '',
+        'Focus on the Phase task above. Do not perform work meant for later phases.',
+        '',
+        options.locale?.toLowerCase().startsWith('zh')
+          ? '请使用简体中文完成上述阶段任务。'
+          : 'Complete the phase task above in English.',
+      ].join('\n');
+
+    let outputs: AgentWorkflowAgentOutput[] = [];
+    let abortedDuringPhase = false;
+    let runtimeError: string | undefined;
 
     try {
-      const outputs: AgentWorkflowAgentOutput[] = [];
-
-      const runOne = async (agent: AIMember, idx: number): Promise<AgentRunResult> => {
-        const normalized = normalizeAgentMember(agent);
-        const phaseAgentId = ordered.length > 1
-          ? `${agent.id}__${phase.id}`
-          : agent.id;
-        return runSingleAgent(
-          normalized,
-          promptForPhase,
-          context,
-          callbacks,
-          groupContext,
-          { signal, phaseId: phase.id, agentIdOverride: phaseAgentId },
-        );
-      };
-
-      if (phase.schedule === 'parallel' && selected.length > 1) {
-        const results = await Promise.allSettled(selected.map((a, i) => runOne(a, i)));
-        for (let i = 0; i < results.length; i++) {
-          const r = results[i];
-          const member = selected[i];
-          if (r.status === 'fulfilled') {
-            outputs.push({
-              agentId: r.value.agentId,
-              agentName: r.value.agentName,
-              content: r.value.content,
-              isError: r.value.isError,
-            });
-          } else {
-            outputs.push({
-              agentId: member.id,
-              agentName: member.name,
-              content: r.reason?.message || 'phase execution failed',
-              isError: true,
-            });
-          }
-        }
-      } else if (phase.schedule === 'sequential') {
-        let accumulatedContext = context;
-        for (let i = 0; i < selected.length; i++) {
-          if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-          const member = selected[i];
-          const normalized = normalizeAgentMember(member);
-          const phaseAgentId = `${member.id}__${phase.id}`;
-          const result = await runSingleAgent(
-            normalized,
-            promptForPhase,
-            accumulatedContext,
-            callbacks,
-            groupContext,
-            { signal, phaseId: phase.id, agentIdOverride: phaseAgentId },
-          );
-          outputs.push({
-            agentId: result.agentId,
-            agentName: result.agentName,
-            content: result.content,
-            isError: result.isError,
-          });
-          if (!result.isError) {
-            accumulatedContext += `\n\n[${result.agentName} said]\n${truncate(result.content, 600)}`;
-          }
-        }
-      } else {
-        // 'single' or 1-member 'parallel'
-        const member = selected[0];
-        const result = await runOne(member, 0);
-        outputs.push({
-          agentId: result.agentId,
-          agentName: result.agentName,
-          content: result.content,
-          isError: result.isError,
-        });
-      }
-
-      state.outputs = outputs;
-      state.summary = summarizePhaseState(state);
-      const anyError = outputs.some(o => o.isError);
-      state.status = anyError ? 'failed' : 'completed';
-      state.endedAt = Date.now();
-      run.updatedAt = state.endedAt;
-      callbacks.onPhaseEnd?.(phase, state);
-      callbacks.onPlanUpdate?.(run);
-
-      if (anyError && (phase.onFailure || 'stop') === 'stop') {
-        run.status = 'failed';
-        callbacks.onRunEnd?.(run);
-        return run;
-      }
+      outputs = await executePhase(
+        phase,
+        selected,
+        promptForPhase,
+        context,
+        callbacks,
+        groupContext,
+        signal,
+        ordered.length,
+      );
     } catch (err: any) {
       if (err?.name === 'AbortError') {
-        state.status = 'cancelled';
-        state.endedAt = Date.now();
-        run.updatedAt = state.endedAt;
-        callbacks.onPhaseEnd?.(phase, state);
-        callbacks.onPlanUpdate?.(run);
-        run.status = 'cancelled';
-        run.updatedAt = Date.now();
-        callbacks.onRunEnd?.(run);
-        return run;
+        abortedDuringPhase = true;
+      } else {
+        runtimeError = err?.message || 'phase execution failed';
       }
-      state.status = 'failed';
-      state.error = err?.message || 'phase execution failed';
+    }
+
+    if (abortedDuringPhase) {
+      state.status = 'cancelled';
       state.endedAt = Date.now();
       run.updatedAt = state.endedAt;
       callbacks.onPhaseEnd?.(phase, state);
       callbacks.onPlanUpdate?.(run);
-      if ((phase.onFailure || 'stop') === 'stop') {
-        run.status = 'failed';
-        run.updatedAt = Date.now();
-        callbacks.onRunEnd?.(run);
-        return run;
-      }
+      run.status = 'cancelled';
+      run.updatedAt = Date.now();
+      callbacks.onRunEnd?.(run);
+      return run;
     }
+
+    if (runtimeError) {
+      state.outputs = outputs;
+      state.error = runtimeError;
+    } else {
+      state.outputs = outputs;
+    }
+
+    const anyError = !!runtimeError || outputs.some(o => o.isError);
+    state.endedAt = Date.now();
+    run.updatedAt = state.endedAt;
+
+    if (!anyError) {
+      state.status = 'completed';
+      state.summary = await buildPhaseSummary(phase, state, summaryOptions);
+      if (phase.mode === 'verifier') {
+        const judgement = parseVerdict(outputs.map(o => o.content || '').join('\n\n'));
+        state.verdict = judgement.verdict;
+        state.verdictReasoning = judgement.reasoning;
+      }
+      state.attemptHistory.push({
+        attemptNumber: state.attempts,
+        status: 'completed',
+        outputs: [...outputs],
+        summary: state.summary,
+        startedAt: state.startedAt,
+        endedAt: state.endedAt,
+        feedbackUsed: feedbackText || undefined,
+      });
+      remaining.delete(phase.id);
+      callbacks.onPhaseEnd?.(phase, state);
+      callbacks.onPlanUpdate?.(run);
+
+      if (phase.mode === 'verifier' && state.verdict === 'fail') {
+        const retryTriggered = triggerUpstreamRetry(phase, run, ordered, remaining, HARD_ATTEMPT_CAP);
+        if (!retryTriggered) {
+          const onFailure = phase.onFailure || 'stop';
+          if (onFailure === 'stop') {
+            run.status = 'failed';
+            run.updatedAt = Date.now();
+            callbacks.onRunEnd?.(run);
+            return run;
+          }
+        }
+      }
+      continue;
+    }
+
+    state.summary = await buildPhaseSummary(phase, state, summaryOptions);
+    state.attemptHistory.push({
+      attemptNumber: state.attempts,
+      status: 'failed',
+      outputs: [...outputs],
+      summary: state.summary,
+      error: runtimeError,
+      startedAt: state.startedAt,
+      endedAt: state.endedAt,
+      feedbackUsed: feedbackText || undefined,
+    });
+
+    const retryPolicy = phase.retry;
+    const canRetry = !!retryPolicy
+      && retryPolicy.maxAttempts > state.attempts
+      && state.attempts < HARD_ATTEMPT_CAP;
+
+    if (canRetry) {
+      state.status = 'pending';
+      callbacks.onPhaseEnd?.(phase, state);
+      callbacks.onPlanUpdate?.(run);
+      continue;
+    }
+
+    state.status = 'failed';
+    callbacks.onPhaseEnd?.(phase, state);
+    callbacks.onPlanUpdate?.(run);
+    remaining.delete(phase.id);
+
+    const onFailure = phase.onFailure || 'stop';
+    if (onFailure === 'stop') {
+      run.status = 'failed';
+      run.updatedAt = Date.now();
+      callbacks.onRunEnd?.(run);
+      return run;
+    }
+    // 'continue' or unsupported -> just skip downstream that depends on it later
   }
+
+  void orderedById;
 
   run.status = run.status === 'running' ? 'completed' : run.status;
   run.updatedAt = Date.now();

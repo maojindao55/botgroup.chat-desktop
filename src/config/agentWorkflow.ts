@@ -25,7 +25,7 @@ export type AgentWorkflowIntent =
   | 'custom';
 
 export type AgentWorkflowRiskLevel = 'low' | 'medium' | 'high';
-export type AgentWorkflowPhaseMode = 'readOnly' | 'write' | 'review';
+export type AgentWorkflowPhaseMode = 'readOnly' | 'write' | 'review' | 'verifier';
 export type AgentWorkflowSchedule = 'single' | 'parallel' | 'sequential';
 export type AgentWorkflowOutputPolicy = 'summary' | 'full' | 'findings' | 'diff';
 
@@ -59,6 +59,9 @@ export interface AgentWorkflowPlan {
   requiresApproval: boolean;
   explanation: string;
   phases: AgentWorkflowPhase[];
+  /** 实际产生该计划的 planner 标识（仅 LLM planner 设置；rule planner 不设） */
+  plannerModel?: string;
+  plannerProviderId?: string;
 }
 
 export type AgentWorkflowRunStatus =
@@ -84,6 +87,17 @@ export interface AgentWorkflowAgentOutput {
   adapter?: string;
 }
 
+export interface AgentWorkflowPhaseAttempt {
+  attemptNumber: number;
+  status: AgentWorkflowPhaseStatus;
+  outputs: AgentWorkflowAgentOutput[];
+  summary?: string;
+  error?: string;
+  startedAt?: number;
+  endedAt?: number;
+  feedbackUsed?: string;
+}
+
 export interface AgentWorkflowPhaseState {
   phaseId: string;
   status: AgentWorkflowPhaseStatus;
@@ -93,6 +107,10 @@ export interface AgentWorkflowPhaseState {
   error?: string;
   startedAt?: number;
   endedAt?: number;
+  attempts?: number;
+  attemptHistory?: AgentWorkflowPhaseAttempt[];
+  verdict?: 'pass' | 'fail';
+  verdictReasoning?: string;
 }
 
 export interface AgentWorkflowRun {
@@ -189,8 +207,22 @@ export function validateAgentWorkflowPlan(
     seenIds.add(phase.id);
     if (!phase.label) errors.push(`phase ${phase.id}: label required`);
     if (!phase.prompt) errors.push(`phase ${phase.id}: prompt required`);
-    if (!['readOnly', 'write', 'review'].includes(phase.mode)) {
+    if (!['readOnly', 'write', 'review', 'verifier'].includes(phase.mode)) {
       errors.push(`phase ${phase.id}: invalid mode ${phase.mode}`);
+    }
+    if (phase.mode === 'verifier') {
+      if (!phase.dependsOn || phase.dependsOn.length === 0) {
+        errors.push(`phase ${phase.id}: verifier mode requires dependsOn`);
+      }
+      if (phase.schedule !== 'single') {
+        errors.push(`phase ${phase.id}: verifier mode requires schedule 'single'`);
+      }
+      if (
+        phase.agentSelection?.type === 'specific' &&
+        phase.agentSelection.agentIds.length > 1
+      ) {
+        errors.push(`phase ${phase.id}: verifier mode requires a single agent`);
+      }
     }
     if (!['single', 'parallel', 'sequential'].includes(phase.schedule)) {
       errors.push(`phase ${phase.id}: invalid schedule ${phase.schedule}`);

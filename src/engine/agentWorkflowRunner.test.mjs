@@ -43,6 +43,18 @@ globalThis.__agentRuntimeStub = {
       updatedAt: Date.now(),
     };
   },
+  applyOutputPolicy: async (outputs, opts = {}) => {
+    if (outputs.length === 0) return '';
+    if (outputs.length === 1) return outputs[0].content || '';
+    return outputs.map(o => `### ${o.agentName}\n${o.content || ''}`).join('\n\n');
+  },
+  wrapVerifierPrompt: ({ phase }) => `verifier: ${phase.prompt}`,
+  parseVerdict: (output) => {
+    const text = (output || '').trim();
+    const first = text.split(/\r?\n/)[0] || '';
+    if (/^fail\b/i.test(first)) return { verdict: 'fail', reasoning: text };
+    return { verdict: 'pass', reasoning: text };
+  },
 };
 
 const runner = await importTsModule(
@@ -65,6 +77,12 @@ const runner = await importTsModule(
   ).replace(
     "import type { AIMember } from '@/config/aiMembers';",
     ''
+  ).replace(
+    "import { applyOutputPolicy, type SummaryOptions } from './agentWorkflowOutputPolicy';",
+    'const { applyOutputPolicy } = globalThis.__agentRuntimeStub;'
+  ).replace(
+    /import \{ parseVerdict, wrapVerifierPrompt \} from '\.\/agentWorkflowVerifier';/,
+    'const { parseVerdict, wrapVerifierPrompt } = globalThis.__agentRuntimeStub;'
   ),
 );
 
@@ -108,6 +126,10 @@ function callbacks() {
   assert.equal(run.phaseStates['p1'].status, 'completed');
   assert.equal(run.phaseStates['p1'].outputs.length, 1);
   assert.ok(cb.events.some(e => e[0] === 'runEnd' && e[1] === 'completed'));
+  assert.match(runCalls[0].prompt, /multi-phase workflow/);
+  assert.match(runCalls[0].prompt, /Phase task/);
+  assert.match(runCalls[0].prompt, /Background user request/);
+  assert.match(runCalls[0].prompt, /Focus on the Phase task/);
 }
 
 // parallel readOnly with 3 members
@@ -233,6 +255,183 @@ function callbacks() {
   const run = await runner.runAgentWorkflowPlan(group(), [llm('a','A')], p, 'x', cb);
   assert.equal(run.status, 'failed');
   assert.equal(run.phaseStates['p1'].status, 'failed');
+}
+
+// retry: phase fails once then succeeds within maxAttempts
+{
+  runCalls.length = 0;
+  const cb = callbacks();
+  let attempt = 0;
+  nextResponse = (agent) => {
+    attempt += 1;
+    if (attempt === 1) return { content: 'first attempt failed', isError: true };
+    return { content: 'second attempt ok' };
+  };
+  const p = plan([
+    { id: 'p1', label: 'Retry me', mode: 'readOnly', schedule: 'single',
+      agentSelection: { type: 'specific', agentIds: ['a'] }, prompt: 'do',
+      retry: { maxAttempts: 2 } },
+  ]);
+  const run = await runner.runAgentWorkflowPlan(group(), [llm('a','A')], p, 'x', cb);
+  nextResponse = (agent) => ({ content: `${agent.name} ok` });
+  assert.equal(run.status, 'completed');
+  assert.equal(run.phaseStates['p1'].status, 'completed');
+  assert.equal(run.phaseStates['p1'].attempts, 2);
+  assert.equal(run.phaseStates['p1'].attemptHistory.length, 2);
+  assert.equal(run.phaseStates['p1'].attemptHistory[0].status, 'failed');
+  assert.equal(run.phaseStates['p1'].attemptHistory[1].status, 'completed');
+}
+
+// retry: feedback from previous attempt is injected into context
+{
+  runCalls.length = 0;
+  const cb = callbacks();
+  let attempt = 0;
+  nextResponse = (agent, _msg, context) => {
+    attempt += 1;
+    if (attempt === 1) return { content: 'broken output', isError: true };
+    return { content: `saw context: ${context.slice(0, 200)}` };
+  };
+  const p = plan([
+    { id: 'p1', label: 'P1', mode: 'readOnly', schedule: 'single',
+      agentSelection: { type: 'specific', agentIds: ['a'] }, prompt: 'do',
+      retry: { maxAttempts: 2 } },
+  ]);
+  const run = await runner.runAgentWorkflowPlan(group(), [llm('a','A')], p, 'x', cb);
+  nextResponse = (agent) => ({ content: `${agent.name} ok` });
+  const secondCtx = runCalls[1]?.context || '';
+  assert.match(secondCtx, /Previous attempt feedback/);
+  assert.equal(run.phaseStates['p1'].status, 'completed');
+}
+
+// retry exhausted -> phase failed -> onFailure='stop' stops run
+{
+  runCalls.length = 0;
+  const cb = callbacks();
+  nextResponse = () => ({ content: 'always fails', isError: true });
+  const p = plan([
+    { id: 'p1', label: 'P1', mode: 'readOnly', schedule: 'single',
+      agentSelection: { type: 'specific', agentIds: ['a'] }, prompt: 'do',
+      retry: { maxAttempts: 2 }, onFailure: 'stop' },
+  ]);
+  const run = await runner.runAgentWorkflowPlan(group(), [llm('a','A')], p, 'x', cb);
+  nextResponse = (agent) => ({ content: `${agent.name} ok` });
+  assert.equal(run.status, 'failed');
+  assert.equal(run.phaseStates['p1'].attempts, 2);
+  assert.equal(run.phaseStates['p1'].status, 'failed');
+}
+
+// retry: feedbackFromPhaseId pulls feedback from another phase
+{
+  runCalls.length = 0;
+  const cb = callbacks();
+  nextResponse = (agent, _msg, context) => {
+    if (agent.id === 'reviewer') return { content: '- needs more tests\n- missing error handling' };
+    if (agent.id === 'impl' && !context.includes('Previous attempt feedback')) {
+      return { content: 'first impl', isError: true };
+    }
+    return { content: 'impl after feedback' };
+  };
+  const p = plan([
+    { id: 'impl', label: 'Impl', mode: 'readOnly', schedule: 'single',
+      agentSelection: { type: 'specific', agentIds: ['impl'] }, prompt: 'implement',
+      retry: { maxAttempts: 2, feedbackFromPhaseId: 'review' } },
+    { id: 'review', label: 'Review', mode: 'readOnly', schedule: 'single',
+      agentSelection: { type: 'specific', agentIds: ['reviewer'] }, prompt: 'review',
+      dependsOn: ['impl'] },
+  ]);
+  const run = await runner.runAgentWorkflowPlan(
+    group(),
+    [llm('impl', 'Impl'), llm('reviewer', 'Reviewer')],
+    p, 'x', cb,
+  );
+  nextResponse = (agent) => ({ content: `${agent.name} ok` });
+  assert.equal(run.phaseStates['impl'].status, 'completed');
+  assert.equal(run.phaseStates['impl'].attempts, 2);
+}
+
+// verifier: PASS completes run
+{
+  runCalls.length = 0;
+  const cb = callbacks();
+  nextResponse = (agent) => ({ content: agent.id === 'v' ? 'PASS\nAll good' : 'implemented' });
+  const p = plan([
+    { id: 'impl', label: 'Impl', mode: 'readOnly', schedule: 'single',
+      agentSelection: { type: 'specific', agentIds: ['coder'] }, prompt: 'implement' },
+    { id: 'v', label: 'Verify', mode: 'verifier', schedule: 'single',
+      agentSelection: { type: 'specific', agentIds: ['v'] }, prompt: 'verify',
+      dependsOn: ['impl'] },
+  ]);
+  const run = await runner.runAgentWorkflowPlan(
+    group(),
+    [llm('coder', 'Coder'), llm('v', 'Verifier')],
+    p, 'x', cb,
+  );
+  nextResponse = (agent) => ({ content: `${agent.name} ok` });
+  assert.equal(run.status, 'completed');
+  assert.equal(run.phaseStates['v'].status, 'completed');
+  assert.equal(run.phaseStates['v'].verdict, 'pass');
+  assert.ok(runCalls.some(c => c.phaseId === 'v' && c.prompt.includes('verifier:')));
+}
+
+// verifier: FAIL triggers upstream retry, then succeeds
+{
+  runCalls.length = 0;
+  const cb = callbacks();
+  let implAttempt = 0;
+  nextResponse = (agent) => {
+    if (agent.id === 'coder') {
+      implAttempt += 1;
+      return { content: `impl v${implAttempt}` };
+    }
+    return { content: implAttempt === 1 ? 'FAIL\n- missing tests' : 'PASS\nAll good' };
+  };
+  const p = plan([
+    { id: 'impl', label: 'Impl', mode: 'readOnly', schedule: 'single',
+      agentSelection: { type: 'specific', agentIds: ['coder'] }, prompt: 'implement',
+      retry: { maxAttempts: 2 } },
+    { id: 'v', label: 'Verify', mode: 'verifier', schedule: 'single',
+      agentSelection: { type: 'specific', agentIds: ['verifier'] }, prompt: 'verify',
+      dependsOn: ['impl'], onFailure: 'stop' },
+  ]);
+  const run = await runner.runAgentWorkflowPlan(
+    group(),
+    [llm('coder', 'Coder'), llm('verifier', 'Verifier')],
+    p, 'x', cb,
+  );
+  nextResponse = (agent) => ({ content: `${agent.name} ok` });
+  assert.equal(run.status, 'completed');
+  assert.equal(run.phaseStates['impl'].attempts, 2);
+  assert.equal(run.phaseStates['impl'].status, 'completed');
+  assert.equal(run.phaseStates['v'].attempts, 2);
+  assert.equal(run.phaseStates['v'].verdict, 'pass');
+}
+
+// verifier: FAIL with exhausted upstream retry fails run
+{
+  runCalls.length = 0;
+  const cb = callbacks();
+  nextResponse = (agent) => {
+    if (agent.id === 'coder') return { content: 'impl' };
+    return { content: 'FAIL\n- missing tests' };
+  };
+  const p = plan([
+    { id: 'impl', label: 'Impl', mode: 'readOnly', schedule: 'single',
+      agentSelection: { type: 'specific', agentIds: ['coder'] }, prompt: 'implement',
+      retry: { maxAttempts: 2 } },
+    { id: 'v', label: 'Verify', mode: 'verifier', schedule: 'single',
+      agentSelection: { type: 'specific', agentIds: ['verifier'] }, prompt: 'verify',
+      dependsOn: ['impl'], onFailure: 'stop' },
+  ]);
+  const run = await runner.runAgentWorkflowPlan(
+    group(),
+    [llm('coder', 'Coder'), llm('verifier', 'Verifier')],
+    p, 'x', cb,
+  );
+  nextResponse = (agent) => ({ content: `${agent.name} ok` });
+  assert.equal(run.status, 'failed');
+  assert.equal(run.phaseStates['impl'].attempts, 2);
+  assert.equal(run.phaseStates['v'].verdict, 'fail');
 }
 
 console.log('agentWorkflowRunner.test.mjs: ok');

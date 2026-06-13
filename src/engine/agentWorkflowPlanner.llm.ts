@@ -17,6 +17,13 @@ import { resolveLlmCredentials } from '@/utils/resolveLlmCredentials';
 import { llmChatComplete } from '@/utils/llmClient';
 import type { AgentWorkflowPlannerInput, AgentWorkflowPlannerResult } from './agentWorkflowPlanner';
 
+function getLanguageInstruction(locale?: string): string {
+  if (locale?.toLowerCase().startsWith('zh')) {
+    return 'All phase labels, prompts, and explanations must be written in Simplified Chinese (zh-CN). The generated plan should read naturally to a Chinese user.';
+  }
+  return 'All phase labels, prompts, and explanations must be written in English (en-US).';
+}
+
 export interface LLMPlannerCallParams {
   providerId: string;
   model: string;
@@ -52,7 +59,7 @@ function memberCapabilities(m: AIMember): AgentCapability[] {
   return ((m as { capabilities?: AgentCapability[] }).capabilities) || [];
 }
 
-function buildSystemPrompt(group: AgentGroup, members: AIMember[]): string {
+function buildSystemPrompt(group: AgentGroup, members: AIMember[], input: AgentWorkflowPlannerInput): string {
   const defaults = {
     ...createDefaultAgentWorkflowDefaults(),
     ...(group.workflowDefaults || {}),
@@ -84,6 +91,8 @@ function buildSystemPrompt(group: AgentGroup, members: AIMember[]): string {
     '',
     `Current date: ${isoDate} (${localized}, timezone ${tz}). Treat this as ground truth and prefer it over any date implied by your training data when writing phase prompts.`,
     '',
+    getLanguageInstruction(input.locale),
+    '',
     'Plan schema (TypeScript-like):',
     `{
   "version": 1,
@@ -97,14 +106,32 @@ function buildSystemPrompt(group: AgentGroup, members: AIMember[]): string {
 Phase = {
   "id": string,
   "label": string,
-  "mode": "readOnly" | "write" | "review",
+  "mode": "readOnly" | "write" | "review" | "verifier",
   "schedule": "single" | "parallel" | "sequential",
   "agentSelection": { "type": "specific", "agentIds": string[] } | { "type": "auto", "count"?: number },
   "prompt": string,
   "dependsOn"?: string[],
   "outputPolicy"?: "summary" | "full" | "findings" | "diff",
-  "onFailure"?: "stop" | "continue"
+  "onFailure"?: "stop" | "continue",
+  "retry"?: { "maxAttempts": number, "feedbackFromPhaseId"?: string }
 }`,
+    '',
+    'Mode semantics:',
+    '- readOnly: gather information, do not modify files.',
+    '- write: produce or modify files in the workspace.',
+    '- review: inspect prior work and report issues/opinions.',
+    '- verifier: judge whether the phases listed in dependsOn satisfy the criteria in "prompt". Must be schedule="single", must have dependsOn pointing to the phase(s) being verified, and should use a single agent. Output will be parsed for a PASS/FAIL verdict; FAIL can trigger upstream retries if the upstream phase has "retry".',
+    '',
+    'Phase prompt rules (CRITICAL):',
+    '- Each phase.prompt must be ATOMIC: describe ONLY the concrete task this single phase should perform.',
+    '- Do NOT include the overall user request, goal, or later-phase responsibilities inside phase.prompt.',
+    '- Do NOT ask a phase to "predict", "analyze all angles", "summarize", or "produce the final answer" unless that is literally its own label.',
+    '- Use imperative sentences. Start from the desired output, not from the user goal.',
+    '- The runner will automatically append the user request for context; phase.prompt must be narrow enough that the agent can fulfill it without solving the whole problem.',
+    '',
+    'Retry semantics:',
+    '- "retry.maxAttempts" counts the initial run plus retries (not retries only).',
+    '- "retry.feedbackFromPhaseId" optionally names a phase whose summary should be injected as feedback on the next attempt.',
     '',
     'Hard constraints:',
     `- phases.length <= ${defaults.maxPhases}`,
@@ -116,6 +143,37 @@ Phase = {
     '- phase ids must be unique and lower-case slugs.',
     '- dependsOn must reference earlier phase ids.',
     `- When the user asks about recent or "today/tonight/yesterday" facts, anchor phase prompts to ${isoDate}; never write "as of YYYY" with a year earlier than ${isoDate.slice(0, 4)} unless the user explicitly asked for that historical year.`,
+    '',
+    'Example workflow with a verifier:',
+    `{
+  "id": "verify",
+  "label": "Verify solution",
+  "mode": "verifier",
+  "schedule": "single",
+  "agentSelection": { "type": "specific", "agentIds": ["critic"] },
+  "prompt": "Check that the implementation phase includes error handling and tests. Output PASS if yes, FAIL with a markdown list of missing items if not.",
+  "dependsOn": ["implement"],
+  "onFailure": "stop"
+}`,
+    '',
+    'Example multi-phase readOnly workflow (note how each phase.prompt is narrow and avoids the overall goal):',
+    `{
+  "id": "schedule",
+  "label": "Fetch schedule",
+  "mode": "readOnly",
+  "schedule": "single",
+  "agentSelection": { "type": "specific", "agentIds": ["researcher"] },
+  "prompt": "Query the official 2026 FIFA World Cup match schedule and list every match scheduled for 2026-06-14 with kickoff time, venue, and teams. If the schedule is incomplete, say so explicitly."
+},
+{
+  "id": "analysis",
+  "label": "Multi-angle analysis",
+  "mode": "readOnly",
+  "schedule": "parallel",
+  "agentSelection": { "type": "auto", "count": 3 },
+  "prompt": "Given the match schedule from the previous phase, analyze one assigned angle (team form, historical head-to-head, or venue/weather) for the 2026-06-14 matches. Do not repeat the schedule; focus only on your assigned angle.",
+  "dependsOn": ["schedule"]
+}`,
     '',
     'Available agents (use ONLY these ids):',
     JSON.stringify(memberList, null, 2),
@@ -245,7 +303,7 @@ export async function planAgentWorkflowWithLLM(
     throw new Error('LLM planner requires at least one available member');
   }
 
-  const systemPrompt = buildSystemPrompt(group, members);
+  const systemPrompt = buildSystemPrompt(group, members, input);
   const userPrompt = buildUserPrompt(input);
   const caller = options.caller || defaultCaller;
   const raw = await caller({
@@ -279,5 +337,7 @@ export async function planAgentWorkflowWithLLM(
 
   const workspaceReady = !!group.workspacePath?.trim();
   const { plan, warnings } = applySafetyRewrite(parsed, workspaceReady, maxParallel);
+  plan.plannerModel = options.model;
+  plan.plannerProviderId = options.providerId;
   return { plan, warnings };
 }

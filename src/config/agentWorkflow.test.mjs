@@ -164,4 +164,89 @@ assert.match(
   /approval/,
 );
 
+// verifier mode accepted when valid
+{
+  const verifierPlan = {
+    ...minimalPlan,
+    phases: [
+      { ...minimalPlan.phases[0], id: 'p1' },
+      {
+        id: 'p2',
+        label: 'P2',
+        mode: 'verifier',
+        schedule: 'single',
+        agentSelection: { type: 'specific', agentIds: ['cli-codex'] },
+        prompt: 'verify',
+        dependsOn: ['p1'],
+      },
+    ],
+  };
+  const res = mod.validateAgentWorkflowPlan(verifierPlan, ['cli-codex']);
+  assert.equal(res.ok, true, JSON.stringify(res.errors));
+}
+
+// verifier mode rejected without dependsOn
+{
+  const verifierPlan = {
+    ...minimalPlan,
+    phases: [
+      {
+        ...minimalPlan.phases[0],
+        id: 'p2',
+        mode: 'verifier',
+        schedule: 'single',
+        agentSelection: { type: 'specific', agentIds: ['cli-codex'] },
+        prompt: 'verify',
+      },
+    ],
+  };
+  const res = mod.validateAgentWorkflowPlan(verifierPlan, ['cli-codex']);
+  assert.equal(res.ok, false);
+  assert.ok(res.errors.some((e) => /verifier.*dependsOn/.test(e)));
+}
+
+// verifier mode rejected with non-single schedule
+{
+  const verifierPlan = {
+    ...minimalPlan,
+    phases: [
+      { ...minimalPlan.phases[0], id: 'p1' },
+      {
+        id: 'p2',
+        label: 'P2',
+        mode: 'verifier',
+        schedule: 'parallel',
+        agentSelection: { type: 'specific', agentIds: ['cli-codex'] },
+        prompt: 'verify',
+        dependsOn: ['p1'],
+      },
+    ],
+  };
+  const res = mod.validateAgentWorkflowPlan(verifierPlan, ['cli-codex']);
+  assert.equal(res.ok, false);
+  assert.ok(res.errors.some((e) => /verifier.*single/.test(e)));
+}
+
+// verifier mode rejected with multiple agents
+{
+  const verifierPlan = {
+    ...minimalPlan,
+    phases: [
+      { ...minimalPlan.phases[0], id: 'p1' },
+      {
+        id: 'p2',
+        label: 'P2',
+        mode: 'verifier',
+        schedule: 'single',
+        agentSelection: { type: 'specific', agentIds: ['cli-codex', 'other'] },
+        prompt: 'verify',
+        dependsOn: ['p1'],
+      },
+    ],
+  };
+  const res = mod.validateAgentWorkflowPlan(verifierPlan, ['cli-codex', 'other']);
+  assert.equal(res.ok, false);
+  assert.ok(res.errors.some((e) => /verifier.*single agent/.test(e)));
+}
+
 console.log('agentWorkflow.test.mjs: ok');

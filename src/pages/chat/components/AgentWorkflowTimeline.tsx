@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { createStyles } from 'antd-style';
+import { ShieldCheck } from 'lucide-react';
 import type { AgentWorkflowPlan, AgentWorkflowRun, AgentWorkflowPhaseState } from '@/config/agentWorkflow';
 import { ChatMarkdown } from '@/components/Markdown';
 
@@ -105,6 +106,28 @@ const useStyles = createStyles(({ token, css }) => ({
     color: ${token.colorWarningText};
     border-color: ${token.colorWarningBorder};
   `,
+  icon: css`
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    flex: none;
+  `,
+  attempt: css`
+    color: ${token.colorTextSecondary};
+    font-size: ${token.fontSizeSM}px;
+  `,
+  verdictPass: css`
+    background: ${token.colorSuccessBg};
+    color: ${token.colorSuccessText};
+    border-color: ${token.colorSuccessBorder};
+  `,
+  verdictFail: css`
+    background: ${token.colorErrorBg};
+    color: ${token.colorErrorText};
+    border-color: ${token.colorErrorBorder};
+  `,
 }));
 
 function statusToPillClass(
@@ -164,10 +187,30 @@ export function AgentWorkflowTimeline({ run, plan, compact = false }: AgentWorkf
             className={styles.phase}
           >
             <summary className={styles.summary}>
-              <span className={styles.summaryIndex}>{index + 1}. {phase.label}</span>
+              <span className={styles.summaryIndex}>
+                {phase.mode === 'verifier' ? (
+                  <ShieldCheck className={styles.icon} />
+                ) : null}
+                {index + 1}. {phase.label}
+              </span>
               <span className={cx(styles.pill, statusToPillClass(styles, status))}>
                 {t(`agentWorkflow.status.${status}`, status)}
               </span>
+              {state && state.attempts && state.attempts > 1 ? (
+                <span className={cx(styles.pill, styles.attempt)}>
+                  {t('agentWorkflow.phase.attempt', { count: state.attempts })}
+                </span>
+              ) : null}
+              {phase.mode === 'verifier' && state?.verdict ? (
+                <span
+                  className={cx(
+                    styles.pill,
+                    state.verdict === 'pass' ? styles.verdictPass : styles.verdictFail,
+                  )}
+                >
+                  {t(`agentWorkflow.phase.verdict.${state.verdict}`, state.verdict)}
+                </span>
+              ) : null}
               <span className={styles.pill}>{t(`agentWorkflow.phase.mode.${phase.mode}`, phase.mode)}</span>
               <span className={styles.pill}>{t(`agentWorkflow.phase.schedule.${phase.schedule}`, phase.schedule)}</span>
             </summary>
@@ -177,6 +220,16 @@ export function AgentWorkflowTimeline({ run, plan, compact = false }: AgentWorkf
               </div>
               {!compact && <div className={styles.promptText}>{phase.prompt}</div>}
               {renderPhaseSummary(state, styles.errorText)}
+              {state?.verdictReasoning ? (
+                <div className={styles.outputs}>
+                  <div className={styles.outputItem}>
+                    <div className={styles.outputHeader}>
+                      {t('agentWorkflow.phase.verdictLabel')}
+                    </div>
+                    <ChatMarkdown content={state.verdictReasoning} />
+                  </div>
+                </div>
+              ) : null}
               {state?.outputs?.length ? (
                 <div className={styles.outputs}>
                   {state.outputs.map(output => (

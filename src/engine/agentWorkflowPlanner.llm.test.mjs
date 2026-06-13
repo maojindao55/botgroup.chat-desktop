@@ -258,4 +258,64 @@ function buildCaller(response) {
   );
 }
 
+// ---------- system prompt includes atomic phase instructions ----------
+{
+  const members = [llm('a', 'A')];
+  const goodPlan = {
+    version: 1, title: 'Plan', intent: 'quick', riskLevel: 'low',
+    requiresApproval: false, explanation: '',
+    phases: [{
+      id: 'p1', label: 'Answer', mode: 'readOnly', schedule: 'single',
+      agentSelection: { type: 'specific', agentIds: ['a'] }, prompt: 'answer',
+    }],
+  };
+  const caller = buildCaller(JSON.stringify(goodPlan));
+  await planAgentWorkflowWithLLM(
+    { group: group(), members, userMessage: 'hi', workspaceReady: false },
+    { providerId: 'p', model: 'm', caller },
+  );
+  const systemPrompt = caller.lastParams().systemPrompt;
+  assert.match(systemPrompt, /phase\.prompt must be ATOMIC/i);
+  assert.match(systemPrompt, /Do NOT include the overall user request/i);
+  assert.match(systemPrompt, /Fetch schedule/i);
+}
+
+// ---------- locale zh-CN triggers Chinese language instruction ----------
+{
+  const members = [llm('a', 'A')];
+  const goodPlan = {
+    version: 1, title: 'Plan', intent: 'quick', riskLevel: 'low',
+    requiresApproval: false, explanation: '',
+    phases: [{
+      id: 'p1', label: 'Answer', mode: 'readOnly', schedule: 'single',
+      agentSelection: { type: 'specific', agentIds: ['a'] }, prompt: 'answer',
+    }],
+  };
+  const caller = buildCaller(JSON.stringify(goodPlan));
+  await planAgentWorkflowWithLLM(
+    { group: group(), members, userMessage: 'hi', workspaceReady: false, locale: 'zh-CN' },
+    { providerId: 'p', model: 'm', caller },
+  );
+  assert.match(caller.lastParams().systemPrompt, /Simplified Chinese/);
+}
+
+// ---------- locale en-US triggers English language instruction ----------
+{
+  const members = [llm('a', 'A')];
+  const goodPlan = {
+    version: 1, title: 'Plan', intent: 'quick', riskLevel: 'low',
+    requiresApproval: false, explanation: '',
+    phases: [{
+      id: 'p1', label: 'Answer', mode: 'readOnly', schedule: 'single',
+      agentSelection: { type: 'specific', agentIds: ['a'] }, prompt: 'answer',
+    }],
+  };
+  const caller = buildCaller(JSON.stringify(goodPlan));
+  await planAgentWorkflowWithLLM(
+    { group: group(), members, userMessage: 'hi', workspaceReady: false, locale: 'en-US' },
+    { providerId: 'p', model: 'm', caller },
+  );
+  assert.match(caller.lastParams().systemPrompt, /English \(en-US\)/);
+}
+
 console.log('agentWorkflowPlanner.llm.test.mjs: ok');
