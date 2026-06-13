@@ -1,6 +1,21 @@
 import type { AgentTool } from './groups';
 import type { CLIAdapterId } from './cliAdapters';
 
+/**
+ * Agent 成员的能力声明，用于动态 workflow planner 自动选择成员。
+ */
+export type AgentCapability =
+  | 'codebase-analysis'
+  | 'implementation'
+  | 'code-review'
+  | 'testing'
+  | 'debugging'
+  | 'security'
+  | 'performance'
+  | 'documentation'
+  | 'product'
+  | 'research';
+
 export interface AIMemberBase {
   id: string;                   // Unique ID (e.g. llm-*, agent-*, cli-*)
   name: string;
@@ -34,10 +49,12 @@ export interface AgentMember_v2 extends AIMemberBase {
   tools: AgentTool[];
   maxTurns: number;
   temperature: number;
+  capabilities?: AgentCapability[];
 }
 
 export interface CLIMember extends AIMemberBase {
   kind: 'cli';
+  capabilities?: AgentCapability[];
   cli: {
     adapter: CLIAdapterId;
     binary?: string;
@@ -66,6 +83,7 @@ export const builtinAIMembers: AIMember[] = [
     description: 'Codex CLI Agent，擅长自动编码及代码重构',
     source: 'builtin',
     enabled: true,
+    capabilities: ['implementation', 'testing', 'codebase-analysis'],
     cli: {
       adapter: 'codex',
       extraArgs: ['--json', '--sandbox', 'workspace-write'],
@@ -81,6 +99,7 @@ export const builtinAIMembers: AIMember[] = [
     description: 'Claude Code CLI Agent，擅长代码库分析及复杂调试',
     source: 'builtin',
     enabled: true,
+    capabilities: ['codebase-analysis', 'code-review', 'debugging'],
     cli: {
       adapter: 'claude',
       approvalMode: 'auto',
@@ -95,6 +114,7 @@ export const builtinAIMembers: AIMember[] = [
     description: 'OpenCode 开源编码助手',
     source: 'builtin',
     enabled: true,
+    capabilities: ['implementation', 'debugging'],
     cli: {
       adapter: 'opencode',
       approvalMode: 'auto',
@@ -109,6 +129,7 @@ export const builtinAIMembers: AIMember[] = [
     description: 'Cursor Agent CLI，基于 Composer 模型的本地编码助手',
     source: 'builtin',
     enabled: true,
+    capabilities: ['implementation', 'debugging'],
     cli: {
       adapter: 'cursor',
       approvalMode: 'auto',
@@ -123,6 +144,7 @@ export const builtinAIMembers: AIMember[] = [
     description: 'Qoder CLI Agent，支持本地项目分析和自动编码任务',
     source: 'builtin',
     enabled: true,
+    capabilities: ['implementation', 'debugging'],
     cli: {
       adapter: 'qodercli',
       approvalMode: 'auto',
@@ -137,6 +159,7 @@ export const builtinAIMembers: AIMember[] = [
     description: 'Google Antigravity CLI Agent，支持本地项目分析、自动编码和命令执行',
     source: 'builtin',
     enabled: true,
+    capabilities: ['implementation', 'debugging'],
     cli: {
       adapter: 'antigravity',
       approvalMode: 'auto',

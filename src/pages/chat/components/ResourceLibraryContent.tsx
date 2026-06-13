@@ -494,7 +494,7 @@ export const ResourceLibraryContent: React.FC<ResourceLibraryContentProps> = ({
         onSave={(savedKind) => {
           load();
           // 若保存的成员类型与当前分区不同，自动切换到对应分区。
-          // 旧版 agent 现在统一归到本地 CLI Agents 设置入口。
+          // 旧版 agent 现在统一归到本地 CLI 成员设置入口。
           const savedSection = memberKindToSettingsSection(savedKind) as ResourceSection;
           if (savedSection !== section) {
             onSectionChange?.(savedSection);

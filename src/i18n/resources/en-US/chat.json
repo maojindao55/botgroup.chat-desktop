@@ -62,10 +62,93 @@
     "loadingLibrary": "Loading members...",
     "unresolvedMembers": "This group references {{count}} experts, but they were not found in Settings.",
     "unresolvedMembersHint": "Open \"{{settings}}\" to check or re-add members.",
-    "strategyMeta": "Strategy: {{strategy}} | Max rounds: {{maxRounds}}",
     "expertBadge": "Expert",
     "inputPlaceholder": "Send a message — experts will collaborate per group rules...",
     "settings": "Settings"
+  },
+  "agentWorkflow": {
+    "sender": "Workflow plan",
+    "planning": "Generating workflow plan…",
+    "plannerBadge": "Planner",
+    "approvalTitle": "Confirm workflow execution",
+    "planTitle": "Workflow plan",
+    "confirmRun": "Run",
+    "cancelled": "Workflow execution cancelled",
+    "card": {
+      "run": "Run",
+      "cancel": "Cancel",
+      "modify": "Modify plan",
+      "replan": "Re-plan",
+      "revising": "Regenerating plan…",
+      "cancelEdit": "Cancel edit",
+      "warningPrefix": "Warning",
+      "requiresApproval": "requires approval",
+      "instructionPlaceholder": "Tell the planner what to change, e.g. read-only only / use one agent / focus on review"
+    },
+    "risk": {
+      "low": "low",
+      "medium": "medium",
+      "high": "high"
+    },
+    "intent": {
+      "quick": "quick",
+      "discuss": "discuss",
+      "multi_solution": "multi solution",
+      "implement": "implement",
+      "review": "review",
+      "audit": "audit",
+      "custom": "custom"
+    },
+    "status": {
+      "planned": "planned",
+      "running": "running",
+      "completed": "completed",
+      "failed": "failed",
+      "cancelled": "cancelled",
+      "pending": "pending",
+      "skipped": "skipped"
+    },
+    "phase": {
+      "mode": {
+        "readOnly": "read-only",
+        "review": "review",
+        "write": "write",
+        "verifier": "verifier"
+      },
+      "schedule": {
+        "single": "single",
+        "parallel": "parallel",
+        "sequential": "sequential"
+      },
+      "agentsLabel": "Agents",
+      "autoSuffix": "auto",
+      "errorTag": "error",
+      "attempt": "attempt {{count}}",
+      "verdictLabel": "verdict",
+      "verdict": {
+        "pass": "pass",
+        "fail": "fail"
+      }
+    },
+    "planner": {
+      "emptyTitle": "No-op",
+      "emptyExplanation": "No eligible members found.",
+      "warnings": {
+        "noMembers": "No agent members available in this group."
+      },
+      "intents": {
+        "quick": {
+          "title": "Quick answer",
+          "explanation": "A single agent answers the question directly."
+        }
+      },
+      "phases": {
+        "answer": {
+          "label": "Answer",
+          "prompt": "Answer the user request directly. Do not modify files unless explicitly required."
+        }
+      }
+    }
   },
   "attachments": {
     "add": "Add attachment",
@@ -97,6 +180,8 @@
     "archivedTag": "Archived",
     "deleteConfirmTitle": "Delete chat \"{{name}}\"?",
     "deleteConfirmContent": "This chat's history will be permanently deleted and cannot be recovered.",
-    "expand": "Expand chat list"
+    "expand": "Expand chat list",
+    "runningTip": "Running in background",
+    "unreadTip": "New result available"
   }
 }

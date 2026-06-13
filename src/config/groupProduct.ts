@@ -1,4 +1,5 @@
-import type { AgentStrategy, CLICustomWorkflow, CLIExecutionPlan, CLIStrategy, GroupType } from './groups';
+import type { CLICustomWorkflow, CLIExecutionPlan, CLIStrategy, GroupType } from './groups';
+import type { AgentWorkflowEffort, AgentWorkflowIntent } from './agentWorkflow';
 
 export type AISpeechMode = 'smart' | 'round_robin' | 'all';
 
@@ -15,13 +16,21 @@ export interface AISpeechModeOption {
   description: string;
 }
 
-export interface AgentWorkflowTemplate {
-  id: 'expert_consult' | 'proposal' | 'decision_review' | 'relay_edit' | 'auto_delegate';
+/** Agent 群默认协作强度选项 */
+export interface AgentWorkflowEffortOption {
+  value: AgentWorkflowEffort;
   label: string;
   description: string;
-  strategy: AgentStrategy;
-  maxRounds: number;
-  coordinatorPrompt?: string;
+  recommendedMaxPhases: number;
+  recommendedMaxParallelAgents: number;
+}
+
+/** Agent 群输入区快捷意图 */
+export interface AgentWorkflowIntentPreset {
+  id: 'smart' | 'discuss' | 'multi_solution' | 'review' | 'isolated';
+  label: string;
+  description: string;
+  intent: AgentWorkflowIntent;
 }
 
 export interface CLIWorkflowTemplate {
@@ -80,44 +89,60 @@ export const aiSpeechModes: AISpeechModeOption[] = [
   },
 ];
 
-export const agentWorkflowTemplates: AgentWorkflowTemplate[] = [
+export const agentWorkflowEfforts: AgentWorkflowEffortOption[] = [
   {
-    id: 'expert_consult',
-    label: '专家会诊',
-    description: '多位专家群友独立分析同一问题，再形成综合意见。',
-    strategy: 'discussion',
-    maxRounds: 2,
-    coordinatorPrompt: '请组织专家群友围绕用户问题分别给出判断、风险和建议，最后汇总成清晰结论。',
+    value: 'fast',
+    label: '快速',
+    description: '尽量单成员一次完成，最少阶段，适合小任务和快速答复。',
+    recommendedMaxPhases: 2,
+    recommendedMaxParallelAgents: 1,
   },
   {
-    id: 'proposal',
-    label: '方案产出',
-    description: '按调研、起草、审查、定稿的方式协作产出方案。',
-    strategy: 'pipeline',
-    maxRounds: 3,
+    value: 'standard',
+    label: '标准',
+    description: '默认协作强度：分析→执行/复审，自动选择 1-3 位成员协作。',
+    recommendedMaxPhases: 4,
+    recommendedMaxParallelAgents: 3,
   },
   {
-    id: 'decision_review',
-    label: '评审决策',
-    description: '从多角色视角提出收益、风险、约束和最终建议。',
-    strategy: 'debate',
-    maxRounds: 3,
-    coordinatorPrompt: '请让不同专家群友先提出独立意见，再互相指出风险，最后给出可执行建议。',
+    value: 'deep',
+    label: '深入',
+    description: '允许更多阶段和并行成员，适合复杂任务、多方案比较或大范围审计。',
+    recommendedMaxPhases: 6,
+    recommendedMaxParallelAgents: 4,
+  },
+];
+
+export const workflowIntentPresets: AgentWorkflowIntentPreset[] = [
+  {
+    id: 'smart',
+    label: '智能协作',
+    description: '默认。由系统根据消息内容自动决定单人快速处理还是多人协作。',
+    intent: 'quick',
   },
   {
-    id: 'relay_edit',
-    label: '接力修改',
-    description: '一个专家起草，一个专家审核，一个专家修订。',
-    strategy: 'pipeline',
-    maxRounds: 3,
+    id: 'discuss',
+    label: '只读讨论',
+    description: '多位成员只读分析与讨论，不会修改 workspace。',
+    intent: 'discuss',
   },
   {
-    id: 'auto_delegate',
-    label: '自动处理',
-    description: '由协调者多轮分派任务，适合目标明确但步骤未定的问题。',
-    strategy: 'react',
-    maxRounds: 4,
-    coordinatorPrompt: '请作为群内协调者，根据用户目标分派下一位专家群友处理，并在任务完成时给出总结。',
+    id: 'multi_solution',
+    label: '多方案对比',
+    description: '多位成员各自给出方案，再综合比较。',
+    intent: 'multi_solution',
+  },
+  {
+    id: 'review',
+    label: '改完复审',
+    description: '先实现再复审，复审默认只读。',
+    intent: 'review',
+  },
+  {
+    id: 'isolated',
+    label: '隔离执行',
+    description: '需要写入但又想审慎，第一版默认改为需要计划审批后再执行。',
+    intent: 'implement',
   },
 ];
 

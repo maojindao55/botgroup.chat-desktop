@@ -47,9 +47,7 @@
     "autoApprovalHint": "When enabled, CLI Agents run automatically without confirmation.",
     "timeoutSeconds": "Timeout (seconds)",
     "agentCollaboration": "In-group collaboration",
-    "coordinatorPrompt": "Coordinator prompt",
-    "coordinatorPromptPlaceholder": "Define how the coordinator delegates tasks and summarizes results...",
-    "maxRounds": "Max collaboration rounds"
+    "agentEffort": "Default workflow preference"
   },
   "steps": {
     "type": "Choose scenario",

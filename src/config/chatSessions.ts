@@ -7,6 +7,8 @@
  * 所有需要展示给用户的兜底文案（如默认标题）都以参数传入，由 UI 层提供译文。
  */
 
+import type { AgentWorkflowRun } from './agentWorkflow';
+
 export type ChatSessionTitleSource = 'auto' | 'manual';
 
 export type ChatAttachmentKind = 'image' | 'document' | 'code';
@@ -29,6 +31,8 @@ export interface ChatSessionMessage {
   content: string;
   isAI: boolean;
   isError?: boolean;
+  /** True while a runner is still streaming tokens into this message. */
+  isStreaming?: boolean;
   createdAt?: string;
   /** CLI agent 一次任务 id，用于查执行日志 */
   agentTaskId?: string;
@@ -36,6 +40,10 @@ export interface ChatSessionMessage {
   adapter?: string;
   /** Path-based user attachments for CLI agents. Stores metadata only, never file bytes. */
   attachments?: ChatAttachment[];
+  /** Agent workflow execution metadata. Stored in lightweight/truncated form. */
+  workflowRun?: AgentWorkflowRun;
+  /** Render-time only flag used by the rule planner workflow container. */
+  hidden?: boolean;
 }
 
 /** 创建会话时的群行为快照，避免后续改群设置影响历史会话语义 */
@@ -54,6 +62,8 @@ export interface ChatSession {
   titleGenerated?: boolean;
   pinned?: boolean;
   archived?: boolean;
+  /** 后台任务完成但用户未阅读，用于侧栏 badge */
+  unread?: boolean;
   createdAt: string;
   updatedAt: string;
   messages: ChatSessionMessage[];
@@ -191,6 +201,78 @@ function sanitizeAttachmentsForStorage(raw: unknown): ChatAttachment[] {
   return sanitized;
 }
 
+const WORKFLOW_OUTPUT_MAX_LEN = 2000;
+const WORKFLOW_SUMMARY_MAX_LEN = 2000;
+
+function truncateStorageText(value: unknown, maxLen: number): string {
+  if (typeof value !== 'string') return '';
+  return value.length <= maxLen ? value : `${value.slice(0, Math.max(1, maxLen - 1))}…`;
+}
+
+export function sanitizeWorkflowRunForStorage(raw: unknown): AgentWorkflowRun | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const run = raw as AgentWorkflowRun;
+  if (!run.id || !run.plan || !run.phaseStates) return undefined;
+
+  const phaseStates: AgentWorkflowRun['phaseStates'] = {};
+  for (const [phaseId, state] of Object.entries(run.phaseStates)) {
+    phaseStates[phaseId] = {
+      phaseId: state.phaseId || phaseId,
+      status: state.status,
+      selectedAgentIds: Array.isArray(state.selectedAgentIds) ? state.selectedAgentIds.slice(0, 20) : [],
+      outputs: Array.isArray(state.outputs)
+        ? state.outputs.slice(0, 20).map(output => ({
+          agentId: output.agentId,
+          agentName: output.agentName,
+          content: truncateStorageText(output.content, WORKFLOW_OUTPUT_MAX_LEN),
+          ...(output.isError ? { isError: true } : {}),
+          ...(output.agentTaskId ? { agentTaskId: output.agentTaskId } : {}),
+          ...(output.adapter ? { adapter: output.adapter } : {}),
+        }))
+        : [],
+      ...(state.summary ? { summary: truncateStorageText(state.summary, WORKFLOW_SUMMARY_MAX_LEN) } : {}),
+      ...(state.error ? { error: truncateStorageText(state.error, 1000) } : {}),
+      ...(state.startedAt ? { startedAt: state.startedAt } : {}),
+      ...(state.endedAt ? { endedAt: state.endedAt } : {}),
+      ...(state.attempts ? { attempts: state.attempts } : {}),
+      ...(state.attemptHistory
+        ? {
+          attemptHistory: state.attemptHistory.slice(0, 20).map(a => ({
+            attemptNumber: a.attemptNumber,
+            status: a.status,
+            outputs: Array.isArray(a.outputs)
+              ? a.outputs.slice(0, 20).map(output => ({
+                agentId: output.agentId,
+                agentName: output.agentName,
+                content: truncateStorageText(output.content, WORKFLOW_OUTPUT_MAX_LEN),
+                ...(output.isError ? { isError: true } : {}),
+                ...(output.agentTaskId ? { agentTaskId: output.agentTaskId } : {}),
+                ...(output.adapter ? { adapter: output.adapter } : {}),
+              }))
+              : [],
+            ...(a.summary ? { summary: truncateStorageText(a.summary, WORKFLOW_SUMMARY_MAX_LEN) } : {}),
+            ...(a.error ? { error: truncateStorageText(a.error, 1000) } : {}),
+            ...(a.startedAt ? { startedAt: a.startedAt } : {}),
+            ...(a.endedAt ? { endedAt: a.endedAt } : {}),
+            ...(a.feedbackUsed ? { feedbackUsed: truncateStorageText(a.feedbackUsed, 1000) } : {}),
+          })),
+        }
+        : {}),
+      ...(state.verdict ? { verdict: state.verdict } : {}),
+      ...(state.verdictReasoning ? { verdictReasoning: truncateStorageText(state.verdictReasoning, 1000) } : {}),
+    };
+  }
+
+  return {
+    id: run.id,
+    plan: run.plan,
+    status: run.status,
+    phaseStates,
+    createdAt: run.createdAt,
+    updatedAt: run.updatedAt,
+  };
+}
+
 export function sanitizeMessageForStorage(m: ChatSessionMessage): ChatSessionMessage {
   const sanitized: ChatSessionMessage = {
     id: m.id,
@@ -199,11 +281,15 @@ export function sanitizeMessageForStorage(m: ChatSessionMessage): ChatSessionMes
     isAI: !!m.isAI,
   };
   if (m.isError) sanitized.isError = true;
+  if (m.isStreaming) sanitized.isStreaming = true;
+  if (m.hidden) sanitized.hidden = true;
   if (m.createdAt) sanitized.createdAt = m.createdAt;
   if (m.agentTaskId) sanitized.agentTaskId = m.agentTaskId;
   if (m.adapter) sanitized.adapter = m.adapter;
   const attachments = sanitizeAttachmentsForStorage((m as ChatSessionMessage & { attachments?: unknown }).attachments);
   if (attachments.length > 0) sanitized.attachments = attachments;
+  const workflowRun = sanitizeWorkflowRunForStorage((m as ChatSessionMessage & { workflowRun?: unknown }).workflowRun);
+  if (workflowRun) sanitized.workflowRun = workflowRun;
   return sanitized;
 }
 

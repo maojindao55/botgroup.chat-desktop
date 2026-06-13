@@ -15,4 +15,22 @@ assert.match(
   'replaceMessages must return the original state when messages are unchanged',
 );
 
+assert.match(
+  source,
+  /updateMessage:\s*\(sessionId,\s*messageId,\s*patch\)\s*=>\s*{/,
+  'updateMessage must accept a patch and merge it into the target message',
+);
+
+assert.match(
+  source,
+  /markUnread:\s*\(sessionId\)\s*=>\s*{/,
+  'markUnread must be exposed on the store',
+);
+
+assert.match(
+  source,
+  /markRead:\s*\(sessionId\)\s*=>\s*{/,
+  'markRead must be exposed on the store',
+);
+
 console.log('chatSessionStore.test.mjs: ok');

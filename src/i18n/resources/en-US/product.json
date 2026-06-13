@@ -30,28 +30,6 @@
       "description": "Every character speaks each round. Good for brainstorming and model comparison."
     }
   },
-  "agentWorkflowTemplates": {
-    "expert_consult": {
-      "label": "Expert consult",
-      "description": "Multiple experts analyze the same problem independently, then synthesize a conclusion."
-    },
-    "proposal": {
-      "label": "Proposal drafting",
-      "description": "Collaborate through research, drafting, review, and finalization."
-    },
-    "decision_review": {
-      "label": "Decision review",
-      "description": "Surface benefits, risks, constraints, and a final recommendation from multiple roles."
-    },
-    "relay_edit": {
-      "label": "Relay editing",
-      "description": "One expert drafts, another reviews, and another revises."
-    },
-    "auto_delegate": {
-      "label": "Auto delegation",
-      "description": "A coordinator delegates across rounds. Good when the goal is clear but steps are not."
-    }
-  },
   "cliWorkflowTemplates": {
     "quick_response": {
       "label": "Quick response",

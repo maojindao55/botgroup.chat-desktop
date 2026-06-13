@@ -63,7 +63,6 @@ import {
 } from '@/config/chatSessions';
 import { generateSessionTitle } from '@/utils/sessionTitle';
 import { readLastView, saveLastView, clearLastView } from '@/utils/lastViewStorage';
-import { isTauriMacOS } from '@/utils/isTauri';
 
 const useStyles = createStyles(({ token, css }) => ({
   page: css`
@@ -114,7 +113,6 @@ const useStyles = createStyles(({ token, css }) => ({
   `,
   headerBar: css`
     background: ${token.colorBgContainer};
-    border-bottom: 1px solid ${token.colorBorder};
     backdrop-filter: blur(12px);
     flex: none;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
@@ -129,6 +127,7 @@ const useStyles = createStyles(({ token, css }) => ({
     box-sizing: border-box;
     overflow: hidden;
     padding: 0 12px;
+    border-bottom: 1px solid ${token.colorBorder};
     @media (max-width: 640px) {
       padding: 0 10px;
     }
@@ -1854,7 +1853,6 @@ const ChatUI = () => {
   // 当前用户头像从全局解析（不随消息持久化，避免 base64 撑爆存储）；历史消息也据此渲染
   const selfAvatar = userStore.avatarDisplaySrc || userStore.userInfo?.avatar_url || undefined;
   const isCLIGroup = group.type === 'cli';
-  const hideAppHeaderBar = isTauriMacOS() && !isMobile;
 
   return (
     <>
@@ -1954,7 +1952,6 @@ const ChatUI = () => {
             onDeleteSession={handleDeleteSession}
             onTogglePin={toggleChatSessionPinned}
             onToggleArchive={toggleChatSessionArchived}
-            onOpenGroupSettings={hideAppHeaderBar ? () => handleToggleSettings(true) : undefined}
           />
         )}
 
@@ -1971,7 +1968,6 @@ const ChatUI = () => {
               </button>
             </Tooltip>
           )}
-          {!hideAppHeaderBar && (
           <header className={styles.headerBar}>
             <div className={styles.headerInner}>
               <div className={styles.headerLeft}>
@@ -2038,7 +2034,6 @@ const ChatUI = () => {
               </div>
             </div>
           </header>
-          )}
 
 
           {/* Chat Area */}

@@ -47,9 +47,7 @@
     "autoApprovalHint": "开启后 CLI Agent 自动执行，无需确认",
     "timeoutSeconds": "超时时间 (秒)",
     "agentCollaboration": "群内协作方式",
-    "coordinatorPrompt": "协调者 Prompt",
-    "coordinatorPromptPlaceholder": "定义协调者如何分派任务和汇总结果...",
-    "maxRounds": "最大协作轮数"
+    "agentEffort": "默认协作偏好"
   },
   "steps": {
     "type": "选择群聊场景",

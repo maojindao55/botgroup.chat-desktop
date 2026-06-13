@@ -62,10 +62,93 @@
     "loadingLibrary": "正在加载成员数据...",
     "unresolvedMembers": "该群引用了 {{count}} 位专家，但当前设置中找不到。",
     "unresolvedMembersHint": "请到「{{settings}}」检查或重新添加成员。",
-    "strategyMeta": "策略: {{strategy}} | 最大轮数: {{maxRounds}}",
     "expertBadge": "专家",
     "inputPlaceholder": "输入消息，专家群友将按群规协作回复...",
     "settings": "设置"
+  },
+  "agentWorkflow": {
+    "sender": "协作计划",
+    "planning": "正在生成协作计划…",
+    "plannerBadge": "规划者",
+    "approvalTitle": "确认执行工作流",
+    "planTitle": "协作计划",
+    "confirmRun": "开始执行",
+    "cancelled": "已取消执行计划",
+    "card": {
+      "run": "开始执行",
+      "cancel": "取消",
+      "modify": "修改计划",
+      "replan": "重新生成",
+      "revising": "正在重新生成计划…",
+      "cancelEdit": "取消修改",
+      "warningPrefix": "提示",
+      "requiresApproval": "需要确认",
+      "instructionPlaceholder": "告诉规划器需要怎么改，例如：只读模式 / 仅用一个 agent / 聚焦复审"
+    },
+    "risk": {
+      "low": "低风险",
+      "medium": "中风险",
+      "high": "高风险"
+    },
+    "intent": {
+      "quick": "快速回答",
+      "discuss": "讨论",
+      "multi_solution": "多方案",
+      "implement": "实现",
+      "review": "复审",
+      "audit": "审计",
+      "custom": "自定义"
+    },
+    "status": {
+      "planned": "待执行",
+      "running": "执行中",
+      "completed": "已完成",
+      "failed": "失败",
+      "cancelled": "已取消",
+      "pending": "等待",
+      "skipped": "已跳过"
+    },
+    "phase": {
+      "mode": {
+        "readOnly": "只读",
+        "review": "复审",
+        "write": "写入",
+        "verifier": "校验"
+      },
+      "schedule": {
+        "single": "单成员",
+        "parallel": "并行",
+        "sequential": "顺序"
+      },
+      "agentsLabel": "成员",
+      "autoSuffix": "自动",
+      "errorTag": "错误",
+      "attempt": "第 {{count}} 次执行",
+      "verdictLabel": "判定",
+      "verdict": {
+        "pass": "通过",
+        "fail": "未通过"
+      }
+    },
+    "planner": {
+      "emptyTitle": "无操作",
+      "emptyExplanation": "未找到可用的成员。",
+      "warnings": {
+        "noMembers": "当前群聊没有可用的 agent 成员。"
+      },
+      "intents": {
+        "quick": {
+          "title": "快速回答",
+          "explanation": "由单个成员直接回答问题。"
+        }
+      },
+      "phases": {
+        "answer": {
+          "label": "回答",
+          "prompt": "直接回答用户请求。除非明确要求，否则不要修改文件。"
+        }
+      }
+    }
   },
   "attachments": {
     "add": "添加附件",
@@ -97,6 +180,8 @@
     "archivedTag": "已归档",
     "deleteConfirmTitle": "删除会话「{{name}}」？",
     "deleteConfirmContent": "该会话的聊天记录将被永久删除，无法恢复。",
-    "expand": "展开会话列表"
+    "expand": "展开会话列表",
+    "runningTip": "后台执行中",
+    "unreadTip": "有新结果"
   }
 }

@@ -128,9 +128,10 @@ export function mapToRust(m: AIMember): RustAIMember {
       tools: m.tools,
       maxTurns: m.maxTurns,
       temperature: m.temperature,
+      capabilities: m.capabilities,
     };
   } else if (m.kind === 'cli') {
-    configObj = { cli: m.cli };
+    configObj = { cli: m.cli, capabilities: m.capabilities };
   }
   if (m.forkedFrom) configObj.forkedFrom = m.forkedFrom;
 
@@ -210,10 +211,14 @@ export const useAIMemberStore = create<AIMemberStore>((set, get) => ({
           record[r.id] = mapFromRust(r);
         });
 
-        // 内置成员头像等展示字段以代码配置为准，避免 DB 中旧 seed 数据滞后
+        // 内置成员展示字段与 planner 所需能力以代码配置为准，避免 DB 中旧 seed 数据滞后
         builtinAIMembers.forEach((b) => {
           if (record[b.id]?.source === 'builtin') {
-            record[b.id] = { ...record[b.id], avatar: b.avatar };
+            record[b.id] = {
+              ...record[b.id],
+              avatar: b.avatar,
+              capabilities: 'capabilities' in b ? b.capabilities : (record[b.id] as any).capabilities,
+            } as AIMember;
           }
         });
 

@@ -409,4 +409,51 @@ assert.equal(cleanGeneratedTitle('   '), '', 'whitespace -> empty');
   assert.equal(shouldGenerateTitle({ ...untitled, messages: [userMsg, errAi] }), false, 'error reply ignored');
 }
 
+// ---- sanitizeMessageForStorage: preserves workflowRun attempts/history/verdict ----
+{
+  const msg = {
+    id: 'm-wf',
+    sender: { id: '__workflow__', name: 'Planner' },
+    content: '',
+    isAI: true,
+    isStreaming: true,
+    hidden: true,
+    workflowRun: {
+      id: 'wf_1',
+      plan: {
+        version: 1, title: 'T', intent: 'quick', riskLevel: 'low', requiresApproval: false, explanation: '', phases: []
+      },
+      status: 'running',
+      phaseStates: {
+        p1: {
+          phaseId: 'p1',
+          status: 'completed',
+          selectedAgentIds: ['a'],
+          outputs: [{ agentId: 'a', agentName: 'A', content: 'out' }],
+          summary: 'summary',
+          attempts: 2,
+          attemptHistory: [
+            { attemptNumber: 1, status: 'failed', outputs: [], error: 'e', summary: 's1' },
+            { attemptNumber: 2, status: 'completed', outputs: [{ agentId: 'a', agentName: 'A', content: 'ok' }], summary: 's2', feedbackUsed: 'fb' },
+          ],
+          verdict: 'pass',
+          verdictReasoning: 'reasoning',
+        },
+      },
+      createdAt: 1,
+      updatedAt: 2,
+    },
+  };
+  const sanitized = sanitizeMessageForStorage(msg);
+  assert.equal(sanitized.isStreaming, true);
+  assert.equal(sanitized.hidden, true);
+  const p1 = sanitized.workflowRun.phaseStates.p1;
+  assert.equal(p1.attempts, 2);
+  assert.equal(p1.attemptHistory.length, 2);
+  assert.equal(p1.attemptHistory[0].status, 'failed');
+  assert.equal(p1.attemptHistory[1].summary, 's2');
+  assert.equal(p1.verdict, 'pass');
+  assert.equal(p1.verdictReasoning, 'reasoning');
+}
+
 console.log('chatSessions tests OK');
