@@ -41,6 +41,8 @@ interface ChatSessionStore {
   updateMessage: (sessionId: string, messageId: string | number, patch: Partial<ChatSessionMessage>) => void;
   /** 安全点整体提交（避免逐 token 落盘）；内容无变化时不更新 updatedAt */
   replaceMessages: (sessionId: string, messages: ChatSessionMessage[]) => void;
+  markUnread: (sessionId: string) => void;
+  markRead: (sessionId: string) => void;
 }
 
 function bumpNow(): string {
@@ -266,6 +268,34 @@ export const useChatSessionStore = create<ChatSessionStore>()(
             }
             changed = true;
             return { ...s, messages: clamped, updatedAt: bumpNow() };
+          });
+          return changed ? { sessions } : state;
+        });
+      },
+
+      markUnread: (sessionId) => {
+        set(state => {
+          let changed = false;
+          const sessions = state.sessions.map(s => {
+            if (s.id !== sessionId) return s;
+            if (s.unread) return s;
+            changed = true;
+            return { ...s, unread: true };
+          });
+          return changed ? { sessions } : state;
+        });
+      },
+
+      markRead: (sessionId) => {
+        set(state => {
+          let changed = false;
+          const sessions = state.sessions.map(s => {
+            if (s.id !== sessionId) return s;
+            if (!s.unread) return s;
+            changed = true;
+            const next = { ...s };
+            delete next.unread;
+            return next;
           });
           return changed ? { sessions } : state;
         });

@@ -171,6 +171,27 @@ const useStyles = createStyles(({ token, css }) => ({
     flex: none;
     color: #ff6600;
   `,
+  unreadBadge: css`
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: #ff6600;
+    box-shadow: 0 0 0 2px ${token.colorBgContainer};
+  `,
+  runningDot: css`
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: ${token.colorInfo};
+    animation: convRunningPulse 1.2s ease-in-out infinite;
+
+    @keyframes convRunningPulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.35); opacity: 0.55; }
+    }
+  `,
   actions: css`
     display: inline-flex;
     align-items: center;
@@ -252,6 +273,7 @@ interface ConversationSidebarProps {
   sessions: ChatSession[];
   selectedSessionId: string | null;
   groupName?: string;
+  runningSessionIds?: Set<string>;
   onSelectSession: (sessionId: string) => void;
   onNewSession: () => void;
   onRenameSession: (sessionId: string, title: string) => void;
@@ -268,6 +290,7 @@ export const ConversationSidebar = ({
   toggleSidebar,
   sessions,
   selectedSessionId,
+  runningSessionIds,
   onSelectSession,
   onNewSession,
   onRenameSession,
@@ -410,6 +433,8 @@ export const ConversationSidebar = ({
             {filteredSessions.map(session => {
               const isSelected = selectedSessionId === session.id;
               const isEditing = editingId === session.id;
+              const isRunning = !!runningSessionIds?.has(session.id);
+              const showUnread = !!session.unread && !isSelected;
               return (
                 <div
                   key={session.id}
@@ -419,6 +444,16 @@ export const ConversationSidebar = ({
                   <div className={styles.titleRow}>
                     <div className={styles.titleWrap}>
                       {session.pinned && <Pin size={12} className={styles.pinIcon} />}
+                      {isRunning && (
+                        <Tooltip title={t('chat:conversation.runningTip', { defaultValue: '后台执行中' })}>
+                          <span className={styles.runningDot} />
+                        </Tooltip>
+                      )}
+                      {showUnread && !isRunning && (
+                        <Tooltip title={t('chat:conversation.unreadTip', { defaultValue: '有新结果' })}>
+                          <span className={styles.unreadBadge} />
+                        </Tooltip>
+                      )}
                       {isEditing ? (
                         <Input
                           ref={editInputRef}
