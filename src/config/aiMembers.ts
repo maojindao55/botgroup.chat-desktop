@@ -166,4 +166,19 @@ export const builtinAIMembers: AIMember[] = [
       showStderr: true,
     }
   },
+  {
+    id: 'cli-kimi',
+    kind: 'cli',
+    name: 'Kimi Code',
+    avatar: 'lobehub:Kimi',
+    description: 'Kimi Code CLI Agent，基于 Kimi 旗舰模型，擅长代码阅读、文件编辑与命令执行',
+    source: 'builtin',
+    enabled: true,
+    capabilities: ['implementation', 'codebase-analysis', 'debugging'],
+    cli: {
+      adapter: 'kimi',
+      approvalMode: 'auto',
+      showStderr: false,
+    }
+  },
 ];
