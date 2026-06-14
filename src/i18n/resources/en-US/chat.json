@@ -150,12 +150,60 @@
         "quick": {
           "title": "Quick answer",
           "explanation": "A single agent answers the question directly."
+        },
+        "discuss": {
+          "title": "Expert consult",
+          "explanation": "Multiple experts analyze in parallel, then one synthesizes."
+        },
+        "multi_solution": {
+          "title": "Multiple solutions",
+          "explanation": "Multiple experts each propose a solution, then compare."
+        },
+        "implement": {
+          "title": "Implement",
+          "explanation": "An implementer makes code changes (requires approval)."
+        },
+        "review": {
+          "title": "Implement then review",
+          "explanation": "Implementer changes, then a reviewer verifies; redo on fail."
+        },
+        "audit": {
+          "title": "Read-only audit",
+          "explanation": "Multiple experts audit the current state, then summarize risks."
         }
       },
       "phases": {
         "answer": {
           "label": "Answer",
           "prompt": "Answer the user request directly. Do not modify files unless explicitly required."
+        },
+        "consult": {
+          "label": "Consult",
+          "prompt": "Analyze the problem from your role's perspective and give your expert opinion."
+        },
+        "synthesize": {
+          "label": "Synthesize",
+          "prompt": "Synthesize the experts' opinions from the previous phase into a consensus."
+        },
+        "propose": {
+          "label": "Propose",
+          "prompt": "Independently propose a complete solution; do not reference others."
+        },
+        "compare": {
+          "label": "Compare",
+          "prompt": "Compare the pros and cons of the proposed solutions; give a recommendation with rationale."
+        },
+        "implement": {
+          "label": "Implement",
+          "prompt": "Make the minimal necessary changes and run validation; report root cause, changes, validation, residual risk."
+        },
+        "verify": {
+          "label": "Review",
+          "prompt": "Check whether the previous phase meets the bar, has side effects, and is adequately validated. Output PASS if it passes, otherwise FAIL with a concrete issue list."
+        },
+        "audit": {
+          "label": "Audit",
+          "prompt": "Audit risks and issues in the current state; output an issue list."
         }
       }
     }
