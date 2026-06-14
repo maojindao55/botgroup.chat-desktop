@@ -2,7 +2,7 @@
  * 专家群聊对话组件
  * 独立的聊天 UI，使用 planner -> workflow runner 驱动对话
  */
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Send, Square, Settings2, ChevronLeft, Puzzle, PanelLeftOpen, Paperclip } from 'lucide-react';
 import { Tooltip, Button as AntdButton, Modal, message as antdMessage } from 'antd';
@@ -26,7 +26,9 @@ import CLITaskLogModal from './CLITaskLogModal';
 import type { AgentGroup, Group } from '@/config/groups';
 import { isBuiltinGroupId } from '@/config/groupStorage';
 import { useAIMemberStore } from '@/store/aiMemberStore';
+import type { AIMember } from '@/config/aiMembers';
 import { useChatSessionStore } from '@/store/chatSessionStore';
+import { useShallow } from 'zustand/react/shallow';
 import { useAgentWorkflowPlannerSettings } from '@/store/agentWorkflowPlannerSettings';
 import {
   truncateSessionTitle,
@@ -62,6 +64,8 @@ function nextMsgId(): string {
 /** 旧版单会话 localStorage key 前缀（仅用于一次性迁移） */
 const LEGACY_MSG_KEY_PREFIX = 'agent_chat_messages:';
 const LEGACY_TITLE_KEY_PREFIX = 'agent_chat_title:';
+
+const EMPTY_MESSAGES: readonly ChatSessionMessage[] = Object.freeze([]);
 
 interface ChatMessage {
   id: string;
@@ -516,6 +520,176 @@ const useStyles = createStyles(({ token, css }) => ({
   `,
 }));
 
+// Store updateMessage preserves object refs for unchanged messages, so
+// React.memo skips historical messages during streaming token updates.
+interface AgentMessageItemProps {
+  message: ChatSessionMessage;
+  members: Record<string, AIMember>;
+  userName: string;
+  userAvatarDisplaySrc?: string | null;
+  basePath?: string;
+  isPendingPlan: boolean;
+  isRevisingPlan: boolean;
+  onRun?: (messageId: string, force?: boolean) => void;
+  onCancel?: (messageId: string) => void;
+  onRevise?: (messageId: string, instruction: string) => void;
+  onLogClick: (target: { agentTaskId: string; agentName?: string; adapter?: string }) => void;
+}
+
+const BASE_AGENT_ID_SUFFIX_RE = /__.+$/;
+const BASE_AGENT_ID_ROUND_RE = /_r\d+$/;
+
+function AgentMessageItemComponent({
+  message,
+  members,
+  userName,
+  userAvatarDisplaySrc,
+  basePath,
+  isPendingPlan,
+  isRevisingPlan,
+  onRun,
+  onCancel,
+  onRevise,
+  onLogClick,
+}: AgentMessageItemProps) {
+  const { t } = useTranslation(['chat', 'cli', 'chat:agentWorkflow']);
+  const { styles, cx } = useStyles();
+
+  if (message.hidden) return null;
+
+  const isUser = message.sender.name === userName;
+  const hasTextContent = (message.content || '').trim().length > 0;
+  const hasAttachments = !!message.attachments?.length;
+  const isWorkflowMessage = message.sender.id === '__workflow__' || !!message.workflowRun;
+  const plannerModelName = message.workflowRun?.plan.plannerModel
+    || (isWorkflowMessage ? message.sender.name : undefined);
+  const baseAgentId = message.sender.id?.replace(BASE_AGENT_ID_SUFFIX_RE, '').replace(BASE_AGENT_ID_ROUND_RE, '') || '';
+  const member = !isUser && baseAgentId
+    ? resolveEffectiveMember(members, baseAgentId)
+    : undefined;
+  const avatarName = member?.name || message.sender.name;
+  const a = getAvatarData(avatarName);
+  const url = isUser
+    ? resolveAvatarByName(userName, userAvatarDisplaySrc ?? undefined, 40)
+    : resolveAvatarByName(avatarName, member?.avatar || message.sender.avatar, 40);
+  const isStreaming = !!message.isStreaming;
+
+  let bubbleClass = styles.bubbleAI;
+  if (isUser) bubbleClass = styles.bubbleUser;
+  else if (message.isError) bubbleClass = styles.bubbleError;
+
+  const warnings = message.content ? message.content.split('\n').filter(Boolean) : [];
+
+  const handleLogClick = () => {
+    onLogClick({
+      agentTaskId: message.agentTaskId!,
+      agentName: message.sender.name,
+      adapter: message.adapter,
+    });
+  };
+  const messageId = String(message.id);
+  const handleRun = onRun ? () => onRun(messageId) : undefined;
+  const handleCancel = onCancel ? () => onCancel(messageId) : undefined;
+  const handleRevise = onRevise ? (instruction: string) => onRevise(messageId, instruction) : undefined;
+
+  return (
+    <div
+      className={styles.messageRow}
+      style={{ justifyContent: isUser ? 'flex-end' : 'flex-start' }}
+    >
+      {!isUser && (
+        isWorkflowMessage && plannerModelName ? (
+          <ModelIcon
+            model={plannerModelName}
+            type="avatar"
+            shape="circle"
+            size={40}
+            style={{ flexShrink: 0 }}
+          />
+        ) : (
+          <LobeAvatar
+            avatar={url || a.text}
+            background={a.backgroundColor}
+            shape="circle"
+            size={40}
+            title={message.sender.name}
+            style={{ flexShrink: 0 }}
+          />
+        )
+      )}
+      <div className={cx(styles.messageBody, isUser && styles.messageBodyUser)}>
+        <div className={styles.metaRow} style={{ justifyContent: isUser ? 'flex-end' : 'flex-start' }}>
+          {message.sender.name}
+          {!isUser && !isWorkflowMessage && (
+            <span className={styles.agentBadge}>{t('chat:agentChat.expertBadge')}</span>
+          )}
+          {!isUser && isWorkflowMessage && (
+            <span className={styles.plannerBadge}>{t('chat:agentWorkflow.plannerBadge', { defaultValue: '规划者' })}</span>
+          )}
+        </div>
+        {(!isUser || hasTextContent || isWorkflowMessage) && (
+          <div className={bubbleClass}>
+            {message.workflowRun ? (
+              <AgentWorkflowPlanCard
+                plan={message.workflowRun.plan}
+                run={message.workflowRun}
+                warnings={warnings}
+                running={message.workflowRun.status === 'running'}
+                revising={isRevisingPlan}
+                onRun={isPendingPlan ? handleRun : undefined}
+                onCancel={isPendingPlan ? handleCancel : undefined}
+                onRevise={isPendingPlan ? handleRevise : undefined}
+              />
+            ) : (
+              <ChatMarkdown content={message.content || ''} isUser={isUser} basePath={basePath} />
+            )}
+            {!isUser && !isWorkflowMessage && (
+              <ChatAttachmentList
+                attachments={message.attachments}
+                unavailableLabel={t('chat:attachments.unavailable', { defaultValue: '文件不可用' })}
+              />
+            )}
+            {isStreaming && (
+              <span className={cx('typing-indicator', styles.typingCursor)}>▋</span>
+            )}
+            {!isUser && member?.kind === 'cli' && message.agentTaskId && (
+              <div className={styles.cliLogBtnRow}>
+                <button
+                  type="button"
+                  className={styles.cliLogBtn}
+                  onClick={handleLogClick}
+                >
+                  {t('cli:taskUI.message.log', { defaultValue: '日志' })}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+        {isUser && hasAttachments && (
+          <div className={styles.userAttachmentBubble}>
+            <ChatAttachmentList
+              attachments={message.attachments}
+              unavailableLabel={t('chat:attachments.unavailable', { defaultValue: '文件不可用' })}
+            />
+          </div>
+        )}
+      </div>
+      {isUser && (
+        <LobeAvatar
+          avatar={url || a.text}
+          background={a.backgroundColor}
+          shape="circle"
+          size={40}
+          title={message.sender.name}
+          style={{ flexShrink: 0 }}
+        />
+      )}
+    </div>
+  );
+}
+
+const AgentMessageItem = memo(AgentMessageItemComponent);
+
 const AgentChatUI = ({
   group,
   groups,
@@ -529,7 +703,7 @@ const AgentChatUI = ({
   const { t } = useTranslation(['chat', 'settings', 'library', 'common']);
   const userStore = useUserStore();
   const isMobile = useIsMobile();
-  const { styles, cx } = useStyles();
+  const { styles } = useStyles();
   const members = useAIMemberStore(s => s.members);
   const membersLoading = useAIMemberStore(s => s.loading);
   const loadMembers = useAIMemberStore(s => s.load);
@@ -593,6 +767,11 @@ const AgentChatUI = ({
     }
   });
   const runningSessionsRef = useRef<Map<string, AbortController>>(new Map());
+  const tokenFlushRef = useRef<{
+    sessionId: string;
+    dirty: Map<string, string>;
+    rafId: number | null;
+  }>({ sessionId: '', dirty: new Map(), rafId: null });
   const [runningSessionsVersion, setRunningSessionsVersion] = useState(0);
   const bumpRunningSessions = useCallback(() => {
     setRunningSessionsVersion(v => v + 1);
@@ -616,7 +795,6 @@ const AgentChatUI = ({
     adapter?: string;
   } | null>(null);
 
-  const chatSessions = useChatSessionStore(state => state.sessions);
   const createChatSessionInStore = useChatSessionStore(state => state.createSession);
   const appendStoreMessage = useChatSessionStore(state => state.appendMessage);
   const updateStoreMessage = useChatSessionStore(state => state.updateMessage);
@@ -628,31 +806,14 @@ const AgentChatUI = ({
   const toggleChatSessionPinned = useChatSessionStore(state => state.togglePinned);
   const toggleChatSessionArchived = useChatSessionStore(state => state.toggleArchived);
 
-  const groupSessions = useMemo(
-    () => chatSessions.filter(s => s.groupId === group.id),
-    [chatSessions, group.id],
+  const groupSessions = useChatSessionStore(
+    useShallow(state => state.sessions.filter(s => s.groupId === group.id)),
   );
-  const activeSession = useMemo(
-    () => (activeSessionId ? chatSessions.find(s => s.id === activeSessionId) || null : null),
-    [chatSessions, activeSessionId],
+  const activeSession = useChatSessionStore(state =>
+    activeSessionId ? state.sessions.find(s => s.id === activeSessionId) ?? null : null,
   );
 
-  const messages = useMemo<ChatMessage[]>(() => {
-    if (!activeSession) return [];
-    return activeSession.messages.map(m => ({
-      id: String(m.id),
-      sender: { id: m.sender?.id, name: m.sender?.name },
-      content: m.content || '',
-      isAI: !!m.isAI,
-      isError: !!m.isError,
-      isStreaming: !!m.isStreaming,
-      hidden: !!m.hidden,
-      agentTaskId: m.agentTaskId,
-      adapter: m.adapter,
-      attachments: m.attachments || [],
-      workflowRun: m.workflowRun,
-    }));
-  }, [activeSession]);
+  const messages = activeSession?.messages ?? EMPTY_MESSAGES;
 
   const titleGenRef = useRef<Set<string>>(new Set());
   const pendingWorkflowsRef = useRef<Record<string, PendingWorkflowExecution>>({});
@@ -721,7 +882,7 @@ const AgentChatUI = ({
     } catch { /* noop */ }
   }, []);
 
-  const rehydratePendingWorkflows = useCallback((msgs: ChatMessage[], sessionId: string) => {
+  const rehydratePendingWorkflows = useCallback((msgs: readonly ChatSessionMessage[], sessionId: string) => {
     let added = false;
     for (let i = 0; i < msgs.length; i++) {
       const m = msgs[i];
@@ -771,7 +932,7 @@ const AgentChatUI = ({
   useEffect(() => {
     if (!activeSessionId) return;
     if (!activeSession) {
-      const hasAnySessionForGroup = chatSessions.some(s => s.groupId === group.id);
+      const hasAnySessionForGroup = groupSessions.some(s => s.groupId === group.id);
       if (!hasAnySessionForGroup) return;
       setActiveSessionId(null);
       updateConvParam(null);
@@ -781,7 +942,7 @@ const AgentChatUI = ({
       setActiveSessionId(null);
       updateConvParam(null);
     }
-  }, [activeSessionId, activeSession, chatSessions, group.id]);
+  }, [activeSessionId, activeSession, groupSessions, group.id]);
 
   useEffect(() => {
     if (activeSessionId) return;
@@ -789,15 +950,15 @@ const AgentChatUI = ({
       userStartedNewRef.current = false;
       return;
     }
-    const candidates = chatSessions
-      .filter(s => s.groupId === group.id && !s.archived)
+    const candidates = groupSessions
+      .filter(s => !s.archived)
       .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
     if (candidates.length > 0) {
       setActiveSessionId(candidates[0].id);
       updateConvParam(candidates[0].id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [group.id, chatSessions, activeSessionId]);
+  }, [group.id, groupSessions, activeSessionId]);
 
   useEffect(() => {
     if (!activeSessionId || !activeSession) return;
@@ -824,7 +985,7 @@ const AgentChatUI = ({
   }, [messages, isLoading, activeSessionId, activeSession]);
 
   const ensureActiveSession = (firstText: string): string | null => {
-    if (activeSessionId && chatSessions.some(s => s.id === activeSessionId && s.groupId === group.id)) {
+    if (activeSessionId && groupSessions.some(s => s.id === activeSessionId)) {
       return activeSessionId;
     }
     const fallbackTitle = truncateSessionTitle(firstText, undefined, t('chat:conversation.untitled'));
@@ -852,7 +1013,7 @@ const AgentChatUI = ({
   };
 
   const handleDeleteSession = (sessionId: string) => {
-    const target = chatSessions.find(s => s.id === sessionId);
+    const target = groupSessions.find(s => s.id === sessionId);
     Modal.confirm({
       title: t('chat:conversation.deleteConfirmTitle', { name: target?.title || '' }),
       content: t('chat:conversation.deleteConfirmContent'),
@@ -862,8 +1023,8 @@ const AgentChatUI = ({
       onOk: () => {
         deleteChatSession(sessionId);
         if (sessionId === activeSessionId) {
-          const remaining = chatSessions
-            .filter(s => s.id !== sessionId && s.groupId === group.id && !s.archived)
+          const remaining = groupSessions
+            .filter(s => s.id !== sessionId && !s.archived)
             .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
           if (remaining.length > 0) {
             setActiveSessionId(remaining[0].id);
@@ -967,6 +1128,12 @@ const AgentChatUI = ({
   const handleAbort = useCallback(() => {
     const targetSessionId = activeSessionIdRef.current;
     if (!targetSessionId) return;
+    const flush = tokenFlushRef.current;
+    if (flush.rafId !== null) {
+      cancelAnimationFrame(flush.rafId);
+      flush.rafId = null;
+    }
+    flush.dirty.clear();
     const controller = runningSessionsRef.current.get(targetSessionId);
     if (controller) {
       controller.abort();
@@ -982,6 +1149,13 @@ const AgentChatUI = ({
       }
     }
   }, [bumpRunningSessions, updateStoreMessage]);
+
+  useEffect(() => {
+    return () => {
+      const flush = tokenFlushRef.current;
+      if (flush.rafId !== null) cancelAnimationFrame(flush.rafId);
+    };
+  }, []);
 
   type TauriAttachmentCandidate = {
     path: string;
@@ -1120,11 +1294,24 @@ const AgentChatUI = ({
         if (!msgId) return;
         const next = (agentMsgContents[msgId] || '') + token;
         agentMsgContents[msgId] = next;
-        updateStoreMessage(sessionId, msgId, { content: next });
+        const flush = tokenFlushRef.current;
+        flush.sessionId = sessionId;
+        flush.dirty.set(msgId, next);
+        if (flush.rafId === null) {
+          flush.rafId = requestAnimationFrame(() => {
+            const f = tokenFlushRef.current;
+            f.rafId = null;
+            for (const [id, content] of f.dirty) {
+              updateStoreMessage(f.sessionId, id, { content });
+            }
+            f.dirty.clear();
+          });
+        }
       },
       onAgentEnd: (agentId) => {
         const msgId = agentMsgIds[agentId];
         if (!msgId) return;
+        tokenFlushRef.current.dirty.delete(msgId);
         updateStoreMessage(sessionId, msgId, {
           content: agentMsgContents[msgId] || '',
           isStreaming: false,
@@ -1135,6 +1322,7 @@ const AgentChatUI = ({
         if (!msgId) return;
         const errorContent = t('chat:errors.appendError', { error });
         agentMsgContents[msgId] = errorContent;
+        tokenFlushRef.current.dirty.delete(msgId);
         updateStoreMessage(sessionId, msgId, {
           content: errorContent,
           isError: true,
@@ -1287,6 +1475,22 @@ const AgentChatUI = ({
       });
     }
   };
+
+  const runWorkflowMessageRef = useRef(runWorkflowMessage);
+  runWorkflowMessageRef.current = runWorkflowMessage;
+  const cancelWorkflowMessageRef = useRef(cancelWorkflowMessage);
+  cancelWorkflowMessageRef.current = cancelWorkflowMessage;
+  const reviseWorkflowMessageRef = useRef(reviseWorkflowMessage);
+  reviseWorkflowMessageRef.current = reviseWorkflowMessage;
+  const stableRunWorkflowMessage = useCallback((messageId: string, force?: boolean) => {
+    runWorkflowMessageRef.current(messageId, force);
+  }, []);
+  const stableCancelWorkflowMessage = useCallback((messageId: string) => {
+    cancelWorkflowMessageRef.current(messageId);
+  }, []);
+  const stableReviseWorkflowMessage = useCallback((messageId: string, instruction: string) => {
+    reviseWorkflowMessageRef.current(messageId, instruction);
+  }, []);
 
   const handleSendMessage = async () => {
     if (isLoading) return;
@@ -1596,134 +1800,22 @@ const AgentChatUI = ({
             )}
 
             <div className={styles.messageList}>
-              {messages.map((message) => {
-                if (message.hidden) return null;
-                const isUser = message.sender.name === userName;
-                const hasTextContent = message.content.trim().length > 0;
-                const hasAttachments = !!message.attachments?.length;
-                const isWorkflowMessage = message.sender.id === '__workflow__' || !!message.workflowRun;
-                const plannerModelName = message.workflowRun?.plan.plannerModel
-                  || (isWorkflowMessage ? message.sender.name : undefined);
-                // 多 phase workflow 会用 `${agentId}__${phaseId}` 作为 sender.id（避免覆盖），先剥离后缀再查 store
-                const baseAgentId = message.sender.id?.replace(/__.+$/, '').replace(/_r\d+$/, '') || '';
-                const member = !isUser && baseAgentId
-                  ? resolveEffectiveMember(members, baseAgentId)
-                  : undefined;
-                const avatarName = member?.name || message.sender.name;
-                const a = getAvatarData(avatarName);
-                const url = isUser
-                  ? resolveAvatarByName(
-                      userName,
-                      userStore.avatarDisplaySrc || userStore.userInfo?.avatar_url,
-                      40,
-                    )
-                  : resolveAvatarByName(avatarName, member?.avatar || message.sender.avatar, 40);
-                const isStreaming = !!message.isStreaming;
-
-                let bubbleClass = styles.bubbleAI;
-                if (isUser) bubbleClass = styles.bubbleUser;
-                else if (message.isError) bubbleClass = styles.bubbleError;
-
-                return (
-                  <div
-                    key={message.id}
-                    className={styles.messageRow}
-                    style={{ justifyContent: isUser ? 'flex-end' : 'flex-start' }}
-                  >
-                    {!isUser && (
-                      isWorkflowMessage && plannerModelName ? (
-                        <ModelIcon
-                          model={plannerModelName}
-                          type="avatar"
-                          shape="circle"
-                          size={40}
-                          style={{ flexShrink: 0 }}
-                        />
-                      ) : (
-                        <LobeAvatar
-                          avatar={url || a.text}
-                          background={a.backgroundColor}
-                          shape="circle"
-                          size={40}
-                          title={message.sender.name}
-                          style={{ flexShrink: 0 }}
-                        />
-                      )
-                    )}
-                    <div className={cx(styles.messageBody, isUser && styles.messageBodyUser)}>
-                      <div className={styles.metaRow} style={{ justifyContent: isUser ? 'flex-end' : 'flex-start' }}>
-                        {message.sender.name}
-                        {!isUser && !isWorkflowMessage && (
-                          <span className={styles.agentBadge}>{t('chat:agentChat.expertBadge')}</span>
-                        )}
-                        {!isUser && isWorkflowMessage && (
-                          <span className={styles.plannerBadge}>{t('chat:agentWorkflow.plannerBadge', { defaultValue: '规划者' })}</span>
-                        )}
-                      </div>
-                      {(!isUser || hasTextContent || isWorkflowMessage) && (
-                        <div className={bubbleClass}>
-                          {message.workflowRun ? (
-                            <AgentWorkflowPlanCard
-                              plan={message.workflowRun.plan}
-                              run={message.workflowRun}
-                              warnings={message.content ? message.content.split('\n').filter(Boolean) : []}
-                              running={message.workflowRun.status === 'running'}
-                              revising={revisingPlanIds.has(message.id)}
-                              onRun={pendingPlanIds.has(message.id) ? () => runWorkflowMessage(message.id) : undefined}
-                              onCancel={pendingPlanIds.has(message.id) ? () => cancelWorkflowMessage(message.id) : undefined}
-                              onRevise={pendingPlanIds.has(message.id) ? (instruction) => reviseWorkflowMessage(message.id, instruction) : undefined}
-                            />
-                          ) : (
-                            <ChatMarkdown content={message.content} isUser={isUser} basePath={group.workspacePath} />
-                          )}
-                          {!isUser && !isWorkflowMessage && (
-                            <ChatAttachmentList
-                              attachments={message.attachments}
-                              unavailableLabel={t('chat:attachments.unavailable', { defaultValue: '文件不可用' })}
-                            />
-                          )}
-                          {isStreaming && (
-                            <span className={cx('typing-indicator', styles.typingCursor)}>▋</span>
-                          )}
-                          {!isUser && member?.kind === 'cli' && message.agentTaskId && (
-                            <div className={styles.cliLogBtnRow}>
-                              <button
-                                type="button"
-                                className={styles.cliLogBtn}
-                                onClick={() => setLogTarget({
-                                  agentTaskId: message.agentTaskId!,
-                                  agentName: message.sender.name,
-                                  adapter: message.adapter,
-                                })}
-                              >
-                                {t('cli:taskUI.message.log', { defaultValue: '日志' })}
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      {isUser && hasAttachments && (
-                        <div className={styles.userAttachmentBubble}>
-                          <ChatAttachmentList
-                            attachments={message.attachments}
-                            unavailableLabel={t('chat:attachments.unavailable', { defaultValue: '文件不可用' })}
-                          />
-                        </div>
-                      )}
-                    </div>
-                    {isUser && (
-                      <LobeAvatar
-                        avatar={url || a.text}
-                        background={a.backgroundColor}
-                        shape="circle"
-                        size={40}
-                        title={message.sender.name}
-                        style={{ flexShrink: 0 }}
-                      />
-                    )}
-                  </div>
-                );
-              })}
+              {messages.map((message) => (
+                <AgentMessageItem
+                  key={message.id}
+                  message={message}
+                  members={members}
+                  userName={userName}
+                  userAvatarDisplaySrc={userStore.avatarDisplaySrc || userStore.userInfo?.avatar_url}
+                  basePath={group.workspacePath}
+                  isPendingPlan={pendingPlanIds.has(String(message.id))}
+                  isRevisingPlan={revisingPlanIds.has(String(message.id))}
+                  onRun={stableRunWorkflowMessage}
+                  onCancel={stableCancelWorkflowMessage}
+                  onRevise={stableReviseWorkflowMessage}
+                  onLogClick={setLogTarget}
+                />
+              ))}
               <div ref={messagesEndRef} />
             </div>
           </div>
