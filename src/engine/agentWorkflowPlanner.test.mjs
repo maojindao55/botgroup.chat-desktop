@@ -14,12 +14,26 @@ async function importTsModule(url, transform = (source) => source) {
   return import(moduleUrl);
 }
 
+const selectionSrc = await readFile(new URL('./agentWorkflowSelection.ts', import.meta.url), 'utf8');
+const selectionBody = selectionSrc.replace(/import type \{[^}]*\} from '@\/config\/aiMembers';\n/, '');
+const intentSrc = await readFile(new URL('./agentWorkflowIntent.ts', import.meta.url), 'utf8');
+const intentBody = intentSrc.replace(/import type \{[^}]*\} from '@\/config\/agentWorkflow';\n/, '');
+const templatesSrc = await readFile(new URL('./agentWorkflowTemplates.ts', import.meta.url), 'utf8');
+const templatesBody = templatesSrc
+  .replace(/import type \{[^}]*\} from '@\/config\/aiMembers';\n/, '')
+  .replace(/import type \{[^}]*\} from '@\/config\/agentWorkflow';\n/, '')
+  .replace(/import \{ resolveAgentSelection \} from '\.\/agentWorkflowSelection';\n/, '');
+
 const { planAgentWorkflow, planAgentWorkflowSmart } = await importTsModule(
   new URL('./agentWorkflowPlanner.ts', import.meta.url),
-  source => source.replace(
-    "import {\n  createDefaultAgentWorkflowDefaults,\n  type AgentWorkflowPlan,\n  type AgentWorkflowIntent,\n} from '@/config/agentWorkflow';",
-    `const createDefaultAgentWorkflowDefaults = () => ({ effort: 'standard', maxPhases: 5, maxParallelAgents: 3, alwaysShowPlan: false });`,
-  ),
+  source => source
+    .replace(
+      "import {\n  createDefaultAgentWorkflowDefaults,\n  type AgentWorkflowPlan,\n  type AgentWorkflowIntent,\n} from '@/config/agentWorkflow';",
+      `const createDefaultAgentWorkflowDefaults = () => ({ effort: 'standard', maxPhases: 5, maxParallelAgents: 3, alwaysShowPlan: false });`,
+    )
+    .replace(/import \{ classifyIntent, degradeIntent \} from '\.\/agentWorkflowIntent';\n/, '')
+    .replace(/import \{ templateBuilders[^}]*\} from '\.\/agentWorkflowTemplates';\n/, '')
+    + '\n' + selectionBody + '\n' + intentBody + '\n' + templatesBody,
 );
 
 function group(overrides = {}) {
@@ -106,7 +120,7 @@ function llm(id, name) {
   assert.equal(plan.phases[0].schedule, 'parallel');
 }
 
-// ---------- fallback never emits write phases regardless of input ----------
+// ---------- implement intent with workspace -> write phase, requires approval ----------
 {
   const members = [llm('a', 'A')];
   const { plan } = planAgentWorkflow({
@@ -114,9 +128,9 @@ function llm(id, name) {
     userMessage: 'please implement a dark mode toggle and fix the login bug',
     workspaceReady: true,
   });
-  assert.ok(plan.phases.every(p => p.mode === 'readOnly'));
-  assert.equal(plan.requiresApproval, false);
-  assert.equal(plan.riskLevel, 'low');
+  assert.equal(plan.phases.length, 1);
+  assert.equal(plan.phases[0].mode, 'write');
+  assert.equal(plan.requiresApproval, true);
 }
 
 // ---------- no members -> empty plan + warning ----------
@@ -163,6 +177,40 @@ function llm(id, name) {
   });
   assert.equal(result.plan.phases.length, 1);
   assert.equal(result.plan.phases[0].mode, 'readOnly');
+}
+
+// ---------- discuss keyword + 3 members -> 2-phase consult/synthesize ----------
+{
+  const members = [llm('a', 'A'), llm('b', 'B'), llm('c', 'C')];
+  const { plan } = planAgentWorkflow({
+    group: group(), members, userMessage: '大家讨论一下这个方案', workspaceReady: false,
+  });
+  assert.equal(plan.intent, 'discuss');
+  assert.equal(plan.phases.length, 2);
+  assert.equal(plan.phases[0].schedule, 'parallel');
+  assert.deepEqual(plan.phases[1].dependsOn, [plan.phases[0].id]);
+}
+
+// ---------- intentHint override bypasses classification ----------
+{
+  const members = [llm('a', 'A'), llm('b', 'B'), llm('c', 'C')];
+  const { plan } = planAgentWorkflow({
+    group: group(), members, userMessage: '你好', workspaceReady: true, intentHint: 'implement',
+  });
+  assert.equal(plan.intent, 'implement');
+  assert.equal(plan.phases[0].mode, 'write');
+  assert.equal(plan.requiresApproval, true);
+}
+
+// ---------- discuss keyword with 1 member -> degraded to quick ----------
+{
+  const members = [llm('a', 'A')];
+  const { plan, warnings } = planAgentWorkflow({
+    group: group(), members, userMessage: '讨论一下吧', workspaceReady: false,
+  });
+  assert.equal(plan.intent, 'quick');
+  assert.equal(plan.phases.length, 1);
+  assert.ok(warnings.length > 0);
 }
 
 console.log('agentWorkflowPlanner.test.mjs: ok');
