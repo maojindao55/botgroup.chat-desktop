@@ -4,8 +4,8 @@
  */
 import { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Send, Square, Settings2, ChevronLeft, Puzzle, PanelLeftOpen, Paperclip, ChevronDown, Copy, Check } from 'lucide-react';
-import { Tooltip, Button as AntdButton, Modal, message as antdMessage } from 'antd';
+import { Send, Square, Settings2, ChevronLeft, Puzzle, PanelLeftOpen, Paperclip, ChevronDown, Copy, Check, Sparkles } from 'lucide-react';
+import { Tooltip, Button as AntdButton, Modal, Dropdown, message as antdMessage } from 'antd';
 import { ActionIcon, Avatar as LobeAvatar } from '@lobehub/ui';
 import { ModelIcon } from '@lobehub/icons';
 import { createStyles } from 'antd-style';
@@ -25,6 +25,7 @@ import ConversationSidebar from './ConversationSidebar';
 import CLITaskLogModal from './CLITaskLogModal';
 import type { AgentGroup, Group } from '@/config/groups';
 import { isBuiltinGroupId } from '@/config/groupStorage';
+import { workflowIntentPresets } from '@/config/groupProduct';
 import { useAIMemberStore } from '@/store/aiMemberStore';
 import type { AIMember } from '@/config/aiMembers';
 import { useChatSessionStore } from '@/store/chatSessionStore';
@@ -943,6 +944,7 @@ const AgentChatUI = ({
 
   const [inputMessage, setInputMessage] = useState('');
   const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
+  const [selectedIntentId, setSelectedIntentId] = useState<typeof workflowIntentPresets[number]['id']>('smart');
   const [showSettings, setShowSettings] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<AppSettingsSection>('general');
@@ -1751,6 +1753,8 @@ const AgentChatUI = ({
     const userName = userStore.userInfo.nickname || t('settings:aiGroup.selfName');
     const capturedInput = inputMessage;
     const agentInput = composeMessageWithAttachments(capturedInput, attachmentsToSend);
+    const intentPreset = workflowIntentPresets.find(p => p.id === selectedIntentId);
+    const intentHint = intentPreset && intentPreset.id !== 'smart' ? intentPreset.intent : undefined;
 
     const sessionId = ensureActiveSession(capturedInput || attachmentsToSend[0]?.name || t('chat:attachments.fallbackTitle', { defaultValue: '附件' }));
     if (!sessionId) return;
@@ -1766,6 +1770,7 @@ const AgentChatUI = ({
     });
     setInputMessage('');
     setPendingAttachments([]);
+    setSelectedIntentId('smart');
     const planningController = new AbortController();
     runningSessionsRef.current.set(sessionId, planningController);
     bumpRunningSessions();
@@ -1799,6 +1804,7 @@ const AgentChatUI = ({
         userMessage: agentInput,
         history,
         mentionedAgentIds,
+        intentHint,
         workspaceReady: !!group.workspacePath?.trim(),
         t,
       });
@@ -1849,6 +1855,7 @@ const AgentChatUI = ({
           userMessage: agentInput,
           history,
           mentionedAgentIds,
+          intentHint,
           workspaceReady: !!group.workspacePath?.trim(),
           t,
           locale: i18n.language,
@@ -2139,6 +2146,30 @@ const AgentChatUI = ({
                 aria-label={t('chat:attachments.add', { defaultValue: '添加附件' })}
                 title={t('chat:attachments.add', { defaultValue: '添加附件' })}
               />
+              <Dropdown
+                trigger={['click']}
+                menu={{
+                  items: workflowIntentPresets.map(p => ({
+                    key: p.id,
+                    label: (
+                      <div style={{ display: 'flex', flexDirection: 'column' }}>
+                        <span style={{ fontSize: 13, fontWeight: 500 }}>{p.label}</span>
+                        <span style={{ fontSize: 11, opacity: 0.6 }}>{p.description}</span>
+                      </div>
+                    ),
+                  })),
+                  selectedKeys: [selectedIntentId],
+                  onClick: ({ key }) => setSelectedIntentId(key as typeof selectedIntentId),
+                }}
+              >
+                <AntdButton type="text" style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <Sparkles size={15} color={selectedIntentId === 'smart' ? undefined : '#ff6600'} />
+                  <span style={{ fontSize: 12 }}>
+                    {workflowIntentPresets.find(p => p.id === selectedIntentId)?.label}
+                  </span>
+                  <ChevronDown size={13} />
+                </AntdButton>
+              </Dropdown>
               <MentionTextArea
                 value={inputMessage}
                 onChange={setInputMessage}
