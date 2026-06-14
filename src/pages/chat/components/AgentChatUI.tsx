@@ -29,6 +29,7 @@ import { useAIMemberStore } from '@/store/aiMemberStore';
 import type { AIMember } from '@/config/aiMembers';
 import { useChatSessionStore } from '@/store/chatSessionStore';
 import { useShallow } from 'zustand/react/shallow';
+import { useMutedMembersStore } from '@/store/mutedMembersStore';
 import { useAgentWorkflowPlannerSettings } from '@/store/agentWorkflowPlannerSettings';
 import {
   truncateSessionTitle,
@@ -1303,7 +1304,9 @@ const AgentChatUI = ({
   };
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [mutedUsers, setMutedUsers] = useState<string[]>([]);
+  const mutedByGroup = useMutedMembersStore(s => s.byGroup);
+  const toggleMutedMember = useMutedMembersStore(s => s.toggle);
+  const mutedUsers = mutedByGroup[group.id] || [];
 
   const chatAreaRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -1365,9 +1368,7 @@ const AgentChatUI = ({
   const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
 
   const handleToggleMute = (userId: string) => {
-    setMutedUsers(prev =>
-      prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]
-    );
+    toggleMutedMember(group.id, userId);
   };
 
   /** 取消正在进行的请求 */

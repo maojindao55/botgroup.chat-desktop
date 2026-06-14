@@ -533,6 +533,12 @@ pub fn select_directory() -> Result<Option<String>, String> {
     }
 }
 
+/// 校验给定路径是否存在且为目录（供专家群「工作目录」即时校验使用）。
+#[tauri::command]
+pub fn path_is_dir(path: String) -> bool {
+    PathBuf::from(path.trim()).is_dir()
+}
+
 #[derive(Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatAttachmentCandidate {

@@ -4,17 +4,19 @@
  * 重构后：移除固定的 8 种策略模板。用户只配置成员、工作目录、
  * 权限和默认协作偏好；运行时由 planner/runner 动态生成执行计划。
  */
-import { Drawer, Input, InputNumber, Switch, Tooltip, Button } from 'antd';
+import { useEffect, useMemo, useState } from 'react';
+import { Drawer, Input, InputNumber, Switch, Tooltip, Button, Popconfirm, theme } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { Avatar as LobeAvatar, ActionIcon } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
-import { Mic, MicOff, X, FolderOpen } from 'lucide-react';
+import { Mic, MicOff, X, FolderOpen, HelpCircle, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import type { AgentGroup } from '@/config/groups';
 import type { AgentWorkflowEffort } from '@/config/agentWorkflow';
 import { createDefaultAgentWorkflowDefaults } from '@/config/agentWorkflow';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
 import { MemberPicker } from './MemberPicker';
 import { useAIMemberStore } from '@/store/aiMemberStore';
+import { useAgentWorkflowPlannerSettings } from '@/store/agentWorkflowPlannerSettings';
 import { agentWorkflowEfforts } from '@/config/groupProduct';
 import { invoke } from '@tauri-apps/api/core';
 
@@ -184,6 +186,38 @@ const useStyles = createStyles(({ token, css }) => ({
   `,
 }));
 
+type WorkspaceStatus = 'idle' | 'checking' | 'valid' | 'invalid';
+
+function renderWorkspaceStatus(
+  status: WorkspaceStatus,
+  t: (key: string, opts?: { defaultValue?: string }) => string,
+  token: { colorSuccess: string; colorError: string; colorTextTertiary: string },
+) {
+  if (status === 'checking') {
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: token.colorTextTertiary }}>
+        <Loader2 size={13} className="animate-spin" />
+        {t('settings:agentGroup.workspaceChecking')}
+      </span>
+    );
+  }
+  if (status === 'valid') {
+    return (
+      <Tooltip title={t('settings:agentGroup.workspaceValid')}>
+        <CheckCircle2 size={14} style={{ color: token.colorSuccess }} />
+      </Tooltip>
+    );
+  }
+  if (status === 'invalid') {
+    return (
+      <Tooltip title={t('settings:agentGroup.workspaceInvalid')}>
+        <AlertCircle size={14} style={{ color: token.colorError }} />
+      </Tooltip>
+    );
+  }
+  return null;
+}
+
 export const AgentGroupSettings = ({
   open,
   onOpenChange,
@@ -197,7 +231,9 @@ export const AgentGroupSettings = ({
 }: AgentGroupSettingsProps) => {
   const { t } = useTranslation(['settings', 'common', 'product']);
   const { styles, cx } = useStyles();
+  const { token } = theme.useToken();
   const { members: allMembers } = useAIMemberStore();
+  const globalAlwaysConfirm = useAgentWorkflowPlannerSettings(s => s.settings.alwaysConfirmBeforeRun);
 
   const currentMemberIds = group.memberIds || [];
   const currentAgents = currentMemberIds
@@ -212,8 +248,37 @@ export const AgentGroupSettings = ({
     });
   };
 
+  // 预设与实际数值的和解：高亮取决于 (maxPhases, maxParallelAgents) 是否命中某个预设，
+  // 而非 defaults.effort。手动改数字后若与所有预设都不符，则进入「自定义」态。
+  const activePreset = useMemo(
+    () => agentWorkflowEfforts.find(
+      (e) => e.recommendedMaxPhases === defaults.maxPhases
+        && e.recommendedMaxParallelAgents === defaults.maxParallelAgents,
+    ),
+    [defaults.maxPhases, defaults.maxParallelAgents],
+  );
+  const isCustomized = !activePreset;
+
+  // 工作目录即时校验（防抖 + 取消）。仅在桌面端生效。
+  const [workspaceStatus, setWorkspaceStatus] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle');
+  const workspacePath = group.workspacePath || '';
+  useEffect(() => {
+    const path = workspacePath.trim();
+    if (!path) { setWorkspaceStatus('idle'); return; }
+    if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) { setWorkspaceStatus('idle'); return; }
+    let cancelled = false;
+    setWorkspaceStatus('checking');
+    const timer = window.setTimeout(() => {
+      invoke<boolean>('path_is_dir', { path })
+        .then((ok) => { if (!cancelled) setWorkspaceStatus(ok ? 'valid' : 'invalid'); })
+        .catch(() => { if (!cancelled) setWorkspaceStatus('idle'); });
+    }, 400);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [workspacePath]);
+
   const settingsContent = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* 基础信息 */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <label style={{ fontSize: 14, fontWeight: 500 }}>{t('settings:agentGroup.basicInfo')}</label>
         <Input
@@ -233,9 +298,10 @@ export const AgentGroupSettings = ({
         />
       </div>
 
+      {/* 默认协作偏好 */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <label style={{ fontSize: 14, fontWeight: 500 }}>
-          {t('settings:agentGroup.workflowDefaults', { defaultValue: '默认协作偏好' })}
+          {t('settings:agentGroup.workflowDefaults')}
         </label>
         <div className={styles.strategyGrid}>
           {agentWorkflowEfforts.map((item) => (
@@ -249,7 +315,7 @@ export const AgentGroupSettings = ({
               })}
               className={cx(
                 styles.strategyBtn,
-                defaults.effort === item.value && styles.strategyBtnActive,
+                activePreset?.value === item.value && styles.strategyBtnActive,
               )}
             >
               <span style={{ fontSize: 13, fontWeight: 600 }}>
@@ -263,15 +329,24 @@ export const AgentGroupSettings = ({
             </button>
           ))}
         </div>
+        {isCustomized && (
+          <div style={{ fontSize: 11, color: token.colorWarningText, marginTop: 4 }}>
+            {t('settings:agentGroup.customizedPreset')}
+          </div>
+        )}
       </div>
 
+      {/* 高级选项 */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <label style={{ fontSize: 14, fontWeight: 500 }}>
-          {t('settings:agentGroup.advanced', { defaultValue: '高级选项' })}
+          {t('settings:agentGroup.advanced')}
         </label>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-          <span style={{ fontSize: 13 }}>
-            {t('settings:agentGroup.maxPhases', { defaultValue: '最大阶段数' })}
+          <span style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            {t('settings:agentGroup.maxPhases')}
+            <Tooltip title={t('settings:agentGroup.maxPhasesHint')}>
+              <HelpCircle size={13} style={{ color: token.colorTextTertiary, cursor: 'help' }} />
+            </Tooltip>
           </span>
           <InputNumber
             value={defaults.maxPhases}
@@ -282,8 +357,11 @@ export const AgentGroupSettings = ({
           />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-          <span style={{ fontSize: 13 }}>
-            {t('settings:agentGroup.maxParallelAgents', { defaultValue: '最大并发成员数' })}
+          <span style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            {t('settings:agentGroup.maxParallelAgents')}
+            <Tooltip title={t('settings:agentGroup.maxParallelAgentsHint')}>
+              <HelpCircle size={13} style={{ color: token.colorTextTertiary, cursor: 'help' }} />
+            </Tooltip>
           </span>
           <InputNumber
             value={defaults.maxParallelAgents}
@@ -294,53 +372,36 @@ export const AgentGroupSettings = ({
           />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-          <span style={{ fontSize: 13 }}>
-            {t('settings:agentGroup.alwaysShowPlan', { defaultValue: '总是展示协作计划卡' })}
-          </span>
+          <span style={{ fontSize: 13 }}>{t('settings:agentGroup.alwaysShowPlan')}</span>
           <Switch
             checked={defaults.alwaysShowPlan}
             onChange={(v) => updateDefaults({ alwaysShowPlan: v })}
           />
         </div>
+        {globalAlwaysConfirm && (
+          <div style={{ fontSize: 11, color: token.colorTextTertiary }}>
+            {t('settings:agentGroup.alwaysShowPlanHint')}
+          </div>
+        )}
       </div>
 
-      <div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-          <span style={{ fontSize: 14, fontWeight: 500 }}>{t('settings:agentGroup.manageExperts')}</span>
-          <MemberPicker
-            kind="cli"
-            value={currentMemberIds}
-            onChange={(newIds) => onUpdateGroup({ memberIds: newIds })}
-            placeholder={t('settings:agentGroup.pickExpertsPlaceholder')}
-          />
-          <div style={{ fontSize: 11, color: 'rgba(0,0,0,0.45)', marginTop: -4 }}>
-            {t('settings:agentGroup.libraryHint')}
-          </div>
-        </div>
-
-      {/* Workspace directory */}
+      {/* 工作目录（独立段落，antd 风格 + 即时校验） */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <label style={{ fontSize: 14, fontWeight: 500 }}>工作目录</label>
-        <div style={{ fontSize: 11, color: 'rgba(0,0,0,0.45)' }}>
-          CLI 成员执行任务的工作目录
+        <label style={{ fontSize: 14, fontWeight: 500 }}>{t('settings:agentGroup.workspace')}</label>
+        <div style={{ fontSize: 11, color: token.colorTextTertiary }}>
+          {t('settings:agentGroup.workspaceHint')}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <input
-            type="text"
+          <Input
             placeholder="/Users/you/projects/your-repo"
-            value={group.workspacePath || ''}
+            value={workspacePath}
             onChange={(e) => onUpdateGroup({ workspacePath: e.target.value })}
-            style={{
-              flex: 1,
-              fontFamily: 'var(--ant-font-family-code)',
-              padding: '4px 8px',
-              borderRadius: 6,
-              border: '1px solid #d9d9d9',
-              fontSize: 13,
-            }}
+            style={{ flex: 1, fontFamily: token.fontFamilyCode, fontSize: 13 }}
+            status={workspaceStatus === 'invalid' ? 'error' : undefined}
+            suffix={renderWorkspaceStatus(workspaceStatus, t, token)}
           />
-          <button
-            type="button"
+          <Button
+            icon={<FolderOpen size={14} />}
             onClick={async () => {
               try {
                 const selected = await invoke<string | null>('select_directory');
@@ -351,26 +412,31 @@ export const AgentGroupSettings = ({
                 console.error('Failed to select directory:', e);
               }
             }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              padding: '4px 12px',
-              borderRadius: 6,
-              border: '1px solid #d9d9d9',
-              background: 'transparent',
-              cursor: 'pointer',
-              fontSize: 13,
-            }}
           >
-            <FolderOpen size={14} />
-            选择
-          </button>
+            {t('settings:agentGroup.workspaceBrowse')}
+          </Button>
         </div>
       </div>
 
-        <div style={{ marginBottom: 12 }}>
-          <span style={{ fontSize: 14, fontWeight: 500 }}>{t('settings:agentGroup.experts', { count: currentAgents.length })}</span>
+      {/* 管理专家 */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <span style={{ fontSize: 14, fontWeight: 500 }}>{t('settings:agentGroup.manageExperts')}</span>
+        <MemberPicker
+          kind="cli"
+          value={currentMemberIds}
+          onChange={(newIds) => onUpdateGroup({ memberIds: newIds })}
+          placeholder={t('settings:agentGroup.pickExpertsPlaceholder')}
+        />
+        <div style={{ fontSize: 11, color: token.colorTextTertiary, marginTop: -4 }}>
+          {t('settings:agentGroup.libraryHint')}
+        </div>
+        {currentAgents.length === 0 && (
+          <div style={{ fontSize: 12, color: token.colorWarningText }}>
+            {t('settings:agentGroup.noExpertsWarning')}
+          </div>
+        )}
+        <div style={{ fontSize: 14, fontWeight: 500, marginTop: 4 }}>
+          {t('settings:agentGroup.experts', { count: currentAgents.length })}
         </div>
 
         {/* 成员列表 */}
@@ -409,7 +475,7 @@ export const AgentGroupSettings = ({
                       <div
                         style={{
                           fontSize: 11,
-                          opacity: 0.6,
+                          color: token.colorTextTertiary,
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
                           whiteSpace: 'nowrap',
@@ -434,21 +500,24 @@ export const AgentGroupSettings = ({
                       icon={muted ? MicOff : Mic}
                       size="small"
                       onClick={() => onToggleMute(agent.id)}
-                      style={{ color: muted ? '#ef4444' : '#22c55e' }}
+                      style={{ color: muted ? token.colorError : token.colorSuccess }}
                       title=""
                     />
                   </Tooltip>
-                  <Tooltip title={t('settings:agentGroup.removeMember')}>
-                    <ActionIcon
-                      icon={X}
-                      size="small"
-                      onClick={() => {
-                        const newIds = currentMemberIds.filter((id) => id !== agent.id);
-                        onUpdateGroup({ memberIds: newIds });
-                      }}
-                      title=""
-                    />
-                  </Tooltip>
+                  <Popconfirm
+                    title={t('settings:agentGroup.removeMemberConfirm')}
+                    okText={t('settings:agentGroup.removeMember')}
+                    okButtonProps={{ danger: true }}
+                    cancelText={t('common:actions.cancel', { defaultValue: '取消' })}
+                    onConfirm={() => {
+                      const newIds = currentMemberIds.filter((id) => id !== agent.id);
+                      onUpdateGroup({ memberIds: newIds });
+                    }}
+                  >
+                    <Tooltip title={t('settings:agentGroup.removeMember')}>
+                      <ActionIcon icon={X} size="small" title="" />
+                    </Tooltip>
+                  </Popconfirm>
                 </div>
               </div>
             );
@@ -458,14 +527,14 @@ export const AgentGroupSettings = ({
 
       {onDeleteGroup && canDeleteGroup && (
         <div style={{
-          borderTop: '1px solid rgba(0,0,0,0.06)',
+          borderTop: `1px solid ${token.colorBorderSecondary}`,
           paddingTop: 16,
           display: 'flex',
           flexDirection: 'column',
           gap: 8,
         }}>
-          <div style={{ fontSize: 14, fontWeight: 500, color: '#ff4d4f' }}>{t('common:deleteGroup.title')}</div>
-          <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>
+          <div style={{ fontSize: 14, fontWeight: 500, color: token.colorError }}>{t('common:deleteGroup.title')}</div>
+          <div style={{ fontSize: 12, color: token.colorTextTertiary }}>
             {t('common:deleteGroup.warning')}
           </div>
           <Button danger onClick={onDeleteGroup} style={{ alignSelf: 'flex-start' }}>

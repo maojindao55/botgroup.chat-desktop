@@ -33,6 +33,7 @@ pub fn run() {
             api::get_claw_messages,
             api::send_claw_message,
             api::select_directory,
+            api::path_is_dir,
             api::select_chat_attachments,
             api::chat_attachment_exists,
             api::save_image_as,
