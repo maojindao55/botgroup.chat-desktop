@@ -95,7 +95,7 @@ function buildDiscuss(ctx: TemplateContext): AgentWorkflowPlan {
         outputPolicy: 'summary',
         onFailure: 'continue',
       },
-      synthesizePhase(ctx, 'consult', consultIds),
+      synthesizePhase(ctx, 'consult'),
     ],
   };
 }

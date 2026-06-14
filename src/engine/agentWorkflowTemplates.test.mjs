@@ -49,9 +49,8 @@ const ctx = (overrides = {}) => ({
   assert.equal(plan.phases[0].schedule, 'parallel');
   assert.equal(plan.phases[0].mode, 'readOnly');
   assert.deepEqual(plan.phases[1].dependsOn, [plan.phases[0].id]);
-  // 汇总者排除 P1 参与者
-  const consultIds = plan.phases[0].agentSelection.agentIds;
-  assert.ok(!consultIds.includes(plan.phases[1].agentSelection.agentIds[0]));
+  // 汇总阶段必须有具体成员（不再强制排除咨询者，避免全员参与时无人可汇总）
+  assert.ok(plan.phases[1].agentSelection.agentIds.length >= 1);
   assert.equal(plan.requiresApproval, false);
 }
 
@@ -94,6 +93,7 @@ const ctx = (overrides = {}) => ({
   assert.equal(plan.phases[0].schedule, 'parallel');
   assert.equal(plan.phases[0].outputPolicy, 'findings');
   assert.deepEqual(plan.phases[1].dependsOn, [plan.phases[0].id]);
+  assert.ok(plan.phases[1].agentSelection.agentIds.length >= 1);
 }
 
 // count 截到 maxParallel
