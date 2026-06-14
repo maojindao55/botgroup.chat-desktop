@@ -11,6 +11,9 @@ async function importTsModule(url, transform = (s) => s) {
   return import(moduleUrl);
 }
 
+const selectionSrc = await readFile(new URL('./agentWorkflowSelection.ts', import.meta.url), 'utf8');
+const selectionBody = selectionSrc.replace(/import type \{[^}]*\} from '@\/config\/aiMembers';\n/, '');
+
 const runCalls = [];
 let nextResponse = (agent) => ({ content: `${agent.name} ok` });
 
@@ -83,7 +86,11 @@ const runner = await importTsModule(
   ).replace(
     /import \{ parseVerdict, wrapVerifierPrompt \} from '\.\/agentWorkflowVerifier';/,
     'const { parseVerdict, wrapVerifierPrompt } = globalThis.__agentRuntimeStub;'
-  ),
+  ).replace(
+    /import \{ resolveAgentSelection \} from '\.\/agentWorkflowSelection';\n/,
+    ''
+  )
+  + '\n' + selectionBody,
 );
 
 function group(overrides = {}) {
@@ -143,6 +150,22 @@ function callbacks() {
   assert.equal(run.status, 'completed');
   assert.equal(run.phaseStates['p1'].outputs.length, 3);
   assert.equal(runCalls.length, 3);
+}
+
+// auto selection is capped by workflowDefaults.maxParallelAgents
+{
+  runCalls.length = 0;
+  const cb = callbacks();
+  const members = [llm('a', 'A'), llm('b', 'B'), llm('c', 'C'), llm('d', 'D')];
+  const p = plan([{ id: 'p1', label: 'Auto', mode: 'readOnly', schedule: 'parallel',
+    agentSelection: { type: 'auto', count: 5 }, prompt: 'd' }]);
+  const run = await runner.runAgentWorkflowPlan(
+    group({ workflowDefaults: { effort: 'standard', maxPhases: 5, maxParallelAgents: 2, alwaysShowPlan: false } }),
+    members, p, 'topic', cb,
+  );
+  assert.equal(run.status, 'completed');
+  assert.equal(run.phaseStates['p1'].selectedAgentIds.length, 2);
+  assert.equal(runCalls.length, 2);
 }
 
 // parallel write rejected
