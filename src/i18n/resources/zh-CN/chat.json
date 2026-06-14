@@ -64,7 +64,17 @@
     "unresolvedMembersHint": "请到「{{settings}}」检查或重新添加成员。",
     "expertBadge": "专家",
     "inputPlaceholder": "输入消息，专家群友将按群规协作回复...",
-    "settings": "设置"
+    "settings": "设置",
+    "progressPhase": "阶段 {{current}}/{{total}}",
+    "expertsAnalyzing": "{{count}} 位分析中",
+    "scrollToBottom": "回到底部",
+    "newMessages": "{{count}} 条新消息",
+    "copy": "复制",
+    "copied": "已复制",
+    "suggestionsLabel": "试试这些",
+    "suggestion1": "帮我分析一下这个方案的优缺点",
+    "suggestion2": "请各位专家分别给出你的建议",
+    "suggestion3": "请合作产出一份完整方案"
   },
   "agentWorkflow": {
     "sender": "协作计划",

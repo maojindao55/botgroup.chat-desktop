@@ -38,6 +38,8 @@ export interface ChatSessionMessage {
   agentTaskId?: string;
   /** CLI adapter（codex/claude/opencode/...），日志 Modal 区分输出格式时使用 */
   adapter?: string;
+  /** 专家群 workflow 阶段标签（来自产生该消息的 phase），用于在气泡上标注所属阶段 */
+  phaseLabel?: string;
   /** Path-based user attachments for CLI agents. Stores metadata only, never file bytes. */
   attachments?: ChatAttachment[];
   /** Agent workflow execution metadata. Stored in lightweight/truncated form. */
@@ -286,6 +288,7 @@ export function sanitizeMessageForStorage(m: ChatSessionMessage): ChatSessionMes
   if (m.createdAt) sanitized.createdAt = m.createdAt;
   if (m.agentTaskId) sanitized.agentTaskId = m.agentTaskId;
   if (m.adapter) sanitized.adapter = m.adapter;
+  if (m.phaseLabel) sanitized.phaseLabel = m.phaseLabel;
   const attachments = sanitizeAttachmentsForStorage((m as ChatSessionMessage & { attachments?: unknown }).attachments);
   if (attachments.length > 0) sanitized.attachments = attachments;
   const workflowRun = sanitizeWorkflowRunForStorage((m as ChatSessionMessage & { workflowRun?: unknown }).workflowRun);

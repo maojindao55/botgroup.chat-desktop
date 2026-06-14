@@ -4,7 +4,7 @@
  */
 import { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Send, Square, Settings2, ChevronLeft, Puzzle, PanelLeftOpen, Paperclip } from 'lucide-react';
+import { Send, Square, Settings2, ChevronLeft, Puzzle, PanelLeftOpen, Paperclip, ChevronDown, Copy, Check } from 'lucide-react';
 import { Tooltip, Button as AntdButton, Modal, message as antdMessage } from 'antd';
 import { ActionIcon, Avatar as LobeAvatar } from '@lobehub/ui';
 import { ModelIcon } from '@lobehub/icons';
@@ -104,6 +104,30 @@ function cloneWorkflowRun(run: AgentWorkflowRun): AgentWorkflowRun {
       ]),
     ),
   };
+}
+
+/**
+ * 将用户消息里「@已知专家名」包裹成高亮 span，供 ChatMarkdown（allowHtml）渲染。
+ * - 仅替换以空白/行首开头、且后接空白/行尾的完整 @Name，避免误伤代码块等。
+ * - 含代码围栏 ``` 的内容整体跳过，降低破坏 markdown 的风险。
+ * - isUser=true 时使用适配橙色用户气泡的高对比样式（白字半透明白底）。
+ */
+function highlightMentions(content: string, names: string[], isUser = false): string {
+  if (!content || names.length === 0) return content;
+  if (content.includes('```')) return content;
+  const open = isUser
+    ? '<span style="color:#fff;background:rgba(255,255,255,0.22);border-radius:4px;padding:0 4px;font-weight:600;">'
+    : '<span class="agent-mention">';
+  const close = '</span>';
+  let result = content;
+  for (const rawName of names) {
+    const name = rawName && rawName.trim();
+    if (!name) continue;
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`(^|\\s)@${escaped}(?=\\s|$)`, 'gu');
+    result = result.replace(re, (_m, prefix: string) => `${prefix}${open}@${name}${close}`);
+  }
+  return result;
 }
 
 interface AgentChatUIProps {
@@ -518,6 +542,134 @@ const useStyles = createStyles(({ token, css }) => ({
     margin-left: 4px;
     color: #ff6600;
   `,
+  messageBubble: css`
+    position: relative;
+    & .msg-copy-btn {
+      opacity: 0;
+      transition: opacity 0.15s ease;
+    }
+    &:hover .msg-copy-btn {
+      opacity: 1;
+    }
+  `,
+  msgCopyBtn: css`
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 5px;
+    border: 1px solid ${token.colorBorderSecondary};
+    background: ${token.colorBgContainer};
+    color: ${token.colorTextSecondary};
+    cursor: pointer;
+    z-index: 2;
+    &:hover {
+      color: ${token.colorText};
+      background: ${token.colorFillTertiary};
+    }
+  `,
+  phaseBadge: css`
+    margin-left: 2px;
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: rgba(168, 85, 247, 0.12);
+    color: #a855f7;
+    font-weight: 500;
+  `,
+  titleProgress: css`
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 2px;
+    font-size: 11px;
+    color: ${token.colorTextTertiary};
+  `,
+  progressDot: css`
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #f97316;
+    animation: agentProgressPulse 1s infinite;
+    @keyframes agentProgressPulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+  `,
+  jumpButton: css`
+    position: absolute;
+    right: 24px;
+    bottom: 18px;
+    z-index: 8;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-width: 36px;
+    height: 36px;
+    padding: 0 10px;
+    border-radius: 999px;
+    border: 1px solid ${token.colorBorderSecondary};
+    background: ${token.colorBgContainer};
+    color: ${token.colorTextSecondary};
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+    cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease;
+    &:hover {
+      color: #ff6600;
+      border-color: rgba(255, 102, 0, 0.4);
+    }
+  `,
+  jumpBadge: css`
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: #ff6600;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 600;
+  `,
+  suggestionWrap: css`
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    margin-top: 22px;
+    width: 100%;
+  `,
+  suggestionLabel: css`
+    font-size: 12px;
+    color: ${token.colorTextTertiary};
+  `,
+  suggestionChips: css`
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+  `,
+  suggestionChip: css`
+    border: 1px solid ${token.colorBorderSecondary};
+    background: ${token.colorBgContainer};
+    color: ${token.colorTextSecondary};
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    &:hover {
+      color: #ff6600;
+      border-color: rgba(255, 102, 0, 0.4);
+      background: rgba(255, 102, 0, 0.05);
+    }
+  `,
 }));
 
 // Store updateMessage preserves object refs for unchanged messages, so
@@ -528,6 +680,7 @@ interface AgentMessageItemProps {
   userName: string;
   userAvatarDisplaySrc?: string | null;
   basePath?: string;
+  mentionNames?: string[];
   isPendingPlan: boolean;
   isRevisingPlan: boolean;
   onRun?: (messageId: string, force?: boolean) => void;
@@ -545,6 +698,7 @@ function AgentMessageItemComponent({
   userName,
   userAvatarDisplaySrc,
   basePath,
+  mentionNames,
   isPendingPlan,
   isRevisingPlan,
   onRun,
@@ -554,6 +708,7 @@ function AgentMessageItemComponent({
 }: AgentMessageItemProps) {
   const { t } = useTranslation(['chat', 'cli', 'chat:agentWorkflow']);
   const { styles, cx } = useStyles();
+  const [copied, setCopied] = useState(false);
 
   if (message.hidden) return null;
 
@@ -573,6 +728,19 @@ function AgentMessageItemComponent({
     ? resolveAvatarByName(userName, userAvatarDisplaySrc ?? undefined, 40)
     : resolveAvatarByName(avatarName, member?.avatar || message.sender.avatar, 40);
   const isStreaming = !!message.isStreaming;
+  const phaseLabel = message.phaseLabel;
+
+  const handleCopy = async () => {
+    const text = message.content || '';
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard unavailable */
+    }
+  };
 
   let bubbleClass = styles.bubbleAI;
   if (isUser) bubbleClass = styles.bubbleUser;
@@ -626,9 +794,23 @@ function AgentMessageItemComponent({
           {!isUser && isWorkflowMessage && (
             <span className={styles.plannerBadge}>{t('chat:agentWorkflow.plannerBadge', { defaultValue: '规划者' })}</span>
           )}
+          {phaseLabel && (
+            <span className={styles.phaseBadge}>{phaseLabel}</span>
+          )}
         </div>
         {(!isUser || hasTextContent || isWorkflowMessage) && (
-          <div className={bubbleClass}>
+          <div className={cx(bubbleClass, styles.messageBubble)}>
+            {!isUser && hasTextContent && !message.workflowRun && (
+              <button
+                type="button"
+                className={cx('msg-copy-btn', styles.msgCopyBtn)}
+                onClick={handleCopy}
+                aria-label={copied ? t('chat:agentChat.copied') : t('chat:agentChat.copy')}
+                title={copied ? t('chat:agentChat.copied') : t('chat:agentChat.copy')}
+              >
+                {copied ? <Check size={13} /> : <Copy size={13} />}
+              </button>
+            )}
             {message.workflowRun ? (
               <AgentWorkflowPlanCard
                 plan={message.workflowRun.plan}
@@ -641,7 +823,11 @@ function AgentMessageItemComponent({
                 onRevise={isPendingPlan ? handleRevise : undefined}
               />
             ) : (
-              <ChatMarkdown content={message.content || ''} isUser={isUser} basePath={basePath} />
+              <ChatMarkdown
+                content={isUser ? highlightMentions(message.content || '', mentionNames || [], true) : (message.content || '')}
+                isUser={isUser}
+                basePath={basePath}
+              />
             )}
             {!isUser && !isWorkflowMessage && (
               <ChatAttachmentList
@@ -815,6 +1001,34 @@ const AgentChatUI = ({
 
   const messages = activeSession?.messages ?? EMPTY_MESSAGES;
 
+  /** 当前群专家名列表（用于用户消息 @mention 高亮；稳定引用以配合 memo） */
+  const mentionNames = useMemo(() => mentionCandidates.map(c => c.name), [mentionCandidates]);
+
+  /** 运行中的 workflow 进度（最新一条 running/planned 的 workflowRun） */
+  const workflowProgress = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const run = messages[i].workflowRun;
+      if (!run) continue;
+      if (run.status !== 'running' && run.status !== 'planned') continue;
+      const phases = run.plan.phases;
+      const states = run.phaseStates || {};
+      const total = phases.length;
+      const completed = phases.filter(p => {
+        const s = states[p.id]?.status;
+        return s === 'completed' || s === 'skipped';
+      }).length;
+      const runningPhase = phases.find(p => states[p.id]?.status === 'running');
+      return { total, completed, runningPhaseLabel: runningPhase?.label };
+    }
+    return null;
+  }, [messages]);
+
+  /** 正在流式输出的专家数量（并发感知） */
+  const activeExpertsCount = useMemo(
+    () => messages.filter(m => m.isStreaming && m.isAI && !m.workflowRun && !m.hidden).length,
+    [messages],
+  );
+
   const titleGenRef = useRef<Set<string>>(new Set());
   const pendingWorkflowsRef = useRef<Record<string, PendingWorkflowExecution>>({});
   const [pendingWorkflowsVersion, setPendingWorkflowsVersion] = useState(0);
@@ -968,7 +1182,15 @@ const AgentChatUI = ({
     if (activeSession.titleGenerated) return;
     if (titleGenRef.current.has(activeSession.id)) return;
     const userMsg = messages.find(m => !m.isAI && (m.content || '').trim());
-    const aiMsg = messages.find(m => m.isAI && !m.isError && (m.content || '').trim());
+    const aiMsg = messages.find(m =>
+      m.isAI
+      && !m.isError
+      && !m.workflowRun
+      && !m.hidden
+      && m.sender.id !== '__system__'
+      && m.sender.id !== '__workflow__'
+      && (m.content || '').trim()
+    );
     const firstAgent = currentAgents[0] as { model?: string; providerId?: string } | undefined;
     if (!userMsg || !aiMsg || !firstAgent?.model) return;
     const sid = activeSession.id;
@@ -1086,6 +1308,8 @@ const AgentChatUI = ({
   const chatAreaRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const shouldStickToBottomRef = useRef(true);
+  const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+  const [missedMessageCount, setMissedMessageCount] = useState(0);
 
   useEffect(() => {
     if (isMobile !== undefined) {
@@ -1098,15 +1322,27 @@ const AgentChatUI = ({
     const el = chatAreaRef.current;
     if (!el) return;
     const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    shouldStickToBottomRef.current = distanceToBottom < 80;
+    const stuck = distanceToBottom < 80;
+    shouldStickToBottomRef.current = stuck;
+    setShowJumpToBottom(!stuck);
+    if (stuck) setMissedMessageCount(0);
   };
 
   const scrollMessagesToBottom = (behavior: ScrollBehavior = 'smooth') => {
     messagesEndRef.current?.scrollIntoView({ behavior });
   };
 
+  const handleJumpToBottom = () => {
+    shouldStickToBottomRef.current = true;
+    setShowJumpToBottom(false);
+    setMissedMessageCount(0);
+    scrollMessagesToBottom('smooth');
+  };
+
   useEffect(() => {
     shouldStickToBottomRef.current = true;
+    setShowJumpToBottom(false);
+    setMissedMessageCount(0);
     scrollMessagesToBottom('auto');
   }, [group.id, activeSessionId]);
 
@@ -1115,6 +1351,16 @@ const AgentChatUI = ({
       scrollMessagesToBottom('smooth');
     }
   }, [messages]);
+
+  // 仅在「新增消息」时累计未读，避免流式 token 刷新把计数刷爆。
+  useEffect(() => {
+    if (shouldStickToBottomRef.current) {
+      setMissedMessageCount(0);
+    } else {
+      setMissedMessageCount(c => c + 1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages.length]);
 
   const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
 
@@ -1279,6 +1525,9 @@ const AgentChatUI = ({
         const id = nextMsgId();
         agentMsgIds[agentId] = id;
         agentMsgContents[id] = '';
+        const phaseLabel = meta?.phaseId
+          ? pending.plan.phases.find(p => p.id === meta.phaseId)?.label
+          : undefined;
         appendStoreMessage(sessionId, {
           id,
           sender: { id: agentId, name: agentName },
@@ -1287,6 +1536,7 @@ const AgentChatUI = ({
           isStreaming: true,
           agentTaskId: meta?.agentTaskId,
           adapter: meta?.adapter,
+          phaseLabel,
         });
       },
       onToken: (agentId, token) => {
@@ -1728,6 +1978,23 @@ const AgentChatUI = ({
                       ({t('chat:agentChat.expertCount', { count: currentAgents.length })})
                     </span>
                   </div>
+                  {workflowProgress && (
+                    <div className={styles.titleProgress}>
+                      <span className={styles.progressDot} />
+                      <span>
+                        {t('chat:agentChat.progressPhase', {
+                          current: Math.min(workflowProgress.completed + (workflowProgress.runningPhaseLabel ? 1 : 0), workflowProgress.total),
+                          total: workflowProgress.total,
+                        })}
+                      </span>
+                      {workflowProgress.runningPhaseLabel && (
+                        <span>· {workflowProgress.runningPhaseLabel}</span>
+                      )}
+                      {activeExpertsCount > 1 && (
+                        <span>· {t('chat:agentChat.expertsAnalyzing', { count: activeExpertsCount })}</span>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
               <div className={styles.headerActions}>
@@ -1796,6 +2063,23 @@ const AgentChatUI = ({
                     </span>
                   ))}
                 </div>
+                {currentAgents.length > 0 && !hasUnresolvedMembers && (
+                  <div className={styles.suggestionWrap}>
+                    <span className={styles.suggestionLabel}>{t('chat:agentChat.suggestionsLabel')}</span>
+                    <div className={styles.suggestionChips}>
+                      {[1, 2, 3].map(n => (
+                        <button
+                          key={n}
+                          type="button"
+                          className={styles.suggestionChip}
+                          onClick={() => setInputMessage(t(`chat:agentChat.suggestion${n}`))}
+                        >
+                          {t(`chat:agentChat.suggestion${n}`)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1808,6 +2092,7 @@ const AgentChatUI = ({
                   userName={userName}
                   userAvatarDisplaySrc={userStore.avatarDisplaySrc || userStore.userInfo?.avatar_url}
                   basePath={group.workspacePath}
+                  mentionNames={mentionNames}
                   isPendingPlan={pendingPlanIds.has(String(message.id))}
                   isRevisingPlan={revisingPlanIds.has(String(message.id))}
                   onRun={stableRunWorkflowMessage}
@@ -1819,6 +2104,22 @@ const AgentChatUI = ({
               <div ref={messagesEndRef} />
             </div>
           </div>
+
+          {/* Scroll-to-bottom floating button */}
+          {showJumpToBottom && (
+            <button
+              type="button"
+              className={styles.jumpButton}
+              onClick={handleJumpToBottom}
+              aria-label={t('chat:agentChat.scrollToBottom')}
+              title={t('chat:agentChat.scrollToBottom')}
+            >
+              <ChevronDown size={16} />
+              {missedMessageCount > 0 && (
+                <span className={styles.jumpBadge}>{missedMessageCount}</span>
+              )}
+            </button>
+          )}
 
 
           {/* Input Area */}
@@ -1843,6 +2144,9 @@ const AgentChatUI = ({
                 candidates={mentionCandidates}
                 onKeyDown={(e) => {
                   if (e.key !== 'Enter') return;
+                  // 输入法组词（中文/日文等）回车确认，不应触发发送
+                  if (e.nativeEvent && (e.nativeEvent as KeyboardEvent).isComposing) return;
+                  if (e.keyCode === 229) return;
                   if (!e.shiftKey) {
                     e.preventDefault();
                     handleSendMessage();
@@ -1851,7 +2155,6 @@ const AgentChatUI = ({
                 autoSize={{ minRows: 1, maxRows: 6 }}
                 placeholder={t('chat:agentChat.inputPlaceholder')}
                 containerStyle={{ flex: 1, minWidth: 0 }}
-                disabled={isLoading}
               />
               {isLoading ? (
                 <AntdButton

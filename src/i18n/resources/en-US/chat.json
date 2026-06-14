@@ -64,7 +64,17 @@
     "unresolvedMembersHint": "Open \"{{settings}}\" to check or re-add members.",
     "expertBadge": "Expert",
     "inputPlaceholder": "Send a message — experts will collaborate per group rules...",
-    "settings": "Settings"
+    "settings": "Settings",
+    "progressPhase": "Phase {{current}}/{{total}}",
+    "expertsAnalyzing": "{{count}} analyzing",
+    "scrollToBottom": "Scroll to bottom",
+    "newMessages": "{{count}} new",
+    "copy": "Copy",
+    "copied": "Copied",
+    "suggestionsLabel": "Try these",
+    "suggestion1": "Analyze the pros and cons of this approach",
+    "suggestion2": "Give your individual recommendations",
+    "suggestion3": "Collaborate on a complete proposal"
   },
   "agentWorkflow": {
     "sender": "Workflow plan",

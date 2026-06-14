@@ -344,3 +344,16 @@
   border-radius: 6px !important;
   font-size: 0.9em !important;
 }
+
+/* @mention highlight inside rendered user message bubbles */
+.agent-mention {
+  color: #ea580c;
+  background-color: rgba(255, 102, 0, 0.1);
+  border-radius: 4px;
+  padding: 0 4px;
+  font-weight: 600;
+}
+.dark .agent-mention {
+  color: #ff7820;
+  background-color: rgba(255, 120, 32, 0.16);
+}
