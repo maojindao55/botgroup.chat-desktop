@@ -111,7 +111,7 @@ pub struct CliRunArgs {
     pub group_id: String,
     pub agent_id: String,
     pub agent_name: String,
-    /// "codex" | "opencode" | "claude" | "cursor" | "qodercli" | "antigravity"
+    /// "codex" | "opencode" | "claude" | "cursor" | "qodercli" | "antigravity" | "kimi"
     pub adapter: String,
     pub prompt: String,
     pub cwd: Option<String>,
@@ -1074,6 +1074,10 @@ const CLI_ADAPTER_DEFINITIONS: &[CliAdapterDefinition] = &[
         id: "antigravity",
         default_binary: Some("agy"),
     },
+    CliAdapterDefinition {
+        id: "kimi",
+        default_binary: Some("kimi"),
+    },
 ];
 
 fn adapter_definition(adapter: &str) -> Option<CliAdapterDefinition> {
@@ -1372,6 +1376,35 @@ fn build_antigravity_command(argv: &mut Vec<String>, args: &CliRunArgs, _prompt_
     append_extra_args(argv, args);
     argv.push("-p".to_string());
     argv.push(args.prompt.clone());
+}
+
+fn build_kimi_command(argv: &mut Vec<String>, args: &CliRunArgs, prompt_via_stdin: bool) {
+    // Resume tool session up front. Per Kimi Code CLI docs:
+    //   --session [id]  / -S / -r / --resume / --continue / -C
+    // resume an existing session; --session=<id> form is also accepted.
+    if !has_any_extra_arg(
+        args,
+        &["--session", "-S", "-r", "--resume", "--continue", "-C"],
+    ) && !has_extra_arg_prefix(args, "--session=")
+    {
+        append_tool_session(argv, args, "--session");
+    }
+
+    append_extra_args(argv, args);
+
+    if !has_extra_arg(args, "--output-format") && !has_extra_arg_prefix(args, "--output-format=") {
+        argv.push("--output-format".to_string());
+        argv.push("stream-json".to_string());
+    }
+
+    // `kimi -p <prompt>` runs the prompt non-interactively. Per docs `-p`
+    // cannot be combined with `--yolo`/`--auto`/`--plan` (it always uses
+    // `auto` permission), so we don't append approval-mode flags here.
+    argv.push("-p".to_string());
+    if !prompt_via_stdin {
+        argv.push(args.prompt.clone());
+    }
+    // else: kimi `-p` reads the prompt from stdin (Windows `.cmd` shim path).
 }
 
 /// macOS/Linux GUI apps launched from Finder/Dock inherit a minimal PATH
@@ -1704,6 +1737,7 @@ fn build_command(args: &CliRunArgs) -> Result<Command, String> {
         "cursor" => build_cursor_command(&mut argv, arg_src, prompt_via_stdin),
         "qodercli" => build_qodercli_command(&mut argv, arg_src, prompt_via_stdin),
         "antigravity" => build_antigravity_command(&mut argv, arg_src, prompt_via_stdin),
+        "kimi" => build_kimi_command(&mut argv, arg_src, prompt_via_stdin),
         other => return Err(format!("unknown adapter: {}", other)),
     }
 
@@ -2419,6 +2453,104 @@ mod tests {
     }
 
     #[test]
+    fn kimi_print_defaults_to_stream_json_and_prompt_flag() {
+        let cmd = build_command(&CliRunArgs {
+            session_id: "session-1".to_string(),
+            group_id: "group-1".to_string(),
+            agent_id: "cli-kimi".to_string(),
+            agent_name: "Kimi Code".to_string(),
+            adapter: "kimi".to_string(),
+            prompt: "总结当前仓库状态".to_string(),
+            cwd: Some("/tmp/project".to_string()),
+            extra_args: None,
+            tool_session_id: None,
+            binary: None,
+            env: Some(HashMap::new()),
+            timeout_ms: Some(300000),
+            approval_mode: Some("auto".to_string()),
+            show_stderr: Some(false),
+            wsl: None,
+            wsl_distro: None,
+        })
+        .expect("kimi command should build");
+
+        let rendered = format!("{:?}", cmd);
+
+        assert!(rendered.contains("\"kimi\""));
+        assert!(rendered.contains("\"--output-format\""));
+        assert!(rendered.contains("\"stream-json\""));
+        assert!(rendered.contains("\"-p\""));
+        assert!(rendered.contains("\"总结当前仓库状态\""));
+        // `kimi -p` is mutually exclusive with --yolo/--auto/--plan, so we
+        // never append approval-mode flags here.
+        assert!(!rendered.contains("\"--yolo\""));
+        assert!(!rendered.contains("\"--auto\""));
+        assert!(!rendered.contains("\"--plan\""));
+        assert!(!rendered.contains("\"--dangerously-skip-permissions\""));
+    }
+
+    #[test]
+    fn kimi_print_resumes_tool_session_when_available() {
+        let cmd = build_command(&CliRunArgs {
+            session_id: "session-1".to_string(),
+            group_id: "group-1".to_string(),
+            agent_id: "cli-kimi".to_string(),
+            agent_name: "Kimi Code".to_string(),
+            adapter: "kimi".to_string(),
+            prompt: "继续刚才的任务".to_string(),
+            cwd: Some("/tmp/project".to_string()),
+            extra_args: None,
+            tool_session_id: Some("01HZKIMI...XYZ".to_string()),
+            binary: None,
+            env: Some(HashMap::new()),
+            timeout_ms: Some(300000),
+            approval_mode: Some("auto".to_string()),
+            show_stderr: Some(false),
+            wsl: None,
+            wsl_distro: None,
+        })
+        .expect("kimi resume command should build");
+
+        let rendered = format!("{:?}", cmd);
+
+        assert!(rendered.contains("\"--session\""));
+        assert!(rendered.contains("\"01HZKIMI...XYZ\""));
+        assert!(rendered.contains("\"-p\""));
+        assert!(rendered.contains("\"继续刚才的任务\""));
+    }
+
+    #[test]
+    fn kimi_print_respects_explicit_resume_arg() {
+        let cmd = build_command(&CliRunArgs {
+            session_id: "session-1".to_string(),
+            group_id: "group-1".to_string(),
+            agent_id: "cli-kimi".to_string(),
+            agent_name: "Kimi Code".to_string(),
+            adapter: "kimi".to_string(),
+            prompt: "继续刚才的任务".to_string(),
+            cwd: Some("/tmp/project".to_string()),
+            extra_args: Some(vec!["--continue".to_string()]),
+            tool_session_id: Some("stored-session".to_string()),
+            binary: None,
+            env: Some(HashMap::new()),
+            timeout_ms: Some(300000),
+            approval_mode: Some("auto".to_string()),
+            show_stderr: Some(false),
+            wsl: None,
+            wsl_distro: None,
+        })
+        .expect("kimi command should build");
+
+        let rendered = format!("{:?}", cmd);
+
+        assert!(rendered.contains("\"--continue\""));
+        // Explicit resume flag takes precedence; we must not also append the
+        // stored session via --session.
+        assert!(!rendered.contains("\"stored-session\""));
+        assert!(!rendered.contains("\"--session\""));
+    }
+
+    #[test]
     fn manual_wsl_path_converts_drive_letters() {
         assert_eq!(
             super::manual_wsl_path("C:\\Users\\me\\proj"),
@@ -2710,6 +2842,19 @@ mod tests {
         super::build_qodercli_command(&mut argv, &args, true);
 
         assert!(argv.contains(&"-p".to_string()));
+        assert!(!argv.contains(&MULTILINE_PROMPT.to_string()));
+        assert!(!argv.iter().any(|a| a.contains('\n')));
+    }
+
+    #[test]
+    fn kimi_omits_prompt_arg_when_prompt_via_stdin() {
+        let args = stdin_test_args("kimi", MULTILINE_PROMPT);
+        let mut argv = Vec::new();
+        super::build_kimi_command(&mut argv, &args, true);
+
+        assert!(argv.contains(&"-p".to_string()));
+        assert!(argv.contains(&"--output-format".to_string()));
+        assert!(argv.contains(&"stream-json".to_string()));
         assert!(!argv.contains(&MULTILINE_PROMPT.to_string()));
         assert!(!argv.iter().any(|a| a.contains('\n')));
     }
