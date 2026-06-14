@@ -36,4 +36,14 @@ assert.equal(antigravity?.cli?.adapter, 'antigravity');
 assert.equal(antigravity?.cli?.approvalMode, 'auto');
 assert.equal(antigravity?.cli?.showStderr, true);
 
+const kimi = builtinAIMembers.find((member) => member.id === 'cli-kimi');
+assert.equal(kimi?.kind, 'cli');
+assert.equal(kimi?.name, 'Kimi Code');
+assert.equal(kimi?.avatar, 'lobehub:Kimi');
+assert.equal(kimi?.source, 'builtin');
+assert.equal(kimi?.enabled, true);
+assert.equal(kimi?.cli?.adapter, 'kimi');
+assert.equal(kimi?.cli?.approvalMode, 'auto');
+assert.equal(kimi?.cli?.showStderr, false);
+
 console.log('aiMembers.test.mjs: ok');

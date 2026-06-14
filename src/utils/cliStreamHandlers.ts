@@ -32,6 +32,15 @@ import {
 import {
   parseQoderJsonLine,
 } from './qoderStream';
+import {
+  parseKimiJsonLine,
+  renderKimiCommandGroupEnd,
+  renderKimiCommandGroupStart,
+  renderKimiCommandCompleted,
+  renderKimiCommandStarted,
+  formatToolCallLabel,
+  type KimiToolCallInfo,
+} from './kimiStream';
 
 export type CLIStreamEvent = Record<string, unknown>;
 
@@ -396,6 +405,74 @@ export function createCLIStreamHandler(
         } else if (parsed?.content) {
           emitters.enqueueChunk(parsed.content);
         } else if (!parsed) {
+          emitters.enqueueChunk(`${line}\n`);
+        }
+        return true;
+      },
+    };
+  }
+
+  if (streamMode === 'kimi-json') {
+    let sessionId: string | null = null;
+    let commandGroupOpen = false;
+    let commandIndex = 0;
+    const toolCallMap = new Map<string, KimiToolCallInfo>();
+
+    const ensureCommandGroupOpen = () => {
+      if (!commandGroupOpen) {
+        commandGroupOpen = true;
+        commandIndex = 0;
+        emitters.enqueueChunk(renderKimiCommandGroupStart());
+      }
+    };
+
+    const closeCommandGroups = () => {
+      if (commandGroupOpen) {
+        commandGroupOpen = false;
+        emitters.enqueueChunk(renderKimiCommandGroupEnd());
+      }
+    };
+
+    return {
+      streamMode,
+      usesJsonModeStderr: false,
+      hasCommandGroupOpen: () => commandGroupOpen,
+      closeCommandGroups,
+      flushDone: () => {},
+      handleStdoutLine: (line) => {
+        const parsed = parseKimiJsonLine(line);
+        if (parsed?.sessionId && parsed.sessionId !== sessionId) {
+          sessionId = parsed.sessionId;
+          emitters.enqueueEvent({ type: 'tool_session', adapter, sessionId: parsed.sessionId });
+        }
+        if (parsed?.error) {
+          closeCommandGroups();
+          emitters.enqueueEvent({
+            type: 'error',
+            content: `\n**[Kimi Code error]** ${parsed.error}\n`,
+            error: parsed.error,
+          });
+        }
+        if (parsed?.toolCalls?.length) {
+          for (const tc of parsed.toolCalls) {
+            toolCallMap.set(tc.id, tc);
+            ensureCommandGroupOpen();
+            commandIndex++;
+            emitters.enqueueChunk(renderKimiCommandStarted(formatToolCallLabel(tc), commandIndex));
+          }
+        }
+        if (parsed?.toolResult) {
+          const tc = toolCallMap.get(parsed.toolResult.toolCallId);
+          if (commandGroupOpen) {
+            emitters.enqueueChunk(renderKimiCommandCompleted(parsed.toolResult.content));
+          }
+          if (tc) toolCallMap.delete(tc.id);
+        }
+        if (parsed?.content) {
+          closeCommandGroups();
+          emitters.enqueueChunk(`${parsed.content}\n`);
+        } else if (!parsed && !line.startsWith('{')) {
+          closeCommandGroups();
           emitters.enqueueChunk(`${line}\n`);
         }
         return true;

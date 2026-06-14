@@ -11,6 +11,7 @@ import { Markdown as LobeMarkdown } from '@lobehub/ui';
 import { Image as AntdImage, Space, message as antdMessage } from 'antd';
 import { Download } from 'lucide-react';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
+import { memo } from 'react';
 import type { CSSProperties, ImgHTMLAttributes, ReactNode } from 'react';
 import {
   normalizeChatMarkdownContent,
@@ -217,7 +218,7 @@ const chatMarkdownReactProps = {
   urlTransform: (url: string) => url,
 };
 
-export function ChatMarkdown({ content, isUser, className, basePath }: ChatMarkdownProps) {
+export const ChatMarkdown = memo(function ChatMarkdown({ content, isUser, className, basePath }: ChatMarkdownProps) {
   const style: CSSProperties | undefined = isUser
     ? { color: '#fff' }
     : undefined;
@@ -243,6 +244,6 @@ export function ChatMarkdown({ content, isUser, className, basePath }: ChatMarkd
       {withLocalImages}
     </LobeMarkdown>
   );
-}
+});
 
 export default ChatMarkdown;

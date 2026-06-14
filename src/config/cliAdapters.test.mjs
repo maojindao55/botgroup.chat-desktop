@@ -33,6 +33,11 @@ assert.equal(mod.getCLIAdapterDefinition('antigravity').defaultBinary, 'agy');
 assert.equal(mod.getCLIAdapterDefinition('antigravity').streamMode, 'raw');
 assert.equal(mod.supportsCliToolSession('antigravity'), false);
 
+assert.equal(mod.getCLIAdapterDefinition('kimi').label, 'Kimi Code');
+assert.equal(mod.getCLIAdapterDefinition('kimi').defaultBinary, 'kimi');
+assert.equal(mod.getCLIAdapterDefinition('kimi').streamMode, 'kimi-json');
+assert.equal(mod.supportsCliToolSession('kimi'), true);
+
 assert.equal(mod.adapterUsesOpenCodeSessionTitle('opencode'), true);
 assert.equal(mod.adapterUsesOpenCodeSessionTitle('codex'), false);
 
@@ -44,6 +49,10 @@ assert.equal(mod.hasExplicitToolSessionArg('claude', ['--resume', 'manual-sessio
 assert.equal(mod.hasExplicitToolSessionArg('cursor', ['--continue']), true);
 assert.equal(mod.hasExplicitToolSessionArg('qodercli', ['-r', 'manual-session']), true);
 assert.equal(mod.hasExplicitToolSessionArg('qodercli', ['--resume=manual-session']), true);
+assert.equal(mod.hasExplicitToolSessionArg('kimi', ['--session', 'ses_kimi']), true);
+assert.equal(mod.hasExplicitToolSessionArg('kimi', ['--session=ses_kimi']), true);
+assert.equal(mod.hasExplicitToolSessionArg('kimi', ['--continue']), true);
+assert.equal(mod.hasExplicitToolSessionArg('kimi', ['--plan']), false);
 
 const unknown = mod.getCLIAdapterDefinition('custom-cli');
 assert.equal(unknown.id, 'custom-cli');

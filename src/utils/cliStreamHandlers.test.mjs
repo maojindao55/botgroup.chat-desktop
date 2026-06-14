@@ -21,6 +21,7 @@ const [
   codexStream,
   opencodeStream,
   qoderStream,
+  kimiStream,
 ] = await Promise.all([
   importTsModule(new URL('../config/cliAdapters.ts', import.meta.url)),
   importTsModule(new URL('./claudeStream.ts', import.meta.url)),
@@ -28,6 +29,7 @@ const [
   importTsModule(new URL('./codexStream.ts', import.meta.url)),
   importTsModule(new URL('./opencodeStream.ts', import.meta.url)),
   importTsModule(new URL('./qoderStream.ts', import.meta.url)),
+  importTsModule(new URL('./kimiStream.ts', import.meta.url)),
 ]);
 
 globalThis.__cliStreamHandlersTestDeps = {
@@ -37,6 +39,7 @@ globalThis.__cliStreamHandlersTestDeps = {
   ...codexStream,
   ...opencodeStream,
   ...qoderStream,
+  ...kimiStream,
 };
 
 const { createCLIStreamHandler } = await importTsModule(
@@ -120,6 +123,14 @@ const { createCLIStreamHandler } = await importTsModule(
 } from './qoderStream';`,
       `const {
   parseQoderJsonLine,
+} = globalThis.__cliStreamHandlersTestDeps;`,
+    )
+    .replace(
+      `import {
+  parseKimiJsonLine,
+} from './kimiStream';`,
+      `const {
+  parseKimiJsonLine,
 } = globalThis.__cliStreamHandlersTestDeps;`,
     ),
 );
@@ -296,6 +307,65 @@ function createRecorder() {
     { type: 'tool_session', adapter: 'qodercli', sessionId: 'qoder-session' },
   ]);
   assert.equal(recorder.chunks.join(''), 'hello from qoder');
+}
+
+{
+  const recorder = createRecorder();
+  const handler = createCLIStreamHandler('kimi', recorder.emitters);
+
+  assert.equal(handler.streamMode, 'kimi-json');
+  assert.equal(handler.handleStdoutLine(JSON.stringify({
+    role: 'meta',
+    type: 'session.resume_hint',
+    session_id: 'session_f4472906',
+    content: 'To resume this session: kimi -r session_f4472906',
+  })), true);
+  assert.equal(handler.handleStdoutLine(JSON.stringify({
+    role: 'assistant',
+    content: '你好！很高兴见到你。',
+  })), true);
+
+  assert.deepEqual(recorder.events, [
+    { type: 'tool_session', adapter: 'kimi', sessionId: 'session_f4472906' },
+  ]);
+  assert.equal(recorder.chunks.join(''), '你好！很高兴见到你。\n');
+}
+
+{
+  const recorder = createRecorder();
+  const handler = createCLIStreamHandler('kimi', recorder.emitters);
+
+  assert.equal(handler.streamMode, 'kimi-json');
+  assert.equal(handler.handleStdoutLine(JSON.stringify({
+    role: 'meta',
+    type: 'session.resume_hint',
+    session_id: 'session_kimi_tool',
+  })), true);
+  assert.equal(handler.handleStdoutLine(JSON.stringify({
+    role: 'assistant',
+    tool_calls: [{
+      type: 'function',
+      id: 'tool_read_1',
+      function: { name: 'Read', arguments: '{"path":"workspace/main.py"}' },
+    }],
+  })), true);
+  assert.equal(handler.handleStdoutLine(JSON.stringify({
+    role: 'tool',
+    tool_call_id: 'tool_read_1',
+    content: '"workspace/main.py" does not exist.',
+  })), true);
+  assert.equal(handler.handleStdoutLine(JSON.stringify({
+    role: 'assistant',
+    content: '文件不存在。',
+  })), true);
+
+  assert.equal(handler.hasCommandGroupOpen(), false);
+  const content = recorder.chunks.join('');
+  assert.match(content, /<details open data-cli-command-group="kimi">/);
+  assert.match(content, /读取 workspace\/main\.py/);
+  assert.match(content, /"workspace\/main\.py" does not exist\./);
+  assert.match(content, /<\/details>/);
+  assert.match(content, /文件不存在。/);
 }
 
 {

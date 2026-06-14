@@ -5,6 +5,7 @@ export type CLIAdapterId =
   | 'cursor'
   | 'qodercli'
   | 'antigravity'
+  | 'kimi'
   | (string & {});
 
 export type CLIStreamMode =
@@ -13,6 +14,7 @@ export type CLIStreamMode =
   | 'opencode-json'
   | 'cursor-json'
   | 'qoder-json'
+  | 'kimi-json'
   | 'raw';
 
 export interface CLIAdapterDefinition {
@@ -103,6 +105,18 @@ export const cliAdapterDefinitions: CLIAdapterDefinition[] = [
     toolSessionArgPrefixes: ['--conversation='],
     installHint: 'curl -fsSL https://antigravity.google/cli/install.sh | bash',
     docsUrl: 'https://antigravity.google/docs/cli-overview',
+  },
+  {
+    id: 'kimi',
+    label: 'Kimi Code',
+    defaultBinary: 'kimi',
+    streamMode: 'kimi-json',
+    commandGroup: 'kimi',
+    capabilities: { toolSession: true },
+    toolSessionArgs: ['--session', '-S', '--resume', '-r', '--continue', '-C'],
+    toolSessionArgPrefixes: ['--session='],
+    installHint: 'curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash',
+    docsUrl: 'https://www.kimi.com/code/docs/',
   },
 ];
 
