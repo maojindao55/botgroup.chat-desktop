@@ -681,6 +681,7 @@ interface AgentMessageItemProps {
   userName: string;
   userAvatarDisplaySrc?: string | null;
   basePath?: string;
+  hideMessageDetails?: boolean;
   mentionNames?: string[];
   isPendingPlan: boolean;
   isRevisingPlan: boolean;
@@ -699,6 +700,7 @@ function AgentMessageItemComponent({
   userName,
   userAvatarDisplaySrc,
   basePath,
+  hideMessageDetails,
   mentionNames,
   isPendingPlan,
   isRevisingPlan,
@@ -828,6 +830,7 @@ function AgentMessageItemComponent({
                 content={isUser ? highlightMentions(message.content || '', mentionNames || [], true) : (message.content || '')}
                 isUser={isUser}
                 basePath={basePath}
+                hideDetails={!isUser && hideMessageDetails}
               />
             )}
             {!isUser && !isWorkflowMessage && (
@@ -839,7 +842,7 @@ function AgentMessageItemComponent({
             {isStreaming && (
               <span className={cx('typing-indicator', styles.typingCursor)}>▋</span>
             )}
-            {!isUser && member?.kind === 'cli' && message.agentTaskId && (
+            {!isUser && !hideMessageDetails && member?.kind === 'cli' && message.agentTaskId && (
               <div className={styles.cliLogBtnRow}>
                 <button
                   type="button"
@@ -1495,6 +1498,18 @@ const AgentChatUI = ({
         updateStoreMessage(sessionId, messageId, { workflowRun: sanitized });
       }
     };
+    const preferMoreCompleteContent = (current: string, candidate: string): string => {
+      const currentText = current || '';
+      const candidateText = candidate || '';
+      const currentTrimmed = currentText.trim();
+      const candidateTrimmed = candidateText.trim();
+      if (!candidateTrimmed) return currentText;
+      if (!currentTrimmed) return candidateText;
+      if (candidateTrimmed === currentTrimmed) return candidateText;
+      if (candidateTrimmed.startsWith(currentTrimmed)) return candidateText;
+      if (currentTrimmed.startsWith(candidateTrimmed)) return currentText;
+      return candidateText.length > currentText.length + 64 ? candidateText : currentText;
+    };
 
     const buildToolSessionKey = (agentId: string) => resolveCliToolSessionKey({
       developmentTaskId: pending.sessionId,
@@ -1559,12 +1574,15 @@ const AgentChatUI = ({
           });
         }
       },
-      onAgentEnd: (agentId) => {
+      onAgentEnd: (agentId, fullContent) => {
         const msgId = agentMsgIds[agentId];
         if (!msgId) return;
         tokenFlushRef.current.dirty.delete(msgId);
+        const streamedContent = agentMsgContents[msgId] || '';
+        const finalContent = preferMoreCompleteContent(streamedContent, fullContent || '');
+        agentMsgContents[msgId] = finalContent;
         updateStoreMessage(sessionId, msgId, {
-          content: agentMsgContents[msgId] || '',
+          content: finalContent,
           isStreaming: false,
         });
       },
@@ -2093,6 +2111,7 @@ const AgentChatUI = ({
                   userName={userName}
                   userAvatarDisplaySrc={userStore.avatarDisplaySrc || userStore.userInfo?.avatar_url}
                   basePath={group.workspacePath}
+                  hideMessageDetails={group.debugMode !== true}
                   mentionNames={mentionNames}
                   isPendingPlan={pendingPlanIds.has(String(message.id))}
                   isRevisingPlan={revisingPlanIds.has(String(message.id))}

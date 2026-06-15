@@ -22,6 +22,8 @@ import { translateCliStageLabel } from '@/i18n/engineLabels';
 import { te } from '@/i18n/translate';
 import { request } from '@/utils/request';
 import { reconstructCliOutputFromLogEntries } from '@/utils/cliLogOutput';
+import { createCLIStreamHandler } from '@/utils/cliStreamHandlers';
+import { cleanCliOutputLine, shouldSuppressCliOutputLine } from '@/utils/cliOutput';
 
 // ============ 类型定义 ============
 
@@ -89,6 +91,16 @@ interface CLIWorktreePrepareResult {
   runId: string;
 }
 
+interface CliLogEntryLike {
+  type?: string;
+  content?: string;
+}
+
+interface LogFallbackOutput {
+  output: string;
+  structured: boolean;
+}
+
 export interface AgentExecutionContext {
   agent: CLIAgent;
   /** 实际执行 cwd */
@@ -114,6 +126,65 @@ interface ScheduleInput {
 
 function executionAborted(signal?: AbortSignal): boolean {
   return !!signal?.aborted;
+}
+
+function canReplayStructuredCliLog(adapter: string): boolean {
+  const handler = createCLIStreamHandler(adapter, {
+    enqueueChunk: () => {},
+    enqueueEvent: () => {},
+  });
+  return handler.streamMode !== 'raw';
+}
+
+function reconstructStructuredCliOutputFromLogEntries(
+  entries: CliLogEntryLike[],
+  adapter: string,
+  options: { includeStderr?: boolean } = {},
+): string {
+  const chunks: string[] = [];
+  const handler = createCLIStreamHandler(adapter, {
+    enqueueChunk: (content) => chunks.push(content),
+    enqueueEvent: (payload) => {
+      if (typeof payload.content === 'string') chunks.push(payload.content);
+    },
+    closeIntermediateDetails: () => {},
+  });
+
+  if (handler.streamMode === 'raw') return '';
+
+  for (const entry of entries) {
+    if (typeof entry.content !== 'string') continue;
+    const line = cleanCliOutputLine(entry.content);
+    if (shouldSuppressCliOutputLine(line)) continue;
+    if (entry.type === 'stdout') {
+      const handled = handler.handleStdoutLine(line);
+      if (!handled) {
+        handler.closeCommandGroups();
+        chunks.push(`${line}\n`);
+      }
+    } else if (options.includeStderr && entry.type === 'stderr') {
+      handler.closeCommandGroups();
+      chunks.push(`> _${line.replace(/_/g, '\\_')}_\n`);
+    }
+  }
+
+  handler.flushDone();
+  handler.closeCommandGroups();
+  return chunks.join('').trim();
+}
+
+function shouldPreferLogFallback(current: string, fallback: LogFallbackOutput): boolean {
+  const currentTrimmed = current.trim();
+  const fallbackTrimmed = fallback.output.trim();
+  if (!fallbackTrimmed) return false;
+  if (!currentTrimmed) return true;
+  if (!fallback.structured) return false;
+  if (fallbackTrimmed === currentTrimmed) return false;
+  if (fallbackTrimmed.startsWith(currentTrimmed)) return true;
+
+  // Structured CLI events can arrive in the JS listener after the done event.
+  // Prefer the replayed log only when it is clearly more complete.
+  return fallbackTrimmed.length > currentTrimmed.length + 64;
 }
 
 // ============ 单个 CLI Agent 执行 ============
@@ -213,16 +284,30 @@ export async function callCLIAgent(
   let status: CLIRunStatus | undefined;
   let toolSessionId: string | undefined;
 
-  const readLogFallbackOutput = async (): Promise<string> => {
+  const readLogFallbackOutput = async (): Promise<LogFallbackOutput> => {
     try {
       const res = await request(`/api/cli/tasks/log?taskId=${encodeURIComponent(sessionId)}`);
       const json = await res.json();
       const lines = Array.isArray(json?.data?.lines) ? json.data.lines : [];
-      return reconstructCliOutputFromLogEntries(lines, {
-        includeStderr: options.showStderr ?? cliCfg.showStderr ?? true,
-      });
+      const includeStderr = options.showStderr ?? cliCfg.showStderr ?? true;
+      const structuredOutput = canReplayStructuredCliLog(runtimeAdapter)
+        ? reconstructStructuredCliOutputFromLogEntries(lines, runtimeAdapter, { includeStderr })
+        : '';
+      if (structuredOutput) return { output: structuredOutput, structured: true };
+      return {
+        output: reconstructCliOutputFromLogEntries(lines, { includeStderr }),
+        structured: false,
+      };
     } catch {
-      return '';
+      return { output: '', structured: false };
+    }
+  };
+
+  const useLogFallbackIfMoreComplete = async () => {
+    if (fullContent.trim() && !canReplayStructuredCliLog(runtimeAdapter)) return;
+    const fallbackOutput = await readLogFallbackOutput();
+    if (shouldPreferLogFallback(fullContent, fallbackOutput)) {
+      fullContent = fallbackOutput.output;
     }
   };
 
@@ -306,12 +391,7 @@ export async function callCLIAgent(
     }
 
     exitCode = exitCode ?? (failed ? -1 : 0);
-    if (!fullContent.trim()) {
-      const fallbackOutput = await readLogFallbackOutput();
-      if (fallbackOutput) {
-        fullContent = fallbackOutput;
-      }
-    }
+    await useLogFallbackIfMoreComplete();
     if (failed) {
       callbacks.onError(sessionId, errorMessage || te('errors.cliExecutionFailed'));
     } else {

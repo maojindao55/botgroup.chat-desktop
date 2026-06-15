@@ -14,7 +14,7 @@ async function importTsModule(url) {
   return import(moduleUrl);
 }
 
-const { normalizeChatMarkdownContent, transformLocalImagePaths } = await importTsModule(new URL('./markdownContent.ts', import.meta.url));
+const { normalizeChatMarkdownContent, stripDetailsBlocks, transformLocalImagePaths } = await importTsModule(new URL('./markdownContent.ts', import.meta.url));
 
 {
   const content = [
@@ -131,6 +131,60 @@ const { normalizeChatMarkdownContent, transformLocalImagePaths } = await importT
 
   assert.match(normalized, /<summary>⚙️ 执行过程<\/summary>/);
   assert.match(normalized, /final answer/);
+}
+
+{
+  const content = [
+    'before',
+    '<details><summary>debug</summary>',
+    'hidden details',
+    '</details>',
+    'after',
+  ].join('\n');
+
+  assert.equal(stripDetailsBlocks(content), 'before\nafter');
+}
+
+{
+  const content = [
+    'before',
+    '<details><summary>debug</summary>',
+    'streaming details',
+  ].join('\n');
+
+  assert.equal(stripDetailsBlocks(content), 'before');
+}
+
+{
+  const content = [
+    'keep inline `<details>literal</details>`',
+    '',
+    '<details><summary>debug</summary>',
+    'hidden details',
+    '</details>',
+    '',
+    'final',
+  ].join('\n');
+
+  assert.equal(stripDetailsBlocks(content), 'keep inline `<details>literal</details>`\n\nfinal');
+}
+
+{
+  const content = [
+    '<details><summary>⚙️ 执行过程</summary>',
+    '',
+    '最终回复',
+    '',
+    '<details open data-cli-command-group="codex"><summary>⚙️ 执行命令</summary>',
+    'command output',
+    '</details>',
+    '</details>',
+  ].join('\n');
+
+  const normalized = normalizeChatMarkdownContent(content);
+  const stripped = stripDetailsBlocks(normalized);
+
+  assert.equal(stripped, '最终回复');
 }
 
 console.log('markdownContent.test.mjs: ok');

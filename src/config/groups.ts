@@ -115,6 +115,7 @@ export interface CLIGroup {
   approvalMode: 'auto' | 'ask';    // 执行审批模式
   timeout: number;                  // 单次执行超时(ms)，默认 300000
   showStderr: boolean;              // 是否展示 stderr 输出
+  debugMode?: boolean;              // 是否在聊天气泡中展示 details 执行细节和日志入口，默认 false
   strategy: CLIStrategy;            // 执行策略，默认 sequential
   /** 用户选择的协作方式模板 id，用于区分共用同一 strategy 的产品模板 */
   workflowTemplateId?: string;
@@ -296,6 +297,7 @@ export interface AgentGroup {
   timeout?: number;                  // 单次执行超时(ms)，默认 300000
   approvalMode?: 'auto' | 'ask';    // 执行审批模式
   showStderr?: boolean;              // 是否展示 stderr 输出
+  debugMode?: boolean;               // 是否在聊天气泡中展示 details 执行细节和日志入口，默认 false
   /** 默认 workflow 偏好，会作为 planner/runner 的约束输入 */
   workflowDefaults: AgentWorkflowDefaults;
 }

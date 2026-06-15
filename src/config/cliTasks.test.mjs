@@ -78,7 +78,12 @@ assert.equal(template.name, 'AI Coding 工作组');
 assert.deepEqual(template.memberIds, ['cli-codex', 'cli-claude-code']);
 assert.equal(template.strategy, 'review');
 assert.equal(template.sessionPolicy, 'task');
+assert.equal(template.debugMode, false);
 assert.equal(mod.cliGroupToTeamTemplate({ ...sampleGroup, sessionPolicy: 'workspace' }).sessionPolicy, 'workspace');
+assert.equal(mod.cliGroupToTeamTemplate({ ...sampleGroup, debugMode: true }).debugMode, true);
+assert.equal(mod.cliGroupToTeamTemplate({ ...sampleGroup, debugMode: false }).debugMode, false);
+assert.equal(mod.templateSnapshotToCLIGroup({ ...template, debugMode: true }).debugMode, true);
+assert.equal(mod.templateSnapshotToCLIGroup({ ...template, debugMode: false }).debugMode, false);
 assert.equal(mod.sessionPolicyLabel('template'), '按模板共享');
 assert.equal(template.workspacePath, '/Users/dev/project');
 

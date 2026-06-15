@@ -606,6 +606,7 @@ const ChatUI = () => {
   const [approvalMode, setApprovalMode] = useState<'auto' | 'ask'>('auto');
   const [cliTimeout, setCliTimeout] = useState(300000);
   const [cliShowStderr, setCliShowStderr] = useState(true);
+  const [cliDebugMode, setCliDebugMode] = useState(false);
   const [cliStrategy, setCliStrategy] = useState<CLIStrategy>('sequential');
   const [cliExecutionPlan, setCliExecutionPlan] = useState<Partial<CLIExecutionPlan>>({});
   const [cliSessionPolicy, setCliSessionPolicy] = useState<CLISessionPolicy>('task');
@@ -790,6 +791,7 @@ const ChatUI = () => {
           setApprovalMode(currentGroup.approvalMode || 'auto');
           setCliTimeout(currentGroup.timeout || 300000);
           setCliShowStderr(currentGroup.showStderr !== false);
+          setCliDebugMode(currentGroup.debugMode === true);
           setCliSessionPolicy(currentGroup.sessionPolicy || 'task');
           const strategyOverride = localStorage.getItem(`cliStrategy:${currentGroup.id}`) as CLIStrategy | null;
           setCliStrategy(strategyOverride || currentGroup.strategy || 'sequential');
@@ -1240,8 +1242,7 @@ const ChatUI = () => {
   const patchCurrentCLIGroup = (patch: Partial<CLIGroup>) => {
     if (!group || group.type !== 'cli') return;
     const nextGroup = { ...(group as CLIGroup), ...patch };
-    setGroup(nextGroup);
-    setGroups(prev => prev.map(g => g.id === nextGroup.id ? nextGroup : g));
+    updateGroup(nextGroup);
     if (patch.strategy) {
       localStorage.setItem(`cliStrategy:${nextGroup.id}`, patch.strategy);
     }
@@ -1266,6 +1267,11 @@ const ChatUI = () => {
     const nextPlan = options?.replace ? patch : { ...cliExecutionPlan, ...patch };
     setCliExecutionPlan(nextPlan);
     patchCurrentCLIGroup({ executionPlan: nextPlan });
+  };
+
+  const handleCliDebugModeChange = (enabled: boolean) => {
+    setCliDebugMode(enabled);
+    patchCurrentCLIGroup({ debugMode: enabled });
   };
 
   // Loading / Error states
@@ -1420,6 +1426,7 @@ const ChatUI = () => {
         approvalMode,
         timeout: cliTimeout,
         showStderr: cliShowStderr,
+        debugMode: cliDebugMode,
         executionPlan: cliExecutionPlan,
       };
 
@@ -1591,6 +1598,7 @@ const ChatUI = () => {
         timeout: cliTimeout,
         approvalMode,
         showStderr: cliShowStderr,
+        debugMode: cliDebugMode,
         executionPlan: cliExecutionPlan,
       };
 
@@ -1881,7 +1889,7 @@ const ChatUI = () => {
         <CLIGroupSettings
           open={showSettings}
           onOpenChange={handleToggleSettings}
-          group={{ ...(group as CLIGroup), strategy: cliStrategy, executionPlan: cliExecutionPlan }}
+          group={{ ...(group as CLIGroup), strategy: cliStrategy, executionPlan: cliExecutionPlan, debugMode: cliDebugMode }}
           members={
             ((group as CLIGroup).memberIds || (group as CLIGroup).members || [])
               .map(id => resolveEffectiveMember(aiMembers, id))
@@ -1904,6 +1912,8 @@ const ChatUI = () => {
           onTimeoutChange={setCliTimeout}
           showStderr={cliShowStderr}
           onShowStderrChange={setCliShowStderr}
+          debugMode={cliDebugMode}
+          onDebugModeChange={handleCliDebugModeChange}
           strategy={cliStrategy}
           onStrategyChange={handleCLIStrategyChange}
           onExecutionPlanChange={handleCLIExecutionPlanChange}
@@ -2099,6 +2109,7 @@ const ChatUI = () => {
                           content={message.content}
                           isUser={isUser}
                           basePath={message.cliCwd || workspacePath}
+                          hideDetails={!isUser && isCLIGroup && (group as CLIGroup).debugMode !== true}
                         />
                         {isStreaming && (
                           <span className={cx('typing-indicator', styles.typingCursor)}>▋</span>
@@ -2282,7 +2293,7 @@ const ChatUI = () => {
             inline
             open={showSettings}
             onOpenChange={handleToggleSettings}
-            group={{ ...(group as CLIGroup), strategy: cliStrategy, executionPlan: cliExecutionPlan }}
+            group={{ ...(group as CLIGroup), strategy: cliStrategy, executionPlan: cliExecutionPlan, debugMode: cliDebugMode }}
             members={
               ((group as CLIGroup).memberIds || (group as CLIGroup).members || [])
                 .map(id => resolveEffectiveMember(aiMembers, id))
@@ -2305,6 +2316,8 @@ const ChatUI = () => {
             onTimeoutChange={setCliTimeout}
             showStderr={cliShowStderr}
             onShowStderrChange={setCliShowStderr}
+            debugMode={cliDebugMode}
+            onDebugModeChange={handleCliDebugModeChange}
             strategy={cliStrategy}
             onStrategyChange={handleCLIStrategyChange}
             onExecutionPlanChange={handleCLIExecutionPlanChange}

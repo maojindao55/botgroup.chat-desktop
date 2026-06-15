@@ -44,29 +44,19 @@ globalThis.__cliStreamHandlersTestDeps = {
 
 const { createCLIStreamHandler } = await importTsModule(
   new URL('./cliStreamHandlers.ts', import.meta.url),
-  source => source
-    .replace(
+  source => {
+    let out = source.replace(
       "import { adapterUsesOpenCodeSessionTitle, getCLIAdapterDefinition, type CLIStreamMode } from '../config/cliAdapters';",
       "const { adapterUsesOpenCodeSessionTitle, getCLIAdapterDefinition } = globalThis.__cliStreamHandlersTestDeps;\ntype CLIStreamMode = import('../config/cliAdapters').CLIStreamMode;",
-    )
-    .replace(
-      `import {
+    );
+    out = out.replace(/import \{\r?\n\s*parseClaudeJsonLine,\r?\n\s*renderClaudeCommandCompleted,\r?\n\s*renderClaudeCommandGroupEnd,\r?\n\s*renderClaudeCommandGroupStart,\r?\n\s*renderClaudeCommandStarted,\r?\n\} from '\.\/claudeStream';/, `const {
   parseClaudeJsonLine,
   renderClaudeCommandCompleted,
   renderClaudeCommandGroupEnd,
   renderClaudeCommandGroupStart,
   renderClaudeCommandStarted,
-} from './claudeStream';`,
-      `const {
-  parseClaudeJsonLine,
-  renderClaudeCommandCompleted,
-  renderClaudeCommandGroupEnd,
-  renderClaudeCommandGroupStart,
-  renderClaudeCommandStarted,
-} = globalThis.__cliStreamHandlersTestDeps;`,
-    )
-    .replace(
-      `import {
+} = globalThis.__cliStreamHandlersTestDeps;`);
+    out = out.replace(/import \{\r?\n\s*parseCursorJsonLine,\r?\n\s*renderCursorCommandCompleted,\r?\n\s*renderCursorCommandGroupEnd,\r?\n\s*renderCursorCommandGroupStart,\r?\n\s*renderCursorCommandStarted,\r?\n\s*renderCursorThinking,\r?\n\s*renderCursorToolCompleted,\r?\n\s*shouldEmitCursorSummary,\r?\n\} from '\.\/cursorStream';/, `const {
   parseCursorJsonLine,
   renderCursorCommandCompleted,
   renderCursorCommandGroupEnd,
@@ -75,64 +65,34 @@ const { createCLIStreamHandler } = await importTsModule(
   renderCursorThinking,
   renderCursorToolCompleted,
   shouldEmitCursorSummary,
-} from './cursorStream';`,
-      `const {
-  parseCursorJsonLine,
-  renderCursorCommandCompleted,
-  renderCursorCommandGroupEnd,
-  renderCursorCommandGroupStart,
-  renderCursorCommandStarted,
-  renderCursorThinking,
-  renderCursorToolCompleted,
-  shouldEmitCursorSummary,
-} = globalThis.__cliStreamHandlersTestDeps;`,
-    )
-    .replace(
-      `import {
+} = globalThis.__cliStreamHandlersTestDeps;`);
+    out = out.replace(/import \{\r?\n\s*parseCodexJsonLine,\r?\n\s*renderCodexCommandCompleted,\r?\n\s*renderCodexCommandGroupEnd,\r?\n\s*renderCodexCommandGroupStart,\r?\n\s*renderCodexCommandStarted,\r?\n\} from '\.\/codexStream';/, `const {
   parseCodexJsonLine,
   renderCodexCommandCompleted,
   renderCodexCommandGroupEnd,
   renderCodexCommandGroupStart,
   renderCodexCommandStarted,
-} from './codexStream';`,
-      `const {
-  parseCodexJsonLine,
-  renderCodexCommandCompleted,
-  renderCodexCommandGroupEnd,
-  renderCodexCommandGroupStart,
-  renderCodexCommandStarted,
-} = globalThis.__cliStreamHandlersTestDeps;`,
-    )
-    .replace(
-      `import {
+} = globalThis.__cliStreamHandlersTestDeps;`);
+    out = out.replace(/import \{\r?\n\s*parseOpenCodeJsonLine,\r?\n\s*renderOpenCodeCommand,\r?\n\s*renderOpenCodeCommandGroupEnd,\r?\n\s*renderOpenCodeCommandGroupStart,\r?\n\} from '\.\/opencodeStream';/, `const {
   parseOpenCodeJsonLine,
   renderOpenCodeCommand,
   renderOpenCodeCommandGroupEnd,
   renderOpenCodeCommandGroupStart,
-} from './opencodeStream';`,
-      `const {
-  parseOpenCodeJsonLine,
-  renderOpenCodeCommand,
-  renderOpenCodeCommandGroupEnd,
-  renderOpenCodeCommandGroupStart,
-} = globalThis.__cliStreamHandlersTestDeps;`,
-    )
-    .replace(
-      `import {
+} = globalThis.__cliStreamHandlersTestDeps;`);
+    out = out.replace(/import \{\r?\n\s*parseQoderJsonLine,\r?\n\} from '\.\/qoderStream';/, `const {
   parseQoderJsonLine,
-} from './qoderStream';`,
-      `const {
-  parseQoderJsonLine,
-} = globalThis.__cliStreamHandlersTestDeps;`,
-    )
-    .replace(
-      `import {
+} = globalThis.__cliStreamHandlersTestDeps;`);
+    out = out.replace(/import \{\r?\n\s*parseKimiJsonLine,\r?\n\s*renderKimiCommandGroupEnd,\r?\n\s*renderKimiCommandGroupStart,\r?\n\s*renderKimiCommandCompleted,\r?\n\s*renderKimiCommandStarted,\r?\n\s*formatToolCallLabel,\r?\n\s*type KimiToolCallInfo,\r?\n\} from '\.\/kimiStream';/, `const {
   parseKimiJsonLine,
-} from './kimiStream';`,
-      `const {
-  parseKimiJsonLine,
-} = globalThis.__cliStreamHandlersTestDeps;`,
-    ),
+  renderKimiCommandGroupEnd,
+  renderKimiCommandGroupStart,
+  renderKimiCommandCompleted,
+  renderKimiCommandStarted,
+  formatToolCallLabel,
+} = globalThis.__cliStreamHandlersTestDeps;
+type KimiToolCallInfo = import('./kimiStream').KimiToolCallInfo;`);
+    return out;
+  },
 );
 
 function createRecorder() {

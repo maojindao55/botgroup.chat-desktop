@@ -26,6 +26,8 @@
     "maxParallelAgents": "最大并发成员数",
   "alwaysShowPlan": "总是展示协作计划卡",
   "alwaysShowPlanHint": "全局设置「执行前总是确认」开启时同样会弹出计划卡",
+  "debugMode": "调试模式",
+  "debugModeHint": "关闭后隐藏聊天气泡中的执行细节，只保留最终回复；日志仍可查看完整内容",
   "customizedPreset": "已自定义（与预设不一致）",
   "maxPhasesHint": "单次协作计划最多拆分的阶段数",
   "maxParallelAgentsHint": "同一阶段内可并行执行的成员数上限",

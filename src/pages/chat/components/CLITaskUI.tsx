@@ -1983,6 +1983,8 @@ const CLITaskUI = ({
           onTimeoutChange={(t) => handleUpdateEditingTemplate({ timeout: t })}
           showStderr={editingCLIGroup.showStderr !== false}
           onShowStderrChange={(v) => handleUpdateEditingTemplate({ showStderr: v })}
+          debugMode={editingCLIGroup.debugMode === true}
+          onDebugModeChange={(v) => handleUpdateEditingTemplate({ debugMode: v })}
           strategy={editingCLIGroup.strategy || 'sequential'}
           onStrategyChange={(s) => handleUpdateEditingTemplate({ strategy: s })}
           onWorkflowTemplateChange={(workflowTemplateId) => handleUpdateEditingTemplate({ workflowTemplateId })}
@@ -2336,7 +2338,12 @@ const CLITaskUI = ({
                           )}
                         </div>
                         <div className={cx(bubbleClass, 'chat-message')}>
-                          <ChatMarkdown content={message.content} isUser={isUser} basePath={message.cliCwd || workspacePath} />
+                          <ChatMarkdown
+                            content={message.content}
+                            isUser={isUser}
+                            basePath={message.cliCwd || workspacePath}
+                            hideDetails={!isUser && selectedTask?.templateSnapshot.debugMode !== true}
+                          />
                           {isStreaming && (
                             <span className={cx('typing-indicator', styles.typingCursor)}>▋</span>
                           )}
@@ -2355,13 +2362,15 @@ const CLITaskUI = ({
                                 {message.status === 'timeout' && <span style={{ color: '#ff4d4f' }}>{t('cli:taskUI.message.timeout')}</span>}
                               </span>
                               <div className={styles.cliTaskActions}>
-                                <button
-                                  type="button"
-                                  className={styles.cliActionBtnLog}
-                                  onClick={() => openTaskLog(message)}
-                                >
-                                  {t('cli:taskUI.message.log')}
-                                </button>
+                                {selectedTask?.templateSnapshot.debugMode === true && (
+                                  <button
+                                    type="button"
+                                    className={styles.cliActionBtnLog}
+                                    onClick={() => openTaskLog(message)}
+                                  >
+                                    {t('cli:taskUI.message.log')}
+                                  </button>
+                                )}
                                 {message.status === 'running' && message.taskId && isComposeBusy && (
                                   <button
                                     type="button"

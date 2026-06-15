@@ -5,7 +5,7 @@
  * rehype-katex 与 shiki 语法高亮；同时通过 allowHtml 保留 <details>
  * <summary> 执行过程折叠块的原生渲染能力。
  *
- * 调用方约束：保持 props 形态为 { content, isUser, className }。
+ * 调用方约束：执行细节是否展示由 hideDetails 控制，内容本身不在这里持久化改写。
  */
 import { Markdown as LobeMarkdown } from '@lobehub/ui';
 import { Image as AntdImage, Space, message as antdMessage } from 'antd';
@@ -15,6 +15,7 @@ import { memo } from 'react';
 import type { CSSProperties, ImgHTMLAttributes, ReactNode } from 'react';
 import {
   normalizeChatMarkdownContent,
+  stripDetailsBlocks,
   transformLocalImagePaths,
 } from '@/utils/markdownContent';
 
@@ -23,6 +24,7 @@ export interface ChatMarkdownProps {
   isUser?: boolean;
   className?: string;
   basePath?: string;
+  hideDetails?: boolean;
 }
 
 type MarkdownImageProps = ImgHTMLAttributes<HTMLImageElement> & {
@@ -218,15 +220,16 @@ const chatMarkdownReactProps = {
   urlTransform: (url: string) => url,
 };
 
-export const ChatMarkdown = memo(function ChatMarkdown({ content, isUser, className, basePath }: ChatMarkdownProps) {
+export const ChatMarkdown = memo(function ChatMarkdown({ content, isUser, className, basePath, hideDetails }: ChatMarkdownProps) {
   const style: CSSProperties | undefined = isUser
     ? { color: '#fff' }
     : undefined;
   const normalizedContent = normalizeChatMarkdownContent(content);
+  const displayContent = hideDetails ? stripDetailsBlocks(normalizedContent) : normalizedContent;
   // 桌面端（Tauri 注入）才把本地绝对路径转成 asset://，Web 端不处理
   const withLocalImages = hasTauriConvertFileSrc()
-    ? transformLocalImagePaths(normalizedContent, (path) => convertFileSrc(resolveImagePath(path, basePath)))
-    : normalizedContent;
+    ? transformLocalImagePaths(displayContent, (path) => convertFileSrc(resolveImagePath(path, basePath)))
+    : displayContent;
 
   return (
     <LobeMarkdown

@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Modal, Button, Spin } from 'antd';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Modal, Button, Spin, Alert } from 'antd';
 import { createStyles } from 'antd-style';
 import { useTranslation } from 'react-i18next';
 import { request } from '@/utils/request';
@@ -8,6 +8,14 @@ export interface CLITaskLogEntry {
   ts: string;
   type: 'stdout' | 'stderr' | 'system';
   content: string;
+}
+
+interface CLITaskLogPage {
+  lines?: CLITaskLogEntry[];
+  totalLines?: number;
+  startLine?: number;
+  truncated?: boolean;
+  returnedBytes?: number;
 }
 
 export interface CLITaskLogModalProps {
@@ -39,6 +47,7 @@ const useStyles = createStyles(({ css }) => ({
     display: flex;
     gap: 10px;
     margin-bottom: 4px;
+    min-width: 0;
     &:last-child {
       margin-bottom: 0;
     }
@@ -49,7 +58,8 @@ const useStyles = createStyles(({ css }) => ({
     flex-shrink: 0;
   `,
   logText: css`
-    word-break: break-all;
+    min-width: 0;
+    overflow-wrap: anywhere;
     white-space: pre-wrap;
   `,
   logTypeStdout: css`
@@ -63,6 +73,36 @@ const useStyles = createStyles(({ css }) => ({
     font-style: italic;
   `,
 }));
+
+const LOG_VIEW_LINE_LIMIT = 500;
+const LOG_VIEW_MAX_BYTES = 1024 * 1024;
+const LOG_ENTRY_RENDER_LIMIT = 8192;
+const BASE64_RUN_MIN_CHARS = 2048;
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let value = bytes;
+  let idx = 0;
+  while (value >= 1024 && idx < units.length - 1) {
+    value /= 1024;
+    idx += 1;
+  }
+  return `${value.toFixed(idx === 0 ? 0 : 1)} ${units[idx]}`;
+}
+
+function abbreviateLogContent(content: string): string {
+  if (!content) return '';
+  if (content.length > LOG_ENTRY_RENDER_LIMIT * 4) {
+    return `${content.slice(0, LOG_ENTRY_RENDER_LIMIT)}\n[log line truncated locally: original ${formatBytes(content.length)}]`;
+  }
+  const redacted = content.replace(
+    new RegExp(`[A-Za-z0-9+/=_-]{${BASE64_RUN_MIN_CHARS},}`, 'g'),
+    match => `[base64 omitted locally: ${formatBytes(match.length)}]`,
+  );
+  if (redacted.length <= LOG_ENTRY_RENDER_LIMIT) return redacted;
+  return `${redacted.slice(0, LOG_ENTRY_RENDER_LIMIT)}\n[log line truncated locally: original ${formatBytes(redacted.length)}]`;
+}
 
 export const CLITaskLogModal = ({
   open,
@@ -79,8 +119,10 @@ export const CLITaskLogModal = ({
   const { t } = useTranslation(['cli', 'common']);
   const [logEntries, setLogEntries] = useState<CLITaskLogEntry[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
+  const [logTruncated, setLogTruncated] = useState(false);
   const [currentStatus, setCurrentStatus] = useState(status || '');
   const [currentPrompt, setCurrentPrompt] = useState(prompt || '');
+  const lastLineRef = useRef(0);
 
   useEffect(() => {
     if (open) {
@@ -88,21 +130,49 @@ export const CLITaskLogModal = ({
       setCurrentPrompt(prompt || '');
     } else {
       setLogEntries([]);
+      setLogTruncated(false);
+      lastLineRef.current = 0;
     }
-  }, [open, status, prompt]);
+  }, [open, status, prompt, agentTaskId]);
 
-  const fetchLogs = useCallback(async (taskId: string) => {
-    setLoadingLogs(true);
+  const fetchLogs = useCallback(async (
+    taskId: string,
+    options: { incremental?: boolean; silent?: boolean } = {},
+  ) => {
+    if (!options.silent) setLoadingLogs(true);
     try {
-      const res = await request(`/api/cli/tasks/log?taskId=${taskId}`);
+      const params = new URLSearchParams({
+        taskId,
+        limit: String(LOG_VIEW_LINE_LIMIT),
+        maxBytes: String(LOG_VIEW_MAX_BYTES),
+        redact: 'true',
+      });
+      if (options.incremental && lastLineRef.current > 0) {
+        params.set('sinceLine', String(lastLineRef.current));
+      } else {
+        params.set('tail', 'true');
+      }
+      const res = await request(`/api/cli/tasks/log?${params.toString()}`);
       const json = await res.json();
       if (json.success && json.data) {
-        setLogEntries(json.data.lines || []);
+        const data = json.data as CLITaskLogPage;
+        const nextLines = (data.lines || []).map(entry => ({
+          ...entry,
+          content: abbreviateLogContent(entry.content || ''),
+        }));
+        if (typeof data.totalLines === 'number') {
+          lastLineRef.current = data.totalLines;
+        }
+        setLogTruncated(prev => options.incremental ? prev || Boolean(data.truncated) : Boolean(data.truncated));
+        setLogEntries(prev => {
+          const merged = options.incremental ? [...prev, ...nextLines] : nextLines;
+          return merged.slice(-LOG_VIEW_LINE_LIMIT);
+        });
       }
     } catch (e) {
       console.error('Failed to fetch logs:', e);
     } finally {
-      setLoadingLogs(false);
+      if (!options.silent) setLoadingLogs(false);
     }
   }, []);
 
@@ -123,9 +193,12 @@ export const CLITaskLogModal = ({
     }
   }, [onStatusChange]);
 
-  const refreshTask = useCallback(async (taskId: string) => {
+  const refreshTask = useCallback(async (
+    taskId: string,
+    options: { incremental?: boolean; silent?: boolean } = {},
+  ) => {
     await Promise.all([
-      fetchLogs(taskId),
+      fetchLogs(taskId, options),
       fetchTaskMeta(taskId),
     ]);
   }, [fetchLogs, fetchTaskMeta]);
@@ -133,12 +206,19 @@ export const CLITaskLogModal = ({
   useEffect(() => {
     if (!open || !agentTaskId) return;
 
+    lastLineRef.current = 0;
+    setLogEntries([]);
+    setLogTruncated(false);
     refreshTask(agentTaskId);
+  }, [open, agentTaskId, refreshTask]);
+
+  useEffect(() => {
+    if (!open || !agentTaskId) return;
 
     if (currentStatus !== 'running') return;
 
     const timer = setInterval(() => {
-      refreshTask(agentTaskId);
+      refreshTask(agentTaskId, { incremental: true, silent: true });
     }, 2000);
 
     return () => clearInterval(timer);
@@ -195,7 +275,11 @@ export const CLITaskLogModal = ({
         ),
         <Button
           key="refresh"
-          onClick={() => agentTaskId && refreshTask(agentTaskId)}
+          onClick={() => {
+            if (!agentTaskId) return;
+            lastLineRef.current = 0;
+            refreshTask(agentTaskId);
+          }}
           loading={loadingLogs}
         >
           {t('cli:taskLog.refresh')}
@@ -223,9 +307,20 @@ export const CLITaskLogModal = ({
             whiteSpace: 'pre-wrap',
           }}
           >
-            {currentPrompt}
+            {abbreviateLogContent(currentPrompt)}
           </div>
         </div>
+      )}
+
+      {logTruncated && (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message={t('cli:taskLog.truncated', {
+            defaultValue: '日志视图仅显示最近输出，并已隐藏过大的 base64 / 二进制内容。',
+          })}
+        />
       )}
 
       {loadingLogs && logEntries.length === 0 ? (

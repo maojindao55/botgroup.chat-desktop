@@ -7,18 +7,18 @@ const cliTask = await readFile(new URL('../pages/chat/components/CLITaskUI.tsx',
 
 assert.match(
   agentChat,
-  /<ChatMarkdown\s+content=\{message\.content\}\s+isUser=\{isUser\}\s+basePath=\{group\.workspacePath\}/,
-  'AgentChatUI should pass group workspacePath as markdown image basePath',
+  /<ChatMarkdown[\s\S]*?basePath=\{basePath\}[\s\S]*?hideDetails=\{!isUser && hideMessageDetails\}/,
+  'AgentChatUI should pass markdown basePath and debug detail visibility',
 );
 assert.match(
   chat,
-  /<ChatMarkdown[\s\S]*?content=\{message\.content\}[\s\S]*?basePath=\{message\.cliCwd \|\| workspacePath\}/,
-  'ChatUI should pass message cliCwd/workspacePath as markdown image basePath',
+  /<ChatMarkdown[\s\S]*?content=\{message\.content\}[\s\S]*?basePath=\{message\.cliCwd \|\| workspacePath\}[\s\S]*?hideDetails=\{!isUser && isCLIGroup && \(group as CLIGroup\)\.debugMode !== true\}/,
+  'ChatUI should pass message cliCwd/workspacePath and debug detail visibility',
 );
 assert.match(
   cliTask,
-  /<ChatMarkdown\s+content=\{message\.content\}\s+isUser=\{isUser\}\s+basePath=\{message\.cliCwd \|\| workspacePath\}/,
-  'CLITaskUI should pass message cliCwd/workspacePath as markdown image basePath',
+  /<ChatMarkdown[\s\S]*?content=\{message\.content\}[\s\S]*?basePath=\{message\.cliCwd \|\| workspacePath\}[\s\S]*?hideDetails=\{!isUser && selectedTask\?\.templateSnapshot\.debugMode !== true\}/,
+  'CLITaskUI should pass message cliCwd/workspacePath and snapshot debug detail visibility',
 );
 
 console.log('Markdown.callers.test.mjs: ok');

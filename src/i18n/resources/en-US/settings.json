@@ -26,6 +26,8 @@
     "maxParallelAgents": "Max parallel members",
   "alwaysShowPlan": "Always show workflow plan",
   "alwaysShowPlanHint": "The global \"Always confirm before run\" setting also triggers the plan card",
+  "debugMode": "Debug mode",
+  "debugModeHint": "When off, hides execution details in chat bubbles and keeps the final reply; logs still keep the full content",
   "customizedPreset": "Customized (differs from preset)",
   "maxPhasesHint": "Max number of phases a plan can be split into",
   "maxParallelAgentsHint": "Max members that can run in parallel within a single phase",

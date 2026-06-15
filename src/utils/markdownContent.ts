@@ -209,6 +209,46 @@ export function normalizeChatMarkdownContent(content: string): string {
   return unwrapLegacyExecutionProcessDetails(commandGroupsNormalized);
 }
 
+export function stripDetailsBlocks(content: string): string {
+  if (!content) return content;
+
+  const codeRebuilt: string[] = [];
+  let masked = content.replace(fencedCodeBlockPattern, (block) => {
+    codeRebuilt.push(block);
+    return `${CODE_BLOCK_PLACEHOLDER}${codeRebuilt.length - 1}\u0000`;
+  });
+  masked = masked.replace(inlineCodePattern, (block) => {
+    codeRebuilt.push(block);
+    return `${CODE_BLOCK_PLACEHOLDER}${codeRebuilt.length - 1}\u0000`;
+  });
+
+  let result = '';
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+  const detailsTagPattern = createDetailsTagPattern();
+
+  while ((match = detailsTagPattern.exec(masked)) !== null) {
+    const tag = match[0];
+    const tagStart = match.index;
+    const tagEnd = detailsTagPattern.lastIndex;
+    if (/^<\s*\/\s*details\b/i.test(tag)) continue;
+
+    result += masked.slice(cursor, tagStart);
+    const closeEnd = findMatchingDetailsClose(masked, tagEnd);
+    if (closeEnd === -1) {
+      cursor = masked.length;
+      break;
+    }
+
+    cursor = result.endsWith('\n') && masked[closeEnd] === '\n' ? closeEnd + 1 : closeEnd;
+    detailsTagPattern.lastIndex = cursor;
+  }
+
+  result += masked.slice(cursor);
+  const compacted = result.replace(/\n{3,}/g, '\n\n').trim();
+  return unmaskSyntax(compacted, CODE_BLOCK_PLACEHOLDER, codeRebuilt);
+}
+
 function unwrapLegacyExecutionProcessDetails(content: string): string {
   let result = '';
   let cursor = 0;

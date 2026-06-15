@@ -148,15 +148,26 @@ function createHarness() {
   return { calls, events, request, callbacks };
 }
 
-async function loadEngine(request) {
+async function loadEngine(request, overrides = {}) {
   globalThis.__cliEngineModeTestDeps = {
     resolveExecutionPlan: groupsModule.resolveExecutionPlan,
     request,
     reconstructCliOutputFromLogEntries: () => '',
+    createCLIStreamHandler: () => ({
+      streamMode: 'raw',
+      usesJsonModeStderr: false,
+      handleStdoutLine: () => false,
+      closeCommandGroups: () => {},
+      hasCommandGroupOpen: () => false,
+      flushDone: () => {},
+    }),
+    cleanCliOutputLine: (line) => line,
+    shouldSuppressCliOutputLine: () => false,
     parseCLICommandInput: () => ({ args: [] }),
     mergeCLIExtraArgs: (executorArgs, memberArgs) => [...(executorArgs || []), ...(memberArgs || [])].filter(Boolean),
     resolveCLIExecutorForConfig: () => undefined,
     useCLIExecutorStore: { getState: () => ({ overrides: {} }) },
+    ...overrides,
   };
 
   return importTsModule(
@@ -173,6 +184,14 @@ async function loadEngine(request) {
       .replace(
         "import { reconstructCliOutputFromLogEntries } from '@/utils/cliLogOutput';",
         'const { reconstructCliOutputFromLogEntries } = globalThis.__cliEngineModeTestDeps;',
+      )
+      .replace(
+        "import { createCLIStreamHandler } from '@/utils/cliStreamHandlers';",
+        'const { createCLIStreamHandler } = globalThis.__cliEngineModeTestDeps;',
+      )
+      .replace(
+        "import { cleanCliOutputLine, shouldSuppressCliOutputLine } from '@/utils/cliOutput';",
+        'const { cleanCliOutputLine, shouldSuppressCliOutputLine } = globalThis.__cliEngineModeTestDeps;',
       )
       .replace(
         "import { mergeCLIExtraArgs, parseCLICommandInput, resolveCLIExecutorForConfig, useCLIExecutorStore } from '@/store/cliExecutorStore';",
@@ -608,6 +627,73 @@ function runBodies(calls) {
   assert.deepEqual(toolSessions.map(s => [s.agentId, s.adapter, s.sessionId]), [
     ['cli-opencode', 'opencode', 'ses_abc123'],
   ]);
+}
+
+{
+  const harness = createHarness();
+  const stepSummary = '<details><summary>✓ Step: tool-calls</summary>\n\ncost: $0\n\n</details>\n\n';
+  const finalAnswer = '# 完整回复\n\n后续正文已经从 OpenCode text 事件恢复。这里模拟真实场景里较长的最终回答，确保日志回放结果明显长于只包含 step summary 的气泡内容，并且不会被完成态保留为半截输出。';
+  const opencodeLogLines = [
+    {
+      type: 'stdout',
+      content: JSON.stringify({
+        type: 'step_finish',
+        sessionID: 'ses_log_replay',
+        part: { reason: 'tool-calls', cost: 0 },
+      }),
+    },
+    {
+      type: 'stdout',
+      content: JSON.stringify({
+        type: 'text',
+        sessionID: 'ses_log_replay',
+        part: { type: 'text', text: finalAnswer },
+      }),
+    },
+  ];
+  const request = async (url, init = {}) => {
+    harness.calls.push({ url, init });
+    if (url === '/api/cli/run') {
+      return sseResponse(stepSummary);
+    }
+    if (String(url).startsWith('/api/cli/tasks/log')) {
+      return {
+        async json() {
+          return { success: true, data: { lines: opencodeLogLines } };
+        },
+      };
+    }
+    return harness.request(url, init);
+  };
+  const createCLIStreamHandler = (_adapter, emitters) => ({
+    streamMode: 'opencode-json',
+    usesJsonModeStderr: false,
+    hasCommandGroupOpen: () => false,
+    closeCommandGroups: () => {},
+    flushDone: () => {},
+    handleStdoutLine(line) {
+      const event = JSON.parse(line);
+      if (event.type === 'step_finish' && event.part?.reason !== 'stop') {
+        emitters.enqueueChunk(stepSummary);
+      } else if (event.type === 'text' && typeof event.part?.text === 'string') {
+        emitters.enqueueChunk(event.part.text);
+      }
+      return true;
+    },
+  });
+
+  const { executeCLIStrategy } = await loadEngine(request, { createCLIStreamHandler });
+  const results = await executeCLIStrategy(
+    baseGroup('sequential'),
+    [agents[2]],
+    'recover incomplete opencode bubble',
+    '/workspace/project',
+    harness.callbacks,
+  );
+
+  assert.match(results[0].content, /完整回复/);
+  assert.match(results[0].content, /OpenCode text 事件恢复/);
+  assert.ok(results[0].content.length > stepSummary.length + 64);
 }
 
 console.log('CLI engine mode tests passed');

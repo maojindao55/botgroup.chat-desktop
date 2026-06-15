@@ -345,6 +345,7 @@ export const CreateGroupWizard = ({
         approvalMode,
         timeout,
         showStderr: true,
+        debugMode: false,
         strategy: cliStrategy,
         workflowTemplateId: cliTemplateId,
         sessionPolicy: cliSessionPolicy,
@@ -360,6 +361,7 @@ export const CreateGroupWizard = ({
         approvalMode,
         timeout,
         showStderr: true,
+        debugMode: false,
         workflowDefaults: {
           effort: agentWorkflowEffort,
           maxPhases: agentMaxPhases,

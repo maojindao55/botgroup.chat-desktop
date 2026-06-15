@@ -811,8 +811,16 @@ export async function request(url: string, options: RequestInit = {}) {
       const taskId = urlObj.searchParams.get('taskId') || '';
       const sinceLineVal = urlObj.searchParams.get('sinceLine') || urlObj.searchParams.get('since_line');
       const sinceLine = sinceLineVal ? parseInt(sinceLineVal, 10) : undefined;
+      const limitVal = urlObj.searchParams.get('limit');
+      const limit = limitVal ? parseInt(limitVal, 10) : undefined;
+      const maxBytesVal = urlObj.searchParams.get('maxBytes') || urlObj.searchParams.get('max_bytes');
+      const maxBytes = maxBytesVal ? parseInt(maxBytesVal, 10) : undefined;
+      const tailVal = urlObj.searchParams.get('tail');
+      const tail = tailVal === '1' || tailVal === 'true';
+      const redactVal = urlObj.searchParams.get('redact');
+      const redact = redactVal === '1' || redactVal === 'true';
 
-      const result = await invoke('cli_task_read_log', { taskId, sinceLine });
+      const result = await invoke('cli_task_read_log', { taskId, sinceLine, limit, maxBytes, tail, redact });
       return mockResponse({ success: true, data: result });
     }
 

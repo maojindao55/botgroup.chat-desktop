@@ -50,6 +50,10 @@
       "title": "Show stderr output",
       "desc": "When off, hides CLI diagnostics and keeps stdout plus error status only"
     },
+    "debugMode": {
+      "title": "Debug mode",
+      "desc": "When off, hides execution details in chat bubbles and keeps the final reply; logs still keep the full content"
+    },
     "timeout": {
       "title": "Execution timeout",
       "unit": "seconds"

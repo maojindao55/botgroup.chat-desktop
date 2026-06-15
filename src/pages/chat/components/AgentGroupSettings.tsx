@@ -378,6 +378,16 @@ export const AgentGroupSettings = ({
             onChange={(v) => updateDefaults({ alwaysShowPlan: v })}
           />
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <span style={{ fontSize: 13 }}>{t('settings:agentGroup.debugMode')}</span>
+          <Switch
+            checked={group.debugMode === true}
+            onChange={(v) => onUpdateGroup({ debugMode: v })}
+          />
+        </div>
+        <div style={{ fontSize: 11, color: token.colorTextTertiary }}>
+          {t('settings:agentGroup.debugModeHint')}
+        </div>
         {globalAlwaysConfirm && (
           <div style={{ fontSize: 11, color: token.colorTextTertiary }}>
             {t('settings:agentGroup.alwaysShowPlanHint')}

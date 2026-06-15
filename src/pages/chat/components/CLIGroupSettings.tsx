@@ -79,6 +79,8 @@ interface CLIGroupSettingsProps {
   onTimeoutChange: (timeout: number) => void;
   showStderr: boolean;
   onShowStderrChange: (show: boolean) => void;
+  debugMode: boolean;
+  onDebugModeChange: (enabled: boolean) => void;
   strategy: CLIStrategy;
   onStrategyChange: (strategy: CLIStrategy) => void;
   onWorkflowTemplateChange?: (workflowTemplateId: string) => void;
@@ -396,6 +398,8 @@ export const CLIGroupSettings = ({
   onTimeoutChange,
   showStderr,
   onShowStderrChange,
+  debugMode,
+  onDebugModeChange,
   strategy,
   onStrategyChange,
   onWorkflowTemplateChange,
@@ -427,6 +431,7 @@ export const CLIGroupSettings = ({
     approvalMode,
     timeout,
     showStderr,
+    debugMode,
     strategy,
     sessionPolicy,
   });
@@ -437,6 +442,7 @@ export const CLIGroupSettings = ({
   const effectiveApprovalMode = isTemplateMode ? (draftGroup.approvalMode || 'auto') : approvalMode;
   const effectiveTimeout = isTemplateMode ? (draftGroup.timeout ?? 300000) : timeout;
   const effectiveShowStderr = isTemplateMode ? draftGroup.showStderr !== false : showStderr;
+  const effectiveDebugMode = isTemplateMode ? draftGroup.debugMode === true : debugMode;
   const effectiveStrategy = isTemplateMode ? (draftGroup.strategy || 'sequential') : strategy;
   const isDraftDirty = isTemplateMode && JSON.stringify(draftGroup) !== JSON.stringify(originalDraftGroup);
   const panelTitle = isTemplateMode ? t('cli:groupSettings.templateTitle') : t('cli:groupSettings.title');
@@ -511,6 +517,7 @@ export const CLIGroupSettings = ({
       approvalMode: draftGroup.approvalMode || 'auto',
       timeout: draftGroup.timeout ?? 300000,
       showStderr: draftGroup.showStderr !== false,
+      debugMode: draftGroup.debugMode === true,
       strategy: draftGroup.strategy || 'sequential',
       sessionPolicy: draftGroup.sessionPolicy || 'task',
     };
@@ -815,6 +822,23 @@ export const CLIGroupSettings = ({
                 onChange={(value) => {
                   if (isTemplateMode) updateDraftGroup({ showStderr: value });
                   else onShowStderrChange(value);
+                }}
+              />
+            </div>
+          </div>
+
+          {/* debug details */}
+          <div className={styles.panel}>
+            <div className={styles.rowBetween}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 500 }}>{t('cli:groupSettings.debugMode.title')}</div>
+                <div className={styles.panelDesc} style={{ marginTop: 4 }}>{t('cli:groupSettings.debugMode.desc')}</div>
+              </div>
+              <Switch
+                checked={effectiveDebugMode}
+                onChange={(value) => {
+                  if (isTemplateMode) updateDraftGroup({ debugMode: value });
+                  else onDebugModeChange(value);
                 }}
               />
             </div>
@@ -1296,18 +1320,20 @@ export const CLIGroupSettings = ({
                       ID: {task.id.slice(0, 8)}
                     </span>
                     <div className={styles.taskActions}>
-                      <Button
-                        type="default"
-                        size="small"
-                        icon={<FileText size={12} />}
-                        className={styles.actionBtn}
-                        onClick={() => {
-                          setActiveLogTask(task);
-                          setLogModalOpen(true);
-                        }}
-                      >
-                        {t('cli:groupSettings.history.log')}
-                      </Button>
+                      {effectiveDebugMode && (
+                        <Button
+                          type="default"
+                          size="small"
+                          icon={<FileText size={12} />}
+                          className={styles.actionBtn}
+                          onClick={() => {
+                            setActiveLogTask(task);
+                            setLogModalOpen(true);
+                          }}
+                        >
+                          {t('cli:groupSettings.history.log')}
+                        </Button>
+                      )}
                       {['failed', 'cancelled', 'timeout', 'completed'].includes(task.status) && (
                         <Button
                           size="small"

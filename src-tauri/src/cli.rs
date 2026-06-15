@@ -9,6 +9,7 @@
 //   cli_install — run an executor install command from settings
 
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Instant;
@@ -87,6 +88,9 @@ pub struct CliTaskLogEntry {
 pub struct CliTaskLogPage {
     pub lines: Vec<CliTaskLogEntry>,
     pub total_lines: usize,
+    pub start_line: usize,
+    pub truncated: bool,
+    pub returned_bytes: usize,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -100,6 +104,106 @@ pub struct CliRuntime {
     pub last_run_at: Option<String>,
     pub last_error: Option<String>,
     pub updated_at: String,
+}
+
+const DEFAULT_LOG_READ_LIMIT: usize = usize::MAX;
+const DEFAULT_LOG_READ_MAX_BYTES: usize = usize::MAX;
+const LOG_REDACT_BASE64_MIN_CHARS: usize = 2048;
+const LOG_REDACT_CONTENT_PREVIEW_CHARS: usize = 8192;
+
+fn is_base64_like_char(ch: char) -> bool {
+    ch.is_ascii_alphanumeric() || matches!(ch, '+' | '/' | '=' | '-' | '_')
+}
+
+fn push_log_content_preview(output: &mut String, content: &str, max_chars: usize) -> bool {
+    if content.chars().count() <= max_chars {
+        output.push_str(content);
+        return false;
+    }
+
+    let preview: String = content.chars().take(max_chars).collect();
+    output.push_str(&preview);
+    output.push_str(&format!(
+        "\n[log content truncated: original {} bytes]",
+        content.len()
+    ));
+    true
+}
+
+fn redact_long_base64_runs(content: &str) -> (String, bool) {
+    let mut output = String::with_capacity(content.len().min(LOG_REDACT_CONTENT_PREVIEW_CHARS));
+    let mut last_written = 0usize;
+    let mut run_start: Option<usize> = None;
+    let mut redacted = false;
+
+    for (idx, ch) in content.char_indices() {
+        if is_base64_like_char(ch) {
+            if run_start.is_none() {
+                run_start = Some(idx);
+            }
+            continue;
+        }
+
+        if let Some(start) = run_start.take() {
+            if idx.saturating_sub(start) >= LOG_REDACT_BASE64_MIN_CHARS {
+                output.push_str(&content[last_written..start]);
+                output.push_str(&format!(
+                    "[base64 omitted: {} chars]",
+                    idx.saturating_sub(start)
+                ));
+                last_written = idx;
+                redacted = true;
+            }
+        }
+    }
+
+    if let Some(start) = run_start {
+        let end = content.len();
+        if end.saturating_sub(start) >= LOG_REDACT_BASE64_MIN_CHARS {
+            output.push_str(&content[last_written..start]);
+            output.push_str(&format!(
+                "[base64 omitted: {} chars]",
+                end.saturating_sub(start)
+            ));
+            last_written = end;
+            redacted = true;
+        }
+    }
+
+    if redacted {
+        output.push_str(&content[last_written..]);
+        (output, true)
+    } else {
+        (content.to_string(), false)
+    }
+}
+
+fn prepare_log_entry_for_response(
+    mut entry: CliTaskLogEntry,
+    redact: bool,
+    enforce_preview: bool,
+) -> (CliTaskLogEntry, bool) {
+    let mut changed = false;
+    if redact {
+        let (redacted_content, did_redact) = redact_long_base64_runs(&entry.content);
+        entry.content = redacted_content;
+        changed = did_redact;
+    }
+
+    if redact || enforce_preview {
+        let mut preview = String::new();
+        let truncated = push_log_content_preview(
+            &mut preview,
+            &entry.content,
+            LOG_REDACT_CONTENT_PREVIEW_CHARS,
+        );
+        if truncated {
+            entry.content = preview;
+            changed = true;
+        }
+    }
+
+    (entry, changed)
 }
 
 // ---------- Public IPC commands -----------------------------------------
@@ -874,6 +978,10 @@ pub async fn cli_task_read_log(
     app: AppHandle,
     task_id: String,
     since_line: Option<usize>,
+    limit: Option<usize>,
+    max_bytes: Option<usize>,
+    tail: Option<bool>,
+    redact: Option<bool>,
 ) -> Result<CliTaskLogPage, String> {
     let mut log_path = app
         .path()
@@ -886,29 +994,91 @@ pub async fn cli_task_read_log(
         return Ok(CliTaskLogPage {
             lines: vec![],
             total_lines: 0,
+            start_line: 0,
+            truncated: false,
+            returned_bytes: 0,
         });
     }
 
     let file = std::fs::File::open(log_path).map_err(|e| e.to_string())?;
     let reader = std::io::BufReader::new(file);
-    let mut lines = vec![];
-
     let start_idx = since_line.unwrap_or(0);
+    let line_limit = limit.unwrap_or(DEFAULT_LOG_READ_LIMIT).max(1);
+    let byte_limit = max_bytes.unwrap_or(DEFAULT_LOG_READ_MAX_BYTES).max(1);
+    let tail_mode = tail.unwrap_or(false);
+    let redact_content = redact.unwrap_or(false);
+    let enforce_preview = max_bytes.is_some();
     let mut current_idx = 0;
+    let mut lines = vec![];
+    let mut returned_bytes = 0usize;
+    let mut start_line = start_idx;
+    let mut truncated = false;
 
-    for line_res in std::io::BufRead::lines(reader) {
-        let line = line_res.map_err(|e| e.to_string())?;
-        if current_idx >= start_idx {
+    if tail_mode {
+        let mut raw_tail: VecDeque<(usize, String)> = VecDeque::new();
+        for line_res in std::io::BufRead::lines(reader) {
+            let line = line_res.map_err(|e| e.to_string())?;
+            if current_idx >= start_idx {
+                raw_tail.push_back((current_idx, line));
+                while raw_tail.len() > line_limit {
+                    raw_tail.pop_front();
+                    truncated = true;
+                }
+            }
+            current_idx += 1;
+        }
+
+        start_line = raw_tail.front().map(|(idx, _)| *idx).unwrap_or(current_idx);
+        for (_, line) in raw_tail {
             if let Ok(entry) = serde_json::from_str::<CliTaskLogEntry>(&line) {
+                let (entry, changed) =
+                    prepare_log_entry_for_response(entry, redact_content, enforce_preview);
+                let entry_bytes = entry.content.len();
+                if returned_bytes.saturating_add(entry_bytes) > byte_limit && !lines.is_empty() {
+                    truncated = true;
+                    break;
+                }
+                if changed {
+                    truncated = true;
+                }
+                returned_bytes = returned_bytes.saturating_add(entry_bytes);
                 lines.push(entry);
             }
         }
-        current_idx += 1;
+    } else {
+        let mut collection_closed = false;
+        for line_res in std::io::BufRead::lines(reader) {
+            let line = line_res.map_err(|e| e.to_string())?;
+            if current_idx >= start_idx && !collection_closed {
+                if let Ok(entry) = serde_json::from_str::<CliTaskLogEntry>(&line) {
+                    let (entry, changed) =
+                        prepare_log_entry_for_response(entry, redact_content, enforce_preview);
+                    let entry_bytes = entry.content.len();
+                    if lines.len() >= line_limit
+                        || (returned_bytes.saturating_add(entry_bytes) > byte_limit
+                            && !lines.is_empty())
+                    {
+                        truncated = true;
+                        collection_closed = true;
+                    } else {
+                        if changed {
+                            truncated = true;
+                        }
+                        returned_bytes = returned_bytes.saturating_add(entry_bytes);
+                        lines.push(entry);
+                    }
+                }
+            }
+            current_idx += 1;
+        }
     }
 
     Ok(CliTaskLogPage {
         lines,
         total_lines: current_idx,
+        start_line,
+        truncated,
+        returned_bytes,
     })
 }
 

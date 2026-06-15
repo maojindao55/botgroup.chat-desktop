@@ -79,6 +79,7 @@ export interface CLITeamTemplate {
   approvalMode: 'auto' | 'ask';
   timeout: number;
   showStderr: boolean;
+  debugMode?: boolean;
   strategy: CLIStrategy;
   workflowTemplateId?: string;
   executionPlan?: Partial<CLIExecutionPlan>;
@@ -159,6 +160,7 @@ export function cliGroupToTeamTemplate(group: CLIGroup): CLITeamTemplate {
     approvalMode: group.approvalMode || 'auto',
     timeout: group.timeout ?? 300000,
     showStderr: group.showStderr !== false,
+    debugMode: group.debugMode === true,
     strategy: group.strategy || 'sequential',
     workflowTemplateId: group.workflowTemplateId,
     executionPlan: group.executionPlan,
@@ -180,6 +182,7 @@ export function templateSnapshotToCLIGroup(template: CLITeamTemplate): CLIGroup 
     approvalMode: template.approvalMode,
     timeout: template.timeout,
     showStderr: template.showStderr,
+    debugMode: template.debugMode === true,
     strategy: template.strategy,
     workflowTemplateId: template.workflowTemplateId,
     executionPlan: template.executionPlan,
