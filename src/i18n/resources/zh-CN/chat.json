@@ -150,12 +150,60 @@
         "quick": {
           "title": "快速回答",
           "explanation": "由单个成员直接回答问题。"
+        },
+        "discuss": {
+          "title": "专家会诊",
+          "explanation": "多位专家并行分析，再由一位汇总综合。"
+        },
+        "multi_solution": {
+          "title": "多方案对比",
+          "explanation": "多位专家各自给出方案，再综合对比。"
+        },
+        "implement": {
+          "title": "实现",
+          "explanation": "由实现者完成代码改动（需审批）。"
+        },
+        "review": {
+          "title": "改完复审",
+          "explanation": "实现者完成改动后由复审者校验，未通过则重做。"
+        },
+        "audit": {
+          "title": "只读审计",
+          "explanation": "多位专家并行审计现状，再汇总风险。"
         }
       },
       "phases": {
         "answer": {
           "label": "回答",
           "prompt": "直接回答用户请求。除非明确要求，否则不要修改文件。"
+        },
+        "consult": {
+          "label": "会诊",
+          "prompt": "从你的职责角度分析该问题，给出你的专业意见。"
+        },
+        "synthesize": {
+          "label": "汇总",
+          "prompt": "综合上一阶段各位专家的意见，形成共识结论。"
+        },
+        "propose": {
+          "label": "出方案",
+          "prompt": "独立给出一套完整方案，不要参考他人。"
+        },
+        "compare": {
+          "label": "对比综合",
+          "prompt": "对比上一阶段各方案的优劣，给出推荐与取舍理由。"
+        },
+        "implement": {
+          "label": "实现",
+          "prompt": "完成最小必要改动并运行验证；输出根因、改动、验证结果与剩余风险。"
+        },
+        "verify": {
+          "label": "复审",
+          "prompt": "检查上一阶段改动是否达标、有无副作用、验证是否充分。达标输出 PASS，否则输出 FAIL 与具体问题清单。"
+        },
+        "audit": {
+          "label": "审计",
+          "prompt": "审计现状中的风险与问题，输出问题清单。"
         }
       }
     }

@@ -6,6 +6,8 @@ import {
   type AgentWorkflowIntent,
 } from '@/config/agentWorkflow';
 import type { LLMPlannerOptions } from './agentWorkflowPlanner.llm';
+import { classifyIntent, degradeIntent } from './agentWorkflowIntent';
+import { templateBuilders, type TemplateContext } from './agentWorkflowTemplates';
 
 export interface AgentWorkflowPlannerInput {
   group: AgentGroup;
@@ -72,55 +74,74 @@ function emptyPlan(title: string, explanation: string): AgentWorkflowPlan {
 }
 
 export function planAgentWorkflow(input: AgentWorkflowPlannerInput): AgentWorkflowPlannerResult {
-  const { group, members, mentionedAgentIds, t } = input;
+  const { group, members, mentionedAgentIds, t, intentHint, userMessage } = input;
   const _t = makeTranslator(t);
   const defaults = {
     ...createDefaultAgentWorkflowDefaults(),
     ...(group.workflowDefaults || {}),
   };
   const maxParallel = Math.max(1, defaults.maxParallelAgents || 1);
+  const maxPhases = Math.max(1, defaults.maxPhases || 1);
+  const workspaceReady = !!input.workspaceReady;
 
-  const effective = mentionedAgentIds && mentionedAgentIds.length > 0
-    ? members.filter(m => mentionedAgentIds.includes(m.id))
-    : members;
+  const emptyTitle = _t('chat:agentWorkflow.planner.emptyTitle');
+  const emptyExplanation = _t('chat:agentWorkflow.planner.emptyExplanation');
+  const noMembersWarning = _t('chat:agentWorkflow.planner.warnings.noMembers');
 
-  if (effective.length === 0) {
+  // mention 聚焦路径：保留旧 @点名 行为（指定成员的单/并行 quick 形态计划）
+  const wantsMention = !!mentionedAgentIds && mentionedAgentIds.length > 0;
+  if (wantsMention) {
+    const effective = members.filter(m => mentionedAgentIds.includes(m.id));
+    if (effective.length === 0) {
+      return { plan: emptyPlan(emptyTitle, emptyExplanation), warnings: [noMembersWarning] };
+    }
+    const selected = effective.slice(0, Math.min(maxParallel, effective.length)).map(m => m.id);
     return {
-      plan: emptyPlan(
-        _t('chat:agentWorkflow.planner.emptyTitle'),
-        _t('chat:agentWorkflow.planner.emptyExplanation'),
-      ),
-      warnings: [_t('chat:agentWorkflow.planner.warnings.noMembers')],
+      plan: {
+        version: 1,
+        title: _t('chat:agentWorkflow.planner.intents.quick.title'),
+        intent: 'quick',
+        riskLevel: 'low',
+        requiresApproval: false,
+        explanation: _t('chat:agentWorkflow.planner.intents.quick.explanation'),
+        phases: [
+          {
+            id: 'p1-answer',
+            label: _t('chat:agentWorkflow.planner.phases.answer.label'),
+            mode: 'readOnly',
+            schedule: selected.length > 1 ? 'parallel' : 'single',
+            agentSelection: { type: 'specific', agentIds: selected },
+            prompt: _t('chat:agentWorkflow.planner.phases.answer.prompt'),
+            outputPolicy: 'full',
+            onFailure: 'continue',
+          },
+        ],
+      },
+      warnings: [],
     };
   }
 
-  const wantsMention = !!mentionedAgentIds && mentionedAgentIds.length > 0;
-  const selected = wantsMention
-    ? effective.slice(0, Math.min(maxParallel, effective.length)).map(m => m.id)
-    : [effective[0].id];
+  if (!members || members.length === 0) {
+    return { plan: emptyPlan(emptyTitle, emptyExplanation), warnings: [noMembersWarning] };
+  }
 
-  const plan: AgentWorkflowPlan = {
-    version: 1,
-    title: _t('chat:agentWorkflow.planner.intents.quick.title'),
-    intent: 'quick',
-    riskLevel: 'low',
-    requiresApproval: false,
-    explanation: _t('chat:agentWorkflow.planner.intents.quick.explanation'),
-    phases: [
-      {
-        id: 'p1-answer',
-        label: _t('chat:agentWorkflow.planner.phases.answer.label'),
-        mode: 'readOnly',
-        schedule: selected.length > 1 ? 'parallel' : 'single',
-        agentSelection: { type: 'specific', agentIds: selected },
-        prompt: _t('chat:agentWorkflow.planner.phases.answer.prompt'),
-        outputPolicy: 'full',
-        onFailure: 'continue',
-      },
-    ],
+  // 意图分派：手动覆盖优先，否则关键词分类；再经能力降级；最后落到模板
+  const rawIntent = intentHint ?? classifyIntent(userMessage || '');
+  const degraded = degradeIntent(rawIntent, { memberCount: members.length, workspaceReady });
+  const warnings = degraded.reason ? [degraded.reason!] : [];
+
+  const templateCtx: TemplateContext = {
+    members,
+    workspaceReady,
+    maxParallel,
+    maxPhases,
+    locale: input.locale,
+    t: _t,
   };
 
-  return { plan, warnings: [] };
+  const builder = templateBuilders[degraded.intent] || templateBuilders.quick;
+  const plan = builder(templateCtx);
+  return { plan, warnings };
 }
 
 export interface PlanAgentWorkflowSmartOptions {

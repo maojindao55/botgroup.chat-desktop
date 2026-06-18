@@ -65,10 +65,13 @@ retry 机制只有用户手动到全局设置开启 LLM planner 才会触发，�
 | implement | 无 workspace | `quick` |
 | review | 无 workspace | `audit`（只读复审） |
 | review | 凑不出独立复审者（≤1 成员） | `implement`（去掉 verifier） |
-| smart/quick | effort = `fast` 或 成员 < 2 | `quick`（单 agent） |
-| smart/quick | effort = `standard`/`deep` 且 ≥2 成员 | `discuss`（默认升级为多专家） |
 
 每条降级产出一条 warning（计划卡可见原因）。
+
+> 关于默认体验：`quick`（无关键词命中）保持单 agent 直答，作为保守默认并向后兼容
+> （现有"简单输入 → 单阶段 quick"测试必须继续通过）。多专家协作由**关键词触发**的
+> discuss/multi_solution/audit、write 类 implement/review，或用户**显式选择**意图来提供——
+> 不对每条普通消息强制升级为多阶段，避免对"你好"这类闲聊强加 2 阶段会诊。
 
 **手动覆盖**：composer 意图选择默认 `smart`（=走分类器）；用户选具体意图时作为 `intentHint`
 透传，**跳过关键词分类**，但仍经过能力降级（防止"2 人选了多方案"这类不可能组合）。`smart`
@@ -218,7 +221,7 @@ agent，这是顺带的最大体验提升。
 
 **新增测试文件：**
 
-1. `agentWorkflowIntent.test.mjs` — `classifyIntent`：中/英关键词命中、优先级、降级、smart 升级。
+1. `agentWorkflowIntent.test.mjs` — `classifyIntent`：中/英关键词命中、优先级、降级、`quick` 兜底。
 2. `agentWorkflowTemplates.test.mjs` — 6 个模板工厂：阶段数/mode/schedule/dependsOn 合法/
    outputPolicy；T5 的 verifier + retry + requiresApproval；T2/T3/T6 的 P2 dependsOn P1；
    count 截到 maxParallel；落盘为 specific、可复现。

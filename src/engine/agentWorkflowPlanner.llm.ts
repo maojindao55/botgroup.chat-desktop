@@ -202,6 +202,10 @@ function buildUserPrompt(input: AgentWorkflowPlannerInput): string {
     parts.push(`User explicitly mentioned agents: ${input.mentionedAgentIds.join(', ')}`);
     parts.push('');
   }
+  if (input.intentHint) {
+    parts.push(`User selected collaboration mode: ${input.intentHint}. Plan accordingly.`);
+    parts.push('');
+  }
   if (input.revisionInstruction) {
     parts.push('Revision instruction (override previous plan accordingly):');
     parts.push(input.revisionInstruction);

@@ -36,6 +36,7 @@ import type {
 } from './agentRuntime';
 import { applyOutputPolicy, type SummaryOptions } from './agentWorkflowOutputPolicy';
 import { parseVerdict, wrapVerifierPrompt } from './agentWorkflowVerifier';
+import { resolveAgentSelection } from './agentWorkflowSelection';
 
 export interface AgentWorkflowRunnerCallbacks extends AgentRuntimeCallback {
   onRunStart?: (run: AgentWorkflowRun) => void;
@@ -127,6 +128,7 @@ function buildPhaseContext(
 function selectAgentsForPhase(
   phase: AgentWorkflowPhase,
   members: AIMember[],
+  maxParallel: number,
 ): AIMember[] {
   if (phase.agentSelection.type === 'specific') {
     const ids = phase.agentSelection.agentIds;
@@ -135,10 +137,12 @@ function selectAgentsForPhase(
       .filter((m): m is AIMember => !!m);
   }
   // 'auto' is reserved for future LLM planner output; the rule-based
-  // planner always emits 'specific'. As a defensive fallback, pick
-  // by capability match or the first N members.
+  // planner always emits 'specific'. Route through the shared helper so
+  // the same selection + maxParallel cap applies everywhere.
   const wanted = phase.agentSelection.count || 1;
-  return members.slice(0, wanted);
+  const ids = resolveAgentSelection({ kind: 'count', n: wanted }, members, { maxParallel });
+  const idSet = new Set(ids);
+  return members.filter(m => idSet.has(m.id));
 }
 
 function buildAttemptFeedback(
@@ -322,6 +326,8 @@ export async function runAgentWorkflowPlan(
     locale: options.locale,
   };
 
+  const maxParallel = Math.max(1, group.workflowDefaults?.maxParallelAgents ?? 5);
+
   // Validate parallel-write up front so we fail before any side effects.
   for (const ph of plan.phases) {
     if (ph.schedule === 'parallel' && ph.mode === 'write') {
@@ -414,7 +420,7 @@ export async function runAgentWorkflowPlan(
     run.updatedAt = state.startedAt;
 
     // Resolve agents for this phase
-    const selected = selectAgentsForPhase(phase, members);
+    const selected = selectAgentsForPhase(phase, members, maxParallel);
     state.selectedAgentIds = selected.map(m => m.id);
 
     if (selected.length === 0) {
