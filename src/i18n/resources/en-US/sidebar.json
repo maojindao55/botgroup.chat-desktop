@@ -1,11 +1,9 @@
 {
-  "workspaceTitle": "Chat Workspace",
   "section": {
     "workspace": "Workspace",
     "groups": "Groups"
   },
   "nav": {
-    "devTasks": "Dev Tasks",
     "home": "Home",
     "createGroup": "New Group",
     "settings": "Settings"

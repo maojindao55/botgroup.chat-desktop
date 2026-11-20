@@ -1,34 +1,21 @@
 /**
- * ChatUI - 主入口分流组件
- * 根据群聊类型分流到对应的 UI 组件：
- * - ai → AIChatUI (本文件内实现，基于原有逻辑)
- * - cli → CLIChatUI (复用原有 CLI 逻辑)
- * - agent → AgentChatUI
+ * ChatUI - 角色群聊天主界面
  */
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useTranslation } from 'react-i18next';
-import { Send, Settings2, ChevronLeft, Bot, Terminal, PanelLeftOpen } from "lucide-react";
+import { Send, Settings2, ChevronLeft, Bot, PanelLeftOpen } from "lucide-react";
 import { Tooltip, Button as AntdButton, Modal } from 'antd';
 import { ActionIcon, Avatar as LobeAvatar } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 import { BRAND_ON_PRIMARY, brandPrimaryButtonStyle } from '@/lib/theme';
 import { request } from '@/utils/request';
 import { normalizeDesktopUser } from '@/utils/userAvatar';
-import { executeCLIStrategy } from '@/engine/cliEngine';
-import { decideCliPreflight } from '@/engine/cliPreflight';
-import { isCodeChangeIntent } from '@/engine/cliIntent';
-import { buildCliUserPrompt } from '@/engine/cliPrompt';
-import { cliToolSessionKey, withCliToolSession } from '@/engine/cliToolSessions';
-import type { AICharacter, CLIAgent } from "@/config/aiCharacters";
+import type { AICharacter } from "@/config/aiCharacters";
 import { mapAIMemberToLegacy } from "@/config/aiCharacters";
 import { ChatMarkdown } from '@/components/Markdown';
 import AIGroupSettings from './AIGroupSettings';
-import CLIGroupSettings from './CLIGroupSettings';
-import AgentChatUI from './AgentChatUI';
-import CLITaskUI from './CLITaskUI';
 import HomeView from './HomeView';
 import Sidebar from './Sidebar';
-import { AdBanner, AdBannerMobile } from './AdSection';
 import { useUserStore } from '@/store/userStore';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { AppSettingsModal } from './AppSettingsModal';
@@ -36,18 +23,7 @@ import type { AppSettingsSection } from '@/config/appSettings';
 import { useAIMemberStore } from '@/store/aiMemberStore';
 import { resolveEffectiveMember } from '@/utils/aiMemberDisplay';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
-import type { Group, AIGroup, CLIGroup, AgentGroup, CLIStrategy, CLIExecutionPlan, CLISessionPolicy } from '@/config/groups';
-import { resolveExecutionPlan } from '@/config/groups';
-import { supportsCliToolSession } from '@/config/cliAdapters';
-import { openPath } from '@tauri-apps/plugin-opener';
-
-import {
-  persistCLITemplateOverride,
-  prepareCLIGroups,
-  markCLITemplateDeleted,
-  removeCLITemplateLocalData,
-  removeCLITemplateFromCustomGroups,
-} from '@/config/cliTemplateStorage';
+import type { Group, AIGroup } from '@/config/groups';
 import {
   deleteChatGroup,
   isBuiltinGroupId,
@@ -193,48 +169,10 @@ const useStyles = createStyles(({ token, css }) => ({
       padding: 20px 24px;
     }
   `,
-  headerCwd: css`
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    max-width: min(30vw, 360px);
-    min-width: 0;
-    flex: none;
-  `,
   inputArea: css`
     background: ${token.colorBgContainer};
     border-top: 1px solid ${token.colorBorderSecondary};
     padding: 10px 14px 14px;
-  `,
-  cwdLabel: css`
-    font-size: 9px;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    opacity: 0.6;
-  `,
-  cwdPath: css`
-    font-family: ${token.fontFamilyCode};
-    font-size: 10px;
-    background: ${token.colorFillTertiary};
-    color: ${token.colorTextSecondary};
-    padding: 1px 6px;
-    border-radius: 4px;
-    border: 1px solid ${token.colorBorderSecondary};
-    cursor: pointer;
-    user-select: none;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 220px;
-    @media (min-width: 640px) {
-      max-width: 450px;
-    }
-    transition: all 0.2s;
-    &:hover {
-      background: ${token.colorFillSecondary};
-      color: ${token.colorText};
-    }
   `,
   bubbleUser: css`
     background: #ff6600;
@@ -444,90 +382,6 @@ const useStyles = createStyles(({ token, css }) => ({
     margin-left: 4px;
     color: #ff6600;
   `,
-  cliTaskFooter: css`
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-top: 10px;
-    padding-top: 8px;
-    border-top: 1px dashed ${token.colorBorderSecondary};
-    font-size: 12px;
-    gap: 16px;
-  `,
-  cliTaskStatus: css`
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-weight: 500;
-  `,
-  cliTaskActions: css`
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  `,
-  cliActionBtnCancel: css`
-    padding: 2px 10px;
-    background: ${token.colorErrorBg};
-    color: ${token.colorError};
-    border: 1px solid ${token.colorErrorBorder};
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 11px;
-    font-weight: 500;
-    transition: all 0.2s;
-    &:hover {
-      background: ${token.colorError};
-      color: #fff;
-    }
-  `,
-  cliActionBtnRetry: css`
-    padding: 2px 10px;
-    background: ${token.colorInfoBg};
-    color: ${token.colorInfo};
-    border: 1px solid ${token.colorInfoBorder};
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 11px;
-    font-weight: 500;
-    transition: all 0.2s;
-    &:hover {
-      background: ${token.colorInfo};
-      color: #fff;
-    }
-  `,
-  cliWorktreeInfo: css`
-    margin-top: 6px;
-    padding: 6px 10px;
-    background: ${token.colorFillTertiary};
-    border-radius: 4px;
-    font-size: 11px;
-    color: ${token.colorTextSecondary};
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    word-break: break-all;
-  `,
-  cliWorktreePath: css`
-    font-family: var(--ant-font-family-code);
-    font-size: 11px;
-    color: ${token.colorTextSecondary};
-    word-break: break-all;
-  `,
-  cliWorktreeCopyBtn: css`
-    margin-left: 6px;
-    padding: 0 6px;
-    height: 18px;
-    line-height: 18px;
-    font-size: 10px;
-    background: transparent;
-    color: ${token.colorPrimary};
-    border: 1px solid ${token.colorBorderSecondary};
-    border-radius: 3px;
-    cursor: pointer;
-    &:hover {
-      background: ${token.colorFillSecondary};
-    }
-  `,
   spinnerIcon: css`
     display: inline-block;
     flex-shrink: 0;
@@ -538,8 +392,8 @@ const useStyles = createStyles(({ token, css }) => ({
     border: 2px solid ${token.colorInfo};
     border-top-color: transparent;
     vertical-align: middle;
-    animation: cli-spin 1s linear infinite;
-    @keyframes cli-spin {
+    animation: spin 1s linear infinite;
+    @keyframes spin {
       to {
         transform: rotate(360deg);
       }
@@ -555,14 +409,12 @@ const ChatUI = () => {
 
   const urlParams = new URLSearchParams(window.location.search);
   const id = urlParams.get('id') ? parseInt(urlParams.get('id')!) : 0;
-  const taskIdParam = urlParams.get('taskId');
   const convParam = urlParams.get('conv');
   // view 作为响应式状态：支持「群聊 ↔ 开发任务」的客户端切换，避免整页重载导致白屏闪烁
   const [viewParam, setViewParam] = useState<string | null>(() => urlParams.get('view'));
-  const isCLIView = viewParam === 'cli-tasks' || viewParam === 'cli-task' || viewParam === 'cli-template';
   const isHomeView = viewParam === 'home';
   // 裸启动（无任何视图参数）：用于冷启动时恢复上次视图或落地首页
-  const hasNoParams = !urlParams.get('id') && !viewParam && !taskIdParam;
+  const hasNoParams = !urlParams.get('id') && !viewParam;
 
   // State
   const [groups, setGroups] = useState<Group[]>([]);
@@ -585,7 +437,6 @@ const ChatUI = () => {
   const [allNames, setAllNames] = useState<string[]>([]);
   const [showSettings, setShowSettings] = useState(false);
   const [messages, setMessages] = useState<any[]>([]);
-  const [showAd, setShowAd] = useState(false);
   const [inputMessage, setInputMessage] = useState("");
   const [initError, setInitError] = useState<string | null>(null);
   const [mutedUsers, setMutedUsers] = useState<string[]>([]);
@@ -602,15 +453,6 @@ const ChatUI = () => {
   const deleteChatSessionsByGroup = useChatSessionStore(state => state.deleteSessionsByGroup);
   const toggleChatSessionPinned = useChatSessionStore(state => state.togglePinned);
   const toggleChatSessionArchived = useChatSessionStore(state => state.toggleArchived);
-  const [workspacePath, setWorkspacePath] = useState("");
-  const [approvalMode, setApprovalMode] = useState<'auto' | 'ask'>('auto');
-  const [cliTimeout, setCliTimeout] = useState(300000);
-  const [cliShowStderr, setCliShowStderr] = useState(true);
-  const [cliDebugMode, setCliDebugMode] = useState(false);
-  const [cliStrategy, setCliStrategy] = useState<CLIStrategy>('sequential');
-  const [cliExecutionPlan, setCliExecutionPlan] = useState<Partial<CLIExecutionPlan>>({});
-  const [cliSessionPolicy, setCliSessionPolicy] = useState<CLISessionPolicy>('task');
-
   // Refs
   const chatAreaRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -644,7 +486,7 @@ const ChatUI = () => {
     })();
   };
 
-  const settingsPanelWidth = group?.type === 'agent' ? 440 : 400;
+  const settingsPanelWidth = 400;
   const mentionCandidates = useMemo(
     () => groupAiCharacters.map(character => ({
       id: character.id,
@@ -676,7 +518,7 @@ const ChatUI = () => {
   useEffect(() => {
     if (!group) return;
 
-    const memberIds = group.memberIds || (group as AIGroup | CLIGroup).members || [];
+    const memberIds = group.memberIds || group.members || [];
     const nickname = userStore.userInfo?.nickname || t('settings:aiGroup.selfName');
     const avatar_url = userStore.userInfo?.avatar_url || null;
     const avatarDisplaySrc = userStore.avatarDisplaySrc;
@@ -685,21 +527,12 @@ const ChatUI = () => {
     if (group.type === 'ai' || !group.type) {
       const resolvedMembers = memberIds
         .map(mid => resolveEffectiveMember(aiMembers, mid))
-        .filter(m => m && m.enabled !== false && !(m.kind === 'llm' && m.schedulerTag === 'scheduler'));
-      const resolvedCharacters = resolvedMembers.map(m => mapAIMemberToLegacy(m, group.name) as AICharacter);
+        .filter((m): m is NonNullable<typeof m> => !!m && m.enabled !== false && m.schedulerTag !== 'scheduler');
+      const resolvedCharacters = resolvedMembers.map(m => mapAIMemberToLegacy(m, group.name));
 
       setGroupAiCharacters(resolvedCharacters);
       setAllNames([...resolvedCharacters.map(c => c.name), 'user']);
       setUsers([currentUser, ...resolvedCharacters]);
-    } else if (group.type === 'cli') {
-      const resolvedMembers = memberIds
-        .map(mid => resolveEffectiveMember(aiMembers, mid))
-        .filter(m => m && m.enabled !== false);
-      const resolvedCLIAgents = resolvedMembers.map(m => mapAIMemberToLegacy(m) as CLIAgent);
-
-      setGroupAiCharacters(resolvedCLIAgents as any);
-      setAllNames([...resolvedCLIAgents.map(a => a.name), 'user']);
-      setUsers([currentUser, ...resolvedCLIAgents]);
     }
   }, [group, aiMembers, userStore.userInfo, userStore.avatarDisplaySrc, t]);
 
@@ -720,16 +553,10 @@ const ChatUI = () => {
         if (!response.ok) throw new Error(t('chat:init.initDataFailed'));
         const { data } = await response.json();
 
-        const resolvedGroups = prepareCLIGroups(data.groups);
+        const resolvedGroups: Group[] = data.groups;
         const currentGroup = resolvedGroups[selectedGroupIndex];
 
-        // 旧链接指向 CLI 群时，重定向到任务优先视图（首页除外）
-        if (currentGroup?.type === 'cli' && !isCLIView && !isHomeView) {
-          window.location.replace('?view=cli-tasks');
-          return;
-        }
-
-        if (!currentGroup && !isCLIView && !isHomeView) {
+        if (!currentGroup && !isHomeView) {
           clearLastView();
           setInitError(t('chat:init.groupNotFound'));
           setIsInitializing(false);
@@ -751,18 +578,6 @@ const ChatUI = () => {
           return;
         }
 
-        if (isCLIView) {
-          setIsInitializing(false);
-          if (data.user) {
-            const r = await request('/api/user/info');
-            const userInfo = await r.json();
-            userStore.setUserInfo(normalizeDesktopUser(userInfo.data));
-          } else {
-            userStore.setUserInfo({ id: 0, phone: '', nickname: t('settings:aiGroup.selfName'), avatar_url: null, status: 0 });
-          }
-          return;
-        }
-
         setGroup(currentGroup);
         setIsInitializing(false);
 
@@ -773,34 +588,9 @@ const ChatUI = () => {
           window.history.replaceState({}, '', `${url.pathname}${url.search}`);
         }
 
-        // AI/CLI group: resolve details
         if (currentGroup.type === 'ai' || !currentGroup.type) {
           setIsGroupDiscussionMode(currentGroup.isGroupDiscussionMode || false);
           setSchedulerStrategy(currentGroup.schedulerStrategy || 'tag');
-
-          if (data.user) {
-            const r = await request('/api/user/info');
-            const userInfo = await r.json();
-            userStore.setUserInfo(normalizeDesktopUser(userInfo.data));
-          } else {
-            userStore.setUserInfo({ id: 0, phone: '', nickname: t('settings:aiGroup.selfName'), avatar_url: null, status: 0 });
-          }
-        } else if (currentGroup.type === 'cli') {
-          const wsOverride = localStorage.getItem(`workspace:${currentGroup.id}`);
-          setWorkspacePath(wsOverride || currentGroup.workspacePath || '');
-          setApprovalMode(currentGroup.approvalMode || 'auto');
-          setCliTimeout(currentGroup.timeout || 300000);
-          setCliShowStderr(currentGroup.showStderr !== false);
-          setCliDebugMode(currentGroup.debugMode === true);
-          setCliSessionPolicy(currentGroup.sessionPolicy || 'task');
-          const strategyOverride = localStorage.getItem(`cliStrategy:${currentGroup.id}`) as CLIStrategy | null;
-          setCliStrategy(strategyOverride || currentGroup.strategy || 'sequential');
-          try {
-            const storedPlan = localStorage.getItem(`cliExecutionPlan:${currentGroup.id}`);
-            setCliExecutionPlan(storedPlan ? JSON.parse(storedPlan) : (currentGroup.executionPlan || {}));
-          } catch {
-            setCliExecutionPlan(currentGroup.executionPlan || {});
-          }
 
           if (data.user) {
             const r = await request('/api/user/info');
@@ -819,7 +609,7 @@ const ChatUI = () => {
 
     initData();
     isInitialized.current = true;
-  }, [userStore, selectedGroupIndex, isCLIView, isHomeView]);
+  }, [userStore, selectedGroupIndex, isHomeView]);
 
   // 记住当前视图，供下次冷启动恢复（Option C）。
   // viewParam/selectedGroupIndex 变化覆盖客户端切换；URL 已由各导航 pushState/replaceState 先行更新。
@@ -832,18 +622,11 @@ const ChatUI = () => {
   // 初始加载由 initData 设定首个群；这里用 id 比对，命中即跳过，避免重复处理。
   useEffect(() => {
     if (isInitializing) return;
-    if (isCLIView) return;
     if (isHomeView) return;
     if (!groups.length) return;
     const current = groups[selectedGroupIndex];
     if (!current) return;
     if (group && group.id === current.id) return;
-    if (current.type === 'cli') {
-      // 角色群侧栏已隐藏 CLI 群；万一选中则转任务视图（客户端）
-      window.history.replaceState({}, '', '?view=cli-tasks');
-      setViewParam('cli-tasks');
-      return;
-    }
     setShowSettings(false);
     setMessages([]);
     setActiveSessionId(null);
@@ -854,7 +637,7 @@ const ChatUI = () => {
       setSchedulerStrategy(aiGroup.schedulerStrategy || 'tag');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groups, selectedGroupIndex, isCLIView, isInitializing, group]);
+  }, [groups, selectedGroupIndex, isInitializing, group]);
 
 
   // ============ 会话（角色群）逻辑 ============
@@ -972,7 +755,6 @@ const ChatUI = () => {
     setMessages([]);
     setActiveSessionId(null);
     updateConvParam(null);
-    setShowAd(false);
     if (isMobile) setConvSidebarOpen(false);
   };
 
@@ -1032,7 +814,6 @@ const ChatUI = () => {
       scrollMessagesToBottom('smooth');
     }
   }, [messages]);
-  useEffect(() => { if (messages.length > 0) setShowAd(false); }, [messages]);
 
   // 同步浏览器前进/后退：保持 view / 选中群 与 URL 一致（配合客户端视图与群切换）
   useEffect(() => {
@@ -1051,7 +832,7 @@ const ChatUI = () => {
   const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
   /** 客户端切换群聊：不重载页面，避免白屏闪烁。group 解析由下方 resolve effect 处理 */
   const goToGroup = (index: number) => {
-    if (index === selectedGroupIndex && !isCLIView && !isHomeView) return;
+    if (index === selectedGroupIndex && !isHomeView) return;
     window.history.pushState({}, '', `?id=${index}`);
     setShowSettings(false);
     setSettingsOpen(false);
@@ -1059,23 +840,6 @@ const ChatUI = () => {
     setSelectedGroupIndex(index);
   };
   const handleSelectGroup = (index: number) => goToGroup(index);
-  const handleNavigateCLI = () => {
-    const params = new URLSearchParams(window.location.search);
-    const view = params.get('view');
-    if (view === 'cli-tasks' && !params.get('taskId')) return;
-    if (view === 'cli-task' || view === 'cli-template') {
-      window.history.pushState({}, '', '?view=cli-tasks');
-      setShowSettings(false);
-      setSettingsOpen(false);
-      setViewParam('cli-tasks');
-      return;
-    }
-    if (isCLIView) return;
-    window.history.pushState({}, '', '?view=cli-tasks');
-    setShowSettings(false);
-    setSettingsOpen(false);
-    setViewParam('cli-tasks');
-  };
   /** 客户端切换到首页：不重载页面 */
   const handleNavigateHome = () => {
     if (isHomeView) return;
@@ -1083,40 +847,6 @@ const ChatUI = () => {
     setShowSettings(false);
     setSettingsOpen(false);
     setViewParam('home');
-  };
-
-  /** 打开指定开发任务（从首页进入）：整页跳转，确保 CLITaskUI 读取到 taskId */
-  const handleSelectTask = (taskId: string) => {
-    window.location.href = `?view=cli-task&taskId=${encodeURIComponent(taskId)}`;
-  };
-
-  const handleDeleteCLIGroup = (templateId: string) => {
-    markCLITemplateDeleted(templateId);
-    removeCLITemplateLocalData(templateId);
-    removeCLITemplateFromCustomGroups(templateId);
-    setGroups(prev => prev.filter(g => g.id !== templateId));
-  };
-
-  const handleUpdateCLIGroup = (updatedGroup: CLIGroup) => {
-    setGroups(prev => prev.map(g => g.id === updatedGroup.id ? updatedGroup : g));
-    persistCLITemplateOverride(updatedGroup);
-    try {
-      const stored = localStorage.getItem('custom_groups');
-      if (stored) {
-        const customGroups = JSON.parse(stored) as Group[];
-        const nextCustom = customGroups.map(g => g.id === updatedGroup.id ? updatedGroup : g);
-        localStorage.setItem('custom_groups', JSON.stringify(nextCustom));
-      }
-    } catch (e) {
-      console.error('Failed to update CLI template:', e);
-    }
-  };
-
-  const handleCliSessionPolicyChange = (policy: CLISessionPolicy) => {
-    setCliSessionPolicy(policy);
-    if (group?.type === 'cli') {
-      handleUpdateCLIGroup({ ...(group as CLIGroup), sessionPolicy: policy });
-    }
   };
 
   const updateGroup = (updatedGroup: Group) => {
@@ -1141,7 +871,6 @@ const ChatUI = () => {
     const url = new URL(window.location.href);
     url.searchParams.set('id', String(index));
     url.searchParams.delete('view');
-    url.searchParams.delete('taskId');
     if (options?.openSettings) {
       url.searchParams.set('settings', '1');
     } else {
@@ -1150,14 +879,6 @@ const ChatUI = () => {
     window.history.replaceState({}, '', `${url.pathname}${url.search}`);
     setViewParam(null);
     setSelectedGroupIndex(index);
-  };
-
-  const handleEditGroup = (index: number) => {
-    if (index !== selectedGroupIndex) {
-      window.location.href = `?id=${index}&settings=1`;
-      return;
-    }
-    handleToggleSettings(true);
   };
 
   const confirmDeleteGroup = (targetGroup: Group) => {
@@ -1214,14 +935,6 @@ const ChatUI = () => {
     setGroups((prev) => [...prev, newGroup]);
     setSelectedGroupIndex(newIndex);
 
-    if (newGroup.type === 'cli') {
-      if (!isCLIView) {
-        window.history.pushState({}, '', '?view=cli-tasks');
-        setViewParam('cli-tasks');
-      }
-      return;
-    }
-
     setViewParam(null);
     setGroup(newGroup);
     if (newGroup.type === 'ai' || !newGroup.type) {
@@ -1235,43 +948,7 @@ const ChatUI = () => {
     const url = new URL(window.location.href);
     url.searchParams.set('id', String(newIndex));
     url.searchParams.delete('view');
-    url.searchParams.delete('taskId');
     window.history.replaceState({}, '', `${url.pathname}${url.search}`);
-  };
-
-  const patchCurrentCLIGroup = (patch: Partial<CLIGroup>) => {
-    if (!group || group.type !== 'cli') return;
-    const nextGroup = { ...(group as CLIGroup), ...patch };
-    updateGroup(nextGroup);
-    if (patch.strategy) {
-      localStorage.setItem(`cliStrategy:${nextGroup.id}`, patch.strategy);
-    }
-    if (patch.executionPlan) {
-      if (Object.keys(patch.executionPlan).length > 0) {
-        localStorage.setItem(`cliExecutionPlan:${nextGroup.id}`, JSON.stringify(patch.executionPlan));
-      } else {
-        localStorage.removeItem(`cliExecutionPlan:${nextGroup.id}`);
-      }
-    }
-  };
-
-  const handleCLIStrategyChange = (nextStrategy: CLIStrategy) => {
-    setCliStrategy(nextStrategy);
-    patchCurrentCLIGroup({ strategy: nextStrategy });
-  };
-
-  const handleCLIExecutionPlanChange = (
-    patch: Partial<CLIExecutionPlan>,
-    options?: { replace?: boolean },
-  ) => {
-    const nextPlan = options?.replace ? patch : { ...cliExecutionPlan, ...patch };
-    setCliExecutionPlan(nextPlan);
-    patchCurrentCLIGroup({ executionPlan: nextPlan });
-  };
-
-  const handleCliDebugModeChange = (enabled: boolean) => {
-    setCliDebugMode(enabled);
-    patchCurrentCLIGroup({ debugMode: enabled });
   };
 
   // Loading / Error states
@@ -1307,8 +984,6 @@ const ChatUI = () => {
     );
   }
 
-  const cliGroups = groups.filter((g): g is CLIGroup => g.type === 'cli');
-
   // 首页视图
   if (isHomeView) {
     return (
@@ -1318,25 +993,6 @@ const ChatUI = () => {
         toggleSidebar={toggleSidebar}
         onSelectGroup={handleSelectGroup}
         onCreateGroup={handleCreateGroup}
-        onNavigateCLI={handleNavigateCLI}
-        onSelectTask={handleSelectTask}
-      />
-    );
-  }
-
-  // CLI 开发任务视图
-  if (isCLIView) {
-    return (
-      <CLITaskUI
-        groups={groups}
-        cliGroups={cliGroups}
-        selectedGroupIndex={selectedGroupIndex}
-        onSelectGroup={handleSelectGroup}
-        onCreateGroup={handleCreateGroup}
-        onUpdateCLIGroup={handleUpdateCLIGroup}
-        onDeleteCLIGroup={handleDeleteCLIGroup}
-        onNavigateHome={handleNavigateHome}
-        initialTaskId={taskIdParam}
       />
     );
   }
@@ -1348,355 +1004,6 @@ const ChatUI = () => {
       </div>
     );
   }
-
-  // ============ TYPE ROUTING ============
-
-  // Agent 群 → 独立组件
-  if (group.type === 'agent') {
-    return (
-      <AgentChatUI
-        group={group as AgentGroup}
-        groups={groups}
-        selectedGroupIndex={selectedGroupIndex}
-        onSelectGroup={handleSelectGroup}
-        onCreateGroup={handleCreateGroup}
-        onUpdateGroup={handleUpdateGroup}
-        onEditGroup={handleEditGroup}
-        onDeleteGroup={handleDeleteGroup}
-      />
-    );
-  }
-
-  const handleCancelTask = async (taskId: string) => {
-    try {
-      await request('/api/cli/tasks/cancel', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ taskId }),
-      });
-      setMessages(prev => prev.map(msg =>
-        msg.taskId === taskId ? { ...msg, status: 'cancelled' } : msg
-      ));
-    } catch (e) {
-      console.error('Failed to cancel task:', e);
-    }
-  };
-
-  const handleRetryTask = async (msg: any) => {
-    if (isLoading) return;
-    if (!msg.prompt) return;
-
-    setIsLoading(true);
-    try {
-      const m = resolveEffectiveMember(aiMembers, msg.sender.id);
-      const baseAgent = m && m.kind === 'cli' ? mapAIMemberToLegacy(m) as CLIAgent : undefined;
-      const agent = baseAgent
-        ? withCliToolSession(
-          baseAgent,
-          localStorage.getItem(cliToolSessionKey((group as CLIGroup).id, baseAgent.id, workspacePath)),
-        )
-        : undefined;
-      if (!agent) throw new Error(t('chat:errors.memberNotFound'));
-
-      // 发送前 pre-flight：单成员重试，未安装则直接拦截并给出安装引导
-      const preflight = await decideCliPreflight([agent], { interchangeable: false });
-      if (preflight.action === 'block') {
-        const sysMsg = {
-          id: `sys-${Date.now()}`,
-          sender: { id: 'sys', name: t('chat:systemSender') },
-          content: preflight.message,
-          isAI: true,
-          isError: true,
-        };
-        setMessages(prev => [...prev, sysMsg]);
-        return;
-      }
-
-      if (approvalMode === 'ask') {
-        const confirmed = window.confirm(t('chat:confirmExecuteSingle', {
-          name: agent.name,
-          path: workspacePath || t('chat:defaultWorkspace'),
-        }));
-        if (!confirmed) return;
-      }
-
-      const tempGroup: CLIGroup = {
-        ...(group as CLIGroup),
-        strategy: 'sequential',
-        approvalMode,
-        timeout: cliTimeout,
-        showStderr: cliShowStderr,
-        debugMode: cliDebugMode,
-        executionPlan: cliExecutionPlan,
-      };
-
-      await executeCLIStrategy(
-        tempGroup,
-        [agent],
-        msg.prompt,
-        workspacePath,
-        {
-          onAgentStart: (taskId, agentId, agentName, meta) => {
-            const agentInfoMember = resolveEffectiveMember(aiMembers, agentId);
-            const agentInfo = agentInfoMember && agentInfoMember.kind === 'cli' ? mapAIMemberToLegacy(agentInfoMember) as CLIAgent : undefined;
-            const baseName = agentInfo?.name || agentName;
-            const aiMessage = {
-              id: taskId,
-              sender: { id: agentId, name: meta?.stageLabel ? `${baseName} · ${meta.stageLabel}` : baseName, avatar: agentInfo?.avatar },
-              content: "",
-              isAI: true,
-              taskId: taskId,
-              status: 'running',
-              prompt: msg.prompt,
-              stageLabel: meta?.stageLabel,
-              cliCwd: meta?.cwd,
-              cliBranch: meta?.branch,
-              baseSha: meta?.baseSha,
-            };
-            setMessages(prev => [...prev, aiMessage]);
-          },
-          onToolSession: (_taskId, agentId, adapter, sessionId) => {
-            if (supportsCliToolSession(adapter)) {
-              localStorage.setItem(cliToolSessionKey((group as CLIGroup).id, agentId, workspacePath), sessionId);
-              // 同步更新内存中的 agent toolSessionId，确保 pipeline 后续阶段能复用
-              const memAgent = activeAgents.find(a => a.id === agentId);
-              if (memAgent?.cli) {
-                memAgent.cli.toolSessionId = sessionId;
-              }
-            }
-          },
-          onToken: (taskId, token) => {
-            setMessages(prev => prev.map(m =>
-              m.taskId === taskId ? { ...m, content: m.content + token } : m
-            ));
-          },
-          onAgentEnd: (taskId, fullContent) => {
-            setMessages(prev => prev.map(m => {
-              if (m.taskId === taskId) {
-                let finalContent = fullContent;
-                if (finalContent.includes('<details open>')) {
-                  finalContent = finalContent.replace(/<details open>/g, '<details>');
-                }
-                return { ...m, content: finalContent, status: 'completed' };
-              }
-              return m;
-            }));
-          },
-          onError: (taskId, error) => {
-            setMessages(prev => prev.map(m => {
-              if (m.taskId === taskId) {
-                const normalized = String(error || '').toLowerCase();
-                const status = normalized.includes('timeout')
-                  ? 'timeout'
-                  : normalized.includes('cancel')
-                    ? 'cancelled'
-                    : 'failed';
-                return {
-                  ...m,
-                  content: m.content
-                    ? m.content + `\n\n${t('chat:errors.appendError', { error })}`
-                    : t('chat:errors.appendError', { error }),
-                  status,
-                  isError: true,
-                };
-              }
-              return m;
-            }));
-          },
-        },
-        {
-          timeoutMs: cliTimeout,
-          approvalMode,
-          showStderr: cliShowStderr,
-        }
-      );
-    } catch (e: any) {
-      console.error('Failed to retry task:', e);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleSendCLIMessage = async (promptText: string) => {
-    const taskPrompt = buildCliUserPrompt(promptText, workspacePath);
-
-    const memberIds = (group as CLIGroup).memberIds || (group as CLIGroup).members || [];
-    let activeAgents = memberIds
-      .map(id => resolveEffectiveMember(aiMembers, id))
-      .filter(m => m && m.kind === 'cli' && !mutedUsers.includes(m.id))
-      .map(m => mapAIMemberToLegacy(m) as CLIAgent)
-      .map(agent => withCliToolSession(
-        agent,
-        localStorage.getItem(cliToolSessionKey((group as CLIGroup).id, agent.id, workspacePath)),
-      ));
-
-    if (activeAgents.length === 0) {
-      const systemMsg = {
-        id: `sys-${Date.now()}`,
-        sender: { id: 'sys', name: t('chat:systemSender') },
-        content: t('chat:messages.noEnabledCliMembers'),
-        isAI: true,
-        isError: true,
-      };
-      setMessages(prev => [...prev, systemMsg]);
-      setIsLoading(false);
-      return;
-    }
-
-    if (cliStrategy === 'discussion' && isCodeChangeIntent(promptText)) {
-      const systemMsg = {
-        id: `sys-${Date.now()}`,
-        sender: { id: 'sys', name: t('chat:systemSender') },
-        content: t('chat:messages.readOnlyDiscussionHint'),
-        isAI: true,
-        isError: true,
-      };
-      setMessages(prev => [...prev, systemMsg]);
-      setIsLoading(false);
-      return;
-    }
-
-    // 发送前 pre-flight：本地未安装对应 CLI 时的处理
-    // - 独立模式（router/race/sequential/mapreduce）：自动跳过未安装成员，用其余成员继续
-    // - 角色型（pipeline/review/discussion）：任一缺失则整单拦截
-    const interchangeable =
-      resolveExecutionPlan({ strategy: cliStrategy, executionPlan: cliExecutionPlan })
-        .collaboration === 'independent';
-    const preflight = await decideCliPreflight(activeAgents, { interchangeable });
-    if (preflight.message) {
-      const sysMsg = {
-        id: `sys-${Date.now()}`,
-        sender: { id: 'sys', name: t('chat:systemSender') },
-        content: preflight.message,
-        isAI: true,
-        isError: preflight.isError,
-      };
-      setMessages(prev => [...prev, sysMsg]);
-    }
-    if (preflight.action === 'block') {
-      setIsLoading(false);
-      return;
-    }
-    activeAgents = preflight.agents;
-
-    if (approvalMode === 'ask') {
-      const names = activeAgents.map(a => a.name).join('、');
-      const confirmed = window.confirm(t('chat:confirmExecute', {
-        names,
-        path: workspacePath || t('chat:defaultWorkspace'),
-      }));
-      if (!confirmed) {
-        setIsLoading(false);
-        return;
-      }
-    }
-
-    try {
-      const customGroup: CLIGroup = {
-        ...(group as CLIGroup),
-        strategy: cliStrategy,
-        timeout: cliTimeout,
-        approvalMode,
-        showStderr: cliShowStderr,
-        debugMode: cliDebugMode,
-        executionPlan: cliExecutionPlan,
-      };
-
-      await executeCLIStrategy(
-        customGroup,
-        activeAgents,
-        taskPrompt,
-        workspacePath,
-        {
-          onAgentStart: (taskId, agentId, agentName, meta) => {
-            const agentInfoMember = resolveEffectiveMember(aiMembers, agentId);
-            const agentInfo = agentInfoMember && agentInfoMember.kind === 'cli' ? mapAIMemberToLegacy(agentInfoMember) as CLIAgent : undefined;
-            const baseName = agentInfo?.name || agentName;
-            const aiMessage = {
-              id: taskId,
-              sender: { id: agentId, name: meta?.stageLabel ? `${baseName} · ${meta.stageLabel}` : baseName, avatar: agentInfo?.avatar },
-              content: "",
-              isAI: true,
-              taskId: taskId,
-              status: 'running',
-              prompt: taskPrompt,
-              stageLabel: meta?.stageLabel,
-              cliCwd: meta?.cwd,
-              cliBranch: meta?.branch,
-              baseSha: meta?.baseSha,
-            };
-            setMessages(prev => [...prev, aiMessage]);
-          },
-          onToolSession: (_taskId, agentId, adapter, sessionId) => {
-            if (supportsCliToolSession(adapter)) {
-              localStorage.setItem(cliToolSessionKey((group as CLIGroup).id, agentId, workspacePath), sessionId);
-              // 同步更新内存中的 agent toolSessionId，确保 pipeline 后续阶段能复用
-              const memAgent = activeAgents.find(a => a.id === agentId);
-              if (memAgent?.cli) {
-                memAgent.cli.toolSessionId = sessionId;
-              }
-            }
-          },
-          onToken: (taskId, token) => {
-            setMessages(prev => prev.map(m =>
-              m.taskId === taskId ? { ...m, content: m.content + token } : m
-            ));
-          },
-          onAgentEnd: (taskId, fullContent) => {
-            setMessages(prev => prev.map(m => {
-              if (m.taskId === taskId) {
-                let finalContent = fullContent;
-                if (finalContent.includes('<details open>')) {
-                  finalContent = finalContent.replace(/<details open>/g, '<details>');
-                }
-                return { ...m, content: finalContent, status: 'completed' };
-              }
-              return m;
-            }));
-          },
-          onError: (taskId, error) => {
-            setMessages(prev => prev.map(m => {
-              if (m.taskId === taskId) {
-                const normalized = String(error || '').toLowerCase();
-                const status = normalized.includes('timeout')
-                  ? 'timeout'
-                  : normalized.includes('cancel')
-                    ? 'cancelled'
-                    : 'failed';
-                return {
-                  ...m,
-                  content: m.content
-                    ? m.content + `\n\n${t('chat:errors.appendError', { error })}`
-                    : t('chat:errors.appendError', { error }),
-                  status,
-                  isError: true,
-                };
-              }
-              return m;
-            }));
-          },
-        },
-        {
-          timeoutMs: cliTimeout,
-          approvalMode,
-          showStderr: cliShowStderr,
-        }
-      );
-    } catch (err: any) {
-      console.error('executeCLIStrategy error:', err);
-      const errMsg = err?.message || String(err);
-      const systemMsg = {
-        id: `sys-${Date.now()}`,
-        sender: { id: 'sys', name: t('chat:systemSender') },
-        content: t('chat:errors.taskNotStarted', { message: errMsg }),
-        isAI: true,
-        isError: true,
-      };
-      setMessages(prev => [...prev, systemMsg]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const handleSendAIMessage = async (promptText: string) => {
     let messageHistory = messages.map(msg => ({
@@ -1848,19 +1155,14 @@ const ChatUI = () => {
     setInputMessage("");
     setIsLoading(true);
 
-    if (group.type === 'cli') {
-      await handleSendCLIMessage(prompt);
-    } else {
-      await handleSendAIMessage(prompt);
-    }
+    await handleSendAIMessage(prompt);
   };
 
 
-  // ============ RENDER: AI / CLI 群 ============
+  // ============ RENDER ============
   const userName = userStore.userInfo.nickname || t('settings:aiGroup.selfName');
   // 当前用户头像从全局解析（不随消息持久化，避免 base64 撑爆存储）；历史消息也据此渲染
   const selfAvatar = userStore.avatarDisplaySrc || userStore.userInfo?.avatar_url || undefined;
-  const isCLIGroup = group.type === 'cli';
 
   return (
     <>
@@ -1884,56 +1186,6 @@ const ChatUI = () => {
         />
       )}
 
-      {/* CLI Group Settings (Mobile Drawer) */}
-      {isMobile && group.type === 'cli' && (
-        <CLIGroupSettings
-          open={showSettings}
-          onOpenChange={handleToggleSettings}
-          group={{ ...(group as CLIGroup), strategy: cliStrategy, executionPlan: cliExecutionPlan, debugMode: cliDebugMode }}
-          members={
-            ((group as CLIGroup).memberIds || (group as CLIGroup).members || [])
-              .map(id => resolveEffectiveMember(aiMembers, id))
-              .filter(m => m && m.kind === 'cli')
-              .map(m => mapAIMemberToLegacy(m) as CLIAgent)
-          }
-          mutedUsers={mutedUsers}
-          onToggleMute={handleToggleMute}
-          workspacePath={workspacePath}
-          onWorkspacePathChange={(p) => {
-            setWorkspacePath(p);
-            if (group.id) {
-              if (p) localStorage.setItem(`workspace:${group.id}`, p);
-              else localStorage.removeItem(`workspace:${group.id}`);
-            }
-          }}
-          approvalMode={approvalMode}
-          onApprovalModeChange={setApprovalMode}
-          timeout={cliTimeout}
-          onTimeoutChange={setCliTimeout}
-          showStderr={cliShowStderr}
-          onShowStderrChange={setCliShowStderr}
-          debugMode={cliDebugMode}
-          onDebugModeChange={handleCliDebugModeChange}
-          strategy={cliStrategy}
-          onStrategyChange={handleCLIStrategyChange}
-          onExecutionPlanChange={handleCLIExecutionPlanChange}
-          sessionPolicy={cliSessionPolicy}
-          onSessionPolicyChange={handleCliSessionPolicyChange}
-          onRetryTask={(agentId, prompt) => {
-            const m = resolveEffectiveMember(aiMembers, agentId);
-            const agent = m && m.kind === 'cli' ? mapAIMemberToLegacy(m) as CLIAgent : undefined;
-            if (agent) {
-              handleRetryTask({
-                prompt,
-                sender: { id: agentId, name: agent.name }
-              });
-              handleToggleSettings(false);
-            }
-          }}
-          onMembersChange={handleMembersChange}
-        />
-      )}
-
       <div className={styles.page}>
         <div className={styles.container}>
         <Sidebar
@@ -1944,9 +1196,7 @@ const ChatUI = () => {
           groups={groups}
           onCreateGroup={handleCreateGroup}
           onOpenSettings={openAppSettings}
-          onNavigateCLI={handleNavigateCLI}
           onNavigateHome={handleNavigateHome}
-          hiddenGroupTypes={['cli']}
         />
 
         {isAIGroup && (
@@ -1986,11 +1236,7 @@ const ChatUI = () => {
                 </div>
                 <div className={styles.titleRow}>
                   <span className={styles.titleIcon}>
-                    {group.type === 'cli' ? (
-                      <Terminal size={15} />
-                    ) : (
-                      <Bot size={15} />
-                    )}
+                    <Bot size={15} />
                   </span>
                   <h1 className={styles.titleText}>
                     {group.name}
@@ -1999,21 +1245,6 @@ const ChatUI = () => {
                 </div>
               </div>
               <div className={styles.headerActions}>
-                {group.type === 'cli' && workspacePath && (
-                  <div className={styles.headerCwd}>
-                    <span className={styles.cwdLabel}>CWD:</span>
-                    <span
-                      className={styles.cwdPath}
-                      onDoubleClick={() => handleToggleSettings(!showSettings)}
-                      title={t('chat:cliMeta.workspaceTitle')}
-                    >
-                      {workspacePath}
-                    </span>
-                  </div>
-                )}
-                <div className={styles.desktopOnly}>
-                  <AdBanner show={showAd} closeAd={() => setShowAd(false)} />
-                </div>
                 <div className={styles.avatarStack}>
                   {users.slice(0, 4).map((user) => {
                     const a = getAvatarData(user.name);
@@ -2039,7 +1270,7 @@ const ChatUI = () => {
                   icon={Settings2}
                   size="small"
                   onClick={() => handleToggleSettings(!showSettings)}
-                  title={t('chat:cliMeta.settings')}
+                  title={t('chat:groupSettings')}
                 />
               </div>
             </div>
@@ -2052,27 +1283,17 @@ const ChatUI = () => {
             className={styles.chatArea}
             onScroll={handleChatAreaScroll}
           >
-            <div className={styles.mobileOnly}>
-              <AdBannerMobile show={showAd} closeAd={() => setShowAd(false)} />
-            </div>
             <div className={styles.messageList}>
               {messages.map((message) => {
                 const isUser = message.sender.name === userName;
-                const cliMember = message.sender?.id?.startsWith?.('cli-')
-                  ? resolveEffectiveMember(aiMembers, message.sender.id)
-                  : undefined;
-                const cliAgentInfo = cliMember && cliMember.kind === 'cli'
-                  ? (mapAIMemberToLegacy(cliMember) as CLIAgent)
-                  : undefined;
-                const avatarName = cliAgentInfo?.name || message.sender.name;
+                const avatarName = message.sender.name;
                 const avatarSource = isUser
                   ? (selfAvatar || message.sender.avatar)
-                  : (cliAgentInfo?.avatar || message.sender.avatar);
+                  : message.sender.avatar;
                 const a = getAvatarData(avatarName);
                 const url = resolveAvatarByName(avatarName, avatarSource, 40);
                 const isLatest = messages[messages.length - 1]?.id === message.id;
-                const isStreaming = !!message.isAI && (message.status === 'running' || (isLoading && isLatest));
-                const isCli = !!message.sender?.id?.startsWith?.('cli-');
+                const isStreaming = !!message.isAI && isLoading && isLatest;
                 const bubbleClass = isUser
                   ? styles.bubbleUser
                   : message.isError
@@ -2100,7 +1321,7 @@ const ChatUI = () => {
                         {isStreaming && !message.content.includes('</details>') && (
                           <span className={styles.streaming}>
                             <span className={styles.streamingDot} />
-                            {message.content === '' ? t('chat:status.thinking') : (isCli ? t('chat:status.executing') : t('chat:status.running'))}
+                            {message.content === '' ? t('chat:status.thinking') : t('chat:status.running')}
                           </span>
                         )}
                       </div>
@@ -2108,110 +1329,9 @@ const ChatUI = () => {
                         <ChatMarkdown
                           content={message.content}
                           isUser={isUser}
-                          basePath={message.cliCwd || workspacePath}
-                          hideDetails={!isUser && isCLIGroup && (group as CLIGroup).debugMode !== true}
                         />
                         {isStreaming && (
                           <span className={cx('typing-indicator', styles.typingCursor)}>▋</span>
-                        )}
-                        {message.taskId && (
-                          <div className={styles.cliTaskFooter}>
-                            <span className={styles.cliTaskStatus}>
-                              {message.status === 'running' && (
-                                <>
-                                  <span className={styles.spinnerIcon} />
-                                  <span>{t('chat:status.executing')}</span>
-                                </>
-                              )}
-                              {message.status === 'completed' && <span style={{ color: '#52c41a' }}>{t('chat:status.completed')}</span>}
-                              {message.status === 'failed' && <span style={{ color: '#ff4d4f' }}>{t('chat:status.failed')}</span>}
-                              {message.status === 'cancelled' && <span style={{ color: '#faad14' }}>{t('chat:status.cancelled')}</span>}
-                              {message.status === 'timeout' && <span style={{ color: '#ff4d4f' }}>{t('chat:status.timeout')}</span>}
-                            </span>
-                            <div className={styles.cliTaskActions}>
-                              {message.status === 'running' && (
-                                <button
-                                  onClick={() => handleCancelTask(message.taskId)}
-                                  className={styles.cliActionBtnCancel}
-                                >
-                                  {t('chat:cliMeta.stop')}
-                                </button>
-                              )}
-                              {['failed', 'cancelled', 'timeout'].includes(message.status || '') && (
-                                <button
-                                  onClick={() => handleRetryTask(message)}
-                                  className={styles.cliActionBtnRetry}
-                                >
-                                  {t('chat:cliMeta.retry')}
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                        {message.taskId && (message.cliCwd || message.cliBranch) && message.cliCwd !== workspacePath && (
-                          <div className={styles.cliWorktreeInfo}>
-                            <div>
-                              <span style={{ fontWeight: 500 }}>{t('chat:cliMeta.workdir')}</span>
-                              <button
-                                className={styles.cliWorktreeCopyBtn}
-                                onClick={() => {
-                                  if (message.cliCwd && navigator.clipboard) {
-                                    navigator.clipboard.writeText(message.cliCwd).catch(() => { /* ignore */ });
-                                  }
-                                }}
-                              >
-                                {t('chat:cliMeta.copyPath')}
-                              </button>
-                              <button
-                                className={styles.cliWorktreeCopyBtn}
-                                onClick={async () => {
-                                  if (message.cliCwd) {
-                                    try {
-                                      await openPath(message.cliCwd);
-                                    } catch {
-                                      // fallback: copy cd command to clipboard
-                                      if (navigator.clipboard) {
-                                        navigator.clipboard.writeText(`cd ${message.cliCwd}`).catch(() => {});
-                                      }
-                                    }
-                                  }
-                                }}
-                              >
-                                {t('chat:cliMeta.openPath')}
-                              </button>
-                            </div>
-                            <div className={styles.cliWorktreePath}>{message.cliCwd}</div>
-                            {message.cliBranch && (
-                              <div>
-                                <span style={{ fontWeight: 500 }}>{t('chat:cliMeta.branch')}</span>
-                                <span className={styles.cliWorktreePath}>{message.cliBranch}</span>
-                              </div>
-                            )}
-                            {message.baseSha && (
-                              <div>
-                                <span style={{ fontWeight: 500 }}>{t('chat:cliMeta.base')}</span>
-                                <span className={styles.cliWorktreePath}>{message.baseSha.slice(0, 8)}</span>
-                              </div>
-                            )}
-                            {message.status === 'completed' && !message.adopted && (
-                              <button
-                                className={styles.cliWorktreeCopyBtn}
-                                style={{ marginTop: 4, marginLeft: 0, color: '#52c41a', borderColor: '#b7eb8f' }}
-                                onClick={() => {
-                                  setMessages(prev => prev.map(m =>
-                                    m.taskId === message.taskId ? { ...m, adopted: true } : m
-                                  ));
-                                }}
-                              >
-                                {t('chat:cliMeta.adopt')}
-                              </button>
-                            )}
-                            {message.adopted && (
-                              <span style={{ marginTop: 4, display: 'inline-block', fontSize: 10, color: '#52c41a', fontWeight: 600 }}>
-                                {t('chat:cliMeta.adopted')}
-                              </span>
-                            )}
-                          </div>
                         )}
                       </div>
                     </div>
@@ -2248,7 +1368,7 @@ const ChatUI = () => {
                   }
                 }}
                 autoSize={{ minRows: 1, maxRows: 6 }}
-                placeholder={isCLIGroup ? t('chat:placeholders.cliInput') : t('chat:placeholders.aiInput')}
+                placeholder={t('chat:placeholders.aiInput')}
                 containerStyle={{ flex: 1, minWidth: 0 }}
               />
               <AntdButton
@@ -2286,57 +1406,6 @@ const ChatUI = () => {
             canDeleteGroup={!isBuiltinGroupId(group.id)}
           />
         )}
-
-        {/* CLI Group Settings (Desktop Inline) */}
-        {!isMobile && group.type === 'cli' && (
-          <CLIGroupSettings
-            inline
-            open={showSettings}
-            onOpenChange={handleToggleSettings}
-            group={{ ...(group as CLIGroup), strategy: cliStrategy, executionPlan: cliExecutionPlan, debugMode: cliDebugMode }}
-            members={
-              ((group as CLIGroup).memberIds || (group as CLIGroup).members || [])
-                .map(id => resolveEffectiveMember(aiMembers, id))
-                .filter(m => m && m.kind === 'cli')
-                .map(m => mapAIMemberToLegacy(m) as CLIAgent)
-            }
-            mutedUsers={mutedUsers}
-            onToggleMute={handleToggleMute}
-            workspacePath={workspacePath}
-            onWorkspacePathChange={(p) => {
-              setWorkspacePath(p);
-              if (group.id) {
-                if (p) localStorage.setItem(`workspace:${group.id}`, p);
-                else localStorage.removeItem(`workspace:${group.id}`);
-              }
-            }}
-            approvalMode={approvalMode}
-            onApprovalModeChange={setApprovalMode}
-            timeout={cliTimeout}
-            onTimeoutChange={setCliTimeout}
-            showStderr={cliShowStderr}
-            onShowStderrChange={setCliShowStderr}
-            debugMode={cliDebugMode}
-            onDebugModeChange={handleCliDebugModeChange}
-            strategy={cliStrategy}
-            onStrategyChange={handleCLIStrategyChange}
-            onExecutionPlanChange={handleCLIExecutionPlanChange}
-            sessionPolicy={cliSessionPolicy}
-            onSessionPolicyChange={handleCliSessionPolicyChange}
-            onRetryTask={(agentId, prompt) => {
-              const m = resolveEffectiveMember(aiMembers, agentId);
-              const agent = m && m.kind === 'cli' ? mapAIMemberToLegacy(m) as CLIAgent : undefined;
-              if (agent) {
-                handleRetryTask({
-                  prompt,
-                  sender: { id: agentId, name: agent.name }
-                });
-                handleToggleSettings(false);
-              }
-            }}
-            onMembersChange={handleMembersChange}
-          />
-          )}
 
         </div>
       </div>

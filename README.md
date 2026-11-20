@@ -41,17 +41,14 @@
 
 ## ✨ 特性
 
-### 三类群聊
+### 角色群聊
 
-- 🤖 **角色群** — 邀请不同角色和模型一起聊天、脑暴、做观点碰撞，支持智能点名 / 轮流发言 / 全员圆桌三种发言方式
-- 🧠 **专家群** — 让具备职责分工的专家群友按「群规」协作（专家会诊 / 方案产出 / 评审决策 / 接力修改 / 自动处理）产出方案与结论
-- 💻 **开发群** — 让 Codex、Claude Code、OpenCode、Cursor Agent、Qoder CLI 等开发群友在本地 workspace 协作改代码，支持快速响应、写完再审、隔离竞赛等多种群规
+- 🤖 **角色群** — 邀请不同角色和模型一起聊天，支持智能点名 / 轮流发言 / 全员圆桌三种发言方式
 
 ### 会话与协作
 
 - 💬 **多会话管理** — 角色群消息本地持久化，单个群支持多个并行话题；可新建、切换、重命名、置顶、归档、搜索会话，并自动生成会话标题
-- 🛠️ **CLI 任务管理** — 开发群以任务为单位执行，提供任务侧栏、执行日志、git diff 查看、worktree 隔离与多群友竞赛结果对比
-- 📚 **资源库** — 统一管理角色库、专家库、开发群友与模型服务
+- 📚 **资源库** — 统一管理角色库与模型服务
 
 ### 平台能力
 
@@ -73,7 +70,7 @@
 | **状态管理** | Zustand |
 | **国际化** | i18next + react-i18next（zh-CN / en-US） |
 | **动画** | motion |
-| **本地存储** | SQLite (rusqlite) + localStorage（会话 / 任务） |
+| **本地存储** | SQLite (rusqlite) + localStorage（会话） |
 | **后端** | Rust（Tauri IPC Commands） |
 | **LLM** | OpenAI 兼容 SDK + Rust 流式代理 |
 | **Markdown** | @lobehub/ui Markdown（KaTeX 公式 / Mermaid 图表 / shiki 高亮） |
@@ -125,8 +122,8 @@ npm run tauri build
 ### 运行测试
 
 ```bash
-npm run test:cli       # CLI 适配器 / 任务 / 引擎模式
-npm run test:llm       # LLM 客户端 / 各 CLI 流解析
+npm test               # 运行全部前端单元测试
+npm run test:llm       # LLM 客户端 / Markdown 渲染
 npm run test:product   # 群聊产品分类与文案
 npm run test:i18n      # 中英文翻译键对称性
 ```
@@ -137,20 +134,19 @@ npm run test:i18n      # 中英文翻译键对称性
 botgroup.chat-desktop/
 ├── src/                    # 前端源码 (React + TypeScript)
 │   ├── components/         # 通用组件 (Markdown, AuthGuard, 验证码)
-│   ├── config/             # 群聊/成员/CLI/会话/服务商配置与产品分类
-│   ├── engine/             # 群聊调度引擎 (agent/cli/blackboard/intent/prompt)
+│   ├── config/             # 群聊/成员/会话/服务商配置与产品分类
 │   ├── hooks/              # 自定义 Hooks (use-theme, use-locale 等)
 │   ├── i18n/               # 国际化资源与运行时 (zh-CN / en-US)
 │   ├── layouts/            # 布局组件
 │   ├── lib/                # 主题与通用工具
 │   ├── pages/
 │   │   ├── chat/           # 聊天主页面
-│   │   │   └── components/ # ChatUI, AgentChatUI, CLITaskUI, 各类 Sidebar/Settings/Library
+│   │   │   └── components/ # ChatUI, 各类 Sidebar/Settings/Library
 │   │   └── login/          # 登录页
-│   ├── store/              # Zustand 状态 (aiMember/provider/cliTask/chatSession/user)
+│   ├── store/              # Zustand 状态 (aiMember/provider/chatSession/user)
 │   ├── styles/             # 样式
 │   ├── types/              # 类型定义
-│   ├── utils/              # 工具 (request, 各 CLI 流解析, 头像, 凭证解析)
+│   ├── utils/              # 工具 (request, LLM 客户端, 头像, 凭证解析)
 │   ├── routes.tsx          # 路由配置
 │   └── index.css           # 全局样式 & 设计系统
 ├── src-tauri/              # Rust 后端
@@ -161,7 +157,6 @@ botgroup.chat-desktop/
 │   │   ├── provider.rs     # 模型服务管理
 │   │   ├── vault.rs        # 密钥保险箱 (API Key 加密存储)
 │   │   ├── llm_proxy.rs    # LLM 流式代理
-│   │   ├── cli.rs          # CLI Agent 执行 (运行/检测/worktree/diff/日志)
 │   │   └── migrate.rs      # 数据迁移
 │   ├── Cargo.toml          # Rust 依赖
 │   └── tauri.conf.json     # Tauri 配置
@@ -178,11 +173,9 @@ botgroup.chat-desktop/
 │                 Tauri Window                  │
 │  ┌────────────────────────────────────────┐  │
 │  │          React Frontend (Vite)          │  │
-│  │  ┌────────┐ ┌───────────┐ ┌──────────┐ │  │
-│  │  │ ChatUI │ │AgentChatUI│ │CLITaskUI │ │  │
-│  │  │ (角色) │ │  (专家)   │ │ (开发)   │ │  │
-│  │  └───┬────┘ └─────┬─────┘ └────┬─────┘ │  │
-│  │      └───────────┬┴────────────┘       │  │
+│  │              ┌────────┐                │  │
+│  │              │ ChatUI │                │  │
+│  │              └───┬────┘                │  │
 │  │            ┌─────▼──────┐               │  │
 │  │            │ request.ts │ (IPC Proxy)   │  │
 │  │            └─────┬──────┘               │  │
@@ -192,15 +185,15 @@ botgroup.chat-desktop/
 │  │              Rust Backend                │  │
 │  │  ┌────────┐ ┌──────────┐ ┌────────────┐ │  │
 │  │  │ api.rs │ │provider  │ │ llm_proxy  │ │  │
-│  │  │  db.rs │ │  vault   │ │   cli.rs   │ │  │
+│  │  │  db.rs │ │  vault   │ │            │ │  │
 │  │  └────────┘ └──────────┘ └────────────┘ │  │
 │  └──────────────────────────────────────────┘ │
 └──────────────────────────────────────────────┘
 ```
 
-- **前端** 三类群聊界面通过 `request.ts` 统一代理调用，由 `engine/` 负责群内成员的调度与协作
+- **前端** 群聊界面通过 `request.ts` 统一代理调用，由调度角色按消息内容挑选发言的群友
 - **IPC 层** 将请求转换为 Tauri `invoke` 调用
-- **Rust 后端** 处理本地 SQLite 读写、模型服务与密钥管理、LLM 流式代理，以及 CLI Agent 的本地执行
+- **Rust 后端** 处理本地 SQLite 读写、模型服务与密钥管理、LLM 流式代理
 
 ## 🔐 密钥与模型服务
 
@@ -212,7 +205,7 @@ botgroup.chat-desktop/
 
 - **聊天气泡** — 用户消息采用橙色渐变 (`orange-500 → amber-500`)，AI 消息使用半透明卡片
 - **头像** — 圆形头像，带边框和阴影，内置角色按品牌图标渲染，自定义头像回退为首字母色块
-- **侧边栏** — 可折叠，毛玻璃背景，橙色激活指示条，开发群另有任务侧栏、角色群另有会话侧栏
+- **侧边栏** — 可折叠，毛玻璃背景，橙色激活指示条，角色群另有会话侧栏
 - **主题** — 基于 CSS 变量的亮色 / 暗色切换，支持跟随系统
 
 ## 📄 License

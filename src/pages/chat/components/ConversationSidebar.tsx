@@ -371,7 +371,7 @@ export const ConversationSidebar = ({
                   icon={Settings2}
                   size="small"
                   onClick={onOpenGroupSettings}
-                  title={t('chat:cliMeta.settings')}
+                  title={t('chat:groupSettings')}
                 />
               )}
               <ActionIcon icon={PanelLeftClose} size="small" onClick={toggleSidebar} title="" />

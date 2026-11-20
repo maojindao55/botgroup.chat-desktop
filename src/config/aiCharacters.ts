@@ -1,6 +1,5 @@
 import { builtinAIMembers, AIMember } from './aiMembers';
 import { applyPromptTemplate } from '@/utils/prompt';
-import type { CLIAdapterId } from './cliAdapters';
 
 // ============ 模型配置 ============
 export const modelConfigs = [
@@ -58,12 +57,13 @@ export const modelConfigs = [
 
 export type ModelType = typeof modelConfigs[number]["model"];
 
-// ============ LLM 角色接口（AI 群聊专用）============
+// ============ LLM 角色接口 ============
 export interface AICharacter {
   id: string;
   name: string;
   personality: string;
   model: ModelType;
+  providerId?: string;
   avatar?: string;
   custom_prompt?: string;
   tags?: string[];
@@ -71,33 +71,7 @@ export interface AICharacter {
   runtime?: 'llm';
 }
 
-// ============ CLI Agent 接口（CLI 群聊专用）============
-export interface CLIAgent {
-  id: string;
-  name: string;
-  personality: string;
-  model: ModelType;           // 占位，CLI 不真正用 LLM
-  avatar?: string;
-  custom_prompt?: string;
-  tags?: string[];
-  runtime: 'cli';
-  cli: {
-    adapter: CLIAdapterId;
-    binary?: string;
-    extraArgs?: string[];
-    toolSessionId?: string;
-    env?: Record<string, string>;
-    approvalMode?: 'auto' | 'ask';
-    showStderr?: boolean;
-    /** Windows only: run the adapter inside WSL via `wsl.exe`. Ignored elsewhere. */
-    wsl?: boolean;
-    /** Optional WSL distribution name (passed to `wsl.exe -d <distro>`). */
-    wslDistro?: string;
-  };
-}
-
-// 联合类型（兼容旧代码中 `AICharacter` 的使用）
-export type Character = AICharacter | CLIAgent;
+export type Character = AICharacter;
 
 /** 替换 prompt 中的占位符，未传 groupName 时仍处理 {{aiName}} 等 */
 function applyGroupNamePlaceholder(text: string | undefined, groupName?: string, aiName?: string): string | undefined {
@@ -106,56 +80,30 @@ function applyGroupNamePlaceholder(text: string | undefined, groupName?: string,
 }
 
 /**
- * Convert AIMember to legacy AICharacter / CLIAgent
+ * Convert AIMember to legacy AICharacter
  * @param groupName 可选，传入后会把 customPrompt / stages 内的 `#groupName#` 占位符替换为实际群名
  */
-export function mapAIMemberToLegacy(m: AIMember, groupName?: string): Character {
-  if (m.kind === 'llm') {
-    return {
-      id: m.id,
-      name: m.name,
-      personality: m.schedulerTag || m.name,
-      providerId: m.providerId,
-      model: m.model as ModelType,
-      avatar: m.avatar,
-      custom_prompt: applyGroupNamePlaceholder(m.customPrompt, groupName, m.name),
-      tags: m.tags,
-      stages: groupName && m.stages
-        ? m.stages.map((s) => ({
-            name: s.name,
-            prompt: applyGroupNamePlaceholder(s.prompt, groupName, m.name) || s.prompt,
-          }))
-        : m.stages,
-      runtime: 'llm'
-    };
-  } else if (m.kind === 'cli') {
-    return {
-      id: m.id,
-      name: m.name,
-      personality: m.id + '-cli',
-      model: modelConfigs[0].model,
-      avatar: m.avatar,
-      custom_prompt: '',
-      tags: m.tags,
-      runtime: 'cli',
-      cli: m.cli
-    };
-  } else {
-    // Agent: systemPrompt 当作老 custom_prompt 暴露
-    return {
-      id: m.id,
-      name: m.name,
-      personality: 'agent',
-      providerId: m.providerId,
-      model: m.model,
-      avatar: m.avatar,
-      custom_prompt: applyGroupNamePlaceholder(m.systemPrompt, groupName, m.name),
-      tags: m.tags
-    };
-  }
+export function mapAIMemberToLegacy(m: AIMember, groupName?: string): AICharacter {
+  return {
+    id: m.id,
+    name: m.name,
+    personality: m.schedulerTag || m.name,
+    providerId: m.providerId,
+    model: m.model as ModelType,
+    avatar: m.avatar,
+    custom_prompt: applyGroupNamePlaceholder(m.customPrompt, groupName, m.name),
+    tags: m.tags,
+    stages: groupName && m.stages
+      ? m.stages.map((s) => ({
+          name: s.name,
+          prompt: applyGroupNamePlaceholder(s.prompt, groupName, m.name) || s.prompt,
+        }))
+      : m.stages,
+    runtime: 'llm'
+  };
 }
 
-// ============ LLM 角色列表（AI 群聊专用）============
+// ============ 调度器 ============
 export function generateAICharacters(_groupName: string, allTags: string): AICharacter[] {
   return [
     {
@@ -172,18 +120,7 @@ export function generateAICharacters(_groupName: string, allTags: string): AICha
   ];
 }
 
-export const cliAgents: CLIAgent[] = builtinAIMembers
-  .filter(m => m.kind === 'cli')
-  .map(m => mapAIMemberToLegacy(m)) as CLIAgent[];
-
 /** 获取所有 LLM 角色（不含调度器） */
 export function getAvailableAICharacters(): AICharacter[] {
-  return builtinAIMembers
-    .filter(m => m.kind === 'llm')
-    .map(m => mapAIMemberToLegacy(m)) as AICharacter[];
-}
-
-/** 获取所有 CLI Agent */
-export function getAvailableCLIAgents(): CLIAgent[] {
-  return cliAgents;
+  return builtinAIMembers.map(m => mapAIMemberToLegacy(m));
 }

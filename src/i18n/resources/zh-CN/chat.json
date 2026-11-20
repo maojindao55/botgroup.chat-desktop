@@ -1,7 +1,6 @@
 {
   "memberPicker": {
-    "defaultPlaceholder": "选择资源...",
-    "cliMemberSuffix": "CLI Agent"
+    "defaultPlaceholder": "选择资源..."
   },
   "init": {
     "loadFailed": "加载失败，请刷新重试",
@@ -12,164 +11,28 @@
     "backHome": "返回首页"
   },
   "systemSender": "系统提示",
-  "confirmExecute": "确认让 {{names}} 在 {{path}} 执行这次任务？",
-  "confirmExecuteSingle": "确认让 {{name}} 在 {{path}} 执行这次任务？",
-  "defaultWorkspace": "默认目录",
   "errors": {
     "memberNotFound": "找不到该 CLI Agent",
-    "taskNotStarted": "❌ 任务执行未启动：{{message}}",
     "requestFailed": "请求失败",
     "streamUnavailable": "无法获取响应流",
     "timeout": "响应超时",
     "serviceUnavailable": "对不起，服务暂时无法响应。",
     "appendError": "[错误: {{error}}]"
   },
-  "messages": {
-    "noEnabledCliMembers": "群聊中没有启用的 CLI Agent。请在右侧设置面板中添加或开启成员。",
-    "readOnlyDiscussionHint": "当前协作方式是“只读讨论”，会在临时只读副本中运行，不会修改你设置的 workspace。要写文件或改代码，请先切换到“排查修复复审”“规划实现复审”或“快速响应”。"
-  },
+  "messages": {},
   "placeholders": {
-    "cliInput": "输入代码任务，CLI Agent 将在 workspace 中协作执行...",
     "aiInput": "在角色群里输入消息..."
   },
   "status": {
     "thinking": "思考中",
     "running": "输出中",
-    "executing": "执行中",
     "completed": "✅ 已完成",
     "failed": "❌ 运行失败",
     "cancelled": "⏹ 已取消",
     "timeout": "⏰ 执行超时"
   },
-  "cliMeta": {
-    "workspaceTitle": "双击以修改本地 Workspace 路径",
-    "settings": "设置",
-    "stop": "停止",
-    "retry": "重试",
-    "workdir": "工作目录",
-    "copyPath": "复制路径",
-    "openPath": "打开路径",
-    "branch": "分支：",
-    "base": "基准：",
-    "adopt": "标记采用",
-    "adopted": "✓ 已采用"
-  },
   "serviceError": "对不起，服务出错({{message}})。",
   "unknownError": "未知错误",
-  "agentChat": {
-    "expertCount": "{{count}} 位专家",
-    "emptyTitle": "专家群",
-    "loadingLibrary": "正在加载成员数据...",
-    "unresolvedMembers": "该群引用了 {{count}} 位专家，但当前设置中找不到。",
-    "unresolvedMembersHint": "请到「{{settings}}」检查或重新添加成员。",
-    "expertBadge": "专家",
-    "inputPlaceholder": "输入消息，专家群友将按群规协作回复...",
-    "settings": "设置",
-    "progressPhase": "阶段 {{current}}/{{total}}",
-    "expertsAnalyzing": "{{count}} 位分析中",
-    "scrollToBottom": "回到底部",
-    "newMessages": "{{count}} 条新消息",
-    "copy": "复制",
-    "copied": "已复制",
-    "suggestionsLabel": "试试这些",
-    "suggestion1": "帮我分析一下这个方案的优缺点",
-    "suggestion2": "请各位专家分别给出你的建议",
-    "suggestion3": "请合作产出一份完整方案"
-  },
-  "agentWorkflow": {
-    "sender": "协作计划",
-    "planning": "正在生成协作计划…",
-    "plannerBadge": "规划者",
-    "approvalTitle": "确认执行工作流",
-    "planTitle": "协作计划",
-    "confirmRun": "开始执行",
-    "cancelled": "已取消执行计划",
-    "card": {
-      "run": "开始执行",
-      "cancel": "取消",
-      "modify": "修改计划",
-      "replan": "重新生成",
-      "revising": "正在重新生成计划…",
-      "cancelEdit": "取消修改",
-      "warningPrefix": "提示",
-      "requiresApproval": "需要确认",
-      "instructionPlaceholder": "告诉规划器需要怎么改，例如：只读模式 / 仅用一个 agent / 聚焦复审"
-    },
-    "risk": {
-      "low": "低风险",
-      "medium": "中风险",
-      "high": "高风险"
-    },
-    "intent": {
-      "quick": "快速回答",
-      "discuss": "讨论",
-      "multi_solution": "多方案",
-      "implement": "实现",
-      "review": "复审",
-      "audit": "审计",
-      "custom": "自定义"
-    },
-    "status": {
-      "planned": "待执行",
-      "running": "执行中",
-      "completed": "已完成",
-      "failed": "失败",
-      "cancelled": "已取消",
-      "pending": "等待",
-      "skipped": "已跳过"
-    },
-    "phase": {
-      "mode": {
-        "readOnly": "只读",
-        "review": "复审",
-        "write": "写入",
-        "verifier": "校验"
-      },
-      "schedule": {
-        "single": "单成员",
-        "parallel": "并行",
-        "sequential": "顺序"
-      },
-      "agentsLabel": "成员",
-      "autoSuffix": "自动",
-      "errorTag": "错误",
-      "attempt": "第 {{count}} 次执行",
-      "verdictLabel": "判定",
-      "verdict": {
-        "pass": "通过",
-        "fail": "未通过"
-      }
-    },
-    "planner": {
-      "emptyTitle": "无操作",
-      "emptyExplanation": "未找到可用的成员。",
-      "warnings": {
-        "noMembers": "当前群聊没有可用的 agent 成员。"
-      },
-      "intents": {
-        "quick": {
-          "title": "快速回答",
-          "explanation": "由单个成员直接回答问题。"
-        }
-      },
-      "phases": {
-        "answer": {
-          "label": "回答",
-          "prompt": "直接回答用户请求。除非明确要求，否则不要修改文件。"
-        }
-      }
-    }
-  },
-  "attachments": {
-    "add": "添加附件",
-    "fallbackTitle": "附件",
-    "tauriOnly": "附件功能需要在桌面端使用。",
-    "unsupported": "{{name}} 不是支持的附件类型。",
-    "fileTooLarge": "{{name}} 超过 50 MB 附件大小限制。",
-    "maxCount": "每条消息最多添加 {{count}} 个附件。",
-    "selectFailed": "选择附件失败：{{message}}",
-    "unavailable": "文件不可用"
-  },
   "conversation": {
     "title": "会话",
     "new": "新建会话",
@@ -193,5 +56,6 @@
     "expand": "展开会话列表",
     "runningTip": "后台执行中",
     "unreadTip": "有新结果"
-  }
+  },
+  "groupSettings": "群设置"
 }

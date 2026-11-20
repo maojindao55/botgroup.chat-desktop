@@ -472,7 +472,7 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
           <Switch checkedChildren={t('provider.fields.enabledOn')} unCheckedChildren={t('provider.fields.enabledOff')} disabled={readOnly} />
         </Form.Item>
 
-        <Divider orientation="left" style={{ fontSize: 13, margin: '12px 0' }}>
+        <Divider titlePlacement="start" style={{ fontSize: 13, margin: '12px 0' }}>
           {t('provider.fields.paramsSection')}
         </Divider>
         <div className={styles.sectionHint}>
@@ -530,7 +530,7 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
           />
         </Form.Item>
 
-        <Divider orientation="left" style={{ fontSize: 13, margin: '12px 0' }}>
+        <Divider titlePlacement="start" style={{ fontSize: 13, margin: '12px 0' }}>
           {t('provider.fields.secretSection')}
           {secretConfigured !== null && (
             <Tag

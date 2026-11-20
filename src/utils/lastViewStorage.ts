@@ -1,15 +1,20 @@
 /**
- * 记住用户上次所在的视图（首页 / 群聊 / 开发任务），用于冷启动时恢复。
- * 仅存储 URL search 串（形如 `?view=home`、`?id=2`、`?view=cli-task&taskId=...`）。
+ * 记住用户上次所在的视图（首页 / 群聊），用于冷启动时恢复。
+ * 仅存储 URL search 串（形如 `?view=home`、`?id=2`）。
  */
 
 const LAST_VIEW_KEY = 'last_view';
+
+/** 旧版本的开发任务视图已移除，恢复时需忽略 */
+function isRemovedView(search: string): boolean {
+  return /[?&]view=cli-/.test(search) || /[?&]taskId=/.test(search);
+}
 
 /** 读取上次视图的 search 串；非法或缺失时返回 null */
 export function readLastView(): string | null {
   try {
     const value = localStorage.getItem(LAST_VIEW_KEY);
-    return value && value.startsWith('?') ? value : null;
+    return value && value.startsWith('?') && !isRemovedView(value) ? value : null;
   } catch {
     return null;
   }

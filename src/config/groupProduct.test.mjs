@@ -18,7 +18,7 @@ const mod = await importTsModule(new URL('./groupProduct.ts', import.meta.url));
 
 assert.deepEqual(
   mod.productGroupTypes.map((item) => item.label),
-  ['角色群', '专家群', '开发群'],
+  ['角色群'],
 );
 
 assert.deepEqual(
@@ -26,56 +26,21 @@ assert.deepEqual(
   ['智能点名', '轮流发言', '全员圆桌'],
 );
 
-assert.deepEqual(
-  mod.agentWorkflowEfforts.map((item) => item.value),
-  ['fast', 'standard', 'deep'],
-);
+for (const removed of [
+  'agentWorkflowEfforts',
+  'workflowIntentPresets',
+  'agentWorkflowTemplates',
+  'cliWorkflowTemplates',
+  'cliWorkflowTemplateGroups',
+  'getCLIWorkflowLabel',
+]) {
+  assert.ok(!(removed in mod), `${removed} must be removed`);
+}
 
-assert.deepEqual(
-  mod.workflowIntentPresets.map((item) => item.id),
-  ['smart', 'discuss', 'multi_solution', 'review', 'isolated'],
-);
-
-assert.ok(!('agentWorkflowTemplates' in mod), 'agentWorkflowTemplates must be removed');
-
-assert.deepEqual(
-  mod.cliWorkflowTemplates.map((item) => item.label),
-  ['快速响应', '排查修复复审', '规划实现复审', '审核修正', '只读讨论', '多人出方案', '隔离竞赛'],
-);
-
-assert.deepEqual(
-  mod.cliWorkflowTemplateGroups.map((group) => ({
-    label: group.label,
-    templates: mod.getCLIWorkflowTemplatesByGroup(group).map((item) => item.label),
-  })),
-  [
-    {
-      label: '常用',
-      templates: ['快速响应', '排查修复复审', '规划实现复审', '只读讨论'],
-    },
-    {
-      label: '高级',
-      templates: ['审核修正', '多人出方案', '隔离竞赛'],
-    },
-  ],
-);
-
-assert.equal(
-  mod.applyAISpeechMode('smart').schedulerStrategy,
-  'tag',
-);
-assert.equal(
-  mod.applyAISpeechMode('smart').isGroupDiscussionMode,
-  false,
-);
-assert.equal(
-  mod.applyAISpeechMode('all').schedulerStrategy,
-  'all',
-);
-assert.equal(
-  mod.applyAISpeechMode('all').isGroupDiscussionMode,
-  true,
-);
+assert.equal(mod.applyAISpeechMode('smart').schedulerStrategy, 'tag');
+assert.equal(mod.applyAISpeechMode('smart').isGroupDiscussionMode, false);
+assert.equal(mod.applyAISpeechMode('all').schedulerStrategy, 'all');
+assert.equal(mod.applyAISpeechMode('all').isGroupDiscussionMode, true);
 
 assert.equal(
   mod.resolveAISpeechMode({ isGroupDiscussionMode: true, schedulerStrategy: 'tag' }),
@@ -89,176 +54,56 @@ assert.equal(
   mod.resolveAISpeechMode({ isGroupDiscussionMode: false, schedulerStrategy: 'all' }),
   'all',
 );
+assert.equal(mod.getProductGroupType('ai').label, '角色群');
 
-const developmentLoop = mod.cliWorkflowTemplates.find((item) => item.id === 'implement_review');
-assert.equal(developmentLoop.strategy, 'review');
-assert.equal(developmentLoop.defaultStages.join(' -> '), '规划 -> 实现 -> 复审 -> 修正');
+const componentsDir = new URL('../pages/chat/components/', import.meta.url);
+const readComponent = (name) => readFile(new URL(name, componentsDir), 'utf8');
 
-const diagnoseFixReview = mod.cliWorkflowTemplates.find((item) => item.id === 'diagnose_fix_review');
-assert.equal(diagnoseFixReview.strategy, 'review');
-assert.equal(diagnoseFixReview.customWorkflow.stages.map((stage) => stage.label).join(' -> '), '定位修复 -> 复审 -> 修正');
-assert.equal(diagnoseFixReview.customWorkflow.stages[1].reviewDecision.revise, 'revise');
-
-assert.equal(mod.getCLIWorkflowLabel('review', 'implement_review'), '规划实现复审');
-assert.equal(mod.getCLIWorkflowLabel('review', 'diagnose_fix_review'), '排查修复复审');
-assert.equal(mod.getCLIWorkflowLabel('race', 'isolated_race'), '隔离竞赛');
-assert.equal(mod.getCLIWorkflowLabel('sequential', 'multi_solution'), '多人出方案');
-
-const labels = JSON.stringify({
-  groups: mod.productGroupTypes,
-  agentEfforts: mod.agentWorkflowEfforts,
-  agentIntents: mod.workflowIntentPresets,
-  cli: mod.cliWorkflowTemplates,
-});
-assert.doesNotMatch(labels, /工作台/);
-assert.doesNotMatch(labels, /Workbench/i);
-
-const wizard = await readFile(new URL('../pages/chat/components/CreateGroupWizard.tsx', import.meta.url), 'utf8');
-
-for (const symbol of [
-  'productGroupTypes',
-  'aiSpeechModes',
-  'agentWorkflowEfforts',
-  'cliWorkflowTemplates',
-  'applyAISpeechMode',
-]) {
+const wizard = await readComponent('CreateGroupWizard.tsx');
+for (const symbol of ['aiSpeechModes', 'applyAISpeechMode']) {
   assert.match(wizard, new RegExp(symbol));
 }
-
-assert.doesNotMatch(wizard, /agentWorkflowTemplates/);
-assert.doesNotMatch(wizard, /AgentStrategy/);
-
-for (const oldCopy of ['选择你要创建的群聊类型', 'AI 群聊', 'Agent 群聊', 'CLI Agent 群']) {
-  assert.doesNotMatch(wizard, new RegExp(oldCopy));
+for (const removed of [/cliWorkflowTemplates/, /agentWorkflowEfforts/, /type === 'cli'/, /type === 'agent'/]) {
+  assert.doesNotMatch(wizard, removed);
 }
 
-const aiSettings = await readFile(new URL('../pages/chat/components/AIGroupSettings.tsx', import.meta.url), 'utf8');
-
+const aiSettings = await readComponent('AIGroupSettings.tsx');
 assert.match(aiSettings, /useTranslation/);
 assert.match(aiSettings, /settings:aiGroup/);
 for (const symbol of ['aiSpeechModes', 'applyAISpeechMode', 'resolveAISpeechMode']) {
   assert.match(aiSettings, new RegExp(symbol));
 }
-assert.doesNotMatch(aiSettings, /全员讨论模式/);
-assert.doesNotMatch(aiSettings, /调度策略/);
 
-const agentSettings = await readFile(new URL('../pages/chat/components/AgentGroupSettings.tsx', import.meta.url), 'utf8');
-
-assert.match(agentSettings, /useTranslation/);
-assert.match(agentSettings, /settings:agentGroup/);
-assert.match(agentSettings, /agentWorkflowEfforts/);
-assert.doesNotMatch(agentSettings, /agentWorkflowTemplates/);
-assert.doesNotMatch(agentSettings, /AgentStrategy/);
-assert.doesNotMatch(agentSettings, /coordinatorPrompt/);
-assert.doesNotMatch(agentSettings, /settings:strategies/);
-
-const cliSettings = await readFile(new URL('../pages/chat/components/CLIGroupSettings.tsx', import.meta.url), 'utf8');
-
-assert.match(cliSettings, /useTranslation/);
-assert.match(cliSettings, /cli:groupSettings/);
-assert.match(cliSettings, /cliWorkflowTemplates/);
-assert.match(cliSettings, /product:cliWorkflowTemplates/);
-assert.match(cliSettings, /cli:groupSettings\.executionDetails/);
-assert.doesNotMatch(cliSettings, /cliSessionPolicyOptions/);
-assert.doesNotMatch(cliSettings, /product:cliSessionPolicy/);
-assert.doesNotMatch(cliSettings, /群规/);
-assert.doesNotMatch(cliSettings, /Runtime/);
-assert.doesNotMatch(cliSettings, /本机 CLI Runtime 状态/);
-assert.doesNotMatch(cliSettings, /'开发群配置'/);
-assert.doesNotMatch(cliSettings, /'协作方式'/);
-
-const resourceLibrary = await readFile(new URL('../pages/chat/components/ResourceLibraryContent.tsx', import.meta.url), 'utf8');
-const appSettingsModal = await readFile(new URL('../pages/chat/components/AppSettingsModal.tsx', import.meta.url), 'utf8');
-
-assert.match(resourceLibrary, /useTranslation/);
+const resourceLibrary = await readComponent('ResourceLibraryContent.tsx');
 assert.match(resourceLibrary, /library:create/);
-assert.doesNotMatch(resourceLibrary, /library:tabs/);
-for (const oldCopy of ['AI 群员管理库', 'AI 群员库', 'LLM 角色', 'Agent 协作', 'CLI Agent', '暂无群员']) {
-  assert.doesNotMatch(resourceLibrary, new RegExp(oldCopy));
-}
+assert.doesNotMatch(resourceLibrary, /CLIExecutorLibrary|library:cliTabs/);
+
+const appSettingsModal = await readComponent('AppSettingsModal.tsx');
 assert.match(appSettingsModal, /APP_SETTINGS_SECTIONS/);
 assert.match(appSettingsModal, /ResourceLibraryContent/);
 
-const memberEditor = await readFile(new URL('../pages/chat/components/AIMemberEditor.tsx', import.meta.url), 'utf8');
-
-assert.match(memberEditor, /useTranslation/);
+const memberEditor = await readComponent('AIMemberEditor.tsx');
 assert.match(memberEditor, /member\.titleEdit/);
-assert.match(memberEditor, /member\.fields\./);
-for (const oldCopy of ['编辑群员', '新建群员', '群员类型', '群员名称', 'LLM 角色', '>Agent<', 'CLI Agent']) {
-  assert.doesNotMatch(memberEditor, new RegExp(oldCopy));
-}
+assert.doesNotMatch(memberEditor, /kind === 'cli'|kind === 'agent'|useCLIExecutorStore/);
 
-const memberPicker = await readFile(new URL('../pages/chat/components/MemberPicker.tsx', import.meta.url), 'utf8');
-
-assert.match(memberPicker, /useTranslation/);
-assert.match(memberPicker, /chat:memberPicker/);
-assert.doesNotMatch(memberPicker, /CLI Agent/);
-assert.doesNotMatch(memberPicker, /选择群员/);
-
-const sidebar = await readFile(new URL('../pages/chat/components/Sidebar.tsx', import.meta.url), 'utf8');
-
-assert.match(sidebar, /useTranslation/);
+const sidebar = await readComponent('Sidebar.tsx');
 assert.match(sidebar, /getTranslatedGroupTypeShortLabel/);
-assert.match(sidebar, /sidebar:section\.workspace/);
-for (const oldCopy of ['工作空间', 'AI 群员库', '>AI<', '>CLI<', '>Agent<']) {
-  assert.doesNotMatch(sidebar, new RegExp(oldCopy));
+assert.doesNotMatch(sidebar, /onNavigateCLI|devTasks/);
+
+const chatUI = await readComponent('ChatUI.tsx');
+assert.match(chatUI, /AppSettingsModal/);
+for (const removed of [/isCLIGroup/, /CLITaskUI/, /AgentChatUI/, /\/api\/cli\//, /AdSection/]) {
+  assert.doesNotMatch(chatUI, removed);
 }
 
-const chatUI = await readFile(new URL('../pages/chat/components/ChatUI.tsx', import.meta.url), 'utf8');
-
-assert.match(chatUI, /useTranslation/);
-assert.match(chatUI, /chat:messages\.noEnabledCliMembers/);
-assert.match(chatUI, /chat:placeholders\.cliInput/);
-assert.match(chatUI, /chat:messages\.readOnlyDiscussionHint/);
-assert.match(chatUI, /AppSettingsModal/);
-assert.doesNotMatch(chatUI, /当前群规是/);
-assert.doesNotMatch(chatUI, /CLI Agent 将在 workspace 中执行/);
-assert.doesNotMatch(chatUI, /AI 群员库（/);
-
-const agentChatUI = await readFile(new URL('../pages/chat/components/AgentChatUI.tsx', import.meta.url), 'utf8');
-
-assert.match(agentChatUI, /useTranslation/);
-assert.match(agentChatUI, /chat:agentChat/);
-assert.match(agentChatUI, /AppSettingsModal/);
-assert.doesNotMatch(agentChatUI, /settings:strategies/);
-assert.doesNotMatch(agentChatUI, /executeAgentStrategy/);
-assert.match(
-  agentChatUI,
-  /const hasAnySessionForGroup = chatSessions\.some\(s => s\.groupId === group\.id\);/,
-  'AgentChatUI must not clear a selected conv while session storage is still empty during mount',
-);
-assert.match(
-  agentChatUI,
-  /if \(!hasAnySessionForGroup\) return;/,
-  'AgentChatUI should only invalidate a missing selected conv after this group has known sessions',
-);
-assert.match(
-  agentChatUI,
-  /const sessionId = ensureActiveSession\([\s\S]*?\);[\s\S]*sessionId,/,
-  'AgentChatUI should store the newly created conversation id with pending workflow data',
-);
-assert.match(
-  agentChatUI,
-  /developmentTaskId: pending\.sessionId,/,
-  'AgentChatUI first-turn CLI tool sessions must use the pending workflow conversation id',
-);
-assert.match(
-  agentChatUI,
-  /userAttachmentBubble: css`[\s\S]*?justify-content: flex-end;/,
-  'AgentChatUI should align separate user attachment bubbles to the right',
-);
-assert.match(
-  agentChatUI,
-  /\{!isUser && !isWorkflowMessage && \(\s*<ChatAttachmentList[\s\S]*?\)\}[\s\S]*?\{isUser && hasAttachments && \(\s*<div className=\{styles\.userAttachmentBubble\}>[\s\S]*?<ChatAttachmentList/,
-  'AgentChatUI should render user attachments as a separate bubble after the text bubble',
-);
-for (const oldCopy of ['Agent 协作群', 'AI 群员库', '专家群友将按群规协作回复', '正在加载资源库']) {
-  assert.doesNotMatch(agentChatUI, new RegExp(oldCopy));
+for (const removedFile of ['AgentChatUI.tsx', 'CLITaskUI.tsx', 'CLIGroupSettings.tsx', 'AgentGroupSettings.tsx']) {
+  await assert.rejects(readComponent(removedFile), { code: 'ENOENT' }, `${removedFile} must be deleted`);
 }
 
 const readme = await readFile(new URL('../../README.md', import.meta.url), 'utf8');
-
-for (const copy of ['角色群', '专家群', '开发群', '设置']) {
-  assert.match(readme, new RegExp(copy));
+assert.match(readme, /角色群/);
+for (const removed of [/专家群/, /开发群/, /AI 群聊/]) {
+  assert.doesNotMatch(readme, removed);
 }
-assert.doesNotMatch(readme, /AI 群聊/);
+
+console.log('groupProduct.test.mjs: ok');

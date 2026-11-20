@@ -13,9 +13,6 @@
     "create": "Create"
   },
   "recent": {
-    "groupsTitle": "Your groups",
-    "tasksTitle": "Recent dev tasks",
-    "emptyTaskTitle": "Untitled task",
-    "openDevTasks": "View all dev tasks"
+    "groupsTitle": "Your groups"
   }
 }
