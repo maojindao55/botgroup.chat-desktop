@@ -222,91 +222,6 @@ pub fn init_db_schemas(conn: &Connection) -> Result<()> {
         [],
     )?;
 
-    // Create CLI task and profile tables
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS cli_tasks (
-            id TEXT PRIMARY KEY,
-            group_id TEXT NOT NULL,
-            agent_id TEXT NOT NULL,
-            agent_name TEXT NOT NULL,
-            adapter TEXT NOT NULL,
-            status TEXT NOT NULL CHECK(status IN ('queued', 'running', 'completed', 'failed', 'cancelled', 'timeout')),
-            cwd TEXT,
-            prompt TEXT NOT NULL,
-            prompt_summary TEXT,
-            session_id TEXT,
-            pid INTEGER,
-            exit_code INTEGER,
-            error_message TEXT,
-            log_path TEXT,
-            started_at TIMESTAMP,
-            ended_at TIMESTAMP,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );",
-        [],
-    )?;
-
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS cli_runtimes (
-            adapter TEXT PRIMARY KEY,
-            installed INTEGER NOT NULL DEFAULT 0,
-            binary_path TEXT,
-            version TEXT,
-            last_check_at TIMESTAMP,
-            last_run_at TIMESTAMP,
-            last_error TEXT,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );",
-        [],
-    )?;
-
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS cli_agent_profiles (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            adapter TEXT NOT NULL,
-            avatar TEXT,
-            tags TEXT,
-            binary TEXT,
-            extra_args TEXT,
-            env TEXT,
-            default_cwd TEXT,
-            approval_mode TEXT DEFAULT 'auto',
-            show_stderr INTEGER DEFAULT 1,
-            max_concurrent_tasks INTEGER DEFAULT 1,
-            enabled INTEGER DEFAULT 1,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );",
-        [],
-    )?;
-
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS cli_skill_packs (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            description TEXT,
-            root_path TEXT NOT NULL,
-            entry_file TEXT DEFAULT 'SKILL.md',
-            enabled INTEGER DEFAULT 1,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );",
-        [],
-    )?;
-
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS cli_agent_skill_packs (
-            agent_id TEXT NOT NULL,
-            skill_id TEXT NOT NULL,
-            PRIMARY KEY (agent_id, skill_id),
-            FOREIGN KEY (agent_id) REFERENCES cli_agent_profiles(id),
-            FOREIGN KEY (skill_id) REFERENCES cli_skill_packs(id)
-        );",
-        [],
-    )?;
-
     // Create AI members table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS ai_members (
@@ -365,16 +280,6 @@ pub fn init_db_schemas(conn: &Connection) -> Result<()> {
         conn.execute("ALTER TABLE providers ADD COLUMN params TEXT", [])?;
     }
 
-    // Create indices
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_cli_tasks_group_created ON cli_tasks(group_id, created_at DESC);", [])?;
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_cli_tasks_status ON cli_tasks(status);",
-        [],
-    )?;
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_cli_tasks_agent ON cli_tasks(agent_id, created_at DESC);",
-        [],
-    )?;
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_ai_members_kind ON ai_members(kind);",
         [],
@@ -388,7 +293,21 @@ pub fn init_db_schemas(conn: &Connection) -> Result<()> {
         [],
     )?;
 
+    remove_dev_features(conn)?;
+
     Ok(())
+}
+
+/// 开发群（CLI）与专家群（Agent）已下线：清理旧库里的相关表与群员。
+fn remove_dev_features(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "DROP TABLE IF EXISTS cli_agent_skill_packs;
+         DROP TABLE IF EXISTS cli_skill_packs;
+         DROP TABLE IF EXISTS cli_agent_profiles;
+         DROP TABLE IF EXISTS cli_runtimes;
+         DROP TABLE IF EXISTS cli_tasks;
+         DELETE FROM ai_members WHERE kind IN ('cli', 'agent');",
+    )
 }
 
 #[cfg(test)]
@@ -412,31 +331,44 @@ mod tests {
 
         assert!(tables.contains(&"users".to_string()));
         assert!(tables.contains(&"claw_groups".to_string()));
-        assert!(tables.contains(&"cli_tasks".to_string()));
-        assert!(tables.contains(&"cli_runtimes".to_string()));
-        assert!(tables.contains(&"cli_agent_profiles".to_string()));
-        assert!(tables.contains(&"cli_skill_packs".to_string()));
-        assert!(tables.contains(&"cli_agent_skill_packs".to_string()));
         assert!(tables.contains(&"ai_members".to_string()));
         assert!(tables.contains(&"secrets".to_string()));
         assert!(tables.contains(&"providers".to_string()));
 
-        // Verify we can insert a CLI task and retrieve it
-        let task_id = "test-task-123";
-        conn.execute(
-            "INSERT INTO cli_tasks (id, group_id, agent_id, agent_name, adapter, status, prompt)
-             VALUES (?, 'group-1', 'agent-1', 'Agent 1', 'codex', 'running', 'hello world')",
-            rusqlite::params![task_id],
+        assert!(!tables.iter().any(|name| name.starts_with("cli_")));
+    }
+
+    #[test]
+    fn test_init_db_schemas_removes_dev_feature_data() {
+        let conn = Connection::open_in_memory().unwrap();
+        init_db_schemas(&conn).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE cli_tasks (id TEXT PRIMARY KEY);
+             INSERT INTO ai_members (id, kind, name, config) VALUES
+               ('llm-1', 'llm', 'Kid Buddy', '{}'),
+               ('cli-codex', 'cli', 'Codex', '{}'),
+               ('agent-1', 'agent', 'Expert', '{}');",
         )
         .unwrap();
 
-        let count: i64 = conn
+        init_db_schemas(&conn).unwrap();
+
+        let kinds: Vec<String> = conn
+            .prepare("SELECT kind FROM ai_members ORDER BY id")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+        assert_eq!(kinds, vec!["llm".to_string()]);
+
+        let cli_tables: i64 = conn
             .query_row(
-                "SELECT COUNT(*) FROM cli_tasks WHERE id = ?",
-                rusqlite::params![task_id],
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name LIKE 'cli_%'",
+                [],
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(count, 1);
+        assert_eq!(cli_tables, 0);
     }
 }
