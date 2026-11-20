@@ -1,10 +1,10 @@
 /**
  * 角色群聊会话标题：用 LLM 总结生成简短标题。
- * 复用 llmChatComplete（非流式聚合）+ resolveLlmCredentials，模式与 clientScheduleAI 一致。
+ * 复用 llmChatComplete（非流式聚合）+ resolveCompanionCredentials（成员未配模型时用伙伴模型）。
  * 任何失败都返回 null，由调用方回退到首条消息截断标题。
  */
 import { llmChatComplete } from '@/utils/llmClient';
-import { resolveLlmCredentials } from '@/utils/resolveLlmCredentials';
+import { resolveCompanionCredentials } from '@/utils/companionCredentials';
 import { cleanGeneratedTitle } from '@/config/chatSessions';
 
 /** 生成标题时的最大长度（比截断标题更短，更像“标题”） */
@@ -15,8 +15,8 @@ export interface GenerateSessionTitleInput {
   userMessage: string;
   /** 首条 AI 回复（可选，提供后总结更准） */
   aiMessage?: string;
-  /** 调用模型与（可选）Provider */
-  model: string;
+  /** 调用模型与（可选）Provider；为空时使用伙伴模型 */
+  model?: string;
   providerId?: string;
 }
 
@@ -28,10 +28,10 @@ export async function generateSessionTitle(
   input: GenerateSessionTitleInput,
 ): Promise<string | null> {
   const userMessage = (input.userMessage || '').trim();
-  if (!userMessage || !input.model) return null;
+  if (!userMessage) return null;
 
   try {
-    const creds = await resolveLlmCredentials(input.model, input.providerId);
+    const creds = await resolveCompanionCredentials(input.model, input.providerId);
 
     const aiPart = input.aiMessage?.trim()
       ? `\nAssistant: ${input.aiMessage.trim().slice(0, 800)}`

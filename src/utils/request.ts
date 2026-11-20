@@ -1,12 +1,14 @@
 import { invoke } from '@tauri-apps/api/core';
-import { llmChatReadableStream, llmChatComplete } from '@/utils/llmClient';
-import { resolveLlmCredentials } from '@/utils/resolveLlmCredentials';
+import { llmChatReadableStream } from '@/utils/llmClient';
 import { collectLegacyApiKeys, clearLegacyApiKeys } from '@/utils/legacyApiKeys';
+import { resolveCompanionCredentials } from '@/utils/companionCredentials';
 import { defaultGroups as staticGroups } from '@/config/groups';
 import { prepareChatGroups } from '@/config/groupStorage';
-import { generateAICharacters, modelConfigs } from '@/config/aiCharacters';
 import { builtinAIMembers, type AIMember } from '@/config/aiMembers';
 import { builtinProviders, mapProviderToRust } from '@/config/providers';
+import { loadAgeProfile } from '@/config/ageProfile';
+import { loadKidMemory } from '@/config/kidMemory';
+import { buildCompanionSystemPrompt } from '@/config/childPrompt';
 import { normalizeDesktopUser } from '@/utils/userAvatar';
 
 const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
@@ -14,87 +16,6 @@ if (isTauri) {
   localStorage.setItem('token', 'local_desktop_token_placeholder');
 }
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
-
-// Client-side implementation of AI response scheduling
-async function clientScheduleAI(message: string, history: any[], availableAIs: any[]): Promise<string[]> {
-  const allTags = new Set<string>();
-  availableAIs.forEach(ai => {
-    ai.tags?.forEach((tag: string) => allTags.add(tag));
-  });
-
-  const matchedTags: string[] = [];
-
-  // Use the scheduler character configuration
-  const schedulerAI = generateAICharacters(message, Array.from(allTags).join(','))[0];
-
-  try {
-    const creds = await resolveLlmCredentials(schedulerAI.model);
-    const prompt = schedulerAI.custom_prompt;
-    const text = await llmChatComplete({
-      ...creds,
-      messages: [
-        { role: 'system', content: prompt },
-        ...history.slice(-10).map(h => ({ role: h.role === 'user' ? 'user' : 'assistant', content: h.content })),
-        { role: 'user', content: message },
-      ],
-    });
-    text.split(',').forEach((tag: string) => {
-      const trimmed = tag.trim();
-      if (trimmed) matchedTags.push(trimmed);
-    });
-  } catch (e) {
-    console.error('Failed client-side AI analysis for scheduling:', e);
-  }
-
-  // If matched "文字游戏", all AIs respond
-  if (matchedTags.includes("文字游戏")) {
-    return availableAIs.map(ai => ai.id);
-  }
-
-  // Calculate scores
-  const aiScores = new Map<string, number>();
-  const messageLC = message.toLowerCase();
-
-  for (const ai of availableAIs) {
-    if (!ai.tags) continue;
-    let score = 0;
-    matchedTags.forEach(tag => {
-      if (ai.tags?.includes(tag)) {
-        score += 2;
-      }
-    });
-
-    if (messageLC.includes(ai.name.toLowerCase())) {
-      score += 5;
-    }
-
-    const recentHistory = history.slice(-5);
-    recentHistory.forEach(hist => {
-      if (hist.name === ai.name && hist.content.length > 0) {
-        score += 1;
-      }
-    });
-
-    if (score > 0) {
-      aiScores.set(ai.id, score);
-    }
-  }
-
-  const sortedAIs = Array.from(aiScores.entries())
-    .sort((a, b) => b[1] - a[1])
-    .map(([id]) => id);
-
-  if (sortedAIs.length === 0) {
-    const maxResponders = Math.min(2, availableAIs.length);
-    const numResponders = Math.floor(Math.random() * maxResponders) + 1;
-    const shuffledAIs = [...availableAIs]
-      .sort(() => Math.random() - 0.5)
-      .slice(0, numResponders);
-    return shuffledAIs.map(ai => ai.id);
-  }
-
-  return sortedAIs.slice(0, 3); // MAX_RESPONDERS = 3
-}
 
 function loadStoredCustomGroups(): any[] {
   try {
@@ -128,21 +49,6 @@ function toSeedRow(m: AIMember) {
       stages: m.stages,
     }),
     enabled: 1,
-  };
-}
-
-function toCharacter(m: AIMember) {
-  return {
-    id: m.id,
-    name: m.name,
-    personality: m.schedulerTag || '',
-    providerId: m.providerId,
-    model: m.model,
-    avatar: m.avatar || '',
-    custom_prompt: m.customPrompt || '',
-    tags: m.tags,
-    stages: m.stages,
-    runtime: 'llm'
   };
 }
 
@@ -196,7 +102,6 @@ export async function request(url: string, options: RequestInit = {}) {
 
       const allGroups = prepareChatGroups(staticGroups, loadStoredCustomGroups());
 
-      let characters: any[] = [];
       try {
         // PR4: one-shot migration (localStorage → vault, member config → providerId)
         try {
@@ -214,12 +119,11 @@ export async function request(url: string, options: RequestInit = {}) {
           console.error('[init] PR4 migration failed:', migrationErr);
         }
 
-        let dbMembers: any[] = await invoke('list_ai_members', { kind: 'llm' });
+        const dbMembers: { id: string }[] = await invoke('list_ai_members', { kind: 'llm' });
         const existingIds = new Set(dbMembers.map((m: { id: string }) => m.id));
         const missing = builtinAIMembers.filter((b) => !existingIds.has(b.id));
         if (missing.length > 0) {
           await invoke('seed_builtin_ai_members', { members: missing.map(toSeedRow) });
-          dbMembers = await invoke('list_ai_members', { kind: 'llm' });
         }
 
         const dbProviders: { id: string }[] = await invoke('list_providers');
@@ -230,40 +134,14 @@ export async function request(url: string, options: RequestInit = {}) {
             providers: missingProviders.map(mapProviderToRust),
           });
         }
-
-        characters = dbMembers.map((r: any) => {
-          let tags: string[] = [];
-          if (r.tags) {
-            try { tags = JSON.parse(r.tags); } catch {}
-          }
-          let config: any = {};
-          if (r.config) {
-            try { config = JSON.parse(r.config); } catch {}
-          }
-          return {
-            id: r.id,
-            name: r.name,
-            personality: config.schedulerTag || config.personality || '',
-            providerId: config.providerId,
-            model: config.model || modelConfigs[0].model,
-            avatar: r.avatar || '',
-            custom_prompt: config.customPrompt || '',
-            tags,
-            stages: config.stages,
-            runtime: 'llm'
-          };
-        });
       } catch (e) {
         console.error('Failed to initialize AI members from Tauri SQLite:', e);
-        characters = builtinAIMembers.map(toCharacter);
       }
-      characters.unshift(generateAICharacters('#groupName#', '#allTags#')[0]);
 
       return mockResponse({
         code: 200,
         data: {
           groups: allGroups,
-          characters,
           user: user || null
         }
       });
@@ -330,22 +208,21 @@ export async function request(url: string, options: RequestInit = {}) {
       }
     }
 
-    // 4. Scheduler API for AI response selection
-    if (cleanUrl === '/api/scheduler') {
-      const body = JSON.parse(options.body as string);
-      const selectedAIs = await clientScheduleAI(body.message, body.history, body.availableAIs);
-      return mockResponse({ selectedAIs });
-    }
-
     // 11. Chat API (Direct LLM streaming from client side)
     if (cleanUrl === '/api/chat') {
       const body = JSON.parse(options.body as string);
-      const { message, custom_prompt, history, aiName, index, model = "qwen-plus", providerId } = body;
+      const { message, custom_prompt, history, aiName, index, model, providerId, gamePrompt } = body;
 
-      const creds = await resolveLlmCredentials(model, providerId);
+      const creds = await resolveCompanionCredentials(model, providerId);
 
-      // Build message payload
-      const systemPrompt = `${custom_prompt}\n 注意重要：1、你在群里叫${aiName}认准自己的身份； 2、你的输出内容不要加${aiName}：这种多余前缀；3、如果用户提出玩游戏，比如成语接龙等，严格按照游戏规则，不要说一大堆，要简短精炼; 4、保持群聊风格字数严格控制在50字以内，越简短越好（新闻总结类除外）`;
+      // 儿童守则统一在这里前置，调用方无法绕过
+      const systemPrompt = buildCompanionSystemPrompt({
+        aiName,
+        companionPrompt: custom_prompt,
+        profile: loadAgeProfile(),
+        memory: loadKidMemory(),
+        gamePrompt,
+      });
 
       const baseMessages = [
         { role: 'system', content: systemPrompt },

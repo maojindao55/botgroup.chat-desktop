@@ -41,12 +41,12 @@ export function getVisibleMembers(
   });
 }
 
-/** 新建群/选成员时可用的资源（角色、专家不含官方预设） */
+/** 新建群/选成员时可用的资源：内置儿童伙伴 + 家长自建角色（已定制的内置伙伴只保留副本） */
 export function getPickableMembers(
   members: Record<string, AIMember>,
   kind: AIMemberKind,
 ): AIMember[] {
-  return getVisibleMembers(members, kind).filter((m) => m.source !== 'builtin');
+  return getVisibleMembers(members, kind).filter((m) => m.enabled !== false);
 }
 
 export function findPersonalCopy(

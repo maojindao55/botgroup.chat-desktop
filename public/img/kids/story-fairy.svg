@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="故事精灵">
+  <circle cx="64" cy="64" r="64" fill="#EFE0FF"/>
+  <ellipse cx="28" cy="70" rx="18" ry="28" fill="#CFE9FF" opacity=".9" transform="rotate(-20 28 70)"/>
+  <ellipse cx="100" cy="70" rx="18" ry="28" fill="#CFE9FF" opacity=".9" transform="rotate(20 100 70)"/>
+  <circle cx="64" cy="70" r="34" fill="#FFE1C9"/>
+  <path d="M30 66c0-24 16-38 34-38s34 14 34 38c-6-12-18-18-34-18s-28 6-34 18z" fill="#F6B84B"/>
+  <path d="M64 18l5 10 11 2-8 8 2 11-10-5-10 5 2-11-8-8 11-2z" fill="#FFD84A"/>
+  <circle cx="52" cy="72" r="5" fill="#2B2B2B"/>
+  <circle cx="76" cy="72" r="5" fill="#2B2B2B"/>
+  <circle cx="54" cy="70" r="1.8" fill="#fff"/>
+  <circle cx="78" cy="70" r="1.8" fill="#fff"/>
+  <path d="M56 86c5 5 11 5 16 0" fill="none" stroke="#C0563C" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="44" cy="82" r="5" fill="#FF9FC4" opacity=".7"/>
+  <circle cx="84" cy="82" r="5" fill="#FF9FC4" opacity=".7"/>
+  <circle cx="22" cy="30" r="3" fill="#B36BFF"/>
+  <circle cx="108" cy="40" r="3" fill="#B36BFF"/>
+  <circle cx="102" cy="104" r="3" fill="#B36BFF"/>
+</svg>

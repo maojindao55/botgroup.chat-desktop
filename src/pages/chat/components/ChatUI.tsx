@@ -13,6 +13,9 @@ import { normalizeDesktopUser } from '@/utils/userAvatar';
 import type { AICharacter } from "@/config/aiCharacters";
 import { mapAIMemberToLegacy } from "@/config/aiCharacters";
 import { ChatMarkdown } from '@/components/Markdown';
+import { capResponders, loadAgeProfile } from '@/config/ageProfile';
+import { pickCompanions } from '@/config/companionScheduler';
+import { rememberFromMessage } from '@/config/kidMemory';
 import AIGroupSettings from './AIGroupSettings';
 import HomeView from './HomeView';
 import Sidebar from './Sidebar';
@@ -717,7 +720,7 @@ const ChatUI = () => {
       const userMsg = messages.find((m: any) => !m.isAI && (m.content || '').trim());
       const aiMsg = messages.find((m: any) => m.isAI && !m.isError && (m.content || '').trim());
       const titleChar: any = groupAiCharacters[0];
-      if (userMsg && aiMsg && titleChar?.model) {
+      if (userMsg && aiMsg && titleChar) {
         const sid = session.id;
         titleGenRef.current.add(sid);
         generateSessionTitle({
@@ -1012,25 +1015,16 @@ const ChatUI = () => {
       name: msg.sender.name,
     }));
 
-    let selectedChars = groupAiCharacters;
-
-    if (group.type === 'ai' && !isGroupDiscussionMode && schedulerStrategy === 'tag') {
-      try {
-        const res = await request(`/api/scheduler`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: promptText, history: messageHistory, availableAIs: groupAiCharacters }),
-        });
-        const data = await res.json();
-        if (data.selectedAIs) {
-          selectedChars = data.selectedAIs.map((ai: any) => groupAiCharacters.find(c => c.id === ai)).filter(Boolean);
-        }
-      } catch { /* fallback to all */ }
-    }
+    const ageProfile = loadAgeProfile();
+    const activeChars = groupAiCharacters.filter(c => !mutedUsers.includes(c.id));
+    const lastSpeakerIds = [...messages].reverse().filter((m: any) => m.isAI).slice(0, 1).map((m: any) => m.sender?.id);
+    const candidates = schedulerStrategy === 'tag' && !isGroupDiscussionMode
+      ? pickCompanions(promptText, activeChars, ageProfile.maxRespondersPerTurn, { lastSpeakerIds })
+      : activeChars;
+    const selectedChars = capResponders(candidates, ageProfile);
 
     for (let i = 0; i < selectedChars.length; i++) {
       const char = selectedChars[i] as any;
-      if (mutedUsers.includes(char.id)) continue;
 
       const aiMessage = {
         id: newChatMessageId(),
@@ -1152,6 +1146,7 @@ const ChatUI = () => {
     shouldStickToBottomRef.current = true;
     setMessages(prev => [...prev, userMessage]);
     const prompt = inputMessage;
+    rememberFromMessage(prompt);
     setInputMessage("");
     setIsLoading(true);
 

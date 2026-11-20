@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="数学小熊">
+  <circle cx="64" cy="64" r="64" fill="#FFEBC9"/>
+  <circle cx="32" cy="38" r="15" fill="#A66A3F"/>
+  <circle cx="96" cy="38" r="15" fill="#A66A3F"/>
+  <circle cx="32" cy="38" r="7" fill="#E9B98C"/>
+  <circle cx="96" cy="38" r="7" fill="#E9B98C"/>
+  <circle cx="64" cy="70" r="42" fill="#B97A4A"/>
+  <ellipse cx="64" cy="86" rx="20" ry="15" fill="#F1CFA6"/>
+  <ellipse cx="64" cy="78" rx="7" ry="5" fill="#3B2A20"/>
+  <path d="M64 83v5M56 92c4 4 12 4 16 0" fill="none" stroke="#3B2A20" stroke-width="3.5" stroke-linecap="round"/>
+  <circle cx="48" cy="62" r="5.5" fill="#2B2B2B"/>
+  <circle cx="80" cy="62" r="5.5" fill="#2B2B2B"/>
+  <circle cx="50" cy="60" r="2" fill="#fff"/>
+  <circle cx="82" cy="60" r="2" fill="#fff"/>
+  <rect x="88" y="94" width="26" height="24" rx="6" fill="#FFC93C" stroke="#E39A1C" stroke-width="3"/>
+  <text x="101" y="112" font-family="Arial, sans-serif" font-size="14" font-weight="700" text-anchor="middle" fill="#8A4B00">123</text>
+</svg>
