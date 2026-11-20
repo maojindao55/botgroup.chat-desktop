@@ -1,11 +1,17 @@
+import { useEffect, useState } from 'react';
 import { Globe, Monitor, Moon, Sun } from 'lucide-react';
-import { Tooltip } from 'antd';
+import { App, Button, Popconfirm, Select, Tooltip } from 'antd';
 import { createStyles } from 'antd-style';
 import { useTranslation } from 'react-i18next';
 
 import { useLocale } from '@/hooks/use-locale';
 import { useTheme } from '@/hooks/use-theme';
 import type { LocalePreference } from '@/i18n';
+import { AGE_PROFILES, loadAgeBand, saveAgeBand, type AgeBand } from '@/config/ageProfile';
+import { clearKidChats } from '@/config/kidChatHistory';
+import { clearKidMemory } from '@/config/kidMemory';
+import { loadKidModel, saveKidModel } from '@/config/kidModel';
+import { useProviderStore } from '@/store/providerStore';
 import { AppVersionBadge } from './AppVersionBadge';
 
 type ThemeOption = 'system' | 'light' | 'dark';
@@ -39,6 +45,23 @@ const useStyles = createStyles(({ token, css }) => ({
       align-items: stretch;
       gap: 8px;
     }
+  `,
+  control: css`
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+  `,
+  hint: css`
+    margin: 0;
+    font-size: 12px;
+    color: ${token.colorTextTertiary};
+    line-height: 1.5;
+  `,
+  actions: css`
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
   `,
   sectionTitle: css`
     margin: 0;
@@ -95,6 +118,110 @@ const useStyles = createStyles(({ token, css }) => ({
   `,
 }));
 
+function KidSettingsSections() {
+  const { styles, cx } = useStyles();
+  const { t } = useTranslation(['appSettings']);
+  const { message } = App.useApp();
+  const providers = useProviderStore((s) => s.providers);
+  const loadProviders = useProviderStore((s) => s.load);
+  const [ageBand, setAgeBand] = useState<AgeBand>(loadAgeBand);
+  const [kidModel, setKidModel] = useState(() => {
+    const saved = loadKidModel();
+    return saved ? `${saved.providerId}::${saved.model}` : '';
+  });
+
+  useEffect(() => {
+    void loadProviders();
+  }, [loadProviders]);
+
+  const modelOptions = Object.values(providers)
+    .filter((p) => p.enabled !== false && p.models.length > 0)
+    .map((p) => ({
+      label: p.name,
+      options: p.models.map((model) => ({ label: `${p.name} / ${model}`, value: `${p.id}::${model}` })),
+    }));
+
+  const changeModel = (value: string) => {
+    setKidModel(value);
+    const [providerId, ...rest] = value.split('::');
+    saveKidModel(value ? { providerId, model: rest.join('::') } : null);
+  };
+
+  return (
+    <>
+      <section className={styles.section} aria-labelledby="settings-kid-age">
+        <h3 id="settings-kid-age" className={styles.sectionTitle}>
+          {t('appSettings:generalPanel.kidAgeBand')}
+        </h3>
+        <div className={styles.control}>
+          <div className={styles.track} role="group" aria-label={t('appSettings:generalPanel.kidAgeBand')}>
+            {(Object.keys(AGE_PROFILES) as AgeBand[]).map((band) => (
+              <button
+                key={band}
+                type="button"
+                data-testid={`kid-age-${band}`}
+                className={cx(styles.option, ageBand === band && styles.optionActive)}
+                onClick={() => {
+                  setAgeBand(band);
+                  saveAgeBand(band);
+                }}
+                aria-pressed={ageBand === band}
+              >
+                <span>{AGE_PROFILES[band].label}</span>
+              </button>
+            ))}
+          </div>
+          <p className={styles.hint}>{t('appSettings:generalPanel.kidAgeBandHint')}</p>
+        </div>
+      </section>
+
+      <section className={styles.section} aria-labelledby="settings-kid-model">
+        <h3 id="settings-kid-model" className={styles.sectionTitle}>
+          {t('appSettings:generalPanel.kidModel')}
+        </h3>
+        <div className={styles.control}>
+          <Select
+            data-testid="kid-model-select"
+            style={{ width: 'min(100%, 420px)' }}
+            value={kidModel}
+            onChange={changeModel}
+            options={[{ label: t('appSettings:generalPanel.kidModelAuto'), value: '' }, ...modelOptions]}
+          />
+          <p className={styles.hint}>
+            {modelOptions.length > 0 ? t('appSettings:generalPanel.kidModelHint') : t('appSettings:generalPanel.kidModelEmpty')}
+          </p>
+        </div>
+      </section>
+
+      <section className={styles.section} aria-labelledby="settings-kid-data">
+        <h3 id="settings-kid-data" className={styles.sectionTitle}>
+          {t('appSettings:generalPanel.kidData')}
+        </h3>
+        <div className={styles.actions}>
+          <Popconfirm
+            title={t('appSettings:generalPanel.kidClearMemoryConfirm')}
+            onConfirm={() => {
+              clearKidMemory();
+              message.success(t('appSettings:generalPanel.kidCleared'));
+            }}
+          >
+            <Button>{t('appSettings:generalPanel.kidClearMemory')}</Button>
+          </Popconfirm>
+          <Popconfirm
+            title={t('appSettings:generalPanel.kidClearChatsConfirm')}
+            onConfirm={() => {
+              clearKidChats();
+              message.success(t('appSettings:generalPanel.kidCleared'));
+            }}
+          >
+            <Button>{t('appSettings:generalPanel.kidClearChats')}</Button>
+          </Popconfirm>
+        </div>
+      </section>
+    </>
+  );
+}
+
 export function GeneralSettingsPanel() {
   const { styles, cx } = useStyles();
   const { t } = useTranslation(['appSettings', 'sidebar', 'common']);
@@ -120,6 +247,8 @@ export function GeneralSettingsPanel() {
 
   return (
     <div className={styles.root}>
+      <KidSettingsSections />
+
       <section className={styles.section} aria-labelledby="settings-appearance">
         <h3 id="settings-appearance" className={styles.sectionTitle}>
           {t('appSettings:generalPanel.appearance')}

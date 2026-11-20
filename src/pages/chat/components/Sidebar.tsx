@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import {
+  Baby as BabyIcon,
   Bot,
   Home as HomeIcon,
   Menu as MenuIcon,
@@ -17,6 +18,7 @@ import { UserSection } from './UserSection';
 import CreateGroupWizard from './CreateGroupWizard';
 import { getTranslatedGroupTypeShortLabel } from '@/i18n/productLabels';
 import type { Group } from '@/config/groups';
+import { lockParentArea } from '@/config/parentGate';
 
 import '@fontsource/audiowide';
 
@@ -263,7 +265,7 @@ const Sidebar = ({
         )}
       >
         <div className={styles.headerRow}>
-          <a href="/" className={cx(styles.headerBrand, styles.brandRow)} aria-label="botgroup.chat">
+          <a href="?view=home" className={cx(styles.headerBrand, styles.brandRow)} aria-label="botgroup.chat">
             {isOpen ? (
               <span className={styles.brand}>botgroup.chat</span>
             ) : (
@@ -329,9 +331,39 @@ const Sidebar = ({
                 homeBtn
               );
 
+              const kidModeBtn = (
+                <a
+                  href="/"
+                  data-testid="back-to-kid-mode"
+                  onClick={() => lockParentArea()}
+                  className={cx(styles.navItem, !isOpen && styles.navItemCollapsed)}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      minWidth: 0,
+                      flex: 1,
+                      justifyContent: isOpen ? 'flex-start' : 'center',
+                    }}
+                  >
+                    <BabyIcon size={16} className={styles.navIcon} />
+                    {isOpen && <span className={styles.navItemLabel}>{t('sidebar:nav.kidMode')}</span>}
+                  </div>
+                </a>
+              );
+
               return (
                 <>
                   {homeEntry}
+                  {!isOpen ? (
+                    <Tooltip title={t('sidebar:nav.kidMode')} placement="right" mouseEnterDelay={0.15}>
+                      {kidModeBtn}
+                    </Tooltip>
+                  ) : (
+                    kidModeBtn
+                  )}
                 </>
               );
             })()}
