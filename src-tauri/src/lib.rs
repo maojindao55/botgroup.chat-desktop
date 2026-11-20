@@ -29,7 +29,6 @@ pub fn run() {
             api::join_claw_group,
             api::get_claw_messages,
             api::send_claw_message,
-            api::save_image_as,
             api::list_ai_members,
             api::get_ai_member,
             api::upsert_ai_member,

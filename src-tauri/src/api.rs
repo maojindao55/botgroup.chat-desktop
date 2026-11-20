@@ -524,29 +524,6 @@ pub fn send_claw_message(
     Ok(msg)
 }
 
-#[tauri::command]
-pub fn save_image_as(source_path: String) -> Result<Option<String>, String> {
-    let src = PathBuf::from(source_path.trim());
-    if !src.is_file() {
-        return Err(format!("source not found: {}", src.display()));
-    }
-    let filename = src
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| "image.png".to_string());
-    let ext = src
-        .extension()
-        .map(|e| e.to_string_lossy().to_string())
-        .unwrap_or_else(|| "png".to_string());
-
-    let mut dialog = rfd::FileDialog::new().set_file_name(&filename);
-    dialog = dialog.add_filter("Image", &[ext.as_str()]).add_filter("All files", &["*"]);
-    let Some(dest) = dialog.save_file() else { return Ok(None); };
-
-    fs::copy(&src, &dest).map_err(|e| format!("copy failed: {}", e))?;
-    Ok(Some(dest.to_string_lossy().to_string()))
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct AIMember {
     pub id: String,
