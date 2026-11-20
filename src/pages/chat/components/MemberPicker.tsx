@@ -9,28 +9,16 @@ import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
 import { getPickableMembers, resolveEffectiveMember } from '@/utils/aiMemberDisplay';
 
 interface MemberPickerProps {
-  kind: 'llm' | 'agent' | 'cli';
+  kind: 'llm';
   value: string[];
   onChange: (value: string[]) => void;
   placeholder?: string;
   disabled?: boolean;
 }
 
-function memberMetaLine(
-  member: AIMember,
-  providerName: string | undefined,
-  t: (key: string, options?: { defaultValue?: string }) => string,
-): string {
-  if (member.kind === 'llm') {
-    const unmapped = member.providerId?.startsWith('unmapped-');
-    return `${member.model} · ${providerName || member.providerId}${unmapped ? ' ⚠️' : ''}`;
-  }
-  if (member.kind === 'agent') {
-    const tools = member.tools?.filter((tool) => tool.enabled).length ?? 0;
-    const unmapped = member.providerId?.startsWith('unmapped-');
-    return `${providerName || member.providerId} · ${member.model} · 🛠 ${tools} tools${unmapped ? ' ⚠️' : ''}`;
-  }
-  return `${member.cli?.adapter || 'cli'} · ${t('chat:memberPicker.cliMemberSuffix', { defaultValue: '开发成员' })}`;
+function memberMetaLine(member: AIMember, providerName: string | undefined): string {
+  const unmapped = member.providerId?.startsWith('unmapped-');
+  return `${member.model} · ${providerName || member.providerId}${unmapped ? ' ⚠️' : ''}`;
 }
 
 export const MemberPicker: React.FC<MemberPickerProps> = ({
@@ -64,7 +52,7 @@ export const MemberPicker: React.FC<MemberPickerProps> = ({
     desc: m.description || '',
     avatar: m.avatar,
     tags: m.tags || [],
-    meta: memberMetaLine(m, providerMap[m.providerId!]?.name, t),
+    meta: memberMetaLine(m, providerMap[m.providerId]?.name),
     member: m,
   }));
 

@@ -6,8 +6,6 @@ import {
   MessageSquare as MessageSquareIcon,
   PanelLeftClose as PanelLeftCloseIcon,
   PlusCircle as PlusCircleIcon,
-  Puzzle,
-  Terminal,
 } from 'lucide-react';
 import type { AppSettingsSection } from '@/config/appSettings';
 import { useTranslation } from 'react-i18next';
@@ -18,7 +16,7 @@ import { createStyles } from 'antd-style';
 import { UserSection } from './UserSection';
 import CreateGroupWizard from './CreateGroupWizard';
 import { getTranslatedGroupTypeShortLabel } from '@/i18n/productLabels';
-import type { Group, GroupType } from '@/config/groups';
+import type { Group } from '@/config/groups';
 
 import '@fontsource/audiowide';
 
@@ -26,10 +24,6 @@ const getGroupIcon = (group: Group) => {
   switch (group.type) {
     case 'ai':
       return Bot;
-    case 'cli':
-      return Terminal;
-    case 'agent':
-      return Puzzle;
     default:
       return MessageSquareIcon;
   }
@@ -179,14 +173,6 @@ const useStyles = createStyles(({ token, css }) => ({
     background: rgba(255, 102, 0, 0.12);
     color: #ff6600;
   `,
-  tagCli: css`
-    background: rgba(16, 185, 129, 0.12);
-    color: ${token.colorSuccess};
-  `,
-  tagAgent: css`
-    background: rgba(59, 130, 246, 0.12);
-    color: ${token.colorInfo};
-  `,
   brandRow: css`
     display: flex;
     align-items: center;
@@ -216,10 +202,6 @@ const renderGroupTag = (
   switch (type) {
     case 'ai':
       return <span className={cx(styles.tag, styles.tagAi)}>{shortLabel}</span>;
-    case 'cli':
-      return <span className={cx(styles.tag, styles.tagCli)}>{shortLabel}</span>;
-    case 'agent':
-      return <span className={cx(styles.tag, styles.tagAgent)}>{shortLabel}</span>;
     default:
       return null;
   }
@@ -233,10 +215,8 @@ interface SidebarProps {
   groups: Group[];
   onCreateGroup?: (group: Group) => void;
   onOpenSettings?: (section?: AppSettingsSection) => void;
-  activeView?: 'groups' | 'cli-tasks' | 'home';
-  onNavigateCLI?: () => void;
+  activeView?: 'groups' | 'home';
   onNavigateHome?: () => void;
-  hiddenGroupTypes?: GroupType[];
 }
 
 const Sidebar = ({
@@ -248,9 +228,7 @@ const Sidebar = ({
   onCreateGroup,
   onOpenSettings,
   activeView = 'groups',
-  onNavigateCLI,
   onNavigateHome,
-  hiddenGroupTypes = [],
 }: SidebarProps) => {
   const { styles, cx } = useStyles();
   const [showCreateWizard, setShowCreateWizard] = useState(false);
@@ -260,9 +238,7 @@ const Sidebar = ({
     onCreateGroup?.(group);
   };
 
-  const filteredGroups = groups
-    .map((group, originalIndex) => ({ group, originalIndex }))
-    .filter(({ group }) => !hiddenGroupTypes.includes(group.type || 'ai'));
+  const filteredGroups = groups.map((group, originalIndex) => ({ group, originalIndex }));
 
   return (
     <>
@@ -270,7 +246,6 @@ const Sidebar = ({
         open={showCreateWizard}
         onOpenChange={setShowCreateWizard}
         onCreateGroup={handleCreateGroup}
-        allowedGroupTypes={['ai', 'agent']}
         onOpenSettings={(section) => {
           setShowCreateWizard(false);
           onOpenSettings?.(section);
@@ -354,56 +329,9 @@ const Sidebar = ({
                 homeBtn
               );
 
-              const isCliActive = activeView === 'cli-tasks';
-              const devTasksBtn = (
-                <a
-                  href="#"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    if (onNavigateCLI) {
-                      onNavigateCLI();
-                    } else {
-                      window.location.href = '?view=cli-tasks';
-                    }
-                  }}
-                  className={cx(
-                    styles.navItem,
-                    isCliActive && styles.navItemActive,
-                    !isOpen && styles.navItemCollapsed,
-                  )}
-                >
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 10,
-                      minWidth: 0,
-                      flex: 1,
-                      justifyContent: isOpen ? 'flex-start' : 'center',
-                    }}
-                  >
-                    <Terminal
-                      size={16}
-                      className={styles.navIcon}
-                      style={{ color: isCliActive ? '#ff6600' : undefined }}
-                    />
-                    {isOpen && (
-                      <span className={styles.navItemLabel}>{t('sidebar:nav.devTasks')}</span>
-                    )}
-                  </div>
-                </a>
-              );
-              const devTasksEntry = !isOpen ? (
-                <Tooltip title={t('sidebar:nav.devTasks')} placement="right" mouseEnterDelay={0.15}>
-                  {devTasksBtn}
-                </Tooltip>
-              ) : (
-                devTasksBtn
-              );
               return (
                 <>
                   {homeEntry}
-                  {devTasksEntry}
                 </>
               );
             })()}

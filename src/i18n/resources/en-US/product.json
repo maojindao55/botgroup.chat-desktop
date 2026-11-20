@@ -30,43 +30,6 @@
       "description": "Every character speaks each round. Good for brainstorming and model comparison."
     }
   },
-  "cliWorkflowTemplates": {
-    "quick_response": {
-      "label": "Quick response",
-      "shortDescription": "Small edits",
-      "description": "Automatically assign one CLI Agent to handle it directly. Good for small edits, simple fixes, and one-off requests."
-    },
-    "diagnose_fix_review": {
-      "label": "Diagnose, fix, review",
-      "shortDescription": "Bug symptoms",
-      "description": "A fixer diagnoses and edits code first, then a reviewer checks the fix quality. Good when the user only describes a bug symptom."
-    },
-    "implement_review": {
-      "label": "Plan, implement, review",
-      "shortDescription": "Features/refactors",
-      "description": "Plan first, then implement, then review. Good for new features, refactors, and cross-module changes."
-    },
-    "review_fix": {
-      "label": "Review and fix",
-      "shortDescription": "Existing review",
-      "description": "Review existing changes or current code first, then fix based on feedback. Good for follow-up fixes after review."
-    },
-    "discussion": {
-      "label": "Read-only discussion",
-      "shortDescription": "Discuss first",
-      "description": "Analyze plans, risks, and debugging ideas without changing the workspace. Good before committing to edits."
-    },
-    "multi_solution": {
-      "label": "Multiple solutions",
-      "shortDescription": "Compare options",
-      "description": "Multiple CLI Agents propose implementations or plans side by side. Good when the direction is uncertain."
-    },
-    "isolated_race": {
-      "label": "Isolated race",
-      "shortDescription": "Parallel worktrees",
-      "description": "Multiple CLI Agents implement in isolated worktrees, then you choose which result to adopt. Good for complex tasks or model races."
-    }
-  },
   "cliWorkflowTemplateGroups": {
     "common": {
       "label": "Common",
@@ -92,8 +55,6 @@
     }
   },
   "memberKinds": {
-    "character": "AI character",
-    "cliMember": "CLI Agent",
-    "expert": "legacy expert"
+    "character": "AI character"
   }
 }

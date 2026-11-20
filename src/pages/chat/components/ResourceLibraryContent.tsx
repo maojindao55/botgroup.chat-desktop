@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button, Tag, Modal, Empty, Tabs } from 'antd';
+import { Button, Tag, Modal, Empty } from 'antd';
 import { Avatar as LobeAvatar } from '@lobehub/ui';
 import { useAIMemberStore } from '@/store/aiMemberStore';
 import { getAvatarData, resolveAvatarByName } from '@/utils/avatar';
@@ -11,10 +11,9 @@ import { memberKindToSettingsSection, type AppSettingsSection } from '@/config/a
 import { AIMemberEditor } from './AIMemberEditor';
 import { ProviderLibrary } from './ProviderLibrary';
 import { ProviderEditor } from './ProviderEditor';
-import { CLIExecutorLibrary } from './CLIExecutorLibrary';
 import { useProviderStore } from '@/store/providerStore';
 import type { Provider } from '@/config/providers';
-import { Plus, Edit2, Trash2, ShieldAlert, Cpu, Terminal, Sparkles, Copy } from 'lucide-react';
+import { Plus, Edit2, Trash2, ShieldAlert, Cpu, Copy } from 'lucide-react';
 import { BRAND_ON_PRIMARY, brandPrimaryButtonProps } from '@/lib/theme';
 import { toast } from 'sonner';
 import { createStyles } from 'antd-style';
@@ -135,27 +134,6 @@ const useStyles = createStyles(({ token, css }) => ({
     color: ${token.colorTextSecondary} !important;
     border: 1px solid ${token.colorBorder} !important;
   `,
-  cliTabs: css`
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-
-    .ant-tabs-nav {
-      flex-shrink: 0;
-      margin: 0;
-      padding: 0 20px;
-      background: ${token.colorBgContainer};
-      border-bottom: 1px solid ${token.colorBorderSecondary};
-    }
-
-    .ant-tabs-content-holder,
-    .ant-tabs-content,
-    .ant-tabs-tabpane {
-      flex: 1;
-      min-height: 0;
-    }
-  `,
 }));
 
 type ResourceSection = Exclude<AppSettingsSection, 'general'>;
@@ -183,7 +161,6 @@ export const ResourceLibraryContent: React.FC<ResourceLibraryContentProps> = ({
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | undefined>(undefined);
-  const [editorKind, setEditorKind] = useState<'llm' | 'agent' | 'cli'>('llm');
 
   const [providerEditorOpen, setProviderEditorOpen] = useState(false);
   const [editingProviderId, setEditingProviderId] = useState<string | undefined>(undefined);
@@ -200,9 +177,8 @@ export const ResourceLibraryContent: React.FC<ResourceLibraryContentProps> = ({
     }
   }, [active, section, loadProviders]);
 
-  const handleCreate = (kind: AIMemberKind) => {
+  const handleCreate = () => {
     setEditingId(undefined);
-    setEditorKind(kind);
     setEditorOpen(true);
   };
 
@@ -212,7 +188,6 @@ export const ResourceLibraryContent: React.FC<ResourceLibraryContentProps> = ({
         ? await ensurePersonalCopy(member.id)
         : member;
       setEditingId(target.id);
-      setEditorKind(target.kind);
       setEditorOpen(true);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t('library:toast.editOpenFailed'));
@@ -266,23 +241,12 @@ export const ResourceLibraryContent: React.FC<ResourceLibraryContentProps> = ({
     });
   };
 
-  const getKindLabel = (kind: AIMemberKind) => {
-    switch (kind) {
-      case 'llm':
-        return { label: t('product:memberKinds.character'), icon: Cpu, color: 'blue' };
-      case 'agent':
-        return { label: t('product:memberKinds.expert'), icon: Sparkles, color: 'purple' };
-      case 'cli':
-        return { label: t('product:memberKinds.cliMember'), icon: Terminal, color: 'green' };
-    }
-  };
+  const getKindLabel = (_kind: AIMemberKind) => (
+    { label: t('product:memberKinds.character'), icon: Cpu, color: 'blue' }
+  );
 
   const getMembersByKind = (kind: AIMemberKind) => {
-    const list = getVisibleMembers(members, kind);
-    if (kind === 'llm' || kind === 'agent') {
-      return list.filter((m) => m.source !== 'builtin');
-    }
-    return list;
+    return getVisibleMembers(members, kind).filter((m) => m.source !== 'builtin');
   };
 
   const memberSourceTag = (member: AIMember) => {
@@ -297,55 +261,16 @@ export const ResourceLibraryContent: React.FC<ResourceLibraryContentProps> = ({
 
   const renderMemberMeta = (member: AIMember) => (
     <>
-      {member.kind === 'llm' && (
-        <>
-          <div className={styles.metaItem}>
-            <strong>{t('library:meta.model')}</strong> {member.model}
-            {member.providerId?.startsWith('unmapped-') && (
-              <span style={{ color: '#ef4444', marginLeft: 6 }}>{t('library:meta.unboundProvider')}</span>
-            )}
-          </div>
-          {member.schedulerTag && (
-            <div className={styles.metaItem}>
-              <strong>{t('library:meta.schedulerTag')}</strong> {member.schedulerTag}
-            </div>
-          )}
-        </>
-      )}
-      {member.kind === 'agent' && (
-        <>
-          <div className={styles.metaItem}>
-            <strong>{t('library:meta.role')}</strong> {member.role || t('common:status.none')}
-          </div>
-          <div className={styles.metaItem}>
-            <strong>{t('library:meta.model')}</strong> {member.model}
-            {member.providerId?.startsWith('unmapped-') && (
-              <span style={{ color: '#ef4444', marginLeft: 6 }}>{t('library:meta.unboundProvider')}</span>
-            )}
-          </div>
-          <div className={styles.metaItem}>
-            <strong>{t('library:meta.tools')}</strong>{' '}
-            {t('library:meta.toolsEnabled', { count: member.tools?.filter((tool) => tool.enabled).length || 0 })}
-          </div>
-        </>
-      )}
-      {member.kind === 'cli' && (
-        <>
-          <div className={styles.metaItem}>
-            <strong>{t('library:meta.adapter')}</strong> {member.cli?.adapter}
-          </div>
-          {member.cli?.binary && (
-            <div className={styles.metaItem}>
-              <strong>{t('library:meta.binaryPath')}</strong> {member.cli.binary}
-            </div>
-          )}
-          <div className={styles.metaItem}>
-            <strong>{t('library:meta.approvalMode')}</strong>{' '}
-            {member.cli?.approvalMode === 'auto'
-              ? t('library:meta.autoRun')
-              : t('library:meta.manualApproval')}
-          </div>
-        </>
+      <div className={styles.metaItem}>
+        <strong>{t('library:meta.model')}</strong> {member.model}
+        {member.providerId?.startsWith('unmapped-') && (
+          <span style={{ color: '#ef4444', marginLeft: 6 }}>{t('library:meta.unboundProvider')}</span>
+        )}
+      </div>
+      {member.schedulerTag && (
+        <div className={styles.metaItem}>
+          <strong>{t('library:meta.schedulerTag')}</strong> {member.schedulerTag}
+        </div>
       )}
     </>
   );
@@ -384,7 +309,7 @@ export const ResourceLibraryContent: React.FC<ResourceLibraryContentProps> = ({
             {member.description || t('library:meta.noDescription')}
           </div>
 
-          {member.kind === 'llm' && member.tags && member.tags.length > 0 && (
+          {member.tags && member.tags.length > 0 && (
             <div className={styles.tagContainer}>
               {member.tags.map((tag) => (
                 <Tag key={tag} style={{ borderRadius: 4 }}>{tag}</Tag>
@@ -422,17 +347,6 @@ export const ResourceLibraryContent: React.FC<ResourceLibraryContentProps> = ({
     );
   };
 
-  const createLabelForKind = (kind: AIMemberKind) => {
-    switch (kind) {
-      case 'cli':
-        return t('library:create.cli');
-      case 'llm':
-        return t('library:create.llm');
-      case 'agent':
-        return t('library:create.agent');
-    }
-  };
-
   const renderMemberSection = (kind: AIMemberKind) => {
     const list = getMembersByKind(kind);
 
@@ -441,10 +355,10 @@ export const ResourceLibraryContent: React.FC<ResourceLibraryContentProps> = ({
         <div className={styles.actionBar}>
           <Button
             icon={<Plus size={16} color={BRAND_ON_PRIMARY} />}
-            onClick={() => handleCreate(kind)}
+            onClick={handleCreate}
             {...brandPrimaryButtonProps}
           >
-            {createLabelForKind(kind)}
+            {t('library:create.llm')}
           </Button>
         </div>
         {list.length === 0 ? (
@@ -462,23 +376,6 @@ export const ResourceLibraryContent: React.FC<ResourceLibraryContentProps> = ({
 
   const body = section === 'providers' ? (
     <ProviderLibrary onCreate={handleCreateProvider} onEdit={handleEditProvider} />
-  ) : section === 'cli' ? (
-    <Tabs
-      className={styles.cliTabs}
-      defaultActiveKey="agents"
-      items={[
-        {
-          key: 'agents',
-          label: t('library:cliTabs.agents'),
-          children: renderMemberSection('cli'),
-        },
-        {
-          key: 'executors',
-          label: t('library:cliTabs.executors'),
-          children: <CLIExecutorLibrary />,
-        },
-      ]}
-    />
   ) : (
     renderMemberSection(section)
   );
@@ -489,12 +386,10 @@ export const ResourceLibraryContent: React.FC<ResourceLibraryContentProps> = ({
       <AIMemberEditor
         open={editorOpen}
         memberId={editingId}
-        defaultKind={editorKind}
         onClose={() => setEditorOpen(false)}
         onSave={(savedKind) => {
           load();
           // 若保存的成员类型与当前分区不同，自动切换到对应分区。
-          // 旧版 agent 现在统一归到本地 CLI 成员设置入口。
           const savedSection = memberKindToSettingsSection(savedKind) as ResourceSection;
           if (savedSection !== section) {
             onSectionChange?.(savedSection);

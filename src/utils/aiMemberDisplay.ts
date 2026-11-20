@@ -46,11 +46,7 @@ export function getPickableMembers(
   members: Record<string, AIMember>,
   kind: AIMemberKind,
 ): AIMember[] {
-  const list = getVisibleMembers(members, kind);
-  if (kind === 'llm' || kind === 'agent') {
-    return list.filter((m) => m.source !== 'builtin');
-  }
-  return list;
+  return getVisibleMembers(members, kind).filter((m) => m.source !== 'builtin');
 }
 
 export function findPersonalCopy(

@@ -14,51 +14,5 @@
     "mute": "Mute",
     "removeMember": "Remove member",
     "selfName": "Me"
-  },
-  "agentGroup": {
-    "title": "Agent group settings",
-    "basicInfo": "Basic info",
-    "groupNamePlaceholder": "Group name",
-    "groupDescriptionPlaceholder": "Description (optional)",
-    "workflowDefaults": "Default workflow preference",
-    "advanced": "Advanced options",
-    "maxPhases": "Max phases",
-    "maxParallelAgents": "Max parallel members",
-  "alwaysShowPlan": "Always show workflow plan",
-  "alwaysShowPlanHint": "The global \"Always confirm before run\" setting also triggers the plan card",
-  "debugMode": "Debug mode",
-  "debugModeHint": "When off, hides execution details in chat bubbles and keeps the final reply; logs still keep the full content",
-  "customizedPreset": "Customized (differs from preset)",
-  "maxPhasesHint": "Max number of phases a plan can be split into",
-  "maxParallelAgentsHint": "Max members that can run in parallel within a single phase",
-  "noExpertsWarning": "No expert members added yet — collaboration cannot start",
-  "removeMemberConfirm": "Remove this member from the group?",
-  "workspace": "Workspace",
-  "workspaceHint": "Working directory for CLI members to execute tasks",
-  "workspaceBrowse": "Browse",
-  "workspaceChecking": "Checking…",
-  "workspaceValid": "Directory valid",
-  "workspaceInvalid": "Directory does not exist",
-  "manageExperts": "Add / manage CLI Agents",
-    "pickExpertsPlaceholder": "Select CLI Agents to join...",
-    "libraryHint": "Create or edit CLI Agents in Settings → CLI Agents.",
-    "experts": "Members ({{count}})",
-    "unmute": "Unmute",
-    "mute": "Mute",
-    "removeMember": "Remove member",
-    "effort": {
-      "fast": {
-        "label": "Fast",
-        "description": "Fewer phases, optimized for quick answers."
-      },
-      "standard": {
-        "label": "Standard",
-        "description": "Balanced planning, execution, and review."
-      },
-      "deep": {
-        "label": "Deep",
-        "description": "More phases and broader collaboration for complex tasks."
-      }
-    }
   }
 }

@@ -13,9 +13,6 @@
     "create": "创建"
   },
   "recent": {
-    "groupsTitle": "我的群聊",
-    "tasksTitle": "最近开发任务",
-    "emptyTaskTitle": "未命名任务",
-    "openDevTasks": "查看全部开发任务"
+    "groupsTitle": "我的群聊"
   }
 }

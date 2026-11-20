@@ -62,213 +62,30 @@ const {
   assert.ok(!serialized.includes('base64'), 'serialized stored messages contain no base64 avatar');
 }
 
-// ---- sanitizeMessageForStorage: preserves agentTaskId + adapter round-trip ----
+// ---- sanitizeMessageForStorage: drops fields from removed CLI / expert groups ----
 {
-  const msg = {
+  const legacy = {
     id: 'm2',
     sender: { id: 'cli-agent', name: 'Codex' },
     content: 'done',
     isAI: true,
     agentTaskId: 'task_abc123',
     adapter: 'codex',
+    phaseLabel: 'review',
+    hidden: true,
+    attachments: [{ id: 'a', kind: 'image', name: 'x.png', path: '/tmp/x.png' }],
+    workflowRun: { id: 'wf_1', phaseStates: {} },
   };
-  const sanitized = sanitizeMessageForStorage(msg);
-  assert.equal(sanitized.agentTaskId, 'task_abc123', 'agentTaskId preserved');
-  assert.equal(sanitized.adapter, 'codex', 'adapter preserved');
-
-  // round-trip: serialize → parse → sanitize again
-  const json = JSON.stringify(sanitized);
-  const parsed = JSON.parse(json);
-  const resanitized = sanitizeMessageForStorage(parsed);
-  assert.equal(resanitized.agentTaskId, 'task_abc123', 'agentTaskId survives JSON round-trip');
-  assert.equal(resanitized.adapter, 'codex', 'adapter survives JSON round-trip');
-
-  // omit when not present
-  const plain = { id: 'm3', sender: { id: 'u', name: 'Me' }, content: 'hi', isAI: false };
-  const plainSanitized = sanitizeMessageForStorage(plain);
-  assert.equal('agentTaskId' in plainSanitized, false, 'agentTaskId omitted when absent');
-  assert.equal('adapter' in plainSanitized, false, 'adapter omitted when absent');
-}
-
-// ---- sanitizeMessageForStorage: preserves safe attachment metadata ----
-{
-  const msg = {
-    id: 'm-att',
-    sender: { id: 'u', name: 'Me' },
-    content: 'see files',
-    isAI: false,
-    attachments: [
-      {
-        id: 'att-1',
-        kind: 'image',
-        name: 'screen.png',
-        path: '/Users/me/Desktop/screen.png',
-        mimeType: 'image/png',
-        size: 1200,
-        extension: 'png',
-        dataUrl: `data:image/png;base64,${'A'.repeat(5000)}`,
-      },
-      {
-        id: 'att-2',
-        kind: 'code',
-        name: 'main.ts',
-        path: '/Users/me/project/main.ts',
-        extension: 'ts',
-        unknown: 'drop me',
-      },
-      {
-        id: '',
-        kind: 'image',
-        name: 'bad.png',
-        path: '/tmp/bad.png',
-      },
-    ],
-  };
-
-  const sanitized = sanitizeMessageForStorage(msg);
-  assert.deepEqual(sanitized.attachments, [
-    {
-      id: 'att-1',
-      kind: 'image',
-      name: 'screen.png',
-      path: '/Users/me/Desktop/screen.png',
-      mimeType: 'image/png',
-      size: 1200,
-      extension: 'png',
-    },
-    {
-      id: 'att-2',
-      kind: 'code',
-      name: 'main.ts',
-      path: '/Users/me/project/main.ts',
-      extension: 'ts',
-    },
-  ]);
-  assert.ok(!JSON.stringify(sanitized).includes('base64'), 'attachment payload bytes must not be stored');
-}
-
-// ---- sanitizeMessageForStorage: caps stored attachment metadata per message ----
-{
-  const validAttachments = Array.from({ length: 12 }, (_, i) => ({
-    id: `att-valid-${i + 1}`,
-    kind: i % 2 === 0 ? 'image' : 'document',
-    name: `file-${i + 1}.txt`,
-    path: `/Users/me/Desktop/file-${i + 1}.txt`,
-    mimeType: 'text/plain',
-    size: i + 1,
-    extension: 'txt',
-  }));
-  const invalidAttachment = {
-    id: '',
-    kind: 'image',
-    name: 'invalid.png',
-    path: '/Users/me/Desktop/invalid.png',
-  };
-  const msg = {
-    id: 'm-many-att',
-    sender: { id: 'u', name: 'Me' },
-    content: 'many files',
-    isAI: false,
-    attachments: [
-      validAttachments[0],
-      invalidAttachment,
-      ...validAttachments.slice(1),
-    ],
-  };
-
-  const sanitized = sanitizeMessageForStorage(msg);
-  assert.equal(MAX_ATTACHMENTS_PER_MESSAGE, 10, 'storage cap documents the per-message attachment limit');
-  assert.equal(sanitized.attachments.length, 10, 'stores at most 10 valid attachments per message');
-  assert.equal(
-    sanitized.attachments.some(attachment => attachment.name === 'invalid.png'),
-    false,
-    'invalid attachments are skipped',
-  );
-  assert.deepEqual(
-    sanitized.attachments.map(attachment => attachment.id),
-    validAttachments.slice(0, 10).map(attachment => attachment.id),
-    'continues past invalid entries and keeps the first 10 valid attachments in original order',
-  );
-}
-
-// ---- sanitizeMessageForStorage: rejects malformed attachment metadata payloads ----
-{
-  const largePayload = 'A'.repeat(5000);
-  const msg = {
-    id: 'm-bad-att',
-    sender: { id: 'u', name: 'Me' },
-    content: 'bad file metadata',
-    isAI: false,
-    attachments: [
-      {
-        id: 'att-data-path',
-        kind: 'image',
-        name: 'inline.png',
-        path: `data:image/png;base64,${largePayload}`,
-      },
-      {
-        id: 'att-large-name',
-        kind: 'document',
-        name: largePayload,
-        path: '/Users/me/Desktop/report.pdf',
-        mimeType: 'application/pdf',
-        extension: 'pdf',
-      },
-      {
-        id: 'att-large-mime',
-        kind: 'document',
-        name: 'report.pdf',
-        path: '/Users/me/Desktop/report.pdf',
-        mimeType: largePayload,
-        extension: 'pdf',
-      },
-      {
-        id: 'att-large-extension',
-        kind: 'code',
-        name: 'main.ts',
-        path: '/Users/me/project/main.ts',
-        mimeType: 'text/typescript',
-        extension: largePayload,
-      },
-    ],
-  };
-
-  const sanitized = sanitizeMessageForStorage(msg);
-  assert.deepEqual(sanitized.attachments, [
-    {
-      id: 'att-large-mime',
-      kind: 'document',
-      name: 'report.pdf',
-      path: '/Users/me/Desktop/report.pdf',
-      extension: 'pdf',
-    },
-    {
-      id: 'att-large-extension',
-      kind: 'code',
-      name: 'main.ts',
-      path: '/Users/me/project/main.ts',
-      mimeType: 'text/typescript',
-    },
-  ]);
-
-  const serialized = JSON.stringify(sanitized);
-  assert.ok(!serialized.includes('base64'), 'serialized attachment metadata must not contain inline payload markers');
-  assert.ok(!serialized.includes(largePayload), 'serialized attachment metadata must not contain oversized payload bytes');
-}
-
-// ---- sanitizeMessageForStorage: omits attachments when absent or empty ----
-{
-  const legacy = {
-    id: 'legacy',
-    sender: { id: 'u', name: 'Me' },
-    content: 'plain text',
-    isAI: false,
-  };
-  const sanitizedLegacy = sanitizeMessageForStorage(legacy);
-  assert.equal('attachments' in sanitizedLegacy, false, 'legacy messages stay compact');
-
-  const emptyAttachments = sanitizeMessageForStorage({ ...legacy, attachments: [] });
-  assert.equal('attachments' in emptyAttachments, false, 'empty attachment arrays are omitted');
+  const sanitized = sanitizeMessageForStorage(legacy);
+  for (const key of ['agentTaskId', 'adapter', 'phaseLabel', 'hidden', 'attachments', 'workflowRun']) {
+    assert.equal(key in sanitized, false, `${key} is no longer persisted`);
+  }
+  assert.deepEqual(sanitized, {
+    id: 'm2',
+    sender: { id: 'cli-agent', name: 'Codex' },
+    content: 'done',
+    isAI: true,
+  });
 }
 
 // ---- truncateSessionTitle ----
@@ -407,53 +224,6 @@ assert.equal(cleanGeneratedTitle('   '), '', 'whitespace -> empty');
   // errored AI replies don't count
   const errAi = { ...aiMsg, isError: true };
   assert.equal(shouldGenerateTitle({ ...untitled, messages: [userMsg, errAi] }), false, 'error reply ignored');
-}
-
-// ---- sanitizeMessageForStorage: preserves workflowRun attempts/history/verdict ----
-{
-  const msg = {
-    id: 'm-wf',
-    sender: { id: '__workflow__', name: 'Planner' },
-    content: '',
-    isAI: true,
-    isStreaming: true,
-    hidden: true,
-    workflowRun: {
-      id: 'wf_1',
-      plan: {
-        version: 1, title: 'T', intent: 'quick', riskLevel: 'low', requiresApproval: false, explanation: '', phases: []
-      },
-      status: 'running',
-      phaseStates: {
-        p1: {
-          phaseId: 'p1',
-          status: 'completed',
-          selectedAgentIds: ['a'],
-          outputs: [{ agentId: 'a', agentName: 'A', content: 'out' }],
-          summary: 'summary',
-          attempts: 2,
-          attemptHistory: [
-            { attemptNumber: 1, status: 'failed', outputs: [], error: 'e', summary: 's1' },
-            { attemptNumber: 2, status: 'completed', outputs: [{ agentId: 'a', agentName: 'A', content: 'ok' }], summary: 's2', feedbackUsed: 'fb' },
-          ],
-          verdict: 'pass',
-          verdictReasoning: 'reasoning',
-        },
-      },
-      createdAt: 1,
-      updatedAt: 2,
-    },
-  };
-  const sanitized = sanitizeMessageForStorage(msg);
-  assert.equal(sanitized.isStreaming, true);
-  assert.equal(sanitized.hidden, true);
-  const p1 = sanitized.workflowRun.phaseStates.p1;
-  assert.equal(p1.attempts, 2);
-  assert.equal(p1.attemptHistory.length, 2);
-  assert.equal(p1.attemptHistory[0].status, 'failed');
-  assert.equal(p1.attemptHistory[1].summary, 's2');
-  assert.equal(p1.verdict, 'pass');
-  assert.equal(p1.verdictReasoning, 'reasoning');
 }
 
 console.log('chatSessions tests OK');

@@ -14,51 +14,5 @@
     "mute": "禁言",
     "removeMember": "移除成员",
     "selfName": "我"
-  },
-  "agentGroup": {
-    "title": "Agent 群配置",
-    "basicInfo": "基础信息",
-    "groupNamePlaceholder": "群名称",
-    "groupDescriptionPlaceholder": "群描述（可选）",
-    "workflowDefaults": "默认协作偏好",
-    "advanced": "高级选项",
-    "maxPhases": "最大阶段数",
-    "maxParallelAgents": "最大并发成员数",
-  "alwaysShowPlan": "总是展示协作计划卡",
-  "alwaysShowPlanHint": "全局设置「执行前总是确认」开启时同样会弹出计划卡",
-  "debugMode": "调试模式",
-  "debugModeHint": "关闭后隐藏聊天气泡中的执行细节，只保留最终回复；日志仍可查看完整内容",
-  "customizedPreset": "已自定义（与预设不一致）",
-  "maxPhasesHint": "单次协作计划最多拆分的阶段数",
-  "maxParallelAgentsHint": "同一阶段内可并行执行的成员数上限",
-  "noExpertsWarning": "尚未添加任何专家成员，将无法发起协作",
-  "removeMemberConfirm": "确定将该成员移出本群？",
-  "workspace": "工作目录",
-  "workspaceHint": "CLI 成员执行任务的工作目录",
-  "workspaceBrowse": "选择",
-  "workspaceChecking": "校验中…",
-  "workspaceValid": "目录有效",
-  "workspaceInvalid": "目录不存在",
-  "manageExperts": "添加/管理 CLI Agents",
-    "pickExpertsPlaceholder": "选择 CLI Agent 加入群聊...",
-    "libraryHint": "如需新建或编辑 CLI Agent，请到设置 → CLI Agents 中操作。",
-    "experts": "群成员（{{count}}）",
-    "unmute": "取消禁言",
-    "mute": "禁言",
-    "removeMember": "移除成员",
-    "effort": {
-      "fast": {
-        "label": "快速",
-        "description": "更少阶段，优先快速响应。"
-      },
-      "standard": {
-        "label": "标准",
-        "description": "在规划、执行和复审之间保持平衡。"
-      },
-      "deep": {
-        "label": "深入",
-        "description": "更多阶段和更充分协作，适合复杂任务。"
-      }
-    }
   }
 }

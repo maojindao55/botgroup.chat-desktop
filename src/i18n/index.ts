@@ -2,12 +2,9 @@ import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 
 import commonEn from './resources/en-US/common.json';
-import adEn from './resources/en-US/ad.json';
 import chatEn from './resources/en-US/chat.json';
 import homeEn from './resources/en-US/home.json';
-import cliEn from './resources/en-US/cli.json';
 import editorEn from './resources/en-US/editor.json';
-import engineEn from './resources/en-US/engine.json';
 import libraryEn from './resources/en-US/library.json';
 import productEn from './resources/en-US/product.json';
 import providersEn from './resources/en-US/providers.json';
@@ -17,13 +14,10 @@ import tagsEn from './resources/en-US/tags.json';
 import userEn from './resources/en-US/user.json';
 import wizardEn from './resources/en-US/wizard.json';
 import appSettingsEn from './resources/en-US/appSettings.json';
-import adZh from './resources/zh-CN/ad.json';
 import commonZh from './resources/zh-CN/common.json';
 import chatZh from './resources/zh-CN/chat.json';
 import homeZh from './resources/zh-CN/home.json';
-import cliZh from './resources/zh-CN/cli.json';
 import editorZh from './resources/zh-CN/editor.json';
-import engineZh from './resources/zh-CN/engine.json';
 import libraryZh from './resources/zh-CN/library.json';
 import productZh from './resources/zh-CN/product.json';
 import providersZh from './resources/zh-CN/providers.json';
@@ -76,10 +70,7 @@ i18n.use(initReactI18next).init({
       editor: editorZh,
       settings: settingsZh,
       chat: chatZh,
-      cli: cliZh,
-      engine: engineZh,
       tags: tagsZh,
-      ad: adZh,
       appSettings: appSettingsZh,
     },
     'en-US': {
@@ -94,10 +85,7 @@ i18n.use(initReactI18next).init({
       editor: editorEn,
       settings: settingsEn,
       chat: chatEn,
-      cli: cliEn,
-      engine: engineEn,
       tags: tagsEn,
-      ad: adEn,
       appSettings: appSettingsEn,
     },
   },

@@ -3,7 +3,6 @@ import { Modal } from 'antd';
 import {
   Cpu,
   Settings2,
-  Terminal,
   X,
   Server,
 } from 'lucide-react';
@@ -150,7 +149,6 @@ const SECTION_ICONS: Record<AppSettingsSection, typeof Settings2> = {
   general: Settings2,
   providers: Server,
   llm: Cpu,
-  cli: Terminal,
 };
 
 export interface AppSettingsModalProps {
@@ -233,7 +231,7 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
       closeIcon={<X size={16} />}
       styles={{
         body: { padding: 0 },
-        content: { overflow: 'hidden', borderRadius: 10 },
+        container: { overflow: 'hidden', borderRadius: 10 },
       }}
       aria-label={t('title')}
     >

@@ -57,9 +57,6 @@ function messagesSignature(messages: ChatSessionMessage[]): string {
       m.content,
       m.isAI ? 1 : 0,
       m.isError ? 1 : 0,
-      m.workflowRun?.id,
-      m.workflowRun?.status,
-      m.workflowRun?.updatedAt,
     ]),
   );
 }

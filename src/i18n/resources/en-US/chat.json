@@ -1,7 +1,6 @@
 {
   "memberPicker": {
-    "defaultPlaceholder": "Select resources...",
-    "cliMemberSuffix": "CLI Agent"
+    "defaultPlaceholder": "Select resources..."
   },
   "init": {
     "loadFailed": "Failed to load. Please refresh and try again.",
@@ -12,164 +11,28 @@
     "backHome": "Back to home"
   },
   "systemSender": "System",
-  "confirmExecute": "Run this task with {{names}} in {{path}}?",
-  "confirmExecuteSingle": "Run this task with {{name}} in {{path}}?",
-  "defaultWorkspace": "default directory",
   "errors": {
     "memberNotFound": "Dev member not found",
-    "taskNotStarted": "❌ Task did not start: {{message}}",
     "requestFailed": "Request failed",
     "streamUnavailable": "Could not read response stream",
     "timeout": "Response timed out",
     "serviceUnavailable": "Sorry, the service is temporarily unavailable.",
     "appendError": "[Error: {{error}}]"
   },
-  "messages": {
-    "noEnabledCliMembers": "No enabled CLI Agents in this group. Add or enable members in the settings panel.",
-    "readOnlyDiscussionHint": "Read-only discussion runs in a temporary copy and will not modify your workspace. Switch to diagnose/fix/review, plan/implement/review, or quick response to edit files."
-  },
+  "messages": {},
   "placeholders": {
-    "cliInput": "Enter a coding task for CLI Agents to run in the workspace...",
     "aiInput": "Send a message in the character group..."
   },
   "status": {
     "thinking": "Thinking",
     "running": "Streaming",
-    "executing": "Running",
     "completed": "✅ Completed",
     "failed": "❌ Failed",
     "cancelled": "⏹ Cancelled",
     "timeout": "⏰ Timed out"
   },
-  "cliMeta": {
-    "workspaceTitle": "Double-click to edit local workspace path",
-    "settings": "Settings",
-    "stop": "Stop",
-    "retry": "Retry",
-    "workdir": "Working directory",
-    "copyPath": "Copy path",
-    "openPath": "Open path",
-    "branch": "Branch:",
-    "base": "Base:",
-    "adopt": "Mark adopted",
-    "adopted": "✓ Adopted"
-  },
   "serviceError": "Sorry, something went wrong ({{message}}).",
   "unknownError": "Unknown error",
-  "agentChat": {
-    "expertCount": "{{count}} experts",
-    "emptyTitle": "Expert group",
-    "loadingLibrary": "Loading members...",
-    "unresolvedMembers": "This group references {{count}} experts, but they were not found in Settings.",
-    "unresolvedMembersHint": "Open \"{{settings}}\" to check or re-add members.",
-    "expertBadge": "Expert",
-    "inputPlaceholder": "Send a message — experts will collaborate per group rules...",
-    "settings": "Settings",
-    "progressPhase": "Phase {{current}}/{{total}}",
-    "expertsAnalyzing": "{{count}} analyzing",
-    "scrollToBottom": "Scroll to bottom",
-    "newMessages": "{{count}} new",
-    "copy": "Copy",
-    "copied": "Copied",
-    "suggestionsLabel": "Try these",
-    "suggestion1": "Analyze the pros and cons of this approach",
-    "suggestion2": "Give your individual recommendations",
-    "suggestion3": "Collaborate on a complete proposal"
-  },
-  "agentWorkflow": {
-    "sender": "Workflow plan",
-    "planning": "Generating workflow plan…",
-    "plannerBadge": "Planner",
-    "approvalTitle": "Confirm workflow execution",
-    "planTitle": "Workflow plan",
-    "confirmRun": "Run",
-    "cancelled": "Workflow execution cancelled",
-    "card": {
-      "run": "Run",
-      "cancel": "Cancel",
-      "modify": "Modify plan",
-      "replan": "Re-plan",
-      "revising": "Regenerating plan…",
-      "cancelEdit": "Cancel edit",
-      "warningPrefix": "Warning",
-      "requiresApproval": "requires approval",
-      "instructionPlaceholder": "Tell the planner what to change, e.g. read-only only / use one agent / focus on review"
-    },
-    "risk": {
-      "low": "low",
-      "medium": "medium",
-      "high": "high"
-    },
-    "intent": {
-      "quick": "quick",
-      "discuss": "discuss",
-      "multi_solution": "multi solution",
-      "implement": "implement",
-      "review": "review",
-      "audit": "audit",
-      "custom": "custom"
-    },
-    "status": {
-      "planned": "planned",
-      "running": "running",
-      "completed": "completed",
-      "failed": "failed",
-      "cancelled": "cancelled",
-      "pending": "pending",
-      "skipped": "skipped"
-    },
-    "phase": {
-      "mode": {
-        "readOnly": "read-only",
-        "review": "review",
-        "write": "write",
-        "verifier": "verifier"
-      },
-      "schedule": {
-        "single": "single",
-        "parallel": "parallel",
-        "sequential": "sequential"
-      },
-      "agentsLabel": "Agents",
-      "autoSuffix": "auto",
-      "errorTag": "error",
-      "attempt": "attempt {{count}}",
-      "verdictLabel": "verdict",
-      "verdict": {
-        "pass": "pass",
-        "fail": "fail"
-      }
-    },
-    "planner": {
-      "emptyTitle": "No-op",
-      "emptyExplanation": "No eligible members found.",
-      "warnings": {
-        "noMembers": "No agent members available in this group."
-      },
-      "intents": {
-        "quick": {
-          "title": "Quick answer",
-          "explanation": "A single agent answers the question directly."
-        }
-      },
-      "phases": {
-        "answer": {
-          "label": "Answer",
-          "prompt": "Answer the user request directly. Do not modify files unless explicitly required."
-        }
-      }
-    }
-  },
-  "attachments": {
-    "add": "Add attachment",
-    "fallbackTitle": "Attachments",
-    "tauriOnly": "Attachments require the desktop app.",
-    "unsupported": "{{name}} is not a supported attachment type.",
-    "fileTooLarge": "{{name}} exceeds the 50 MB attachment limit.",
-    "maxCount": "Each message can include up to {{count}} attachments.",
-    "selectFailed": "Failed to select attachments: {{message}}",
-    "unavailable": "File unavailable"
-  },
   "conversation": {
     "title": "Chats",
     "new": "New chat",
@@ -193,5 +56,6 @@
     "expand": "Expand chat list",
     "runningTip": "Running in background",
     "unreadTip": "New result available"
-  }
+  },
+  "groupSettings": "Group settings"
 }
