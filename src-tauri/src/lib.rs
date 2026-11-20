@@ -1,5 +1,4 @@
 mod api;
-mod cli;
 mod db;
 mod llm_proxy;
 mod migrate;
@@ -10,9 +9,7 @@ mod vault;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .manage(cli::CliState::default())
         .setup(|app| {
-            cli::init_cli_environment();
             // Initialize SQLite Database and Tables on startup
             db::init_db(app.handle()).map_err(|e| {
                 eprintln!("Database initialization failed: {}", e);
@@ -32,12 +29,7 @@ pub fn run() {
             api::join_claw_group,
             api::get_claw_messages,
             api::send_claw_message,
-            api::select_directory,
-            api::path_is_dir,
-            api::select_chat_attachments,
-            api::chat_attachment_exists,
             api::save_image_as,
-            api::create_workspace_directory,
             api::list_ai_members,
             api::get_ai_member,
             api::upsert_ai_member,
@@ -57,21 +49,7 @@ pub fn run() {
             provider::provider_test,
             provider::provider_ping,
             migrate::migrate_a_complete,
-            migrate::migration_status,
-            cli::cli_run,
-            cli::cli_kill,
-            cli::cli_check,
-            cli::cli_install,
-            cli::cli_opencode_session_title,
-            cli::cli_task_list,
-            cli::cli_task_get,
-            cli::cli_task_read_log,
-            cli::cli_runtime_list,
-            cli::cli_worktree_prepare,
-            cli::cli_worktree_cleanup,
-            cli::cli_git_diff,
-            cli::cli_tempcopy_prepare,
-            cli::cli_tempcopy_cleanup
+            migrate::migration_status
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
