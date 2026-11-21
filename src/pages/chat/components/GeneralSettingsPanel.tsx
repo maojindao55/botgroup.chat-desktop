@@ -412,7 +412,7 @@ function SpeechSettingsSections() {
                   />
                   <Input
                     aria-label={t('appSettings:generalPanel.speechModel')}
-                    addonBefore={t('appSettings:generalPanel.speechModel')}
+                    prefix={<span className={styles.hint}>{t('appSettings:generalPanel.speechModel')}</span>}
                     style={{ width: 'min(100%, 260px)' }}
                     value={config.tts.model}
                     onChange={(e) => update((prev) => ({ ...prev, tts: { ...prev.tts, model: e.target.value } }))}
