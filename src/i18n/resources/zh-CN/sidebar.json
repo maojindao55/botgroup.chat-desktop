@@ -5,6 +5,7 @@
   },
   "nav": {
     "home": "首页",
+    "kidMode": "返回儿童模式",
     "createGroup": "创建新群聊",
     "settings": "设置"
   },

@@ -5,6 +5,7 @@
   },
   "nav": {
     "home": "Home",
+    "kidMode": "Back to Kids Mode",
     "createGroup": "New Group",
     "settings": "Settings"
   },
