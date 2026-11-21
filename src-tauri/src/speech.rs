@@ -44,14 +44,18 @@ pub fn validate_endpoint(endpoint: Option<&str>) -> Result<String, String> {
         return Err("语音接入地址必须以 wss:// 开头".into());
     }
     let host = uri.host().unwrap_or_default().to_ascii_lowercase();
-    if !ALLOWED_HOST_SUFFIXES.iter().any(|suffix| host.ends_with(suffix)) {
+    if !is_allowed_host(&host) {
         return Err(format!("不支持的语音接入地址：{host}"));
     }
     Ok(raw.to_string())
 }
 
+pub(crate) fn is_allowed_host(host: &str) -> bool {
+    ALLOWED_HOST_SUFFIXES.iter().any(|suffix| host.ends_with(suffix))
+}
+
 /// providerId 为空时用单独配置的语音 Key，否则复用该模型服务的 Key
-fn resolve_api_key(app: &AppHandle, provider_id: Option<&str>) -> Result<String, String> {
+pub(crate) fn resolve_api_key(app: &AppHandle, provider_id: Option<&str>) -> Result<String, String> {
     let conn = Connection::open(get_db_path(app)).map_err(|e| e.to_string())?;
     let master = vault::load_master_key(app)?;
     let key = match provider_id.map(str::trim).filter(|s| !s.is_empty()) {
@@ -148,6 +152,11 @@ pub fn asr_run_task(task_id: &str, model: &str, sample_rate: u32, language_hints
     let mut parameters = json!({ "format": "pcm", "sample_rate": sample_rate });
     if let Some(lang) = language_hints.first() {
         parameters["language_hints"] = json!([lang]);
+    }
+    // Qwen-Audio-ASR 默认只回最终结果；按住说话离麦克风近，用近场 VAD
+    if model.starts_with("qwen-audio") {
+        parameters["intermediate_result_enabled"] = json!(true);
+        parameters["vad_model"] = json!("near_meeting_16k");
     }
     json!({
         "header": { "action": "run-task", "task_id": task_id, "streaming": "duplex" },
@@ -568,6 +577,16 @@ mod tests {
         assert_eq!(asr["payload"]["function"], "recognition");
         assert_eq!(asr["payload"]["parameters"]["format"], "pcm");
         assert_eq!(asr["payload"]["parameters"]["language_hints"], json!(["zh"]));
+        assert!(asr["payload"]["parameters"].get("intermediate_result_enabled").is_none());
+
+        let message = asr_run_task("t3", "qwen-audio-3.1-asr-flash-message", 16000, &[]);
+        assert_eq!(message["payload"]["parameters"]["intermediate_result_enabled"], true);
+        assert_eq!(message["payload"]["parameters"]["vad_model"], "near_meeting_16k");
+        assert_eq!(message["payload"]["parameters"]["sample_rate"], 16000);
+
+        let qwen_tts = tts_run_task("t4", &TtsOptions { model: "qwen-audio-3.1-tts-flash".into(), voice: "longniuniu_v3.1".into(), ..Default::default() });
+        assert_eq!(qwen_tts["payload"]["function"], "SpeechSynthesizer");
+        assert_eq!(qwen_tts["payload"]["parameters"]["voice"], "longniuniu_v3.1");
 
         assert_eq!(continue_task("t1", "你好")["payload"]["input"]["text"], "你好");
         assert_eq!(finish_task("t1")["header"]["action"], "finish-task");

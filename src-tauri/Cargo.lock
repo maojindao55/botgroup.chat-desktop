@@ -348,6 +348,7 @@ name = "botgroup-chat-desktop"
 version = "1.0.19"
 dependencies = [
  "aes-gcm",
+ "base64 0.22.1",
  "futures-util",
  "reqwest 0.12.28",
  "rusqlite",

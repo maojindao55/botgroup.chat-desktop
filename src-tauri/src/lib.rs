@@ -4,6 +4,7 @@ mod llm_proxy;
 mod migrate;
 mod provider;
 mod speech;
+mod speech_http;
 mod vault;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -46,6 +47,8 @@ pub fn run() {
             speech::speech_asr_send,
             speech::speech_asr_stop,
             speech::speech_asr_abort,
+            speech_http::speech_http_tts,
+            speech_http::speech_http_asr,
             provider::list_providers,
             provider::get_provider,
             provider::upsert_provider,
