@@ -10,7 +10,8 @@ export interface RecognitionHandlers {
   onPartial?: (text: string) => void;
   /** 一次识别结束时的最终文本（可能为空字符串） */
   onFinal: (text: string) => void;
-  onError?: (error: SpeechErrorCode) => void;
+  /** message 是给孩子看的提示，没有时由界面按错误类型选 */
+  onError?: (error: SpeechErrorCode, message?: string) => void;
 }
 
 export interface SpeechRecognizer {

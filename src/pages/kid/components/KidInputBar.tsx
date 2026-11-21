@@ -1,13 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
-import type { SpeechErrorCode } from '@/lib/speech';
+import type { SpeechErrorCode, SpeechRecognizer } from '@/lib/speech';
 import { useKid } from '../KidContext';
 
 interface KidInputBarProps {
   disabled?: boolean;
+  /** 按住说话是否禁用，默认同 disabled */
+  talkDisabled?: boolean;
   placeholder?: string;
   onSend: (text: string) => void;
   /** 一键发送的快捷话题 */
   suggestions?: string[];
+  /** 替换默认的语音识别（实时语音对话） */
+  recognizer?: SpeechRecognizer;
+  /** 为 true 时语音结果不再走 onSend，由 recognizer 自己处理回复 */
+  voiceRepliesItself?: boolean;
 }
 
 const speechErrorText: Partial<Record<SpeechErrorCode, string>> = {
@@ -16,8 +22,17 @@ const speechErrorText: Partial<Record<SpeechErrorCode, string>> = {
   network: '网络不太好，可以先打字哦。',
 };
 
-export function KidInputBar({ disabled, placeholder = '想说点什么？', onSend, suggestions }: KidInputBarProps) {
-  const { voice, setVoicePrefs, recognizer, profile } = useKid();
+export function KidInputBar({
+  disabled,
+  talkDisabled = disabled,
+  placeholder = '想说点什么？',
+  onSend,
+  suggestions,
+  recognizer: recognizerOverride,
+  voiceRepliesItself,
+}: KidInputBarProps) {
+  const { voice, setVoicePrefs, recognizer: defaultRecognizer, profile } = useKid();
+  const recognizer = recognizerOverride || defaultRecognizer;
   const [text, setText] = useState('');
   const [listening, setListening] = useState(false);
   const [recognizing, setRecognizing] = useState(false);
@@ -37,7 +52,7 @@ export function KidInputBar({ disabled, placeholder = '想说点什么？', onSe
   };
 
   const startListening = () => {
-    if (disabled || listeningRef.current) return;
+    if (talkDisabled || listeningRef.current) return;
     listeningRef.current = true;
     setListening(true);
     setPartial('');
@@ -50,14 +65,15 @@ export function KidInputBar({ disabled, placeholder = '想说点什么？', onSe
           setListening(false);
           setRecognizing(false);
           setPartial('');
+          if (voiceRepliesItself) return;
           if (result) send(result);
           else setHint(speechErrorText['no-speech'] || '');
         },
-        onError: (error) => {
+        onError: (error, message) => {
           listeningRef.current = false;
           setListening(false);
           setRecognizing(false);
-          setHint(speechErrorText[error] || '没听清楚，再试一次吧～');
+          setHint(message || speechErrorText[error] || '没听清楚，再试一次吧～');
         },
       },
       { lang: 'zh-CN' },
@@ -102,7 +118,7 @@ export function KidInputBar({ disabled, placeholder = '想说点什么？', onSe
         {useVoice ? (
           <button
             type="button"
-            disabled={disabled}
+            disabled={talkDisabled}
             data-testid="push-to-talk"
             style={{ touchAction: 'none' }}
             onPointerDown={startListening}

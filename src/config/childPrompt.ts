@@ -57,3 +57,11 @@ export function buildCompanionSystemPrompt(input: CompanionPromptInput): string 
     buildAgeStyleRules(input.profile, input.aiName),
   ].filter(Boolean).join('\n\n');
 }
+
+/** 实时语音对话的 instructions：同一套守则，再加上“说出来”的要求 */
+export function buildVoiceDialogInstructions(input: CompanionPromptInput): string {
+  return [
+    buildCompanionSystemPrompt(input),
+    `【语音聊天】你在和小朋友面对面说话，回复会直接用你的声音读出来：用口语短句，一次说两三句就停下来等小朋友；不要用表情符号、列表、标题或括号里的动作描写；听不清时温柔地请小朋友再说一遍。`,
+  ].join('\n\n');
+}

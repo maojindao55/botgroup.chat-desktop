@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Globe, Monitor, Moon, Sun } from 'lucide-react';
-import { App, AutoComplete, Button, Input, Popconfirm, Select, Slider, Tooltip } from 'antd';
+import { App, AutoComplete, Button, Input, Popconfirm, Select, Slider, Switch, Tooltip } from 'antd';
 import { invoke } from '@tauri-apps/api/core';
 import { createStyles } from 'antd-style';
 import { useTranslation } from 'react-i18next';
@@ -13,6 +13,8 @@ import { clearKidChats } from '@/config/kidChatHistory';
 import { clearKidMemory } from '@/config/kidMemory';
 import { loadKidModel, saveKidModel } from '@/config/kidModel';
 import {
+  DIALOG_ENDPOINT,
+  DIALOG_MODELS,
   SPEECH_ENDPOINTS,
   SPEECH_MODELS,
   TOKEN_PLAN_BASE,
@@ -369,27 +371,42 @@ function SpeechSettingsSections() {
     }
   };
 
-  const catalog = voiceCatalog(config.tts.model);
-  const voiceName = (voice: string) => catalog.options.find((o) => o.value === voice)?.label.split(' · ')[0] || voice;
-  const voiceOptions = catalog.options.map((o) => ({
-    value: o.value,
-    label: (
-      <span className={styles.voiceOption}>
-        <span>{o.label}</span>
-        <span>{o.value}</span>
-      </span>
-    ),
-  }));
-  const filterVoice = (input: string, option?: { value: string }) => {
+  const voiceNameIn = (model: string, voice: string) =>
+    voiceCatalog(model).options.find((o) => o.value === voice)?.label.split(' · ')[0] || voice;
+  const voiceName = (voice: string) => voiceNameIn(config.tts.model, voice);
+  const voiceOptionsFor = (model: string) =>
+    voiceCatalog(model).options.map((o) => ({
+      value: o.value,
+      label: (
+        <span className={styles.voiceOption}>
+          <span>{o.label}</span>
+          <span>{o.value}</span>
+        </span>
+      ),
+    }));
+  const voiceOptions = voiceOptionsFor(config.tts.model);
+  const filterVoiceFor = (model: string) => (input: string, option?: { value: string }) => {
+    const known = voiceCatalog(model).options;
     const query = input.trim().toLowerCase();
-    const known = catalog.options.find((o) => o.value === option?.value);
+    const match = known.find((o) => o.value === option?.value);
     // 已选中列表里的音色时仍展示全部，方便换一个
-    if (!query || catalog.options.some((o) => o.value === input)) return true;
-    return Boolean(known && (known.value.toLowerCase().includes(query) || known.label.includes(input.trim())));
+    if (!query || known.some((o) => o.value === input)) return true;
+    return Boolean(match && (match.value.toLowerCase().includes(query) || match.label.includes(input.trim())));
   };
+  const filterVoice = filterVoiceFor(config.tts.model);
   const companionName = (id: string) => members[id]?.name || builtinAIMembers.find((m) => m.id === id)?.name || id;
 
-  const voiceRow = (row: { key: string; testId: string; label: string; sub?: string; placeholder: string; previewText: string; resolved: string }) => (
+  const voiceRow = (row: {
+    key: string;
+    testId: string;
+    label: string;
+    sub?: string;
+    placeholder: string;
+    /** 不传时不显示试听（实时对话的音色只能在对话里听到） */
+    previewText?: string;
+    resolved?: string;
+    model?: string;
+  }) => (
     <div className={styles.voiceRow} key={row.key}>
       <span className={styles.voiceLabel}>
         <span>{row.label}</span>
@@ -399,21 +416,23 @@ function SpeechSettingsSections() {
         data-testid={row.testId}
         aria-label={row.label}
         allowClear
-        value={customVoice(config, row.key)}
+        value={customVoice(config, row.key, row.model)}
         placeholder={row.placeholder}
-        options={voiceOptions}
-        filterOption={filterVoice}
+        options={row.model ? voiceOptionsFor(row.model) : voiceOptions}
+        filterOption={row.model ? filterVoiceFor(row.model) : filterVoice}
         popupMatchSelectWidth={360}
-        onChange={(voice: string | undefined) => update((prev) => withCustomVoice(prev, row.key, voice ?? ''))}
+        onChange={(voice: string | undefined) => update((prev) => withCustomVoice(prev, row.key, voice ?? '', row.model))}
       />
-      <Button
-        data-testid={`${row.testId}-preview`}
-        loading={previewing === row.key}
-        disabled={Boolean(previewing) && previewing !== row.key}
-        onClick={() => preview(row.key, row.previewText, row.resolved)}
-      >
-        {t('appSettings:generalPanel.speechPreview')}
-      </Button>
+      {row.previewText !== undefined && (
+        <Button
+          data-testid={`${row.testId}-preview`}
+          loading={previewing === row.key}
+          disabled={Boolean(previewing) && previewing !== row.key}
+          onClick={() => preview(row.key, row.previewText, row.resolved)}
+        >
+          {t('appSettings:generalPanel.speechPreview')}
+        </Button>
+      )}
     </div>
   );
 
@@ -643,6 +662,57 @@ function SpeechSettingsSections() {
               />
             </section>
           )}
+
+          <section className={styles.section} aria-labelledby="settings-speech-dialog">
+            <h3 id="settings-speech-dialog" className={styles.sectionTitle}>
+              {t('appSettings:generalPanel.speechDialog')}
+            </h3>
+            <div className={styles.control}>
+              <div className={styles.actions} style={{ alignItems: 'center' }}>
+                <Switch
+                  data-testid="speech-dialog-enabled"
+                  aria-label={t('appSettings:generalPanel.speechDialog')}
+                  checked={config.dialog.enabled}
+                  onChange={(enabled) => update((prev) => ({ ...prev, dialog: { ...prev.dialog, enabled } }))}
+                />
+                <span className={styles.hint}>{t('appSettings:generalPanel.speechDialogHint')}</span>
+              </div>
+              {config.dialog.enabled && (
+                <>
+                  <div className={styles.actions}>
+                    <AutoComplete
+                      data-testid="speech-dialog-model"
+                      aria-label={t('appSettings:generalPanel.speechModel')}
+                      style={{ width: 'min(100%, 300px)' }}
+                      value={config.dialog.model}
+                      options={DIALOG_MODELS}
+                      onChange={(model: string) => update((prev) => ({ ...prev, dialog: { ...prev.dialog, model } }))}
+                    />
+                    <AutoComplete
+                      data-testid="speech-dialog-endpoint"
+                      aria-label={t('appSettings:generalPanel.speechEndpoint')}
+                      style={{ width: 'min(100%, 420px)' }}
+                      value={config.dialog.endpoint}
+                      options={[{ label: `Token Plan · ${new URL(DIALOG_ENDPOINT).host}`, value: DIALOG_ENDPOINT }]}
+                      onChange={(endpoint: string) => update((prev) => ({ ...prev, dialog: { ...prev.dialog, endpoint } }))}
+                    />
+                  </div>
+                  {KID_COMPANION_IDS.map((id) =>
+                    voiceRow({
+                      key: id,
+                      model: config.dialog.model,
+                      testId: `speech-dialog-voice-${id}`,
+                      label: `${companionMeta[id].emoji} ${companionName(id)}`,
+                      placeholder: t('appSettings:generalPanel.speechVoiceInherited', {
+                        voice: voiceNameIn(config.dialog.model, voiceCatalog(config.dialog.model).companions[id] || voiceCatalog(config.dialog.model).fallback),
+                      }),
+                    }),
+                  )}
+                  <p className={styles.hint}>{t('appSettings:generalPanel.speechDialogSafetyHint')}</p>
+                </>
+              )}
+            </div>
+          </section>
         </>
       )}
     </>
