@@ -19,6 +19,7 @@ globalThis.localStorage = {
 
 const config = await importTsModule(new URL('../../config/speechConfig.ts', import.meta.url));
 const { downsampleToPcm16, encodeWav, PcmChunker } = await importTsModule(new URL('./pcm.ts', import.meta.url));
+const gameSource = await readFile(new URL('../../config/aiGame.ts', import.meta.url), 'utf8');
 const aiMembersSource = await readFile(new URL('../../config/aiMembers.ts', import.meta.url), 'utf8');
 
 // ---- 设置：默认值与容错 ----
@@ -84,6 +85,41 @@ const aiMembersSource = await readFile(new URL('../../config/aiMembers.ts', impo
   const override = withModel('qwen-audio-3.0-tts-plus');
   override.tts.voice = 'longanlufeng';
   assert.equal(config.voiceForSpeaker(override, 'kid-story-fairy'), 'longanlufeng');
+}
+
+// ---- 自定义音色：游戏 > 伙伴 > 统一音色 > 模型默认，按模型分开保存 ----
+{
+  let c = config.normalizeSpeechConfig({ tts: { engine: 'tokenplan' } });
+  assert.deepEqual(c.tts.voices, {});
+  c = config.withCustomVoice(c, 'kid-math-bear', '  my-cloned-voice-001 ');
+  c = config.withCustomVoice(c, config.gameVoiceKey('word_chain'), 'qwen-audio-3.0-tts-plus-design-abc');
+  assert.equal(config.customVoice(c, 'kid-math-bear'), 'my-cloned-voice-001');
+  assert.equal(config.voiceForSpeaker(c, 'kid-math-bear'), 'my-cloned-voice-001', '伙伴音色可填任意 ID');
+  assert.equal(config.voiceForSpeaker(c, 'kid-math-bear', 'word_chain'), 'qwen-audio-3.0-tts-plus-design-abc', '游戏音色优先');
+  assert.equal(config.voiceForSpeaker(c, 'kid-math-bear', 'story_chain'), 'my-cloned-voice-001', '没设游戏音色时跟随主持伙伴');
+  assert.equal(config.voiceForSpeaker(c, 'kid-story-fairy'), 'longanlingxin');
+
+  c.tts.voice = 'longanlufeng';
+  assert.equal(config.voiceForSpeaker(c, 'kid-story-fairy'), 'longanlufeng', '统一音色覆盖模型默认');
+  assert.equal(config.voiceForSpeaker(c, 'kid-math-bear'), 'my-cloned-voice-001', '伙伴音色比统一音色优先');
+  assert.equal(config.inheritedVoice(c, 'kid-math-bear'), 'longanlufeng');
+
+  // 存取一遍不丢，换模型后不会把别的模型的音色发出去
+  c = config.normalizeSpeechConfig(JSON.parse(JSON.stringify(c)));
+  assert.equal(config.voiceForSpeaker(c, 'kid-math-bear', 'word_chain'), 'qwen-audio-3.0-tts-plus-design-abc');
+  const realtime = config.normalizeSpeechConfig({ ...c, tts: { ...c.tts, engine: 'qwen', model: 'qwen-audio-3.1-tts-flash', voice: '' } });
+  assert.equal(config.voiceForSpeaker(realtime, 'kid-math-bear', 'word_chain'), 'longniuniu_v3.1');
+  assert.equal(realtime.tts.voices['qwen-audio-3.0-tts-plus']['kid-math-bear'], 'my-cloned-voice-001', '其他模型的设置保留');
+
+  // 清空即恢复默认
+  c = config.withCustomVoice(c, config.gameVoiceKey('word_chain'), '   ');
+  assert.equal(config.customVoice(c, 'game:word_chain'), '');
+  assert.equal(config.voiceForSpeaker(c, 'kid-math-bear', 'word_chain'), 'my-cloned-voice-001');
+
+  // 脏数据容错
+  const dirty = config.normalizeSpeechConfig({ tts: { voices: { 'qwen-audio-3.0-tts-plus': { a: 1, b: '  ', c: 'x'.repeat(200), d: ' ok ' }, '': { a: 'b' }, m: 'str' } } });
+  assert.deepEqual(dirty.tts.voices, { 'qwen-audio-3.0-tts-plus': { d: 'ok' } });
+  assert.ok(gameSource.includes("hostCompanionId: 'kid-math-bear'"), '词语接龙由数学小熊主持');
 }
 
 // ---- 分句：短句合并，长句切开，内容不丢 ----

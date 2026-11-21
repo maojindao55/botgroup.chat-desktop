@@ -17,15 +17,22 @@ import {
   SPEECH_MODELS,
   TOKEN_PLAN_BASE,
   SPEECH_SECRET_NAME,
+  customVoice,
   defaultModel,
+  gameVoiceKey,
+  inheritedVoice,
   loadSpeechConfig,
   saveSpeechConfig,
   voiceCatalog,
   voiceForSpeaker,
+  withCustomVoice,
   type SpeechConfig,
   type SpeechEngine,
 } from '@/config/speechConfig';
 import { synthesizeCloud } from '@/lib/speech/qwenSpeech';
+import { KID_COMPANION_IDS, builtinAIMembers, companionMeta } from '@/config/aiMembers';
+import { kidGames } from '@/config/aiGame';
+import { useAIMemberStore } from '@/store/aiMemberStore';
 import { useProviderStore } from '@/store/providerStore';
 import { AppVersionBadge } from './AppVersionBadge';
 
@@ -77,6 +84,38 @@ const useStyles = createStyles(({ token, css }) => ({
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
+  `,
+  voiceRow: css`
+    display: grid;
+    grid-template-columns: 150px minmax(0, 300px) auto;
+    align-items: center;
+    gap: 8px;
+
+    @media (max-width: 720px) {
+      grid-template-columns: minmax(0, 1fr) auto;
+
+      & > :first-child {
+        grid-column: 1 / -1;
+      }
+    }
+  `,
+  voiceLabel: css`
+    display: flex;
+    flex-direction: column;
+    font-size: 13px;
+    line-height: 1.35;
+    color: ${token.colorText};
+  `,
+  voiceOption: css`
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+
+    & > span + span {
+      font-family: ${token.fontFamilyCode};
+      font-size: 12px;
+      color: ${token.colorTextTertiary};
+    }
   `,
   sectionTitle: css`
     margin: 0;
@@ -245,7 +284,8 @@ function SpeechSettingsSections() {
   const [config, setConfig] = useState<SpeechConfig>(loadSpeechConfig);
   const [keySaved, setKeySaved] = useState(false);
   const [keyDraft, setKeyDraft] = useState('');
-  const [previewing, setPreviewing] = useState(false);
+  const [previewing, setPreviewing] = useState('');
+  const members = useAIMemberStore((s) => s.members);
 
   const refreshKeyState = () =>
     invoke<boolean>('secret_has', { name: SPEECH_SECRET_NAME })
@@ -314,10 +354,10 @@ function SpeechSettingsSections() {
     }
   };
 
-  const preview = async () => {
-    setPreviewing(true);
+  const preview = async (key = 'default', text = t('appSettings:generalPanel.speechPreviewText'), voice = voiceForSpeaker(config)) => {
+    setPreviewing(key);
     try {
-      const bytes = await synthesizeCloud(t('appSettings:generalPanel.speechPreviewText'), voiceForSpeaker(config), config);
+      const bytes = await synthesizeCloud(text, voice, config);
       const url = URL.createObjectURL(new Blob([bytes], { type: 'audio/mpeg' }));
       const audio = new Audio(url);
       audio.onended = () => URL.revokeObjectURL(url);
@@ -325,9 +365,57 @@ function SpeechSettingsSections() {
     } catch (error) {
       message.error(t('appSettings:generalPanel.speechPreviewFailed', { error: String(error) }));
     } finally {
-      setPreviewing(false);
+      setPreviewing('');
     }
   };
+
+  const catalog = voiceCatalog(config.tts.model);
+  const voiceName = (voice: string) => catalog.options.find((o) => o.value === voice)?.label.split(' · ')[0] || voice;
+  const voiceOptions = catalog.options.map((o) => ({
+    value: o.value,
+    label: (
+      <span className={styles.voiceOption}>
+        <span>{o.label}</span>
+        <span>{o.value}</span>
+      </span>
+    ),
+  }));
+  const filterVoice = (input: string, option?: { value: string }) => {
+    const query = input.trim().toLowerCase();
+    const known = catalog.options.find((o) => o.value === option?.value);
+    // 已选中列表里的音色时仍展示全部，方便换一个
+    if (!query || catalog.options.some((o) => o.value === input)) return true;
+    return Boolean(known && (known.value.toLowerCase().includes(query) || known.label.includes(input.trim())));
+  };
+  const companionName = (id: string) => members[id]?.name || builtinAIMembers.find((m) => m.id === id)?.name || id;
+
+  const voiceRow = (row: { key: string; testId: string; label: string; sub?: string; placeholder: string; previewText: string; resolved: string }) => (
+    <div className={styles.voiceRow} key={row.key}>
+      <span className={styles.voiceLabel}>
+        <span>{row.label}</span>
+        {row.sub && <span className={styles.hint}>{row.sub}</span>}
+      </span>
+      <AutoComplete
+        data-testid={row.testId}
+        aria-label={row.label}
+        allowClear
+        value={customVoice(config, row.key)}
+        placeholder={row.placeholder}
+        options={voiceOptions}
+        filterOption={filterVoice}
+        popupMatchSelectWidth={360}
+        onChange={(voice: string | undefined) => update((prev) => withCustomVoice(prev, row.key, voice ?? ''))}
+      />
+      <Button
+        data-testid={`${row.testId}-preview`}
+        loading={previewing === row.key}
+        disabled={Boolean(previewing) && previewing !== row.key}
+        onClick={() => preview(row.key, row.previewText, row.resolved)}
+      >
+        {t('appSettings:generalPanel.speechPreview')}
+      </Button>
+    </div>
+  );
 
   const keyOptions = [
     { label: t('appSettings:generalPanel.speechKeyOwn'), value: '' },
@@ -446,12 +534,14 @@ function SpeechSettingsSections() {
                   <AutoComplete
                     data-testid="speech-voice"
                     aria-label={t('appSettings:generalPanel.speechVoice')}
-                    style={{ width: 'min(100%, 260px)' }}
+                    style={{ width: 'min(100%, 320px)' }}
                     allowClear
                     placeholder={t('appSettings:generalPanel.speechVoiceAuto')}
                     value={config.tts.voice}
                     onChange={(voice: string | undefined) => update((prev) => ({ ...prev, tts: { ...prev.tts, voice: voice ?? '' } }))}
-                    options={voiceCatalog(config.tts.model).options}
+                    options={voiceOptions}
+                    filterOption={filterVoice}
+                    popupMatchSelectWidth={360}
                   />
                   <AutoComplete
                     data-testid="speech-tts-model"
@@ -461,7 +551,12 @@ function SpeechSettingsSections() {
                     options={modelOptions('tts')}
                     onChange={(model: string) => update((prev) => ({ ...prev, tts: { ...prev.tts, model, voice: '' } }))}
                   />
-                  <Button data-testid="speech-preview" loading={previewing} onClick={preview}>
+                  <Button
+                    data-testid="speech-preview"
+                    loading={previewing === 'default'}
+                    disabled={Boolean(previewing) && previewing !== 'default'}
+                    onClick={() => preview()}
+                  >
                     {t('appSettings:generalPanel.speechPreview')}
                   </Button>
                 </div>
@@ -495,6 +590,41 @@ function SpeechSettingsSections() {
                     <p className={styles.hint}>{t('appSettings:generalPanel.speechInstructionHint')}</p>
                   </>
                 )}
+              </div>
+            </section>
+          )}
+
+          {config.tts.engine !== 'system' && (
+            <section className={styles.section} aria-labelledby="settings-speech-companion-voices">
+              <h3 id="settings-speech-companion-voices" className={styles.sectionTitle}>
+                {t('appSettings:generalPanel.speechCompanionVoices')}
+              </h3>
+              <div className={styles.control}>
+                {KID_COMPANION_IDS.map((id) => {
+                  const fallback = inheritedVoice(config, id);
+                  return voiceRow({
+                    key: id,
+                    testId: `speech-voice-${id}`,
+                    label: `${companionMeta[id].emoji} ${companionName(id)}`,
+                    placeholder: t('appSettings:generalPanel.speechVoiceInherited', { voice: voiceName(fallback) }),
+                    previewText: companionMeta[id].greeting,
+                    resolved: voiceForSpeaker(config, id),
+                  });
+                })}
+                {kidGames.map((game) => {
+                  const hostVoice = voiceForSpeaker(config, game.hostCompanionId);
+                  const host = companionName(game.hostCompanionId);
+                  return voiceRow({
+                    key: gameVoiceKey(game.id),
+                    testId: `speech-voice-game-${game.id}`,
+                    label: `${game.emoji} ${game.name}`,
+                    sub: t('appSettings:generalPanel.speechGameHost', { name: host }),
+                    placeholder: t('appSettings:generalPanel.speechVoiceFollowHost', { name: host, voice: voiceName(hostVoice) }),
+                    previewText: t('appSettings:generalPanel.speechGamePreviewText', { game: game.name }),
+                    resolved: voiceForSpeaker(config, game.hostCompanionId, game.id),
+                  });
+                })}
+                <p className={styles.hint}>{t('appSettings:generalPanel.speechCompanionVoicesHint')}</p>
               </div>
             </section>
           )}

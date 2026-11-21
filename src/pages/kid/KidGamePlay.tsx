@@ -67,12 +67,12 @@ function GameSession({ level, host, onReplay }: { level: KidGameLevel; host: Kid
 
   const say = (content: string) => {
     push({ speakerId: host.member.id, speakerName: host.member.name, content });
-    if (voice.autoReadAloud) readAloud.enqueue(content, host.member.id);
+    if (voice.autoReadAloud) readAloud.enqueue(content, host.member.id, level.gameId);
   };
 
   const ask = async (message: string, gamePrompt: string) => {
     const reply = await askCompanion({ companion: host, message, gamePrompt });
-    if (reply && voice.autoReadAloud) readAloud.enqueue(reply, host.member.id);
+    if (reply && voice.autoReadAloud) readAloud.enqueue(reply, host.member.id, level.gameId);
     return reply;
   };
 
@@ -225,7 +225,7 @@ function GameSession({ level, host, onReplay }: { level: KidGameLevel; host: Kid
               fontSize={fontSize}
               pending={m.id === pendingId}
               isError={m.isError}
-              onReadAloud={!isKid && readAloud.supported ? () => readAloud.speakNow(m.content, host.member.id) : undefined}
+              onReadAloud={!isKid && readAloud.supported ? () => readAloud.speakNow(m.content, host.member.id, level.gameId) : undefined}
             />
           );
         })}
