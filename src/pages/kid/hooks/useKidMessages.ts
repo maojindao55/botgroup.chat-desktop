@@ -19,6 +19,8 @@ export interface CompanionReplyRequest {
   message: string;
   gamePrompt?: string;
   allNames?: string[];
+  /** 流式回调目前为止的全文，用于边生成边朗读 */
+  onText?: (fullText: string) => void;
 }
 
 /**
@@ -60,7 +62,7 @@ export function useKidMessages(persistId?: string) {
    * 对应 /api/chat 的 index 约定（message 插在倒数第 index 条之前）。
    */
   const askCompanion = useCallback(
-    async ({ companion, message, gamePrompt, allNames }: CompanionReplyRequest): Promise<string | null> => {
+    async ({ companion, message, gamePrompt, allNames, onText }: CompanionReplyRequest): Promise<string | null> => {
       const placeholder = push({ speakerId: companion.member.id, speakerName: companion.member.name, content: '' });
       setPendingId(placeholder.id);
       const history = toTurns(messagesRef.current.filter((m) => m.id !== placeholder.id));
@@ -78,7 +80,10 @@ export function useKidMessages(persistId?: string) {
           index: repliesAfterMessage,
           gamePrompt,
           allNames,
-          onDelta: (full) => update((prev) => prev.map((m) => (m.id === placeholder.id ? { ...m, content: full } : m))),
+          onDelta: (full) => {
+            update((prev) => prev.map((m) => (m.id === placeholder.id ? { ...m, content: full } : m)));
+            onText?.(full);
+          },
         });
         update((prev) => prev.map((m) => (m.id === placeholder.id ? { ...m, content: text } : m)));
         return text;
