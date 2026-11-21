@@ -50,6 +50,10 @@
 - 🧠 **轻量记忆** — 只在本机记住孩子的昵称和兴趣
 - 📱 **平板优先的儿童界面** — 打开应用默认进入儿童端：大头像选伙伴、大气泡聊天、大按钮玩游戏，触控区域不小于 48px，横屏竖屏都适配
 - 🎤 **语音** — 3-6 岁默认「按住说话」并自动朗读回复，7-12 岁默认打字、朗读可选；设备不支持语音识别时自动隐藏麦克风
+- ☁️ **千问云端语音（可选）** — 家长中心「设置 → 通用」可分别为朗读和识别选择引擎：
+  - **Token Plan**（`sk-sp-` Key）：`qwen-audio-3.0-tts-plus` 朗读（每位伙伴一种音色，带儿童语气指令）、`qwen-audio-3.0-asr-flash` 松手后整段识别
+  - **百炼实时**（按量付费 Key）：`qwen-audio-3.1-tts-flash` / CosyVoice 童声，`qwen-audio-3.1-asr-flash-message` / Fun-ASR 边说边出字
+  - API Key 加密存在本机，也可复用某个模型服务的 Key；云端朗读失败时自动退回系统朗读
 - ⭐ **星星和徽章** — 过关得星星、解锁下一关，聊天和游戏里收集徽章（只存在本机）
 - 🔐 **家长入口** — 长按左上角彩虹 1.5 秒并答对一道算术题，进入原来的成人界面配置模型服务、伙伴模型和孩子年龄段
 - 🤖 **角色群** — 家长也可以自建角色，支持智能点名 / 轮流发言 / 全员圆桌三种发言方式
@@ -149,7 +153,7 @@ botgroup.chat-desktop/
 │   ├── hooks/              # 自定义 Hooks (use-theme, use-locale 等)
 │   ├── i18n/               # 国际化资源与运行时 (zh-CN / en-US)
 │   ├── layouts/            # 布局组件
-│   ├── lib/                # 主题、伙伴对话流、speech/ 语音抽象（Web Speech 实现）
+│   ├── lib/                # 主题、伙伴对话流、speech/ 语音抽象（系统 Web Speech 与千问云端两种实现）
 │   ├── pages/
 │   │   ├── kid/            # 儿童端（默认首页）：伙伴选择、聊天、小游戏、星星
 │   │   ├── parent/         # 家长区入口（验证后进入成人界面）
@@ -169,6 +173,8 @@ botgroup.chat-desktop/
 │   │   ├── provider.rs     # 模型服务管理
 │   │   ├── vault.rs        # 密钥保险箱 (API Key 加密存储)
 │   │   ├── llm_proxy.rs    # LLM 流式代理
+│   │   ├── speech.rs       # 百炼实时语音 WebSocket 代理
+│   │   ├── speech_http.rs  # Token Plan 语音 HTTP 代理（合成 / 整段识别）
 │   │   └── migrate.rs      # 数据迁移
 │   ├── Cargo.toml          # Rust 依赖
 │   └── tauri.conf.json     # Tauri 配置

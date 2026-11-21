@@ -36,7 +36,7 @@ function ChatView({ chatId, members }: { chatId: string; members: KidCompanion[]
       ? `欢迎来到小伙伴乐园！${memory.nickname ? `${memory.nickname}，` : ''}想聊什么都可以，最懂这个话题的小伙伴会来回答你哦～`
       : greeter.meta.greeting;
     push({ speakerId: greeter.member.id, speakerName: isPlayground ? '小伙伴乐园' : greeter.member.name, content: greeting });
-    if (voice.autoReadAloud) readAloud.enqueue(greeting);
+    if (voice.autoReadAloud) readAloud.enqueue(greeting, greeter.member.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -68,7 +68,7 @@ function ChatView({ chatId, members }: { chatId: string; members: KidCompanion[]
     const allNames = members.map((c) => c.member.name);
     for (const companion of responders) {
       const reply = await askCompanion({ companion, message: text, allNames });
-      if (reply && voice.autoReadAloud) readAloud.enqueue(reply);
+      if (reply && voice.autoReadAloud) readAloud.enqueue(reply, companion.member.id);
     }
   };
 
@@ -119,7 +119,7 @@ function ChatView({ chatId, members }: { chatId: string; members: KidCompanion[]
               fontSize={fontSize}
               pending={m.id === pendingId}
               isError={m.isError}
-              onReadAloud={!isKid && readAloud.supported ? () => readAloud.speakNow(m.content) : undefined}
+              onReadAloud={!isKid && readAloud.supported ? () => readAloud.speakNow(m.content, m.speakerId) : undefined}
             />
           );
         })}

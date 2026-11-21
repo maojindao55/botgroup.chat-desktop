@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Globe, Monitor, Moon, Sun } from 'lucide-react';
-import { App, Button, Popconfirm, Select, Tooltip } from 'antd';
+import { App, AutoComplete, Button, Input, Popconfirm, Select, Slider, Tooltip } from 'antd';
+import { invoke } from '@tauri-apps/api/core';
 import { createStyles } from 'antd-style';
 import { useTranslation } from 'react-i18next';
 
@@ -11,6 +12,20 @@ import { AGE_PROFILES, loadAgeBand, saveAgeBand, type AgeBand } from '@/config/a
 import { clearKidChats } from '@/config/kidChatHistory';
 import { clearKidMemory } from '@/config/kidMemory';
 import { loadKidModel, saveKidModel } from '@/config/kidModel';
+import {
+  SPEECH_ENDPOINTS,
+  SPEECH_MODELS,
+  TOKEN_PLAN_BASE,
+  SPEECH_SECRET_NAME,
+  defaultModel,
+  loadSpeechConfig,
+  saveSpeechConfig,
+  voiceCatalog,
+  voiceForSpeaker,
+  type SpeechConfig,
+  type SpeechEngine,
+} from '@/config/speechConfig';
+import { synthesizeCloud } from '@/lib/speech/qwenSpeech';
 import { useProviderStore } from '@/store/providerStore';
 import { AppVersionBadge } from './AppVersionBadge';
 
@@ -222,6 +237,288 @@ function KidSettingsSections() {
   );
 }
 
+function SpeechSettingsSections() {
+  const { styles, cx } = useStyles();
+  const { t } = useTranslation(['appSettings']);
+  const { message } = App.useApp();
+  const providers = useProviderStore((s) => s.providers);
+  const [config, setConfig] = useState<SpeechConfig>(loadSpeechConfig);
+  const [keySaved, setKeySaved] = useState(false);
+  const [keyDraft, setKeyDraft] = useState('');
+  const [previewing, setPreviewing] = useState(false);
+
+  const refreshKeyState = () =>
+    invoke<boolean>('secret_has', { name: SPEECH_SECRET_NAME })
+      .then(setKeySaved)
+      .catch(() => setKeySaved(false));
+
+  useEffect(() => {
+    void refreshKeyState();
+  }, []);
+
+  const update = (patch: (prev: SpeechConfig) => SpeechConfig) => {
+    setConfig((prev) => {
+      const next = patch(prev);
+      saveSpeechConfig(next);
+      return next;
+    });
+  };
+
+  const engineOf = (kind: 'tts' | 'asr') => config[kind].engine;
+  const usesCloud = engineOf('tts') !== 'system' || engineOf('asr') !== 'system';
+  const usesTokenPlan = engineOf('tts') === 'tokenplan' || engineOf('asr') === 'tokenplan';
+  const usesRealtime = engineOf('tts') === 'qwen' || engineOf('asr') === 'qwen';
+  const modelOptions = (kind: 'tts' | 'asr') => SPEECH_MODELS[engineOf(kind) === 'qwen' ? 'qwen' : 'tokenplan'][kind];
+  const engines: { value: SpeechEngine; label: string }[] = [
+    { value: 'system', label: t('appSettings:generalPanel.speechEngineSystem') },
+    { value: 'tokenplan', label: t('appSettings:generalPanel.speechEngineTokenPlan') },
+    { value: 'qwen', label: t('appSettings:generalPanel.speechEngineQwen') },
+  ];
+
+  const changeEngine = (kind: 'tts' | 'asr', engine: SpeechEngine) =>
+    update((prev) => {
+      const sameFamily = (prev[kind].engine === 'qwen') === (engine === 'qwen');
+      const model = sameFamily ? prev[kind].model : defaultModel(kind, engine);
+      return kind === 'tts'
+        ? { ...prev, tts: { ...prev.tts, engine, model, voice: sameFamily ? prev.tts.voice : '' } }
+        : { ...prev, asr: { ...prev.asr, engine, model } };
+    });
+
+  const engineTrack = (kind: 'tts' | 'asr') => (
+    <div className={styles.track} role="group" aria-label={t(`appSettings:generalPanel.speech${kind === 'tts' ? 'Tts' : 'Asr'}`)}>
+      {engines.map(({ value, label }) => (
+        <button
+          key={value}
+          type="button"
+          data-testid={`speech-${kind}-${value}`}
+          className={cx(styles.option, config[kind].engine === value && styles.optionActive)}
+          onClick={() => changeEngine(kind, value)}
+          aria-pressed={config[kind].engine === value}
+        >
+          <span>{label}</span>
+        </button>
+      ))}
+    </div>
+  );
+
+  const saveKey = async () => {
+    const value = keyDraft.trim();
+    if (!value) return;
+    try {
+      await invoke('secret_set', { name: SPEECH_SECRET_NAME, value });
+      setKeyDraft('');
+      await refreshKeyState();
+      message.success(t('appSettings:generalPanel.speechSaved'));
+    } catch (error) {
+      message.error(String(error));
+    }
+  };
+
+  const preview = async () => {
+    setPreviewing(true);
+    try {
+      const bytes = await synthesizeCloud(t('appSettings:generalPanel.speechPreviewText'), voiceForSpeaker(config), config);
+      const url = URL.createObjectURL(new Blob([bytes], { type: 'audio/mpeg' }));
+      const audio = new Audio(url);
+      audio.onended = () => URL.revokeObjectURL(url);
+      await audio.play();
+    } catch (error) {
+      message.error(t('appSettings:generalPanel.speechPreviewFailed', { error: String(error) }));
+    } finally {
+      setPreviewing(false);
+    }
+  };
+
+  const keyOptions = [
+    { label: t('appSettings:generalPanel.speechKeyOwn'), value: '' },
+    ...Object.values(providers).map((p) => ({
+      label: t('appSettings:generalPanel.speechKeyFromProvider', { name: p.name }),
+      value: p.id,
+    })),
+  ];
+
+  return (
+    <>
+      <section className={styles.section} aria-labelledby="settings-speech-tts">
+        <h3 id="settings-speech-tts" className={styles.sectionTitle}>
+          {t('appSettings:generalPanel.speechTts')}
+        </h3>
+        <div className={styles.control}>
+          {engineTrack('tts')}
+          <p className={styles.hint}>{t('appSettings:generalPanel.speechTtsHint')}</p>
+        </div>
+      </section>
+
+      <section className={styles.section} aria-labelledby="settings-speech-asr">
+        <h3 id="settings-speech-asr" className={styles.sectionTitle}>
+          {t('appSettings:generalPanel.speechAsr')}
+        </h3>
+        <div className={styles.control}>
+          {engineTrack('asr')}
+          <p className={styles.hint}>{t('appSettings:generalPanel.speechAsrHint')}</p>
+        </div>
+      </section>
+
+      {usesCloud && (
+        <>
+          <section className={styles.section} aria-labelledby="settings-speech-key">
+            <h3 id="settings-speech-key" className={styles.sectionTitle}>
+              {t('appSettings:generalPanel.speechKey')}
+            </h3>
+            <div className={styles.control}>
+              <Select
+                data-testid="speech-key-source"
+                style={{ width: 'min(100%, 420px)' }}
+                value={config.providerId}
+                onChange={(providerId: string) => update((prev) => ({ ...prev, providerId }))}
+                options={keyOptions}
+              />
+              {!config.providerId && (
+                <div className={styles.actions}>
+                  <Input.Password
+                    data-testid="speech-key-input"
+                    style={{ width: 'min(100%, 320px)' }}
+                    value={keyDraft}
+                    onChange={(e) => setKeyDraft(e.target.value)}
+                    placeholder={
+                      keySaved
+                        ? `${t('appSettings:generalPanel.speechKeySaved')} ••••••`
+                        : t('appSettings:generalPanel.speechKeyPlaceholder')
+                    }
+                    onPressEnter={saveKey}
+                  />
+                  <Button data-testid="speech-key-save" onClick={saveKey} disabled={!keyDraft.trim()}>
+                    {t('appSettings:generalPanel.speechSave')}
+                  </Button>
+                </div>
+              )}
+              <p className={styles.hint}>
+                {!config.providerId &&
+                  `${keySaved ? t('appSettings:generalPanel.speechKeySaved') : t('appSettings:generalPanel.speechKeyMissing')} · `}
+                {t('appSettings:generalPanel.speechKeyHint')}
+              </p>
+            </div>
+          </section>
+
+          {usesTokenPlan && (
+            <section className={styles.section} aria-labelledby="settings-speech-http-base">
+              <h3 id="settings-speech-http-base" className={styles.sectionTitle}>
+                {t('appSettings:generalPanel.speechHttpBase')}
+              </h3>
+              <div className={styles.control}>
+                <AutoComplete
+                  data-testid="speech-http-base"
+                  style={{ width: 'min(100%, 420px)' }}
+                  value={config.httpBase}
+                  onChange={(httpBase: string) => update((prev) => ({ ...prev, httpBase }))}
+                  options={[{ label: `Token Plan · ${new URL(TOKEN_PLAN_BASE).host}`, value: TOKEN_PLAN_BASE }]}
+                />
+                <p className={styles.hint}>{t('appSettings:generalPanel.speechTokenPlanHint')}</p>
+              </div>
+            </section>
+          )}
+
+          {usesRealtime && (
+            <section className={styles.section} aria-labelledby="settings-speech-endpoint">
+              <h3 id="settings-speech-endpoint" className={styles.sectionTitle}>
+                {t('appSettings:generalPanel.speechEndpoint')}
+              </h3>
+              <div className={styles.control}>
+                <AutoComplete
+                  data-testid="speech-endpoint"
+                  style={{ width: 'min(100%, 420px)' }}
+                  value={config.endpoint}
+                  onChange={(endpoint: string) => update((prev) => ({ ...prev, endpoint }))}
+                  options={SPEECH_ENDPOINTS.map((e) => ({ label: `${e.label} · ${new URL(e.value).host}`, value: e.value }))}
+                />
+                <p className={styles.hint}>{t('appSettings:generalPanel.speechEndpointHint')}</p>
+              </div>
+            </section>
+          )}
+
+          {config.tts.engine !== 'system' && (
+            <section className={styles.section} aria-labelledby="settings-speech-voice">
+              <h3 id="settings-speech-voice" className={styles.sectionTitle}>
+                {t('appSettings:generalPanel.speechVoice')}
+              </h3>
+              <div className={styles.control}>
+                <div className={styles.actions}>
+                  <AutoComplete
+                    data-testid="speech-voice"
+                    aria-label={t('appSettings:generalPanel.speechVoice')}
+                    style={{ width: 'min(100%, 260px)' }}
+                    allowClear
+                    placeholder={t('appSettings:generalPanel.speechVoiceAuto')}
+                    value={config.tts.voice}
+                    onChange={(voice: string | undefined) => update((prev) => ({ ...prev, tts: { ...prev.tts, voice: voice ?? '' } }))}
+                    options={voiceCatalog(config.tts.model).options}
+                  />
+                  <AutoComplete
+                    data-testid="speech-tts-model"
+                    aria-label={t('appSettings:generalPanel.speechModel')}
+                    style={{ width: 'min(100%, 260px)' }}
+                    value={config.tts.model}
+                    options={modelOptions('tts')}
+                    onChange={(model: string) => update((prev) => ({ ...prev, tts: { ...prev.tts, model, voice: '' } }))}
+                  />
+                  <Button data-testid="speech-preview" loading={previewing} onClick={preview}>
+                    {t('appSettings:generalPanel.speechPreview')}
+                  </Button>
+                </div>
+                <div className={styles.actions} style={{ alignItems: 'center' }}>
+                  <span className={styles.hint}>{t('appSettings:generalPanel.speechRate')}</span>
+                  <Slider
+                    style={{ width: 200 }}
+                    min={0.5}
+                    max={2}
+                    step={0.1}
+                    value={config.tts.rate}
+                    onChange={(rate: number) => update((prev) => ({ ...prev, tts: { ...prev.tts, rate } }))}
+                  />
+                </div>
+                <p className={styles.hint}>
+                  {config.tts.engine === 'tokenplan'
+                    ? t('appSettings:generalPanel.speechVoiceTokenPlanHint')
+                    : t('appSettings:generalPanel.speechVoiceHint')}
+                </p>
+                {config.tts.engine === 'tokenplan' && (
+                  <>
+                    <Input.TextArea
+                      data-testid="speech-instruction"
+                      aria-label={t('appSettings:generalPanel.speechInstruction')}
+                      style={{ width: 'min(100%, 520px)' }}
+                      autoSize={{ minRows: 1, maxRows: 3 }}
+                      maxLength={200}
+                      value={config.tts.instruction}
+                      onChange={(e) => update((prev) => ({ ...prev, tts: { ...prev.tts, instruction: e.target.value } }))}
+                    />
+                    <p className={styles.hint}>{t('appSettings:generalPanel.speechInstructionHint')}</p>
+                  </>
+                )}
+              </div>
+            </section>
+          )}
+
+          {config.asr.engine !== 'system' && (
+            <section className={styles.section} aria-labelledby="settings-speech-asr-model">
+              <h3 id="settings-speech-asr-model" className={styles.sectionTitle}>
+                {t('appSettings:generalPanel.speechAsr')} · {t('appSettings:generalPanel.speechModel')}
+              </h3>
+              <AutoComplete
+                data-testid="speech-asr-model"
+                style={{ width: 'min(100%, 320px)' }}
+                value={config.asr.model}
+                options={modelOptions('asr')}
+                onChange={(model: string) => update((prev) => ({ ...prev, asr: { ...prev.asr, model } }))}
+              />
+            </section>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
 export function GeneralSettingsPanel() {
   const { styles, cx } = useStyles();
   const { t } = useTranslation(['appSettings', 'sidebar', 'common']);
@@ -248,6 +545,7 @@ export function GeneralSettingsPanel() {
   return (
     <div className={styles.root}>
       <KidSettingsSections />
+      <SpeechSettingsSections />
 
       <section className={styles.section} aria-labelledby="settings-appearance">
         <h3 id="settings-appearance" className={styles.sectionTitle}>
