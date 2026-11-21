@@ -71,8 +71,9 @@ function GameSession({ level, host, onReplay }: { level: KidGameLevel; host: Kid
   };
 
   const ask = async (message: string, gamePrompt: string) => {
-    const reply = await askCompanion({ companion: host, message, gamePrompt });
-    if (reply && voice.autoReadAloud) readAloud.enqueue(reply, host.member.id, level.gameId);
+    const speech = voice.autoReadAloud ? readAloud.stream(host.member.id, level.gameId) : null;
+    const reply = await askCompanion({ companion: host, message, gamePrompt, onText: speech?.onText });
+    speech?.finish(reply);
     return reply;
   };
 

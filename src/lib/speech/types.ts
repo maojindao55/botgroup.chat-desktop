@@ -36,5 +36,7 @@ export interface SpeechSynthesizer {
   readonly supported: boolean;
   /** 朗读完成（或被取消）后 resolve */
   speak(text: string, options?: SpeakOptions): Promise<void>;
+  /** 提前合成（排队等待朗读的句子），之后 speak 同样的文本时直接播放 */
+  prefetch?(text: string, options?: SpeakOptions): void;
   cancel(): void;
 }

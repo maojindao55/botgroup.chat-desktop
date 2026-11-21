@@ -259,6 +259,63 @@ export function voiceForSpeaker(config: SpeechConfig, speakerId?: string, gameId
   );
 }
 
+const SENTENCE_END = /[。！？!?；;…\n]+[”"’'」』）)]*/g;
+const SOFT_BREAK = /[，,、：:]+/g;
+
+/**
+ * 边生成边朗读：每次传入目前为止的完整回复，返回新凑齐的句子。
+ * 第一段允许在逗号处断开，让孩子尽早听到声音；没有标点的长段落按 maxChars 硬切。
+ */
+export function createSentenceStream(options: { minChars?: number; firstMinChars?: number; firstSoftBreak?: number; maxChars?: number } = {}) {
+  const { minChars = 8, firstMinChars = 4, firstSoftBreak = 10, maxChars = 60 } = options;
+  const count = (s: string) => Array.from(s.trim()).length;
+  let consumed = 0;
+  let emitted = false;
+
+  // 生成中时标点落在末尾先不切，后面可能还有引号或连续的标点
+  const firstCut = (rest: string, pattern: RegExp, min: number, final: boolean) => {
+    pattern.lastIndex = 0;
+    for (let m = pattern.exec(rest); m; m = pattern.exec(rest)) {
+      const end = m.index + m[0].length;
+      if (!final && end >= rest.length) return -1;
+      if (count(rest.slice(0, end)) >= min) return end;
+    }
+    return -1;
+  };
+
+  const take = (text: string, final: boolean): string[] => {
+    const out: string[] = [];
+    if (text.length < consumed) consumed = text.length;
+    let rest = text.slice(consumed);
+    while (rest) {
+      let cut = firstCut(rest, SENTENCE_END, emitted ? minChars : firstMinChars, final);
+      if (cut < 0 && !emitted) cut = firstCut(rest, SOFT_BREAK, firstSoftBreak, final);
+      if (cut < 0 && count(rest) > maxChars) {
+        const head = Array.from(rest).slice(0, maxChars).join('');
+        SOFT_BREAK.lastIndex = 0;
+        let soft = -1;
+        for (let m = SOFT_BREAK.exec(head); m; m = SOFT_BREAK.exec(head)) soft = m.index + m[0].length;
+        cut = soft > 0 ? soft : head.length;
+      }
+      if (cut < 0) break;
+      const piece = rest.slice(0, cut).trim();
+      if (piece) {
+        out.push(piece);
+        emitted = true;
+      }
+      consumed += cut;
+      rest = rest.slice(cut);
+    }
+    if (final) {
+      if (rest.trim()) out.push(rest.trim());
+      consumed = text.length;
+    }
+    return out;
+  };
+
+  return { push: (text: string) => take(text, false), finish: (text: string) => take(text, true) };
+}
+
 /** 按句切分，先合成第一句就能先播放；太短的句子并到下一句，减少请求次数 */
 export function splitForSynthesis(text: string, minChars = 8, maxChars = 120): string[] {
   const parts = (text || '').match(/[^。！？!?；;\n]+[。！？!?；;]*|\n+/g) || [];

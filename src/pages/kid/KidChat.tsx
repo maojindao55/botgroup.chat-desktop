@@ -67,8 +67,9 @@ function ChatView({ chatId, members }: { chatId: string; members: KidCompanion[]
 
     const allNames = members.map((c) => c.member.name);
     for (const companion of responders) {
-      const reply = await askCompanion({ companion, message: text, allNames });
-      if (reply && voice.autoReadAloud) readAloud.enqueue(reply, companion.member.id);
+      const speech = voice.autoReadAloud ? readAloud.stream(companion.member.id) : null;
+      const reply = await askCompanion({ companion, message: text, allNames, onText: speech?.onText });
+      speech?.finish(reply);
     }
   };
 

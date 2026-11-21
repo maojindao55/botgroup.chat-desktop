@@ -122,6 +122,57 @@ const aiMembersSource = await readFile(new URL('../../config/aiMembers.ts', impo
   assert.ok(gameSource.includes("hostCompanionId: 'kid-math-bear'"), '词语接龙由数学小熊主持');
 }
 
+// ---- 流式分句：回复还在生成时逐句交给朗读 ----
+{
+  const feed = (text, opts) => {
+    const stream = config.createSentenceStream(opts);
+    const events = [];
+    const chars = Array.from(text);
+    for (let i = 1; i <= chars.length; i += 1) {
+      for (const piece of stream.push(chars.slice(0, i).join(''))) events.push({ at: i, piece });
+    }
+    for (const piece of stream.finish(text)) events.push({ at: chars.length, piece, final: true });
+    return events;
+  };
+  const strip = (s) => s.replace(/\s+/g, '');
+
+  const greet = '我是数学小熊！我们一起玩数字游戏好不好？';
+  const e1 = feed(greet);
+  assert.deepEqual(e1.map((e) => e.piece), ['我是数学小熊！', '我们一起玩数字游戏好不好？']);
+  assert.equal(e1[0].at, 8, '第一句说完（再多看一个字确认没有引号）就交出，不等整段回复');
+  assert.ok(e1[1].final, '最后一句随结束交出');
+
+  // 首段没有句号时在逗号处提前断开
+  const long = '小朋友你好呀，今天我们一起去森林里找小兔子吧，你觉得小兔子最喜欢吃什么呢？';
+  const e2 = feed(long);
+  assert.equal(e2[0].piece, '小朋友你好呀，今天我们一起去森林里找小兔子吧，');
+  assert.ok(e2[0].at < Array.from(long).length);
+  assert.equal(strip(e2.map((e) => e.piece).join('')), strip(long));
+
+  // 之后的短句合并，避免请求太碎
+  const e3 = feed('好呀！嗯。对了。我们去公园吧！');
+  assert.deepEqual(e3.map((e) => e.piece), ['好呀！嗯。', '对了。我们去公园吧！']);
+
+  // 没有标点的长段落按 maxChars 切开，优先在逗号处
+  const run = '一'.repeat(130);
+  const e4 = feed(run);
+  assert.ok(e4.every((e) => Array.from(e.piece).length <= 60) && e4.length === 3);
+  assert.equal(e4.map((e) => e.piece).join(''), run);
+  const e5 = feed('第一段说了很多话' + '，后面还有很多很多字'.repeat(8));
+  assert.ok(e5.length >= 2 && e5.slice(0, -1).every((e) => /[，,]$/.test(e.piece)), JSON.stringify(e5));
+
+  // 句末引号跟着句子走；省略号也算句末
+  assert.deepEqual(feed('它说：“你好呀小朋友！”然后飞走了。').map((e) => e.piece), ['它说：“你好呀小朋友！”', '然后飞走了。']);
+  assert.deepEqual(feed('很久很久以前……有一只小兔子。').map((e) => e.piece), ['很久很久以前……', '有一只小兔子。']);
+
+  // 回复被改短（去掉了说话人前缀）时不会出错
+  const s = config.createSentenceStream();
+  assert.deepEqual(s.push('好奇博士：今天'), []);
+  assert.deepEqual(s.push('今天'), []);
+  assert.deepEqual(s.finish('今天天气真好。'), ['今天天气真好。']);
+  assert.deepEqual(config.createSentenceStream().finish(''), []);
+}
+
 // ---- 分句：短句合并，长句切开，内容不丢 ----
 {
   const text = '你好！我是小熊。我们来数数吧：一、二、三，你能数到十吗？好的';

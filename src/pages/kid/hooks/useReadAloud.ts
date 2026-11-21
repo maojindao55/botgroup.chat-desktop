@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef } from 'react';
+import { createSentenceStream } from '@/config/speechConfig';
 import { toSpeakableText } from '@/lib/speech';
 import { useKid } from '../KidContext';
 
-/** 按顺序朗读，多个伙伴的回复不会互相打断 */
+/** 按顺序朗读，多个伙伴的回复不会互相打断；排队的句子会提前合成 */
 export function useReadAloud() {
   const { synthesizer } = useKid();
   const queue = useRef<Promise<void>>(Promise.resolve());
@@ -31,11 +32,28 @@ export function useReadAloud() {
       const speakable = toSpeakableText(text);
       if (!synthesizer.supported || !speakable) return;
       const gen = generation.current;
-      queue.current = queue.current.then(() =>
-        gen === generation.current ? synthesizer.speak(speakable, { lang: 'zh-CN', speakerId, gameId }) : undefined,
-      );
+      const options = { lang: 'zh-CN', speakerId, gameId };
+      synthesizer.prefetch?.(speakable, options);
+      queue.current = queue.current.then(() => (gen === generation.current ? synthesizer.speak(speakable, options) : undefined));
     },
     [synthesizer],
+  );
+
+  /** 回复还在生成时就逐句朗读：onText 传目前为止的全文，结束时调用 finish */
+  const stream = useCallback(
+    (speakerId?: string, gameId?: string) => {
+      const sentences = createSentenceStream();
+      const gen = generation.current;
+      const feed = (pieces: string[]) => {
+        if (gen !== generation.current) return;
+        pieces.forEach((piece) => enqueue(piece, speakerId, gameId));
+      };
+      return {
+        onText: (text: string) => feed(sentences.push(text)),
+        finish: (text: string | null) => feed(text ? sentences.finish(text) : []),
+      };
+    },
+    [enqueue],
   );
 
   const speakNow = useCallback(
@@ -46,5 +64,5 @@ export function useReadAloud() {
     [cancel, enqueue],
   );
 
-  return { supported: synthesizer.supported, enqueue, speakNow, cancel };
+  return { supported: synthesizer.supported, enqueue, stream, speakNow, cancel };
 }

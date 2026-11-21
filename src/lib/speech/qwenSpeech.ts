@@ -44,11 +44,14 @@ export async function synthesizeCloud(text: string, voice: string, config: Speec
   });
 }
 
+const MAX_PREFETCHED = 24;
+
 export class CloudSynthesizer implements SpeechSynthesizer {
   private audio: HTMLAudioElement | null = null;
   private generation = 0;
   private stopCurrent: (() => void) | null = null;
   private warned = false;
+  private prefetched = new Map<string, Promise<ArrayBuffer>>();
 
   constructor(private readonly fallback?: SpeechSynthesizer) {}
 
@@ -56,21 +59,47 @@ export class CloudSynthesizer implements SpeechSynthesizer {
     return isTauri() && typeof Audio !== 'undefined';
   }
 
+  private fetch(sentence: string, voice: string, config: SpeechConfig): Promise<ArrayBuffer> {
+    const key = `${config.tts.engine}\n${config.tts.model}\n${voice}\n${sentence}`;
+    const cached = this.prefetched.get(key);
+    if (cached) {
+      this.prefetched.delete(key);
+      return cached;
+    }
+    return synthesizeCloud(sentence, voice, config);
+  }
+
+  prefetch(text: string, options: SpeakOptions = {}): void {
+    const content = (text || '').trim();
+    if (!content || !this.supported) return;
+    const config = loadSpeechConfig();
+    const voice = voiceForSpeaker(config, options.speakerId, options.gameId);
+    for (const sentence of splitForSynthesis(content)) {
+      const key = `${config.tts.engine}\n${config.tts.model}\n${voice}\n${sentence}`;
+      if (this.prefetched.has(key)) continue;
+      if (this.prefetched.size >= MAX_PREFETCHED) this.prefetched.delete(this.prefetched.keys().next().value!);
+      const pending = synthesizeCloud(sentence, voice, config);
+      // 失败留给 speak 处理（退回系统朗读），这里避免未处理的 rejection
+      pending.catch(() => undefined);
+      this.prefetched.set(key, pending);
+    }
+  }
+
   async speak(text: string, options: SpeakOptions = {}): Promise<void> {
     const content = (text || '').trim();
     if (!content) return;
-    this.cancel();
+    this.stopPlayback();
     const gen = ++this.generation;
     const config = loadSpeechConfig();
     const voice = voiceForSpeaker(config, options.speakerId, options.gameId);
     const sentences = splitForSynthesis(content);
     try {
       // 播放当前句时预取下一句
-      let next = synthesizeCloud(sentences[0], voice, config);
+      let next = this.fetch(sentences[0], voice, config);
       for (let i = 0; i < sentences.length; i += 1) {
         const bytes = await next;
         if (gen !== this.generation) return;
-        if (i + 1 < sentences.length) next = synthesizeCloud(sentences[i + 1], voice, config);
+        if (i + 1 < sentences.length) next = this.fetch(sentences[i + 1], voice, config);
         await this.play(bytes, gen);
         if (gen !== this.generation) return;
       }
@@ -103,11 +132,16 @@ export class CloudSynthesizer implements SpeechSynthesizer {
     });
   }
 
-  cancel(): void {
+  private stopPlayback(): void {
     this.generation += 1;
     this.audio?.pause();
     this.stopCurrent?.();
     this.fallback?.cancel();
+  }
+
+  cancel(): void {
+    this.prefetched.clear();
+    this.stopPlayback();
   }
 }
 
