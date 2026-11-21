@@ -18,7 +18,7 @@ globalThis.localStorage = {
 };
 
 const config = await importTsModule(new URL('../../config/speechConfig.ts', import.meta.url));
-const { downsampleToPcm16, PcmChunker } = await importTsModule(new URL('./pcm.ts', import.meta.url));
+const { downsampleToPcm16, encodeWav, PcmChunker } = await importTsModule(new URL('./pcm.ts', import.meta.url));
 const aiMembersSource = await readFile(new URL('../../config/aiMembers.ts', import.meta.url), 'utf8');
 
 // ---- 设置：默认值与容错 ----
@@ -26,40 +26,64 @@ const aiMembersSource = await readFile(new URL('../../config/aiMembers.ts', impo
   const d = config.loadSpeechConfig();
   assert.equal(d.tts.engine, 'system');
   assert.equal(d.asr.engine, 'system');
-  assert.equal(d.tts.model, 'cosyvoice-v3-flash');
-  assert.equal(d.asr.model, 'fun-asr-realtime');
+  assert.equal(d.tts.model, 'qwen-audio-3.0-tts-plus');
+  assert.equal(d.asr.model, 'qwen-audio-3.0-asr-flash');
+  assert.equal(d.httpBase, 'https://token-plan.maas.qianwenaiapi.com');
   assert.equal(d.endpoint, 'wss://maas.qianwenaiapi.com/api-ws/v1/inference');
+  assert.equal(d.tts.instruction, config.KID_TTS_INSTRUCTION);
 
-  const n = config.normalizeSpeechConfig({ tts: { engine: 'qwen', rate: 9, model: '  ', voice: ' longling_v3 ' }, asr: { engine: 'bogus' } });
-  assert.equal(n.tts.engine, 'qwen');
+  const n = config.normalizeSpeechConfig({ tts: { engine: 'tokenplan', rate: 9, model: '  ', voice: ' longanlufeng ', instruction: '' }, asr: { engine: 'bogus' } });
+  assert.equal(n.tts.engine, 'tokenplan');
   assert.equal(n.tts.rate, 2);
-  assert.equal(n.tts.model, 'cosyvoice-v3-flash');
-  assert.equal(n.tts.voice, 'longling_v3');
+  assert.equal(n.tts.model, 'qwen-audio-3.0-tts-plus');
+  assert.equal(n.tts.voice, 'longanlufeng');
+  assert.equal(n.tts.instruction, '', '家长清空语气指令后不再补默认值');
   assert.equal(n.asr.engine, 'system');
 
-  config.saveSpeechConfig({ ...d, asr: { engine: 'qwen', model: 'fun-asr-realtime' }, providerId: 'bailian' });
+  // 引擎和模型不配套时换成该引擎的默认模型，自定义模型名保留
+  const realtime = config.normalizeSpeechConfig({ tts: { engine: 'qwen', model: 'qwen-audio-3.0-tts-plus' }, asr: { engine: 'qwen', model: 'qwen-audio-3.0-asr-flash' } });
+  assert.equal(realtime.tts.model, 'qwen-audio-3.1-tts-flash');
+  assert.equal(realtime.asr.model, 'qwen-audio-3.1-asr-flash-message');
+  const tokenPlan = config.normalizeSpeechConfig({ tts: { engine: 'tokenplan', model: 'cosyvoice-v3-flash' } });
+  assert.equal(tokenPlan.tts.model, 'qwen-audio-3.0-tts-plus');
+  assert.equal(config.normalizeSpeechConfig({ tts: { engine: 'qwen', model: 'cosyvoice-v3-plus' } }).tts.model, 'cosyvoice-v3-plus');
+
+  // 音色属于别的模型时丢掉，避免服务端 InvalidParameter
+  assert.equal(config.normalizeSpeechConfig({ tts: { engine: 'tokenplan', voice: 'longhuhu_v3' } }).tts.voice, '');
+  assert.equal(config.normalizeSpeechConfig({ tts: { engine: 'tokenplan', voice: 'qwen-audio-3.0-tts-plus-abc' } }).tts.voice, 'qwen-audio-3.0-tts-plus-abc');
+
+  config.saveSpeechConfig({ ...d, asr: { engine: 'tokenplan', model: 'qwen-audio-3.0-asr-flash' }, providerId: 'tokenplan' });
   const saved = config.loadSpeechConfig();
-  assert.equal(saved.asr.engine, 'qwen');
-  assert.equal(saved.providerId, 'bailian');
-  assert.ok(!JSON.stringify(saved).toLowerCase().includes('key'), 'API Key 不进 localStorage');
+  assert.equal(saved.asr.engine, 'tokenplan');
+  assert.equal(saved.providerId, 'tokenplan');
+  assert.ok(!JSON.stringify(saved).includes('sk-'), 'API Key 不进 localStorage');
 
   store.set('kid_speech_config', '{broken');
   assert.equal(config.loadSpeechConfig().tts.engine, 'system');
 }
 
-// ---- 音色：伙伴各有默认音色，家长可统一覆盖 ----
+// ---- 音色：按模型取伙伴的默认音色，家长可统一覆盖 ----
 {
-  const base = config.normalizeSpeechConfig(null);
-  for (const id of Object.keys(config.COMPANION_VOICES)) {
-    assert.ok(aiMembersSource.includes(`id: '${id}'`), `伙伴 ${id} 存在`);
+  const ids = ['kid-curious-doctor', 'kid-story-fairy', 'kid-math-bear', 'kid-drawing-bunny'];
+  for (const id of ids) assert.ok(aiMembersSource.includes(`id: '${id}'`), `伙伴 ${id} 存在`);
+  const withModel = (model) => config.normalizeSpeechConfig({ tts: { engine: model.startsWith('qwen-audio-3.0') ? 'tokenplan' : 'qwen', model } });
+  const cases = {
+    'qwen-audio-3.0-tts-plus': { bear: 'longanlufeng', fairy: 'longanlingxin', fallback: 'longanlingxin' },
+    'qwen-audio-3.1-tts-flash': { bear: 'longniuniu_v3.1', fairy: 'longshanshan_v3.1', fallback: 'longke_v3.1' },
+    'cosyvoice-v3-flash': { bear: 'longniuniu_v3', fairy: 'longshanshan_v3', fallback: 'longhuhu_v3' },
+  };
+  for (const [model, expected] of Object.entries(cases)) {
+    const c = withModel(model);
+    assert.equal(config.voiceForSpeaker(c, 'kid-math-bear'), expected.bear, model);
+    assert.equal(config.voiceForSpeaker(c, 'kid-story-fairy'), expected.fairy, model);
+    assert.equal(config.voiceForSpeaker(c, 'unknown'), expected.fallback, model);
+    const catalog = config.voiceCatalog(model);
+    const options = new Set(catalog.options.map((v) => v.value));
+    for (const id of ids) assert.ok(options.has(catalog.companions[id]), `${model} ${id}`);
   }
-  assert.equal(config.voiceForSpeaker(base, 'kid-math-bear'), 'longniuniu_v3');
-  assert.equal(config.voiceForSpeaker(base, 'unknown'), config.DEFAULT_VOICE);
-  assert.equal(config.voiceForSpeaker(base), config.DEFAULT_VOICE);
-  const override = { ...base, tts: { ...base.tts, voice: 'longling_v3' } };
-  assert.equal(config.voiceForSpeaker(override, 'kid-math-bear'), 'longling_v3');
-  const voices = new Set(config.KID_VOICE_OPTIONS.map((v) => v.value));
-  for (const v of Object.values(config.COMPANION_VOICES)) assert.ok(voices.has(v));
+  const override = withModel('qwen-audio-3.0-tts-plus');
+  override.tts.voice = 'longanlufeng';
+  assert.equal(config.voiceForSpeaker(override, 'kid-story-fairy'), 'longanlufeng');
 }
 
 // ---- 分句：短句合并，长句切开，内容不丢 ----
@@ -102,6 +126,25 @@ const aiMembersSource = await readFile(new URL('../../config/aiMembers.ts', impo
   assert.equal(ready[0].byteLength, 8);
   assert.deepEqual(Array.from(new Int16Array(chunker.flush().buffer)), [9]);
   assert.equal(chunker.flush(), null);
+}
+
+// ---- WAV：44 字节头 + 小端 PCM ----
+{
+  const wav = encodeWav(new Int16Array([1, -2, 32767]), 16000);
+  const view = new DataView(wav.buffer);
+  const ascii = (o, n) => String.fromCharCode(...wav.slice(o, o + n));
+  assert.equal(wav.byteLength, 44 + 6);
+  assert.equal(ascii(0, 4), 'RIFF');
+  assert.equal(view.getUint32(4, true), 36 + 6);
+  assert.equal(ascii(8, 8), 'WAVEfmt ');
+  assert.equal(view.getUint16(20, true), 1, 'PCM');
+  assert.equal(view.getUint16(22, true), 1, 'mono');
+  assert.equal(view.getUint32(24, true), 16000);
+  assert.equal(view.getUint32(28, true), 32000);
+  assert.equal(view.getUint16(34, true), 16);
+  assert.equal(ascii(36, 4), 'data');
+  assert.equal(view.getUint32(40, true), 6);
+  assert.deepEqual([view.getInt16(44, true), view.getInt16(46, true), view.getInt16(48, true)], [1, -2, 32767]);
 }
 
 console.log('qwenSpeech tests passed');

@@ -1,37 +1,50 @@
 /**
- * 千问云端语音：WebSocket 连接和 API Key 都在 Rust 侧（speech.rs），这里只负责
+ * 千问云端语音。连接和 API Key 都在 Rust 侧（speech.rs / speech_http.rs），这里只负责
  * 采集麦克风 PCM、播放合成的音频。云端失败时朗读会退回到系统朗读。
+ * - Token Plan：合成走 HTTP；识别在松手后把整段录音编码成 WAV 一次提交
+ * - 百炼实时：合成和识别都走 WebSocket，说话时就有中间结果
  */
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { loadSpeechConfig, splitForSynthesis, voiceForSpeaker, type SpeechConfig } from '@/config/speechConfig';
-import { downsampleToPcm16, PcmChunker } from './pcm';
+import { downsampleToPcm16, encodeWav, PcmChunker } from './pcm';
 import type { RecognitionHandlers, SpeakOptions, SpeechErrorCode, SpeechRecognizer, SpeechSynthesizer } from './types';
 
 const isTauri = () => typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
 const ASR_SAMPLE_RATE = 16000;
 const FINAL_WAIT_MS = 8000;
+/** Token Plan 识别单次最长 5 分钟，按住说话用不了这么久 */
+const MAX_RECORD_SAMPLES = ASR_SAMPLE_RATE * 120;
 
-function auth(config: SpeechConfig) {
-  return { endpoint: config.endpoint, providerId: config.providerId || undefined };
-}
+const micSupported = () =>
+  isTauri()
+  && typeof navigator !== 'undefined'
+  && Boolean(navigator.mediaDevices?.getUserMedia)
+  && typeof (window.AudioContext || (window as any).webkitAudioContext) === 'function';
 
 /** 合成一段文本，返回音频字节（mp3） */
-export async function synthesizeWithQwen(text: string, voice: string, config: SpeechConfig = loadSpeechConfig()): Promise<ArrayBuffer> {
-  return invoke<ArrayBuffer>('speech_tts_synthesize', {
+export async function synthesizeCloud(text: string, voice: string, config: SpeechConfig = loadSpeechConfig()): Promise<ArrayBuffer> {
+  const providerId = config.providerId || undefined;
+  if (config.tts.engine === 'qwen') {
+    return invoke<ArrayBuffer>('speech_tts_synthesize', {
+      args: { text, model: config.tts.model, voice, rate: config.tts.rate, format: 'mp3', sampleRate: 24000, endpoint: config.endpoint, providerId },
+    });
+  }
+  return invoke<ArrayBuffer>('speech_http_tts', {
     args: {
       text,
       model: config.tts.model,
       voice,
       rate: config.tts.rate,
-      format: 'mp3',
       sampleRate: 24000,
-      ...auth(config),
+      instruction: config.tts.instruction || undefined,
+      baseUrl: config.httpBase,
+      providerId,
     },
   });
 }
 
-export class QwenSynthesizer implements SpeechSynthesizer {
+export class CloudSynthesizer implements SpeechSynthesizer {
   private audio: HTMLAudioElement | null = null;
   private generation = 0;
   private stopCurrent: (() => void) | null = null;
@@ -53,11 +66,11 @@ export class QwenSynthesizer implements SpeechSynthesizer {
     const sentences = splitForSynthesis(content);
     try {
       // 播放当前句时预取下一句
-      let next = synthesizeWithQwen(sentences[0], voice, config);
+      let next = synthesizeCloud(sentences[0], voice, config);
       for (let i = 0; i < sentences.length; i += 1) {
         const bytes = await next;
         if (gen !== this.generation) return;
-        if (i + 1 < sentences.length) next = synthesizeWithQwen(sentences[i + 1], voice, config);
+        if (i + 1 < sentences.length) next = synthesizeCloud(sentences[i + 1], voice, config);
         await this.play(bytes, gen);
         if (gen !== this.generation) return;
       }
@@ -105,22 +118,138 @@ function mapStartError(error: unknown): SpeechErrorCode {
   return 'network';
 }
 
+/** 打开麦克风，把采样转成 16k PCM 回调出去；返回关闭函数 */
+async function startMicCapture(onPcm: (pcm: Int16Array) => void): Promise<() => void> {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+  });
+  const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+  const context = new Ctx() as AudioContext;
+  const source = context.createMediaStreamSource(stream);
+  const processor = context.createScriptProcessor(4096, 1, 1);
+  const inputRate = context.sampleRate;
+  processor.onaudioprocess = (event) => {
+    onPcm(downsampleToPcm16(event.inputBuffer.getChannelData(0), inputRate, ASR_SAMPLE_RATE));
+  };
+  source.connect(processor);
+  processor.connect(context.destination);
+  return () => {
+    processor.onaudioprocess = null;
+    processor.disconnect();
+    source.disconnect();
+    stream.getTracks().forEach((track) => track.stop());
+    void context.close().catch(() => undefined);
+  };
+}
+
+/** Token Plan：按住时录音，松手后整段识别 */
+export class TokenPlanRecognizer implements SpeechRecognizer {
+  private session: { stop: () => void; abort: () => void } | null = null;
+
+  get supported(): boolean {
+    return micSupported();
+  }
+
+  start(handlers: RecognitionHandlers): void {
+    this.abort();
+    const config = loadSpeechConfig();
+    const chunks: Int16Array[] = [];
+    let samples = 0;
+    let stopCapture: (() => void) | null = null;
+    let state: 'opening' | 'recording' | 'stopping' | 'done' = 'opening';
+
+    const transcribe = async () => {
+      stopCapture?.();
+      stopCapture = null;
+      const pcm = new Int16Array(samples);
+      let offset = 0;
+      for (const chunk of chunks) {
+        pcm.set(chunk, offset);
+        offset += chunk.length;
+      }
+      try {
+        const text = samples
+          ? await invoke<string>('speech_http_asr', encodeWav(pcm, ASR_SAMPLE_RATE), {
+              headers: {
+                'x-speech-model': config.asr.model,
+                'x-speech-base': config.httpBase,
+                'x-speech-provider': config.providerId,
+              },
+            })
+          : '';
+        if (state === 'done') return;
+        state = 'done';
+        handlers.onFinal((text || '').trim());
+      } catch (error) {
+        if (state === 'done') return;
+        state = 'done';
+        console.warn('[speech] Token Plan ASR failed', error);
+        handlers.onError?.('network');
+      } finally {
+        if (this.session === control) this.session = null;
+      }
+    };
+
+    const control = {
+      stop: () => {
+        if (state === 'recording') {
+          state = 'stopping';
+          void transcribe();
+        } else if (state === 'opening') {
+          state = 'stopping';
+        }
+      },
+      abort: () => {
+        state = 'done';
+        stopCapture?.();
+        stopCapture = null;
+        if (this.session === control) this.session = null;
+      },
+    };
+    this.session = control;
+
+    startMicCapture((pcm) => {
+      if (state !== 'recording' || samples >= MAX_RECORD_SAMPLES) return;
+      chunks.push(pcm);
+      samples += pcm.length;
+    }).then(
+      (stop) => {
+        stopCapture = stop;
+        if (state === 'done') return control.abort();
+        if (state === 'stopping') return void transcribe();
+        state = 'recording';
+      },
+      (error) => {
+        if (state === 'done') return;
+        state = 'done';
+        console.warn('[speech] microphone unavailable', error);
+        handlers.onError?.(mapStartError(error));
+        if (this.session === control) this.session = null;
+      },
+    );
+  }
+
+  stop(): void {
+    this.session?.stop();
+  }
+
+  abort(): void {
+    this.session?.abort();
+  }
+}
+
 interface AsrPayload {
   type: 'partial' | 'final' | 'error' | 'end';
   text?: string;
   message?: string;
 }
 
-export class QwenRecognizer implements SpeechRecognizer {
+/** 百炼实时识别：边说边推流，返回中间结果 */
+export class RealtimeRecognizer implements SpeechRecognizer {
   private session: { stop: () => void; abort: () => void } | null = null;
 
   get supported(): boolean {
-    return (
-      isTauri()
-      && typeof navigator !== 'undefined'
-      && Boolean(navigator.mediaDevices?.getUserMedia)
-      && typeof (window.AudioContext || (window as any).webkitAudioContext) === 'function'
-    );
+    return micSupported();
   }
 
   start(handlers: RecognitionHandlers): void {
@@ -130,9 +259,7 @@ export class QwenRecognizer implements SpeechRecognizer {
     const chunker = new PcmChunker(ASR_SAMPLE_RATE / 10);
 
     let unlisten: UnlistenFn | null = null;
-    let media: MediaStream | null = null;
-    let context: AudioContext | null = null;
-    let processor: ScriptProcessorNode | null = null;
+    let stopMic: (() => void) | null = null;
     let started = false;
     let stopping = false;
     let finished = false;
@@ -153,13 +280,8 @@ export class QwenRecognizer implements SpeechRecognizer {
     };
 
     const stopCapture = () => {
-      processor?.disconnect();
-      if (processor) processor.onaudioprocess = null;
-      media?.getTracks().forEach((track) => track.stop());
-      void context?.close().catch(() => undefined);
-      processor = null;
-      media = null;
-      context = null;
+      stopMic?.();
+      stopMic = null;
     };
 
     const cleanup = () => {
@@ -223,29 +345,20 @@ export class QwenRecognizer implements SpeechRecognizer {
       });
       if (finished) return cleanup();
 
-      const Ctx = window.AudioContext || (window as any).webkitAudioContext;
-      const capture = navigator.mediaDevices
-        .getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } })
-        .then((stream) => {
-          if (finished || stopping) {
-            stream.getTracks().forEach((track) => track.stop());
-            return;
-          }
-          media = stream;
-          context = new Ctx() as AudioContext;
-          const source = context.createMediaStreamSource(stream);
-          processor = context.createScriptProcessor(4096, 1, 1);
-          const inputRate = context.sampleRate;
-          processor.onaudioprocess = (event) => {
-            const pcm = downsampleToPcm16(event.inputBuffer.getChannelData(0), inputRate, ASR_SAMPLE_RATE);
-            chunker.push(pcm).forEach(send);
-          };
-          source.connect(processor);
-          processor.connect(context.destination);
-        });
+      const capture = startMicCapture((pcm) => chunker.push(pcm).forEach(send)).then((stop) => {
+        if (finished || stopping) stop();
+        else stopMic = stop;
+      });
 
       const connect = invoke('speech_asr_start', {
-        args: { sessionId, model: config.asr.model, sampleRate: ASR_SAMPLE_RATE, languageHints: ['zh'], ...auth(config) },
+        args: {
+          sessionId,
+          model: config.asr.model,
+          sampleRate: ASR_SAMPLE_RATE,
+          languageHints: ['zh'],
+          endpoint: config.endpoint,
+          providerId: config.providerId || undefined,
+        },
       }).then(() => {
         if (finished) {
           void invoke('speech_asr_abort', { sessionId }).catch(() => undefined);

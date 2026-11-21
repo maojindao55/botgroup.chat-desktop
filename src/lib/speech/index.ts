@@ -1,5 +1,5 @@
 import { loadSpeechConfig } from '@/config/speechConfig';
-import { QwenRecognizer, QwenSynthesizer } from './qwenSpeech';
+import { CloudSynthesizer, RealtimeRecognizer, TokenPlanRecognizer } from './qwenSpeech';
 import type { SpeechRecognizer, SpeechSynthesizer } from './types';
 import { WebSpeechRecognizer, WebSpeechSynthesizer } from './webSpeech';
 
@@ -8,8 +8,9 @@ export { toSpeakableText } from './speechText';
 
 let webRecognizer: SpeechRecognizer | null = null;
 let webSynthesizer: SpeechSynthesizer | null = null;
-let qwenRecognizer: SpeechRecognizer | null = null;
-let qwenSynthesizer: SpeechSynthesizer | null = null;
+let tokenPlanRecognizer: SpeechRecognizer | null = null;
+let realtimeRecognizer: SpeechRecognizer | null = null;
+let cloudSynthesizer: SpeechSynthesizer | null = null;
 
 function getWebSynthesizer(): SpeechSynthesizer {
   webSynthesizer ??= new WebSpeechSynthesizer();
@@ -18,18 +19,22 @@ function getWebSynthesizer(): SpeechSynthesizer {
 
 /** 按家长设置选引擎；云端不可用（如在浏览器里预览）时退回系统语音 */
 export function getSpeechRecognizer(): SpeechRecognizer {
-  if (loadSpeechConfig().asr.engine === 'qwen') {
-    qwenRecognizer ??= new QwenRecognizer();
-    if (qwenRecognizer.supported) return qwenRecognizer;
+  const engine = loadSpeechConfig().asr.engine;
+  if (engine === 'tokenplan') {
+    tokenPlanRecognizer ??= new TokenPlanRecognizer();
+    if (tokenPlanRecognizer.supported) return tokenPlanRecognizer;
+  } else if (engine === 'qwen') {
+    realtimeRecognizer ??= new RealtimeRecognizer();
+    if (realtimeRecognizer.supported) return realtimeRecognizer;
   }
   webRecognizer ??= new WebSpeechRecognizer();
   return webRecognizer;
 }
 
 export function getSpeechSynthesizer(): SpeechSynthesizer {
-  if (loadSpeechConfig().tts.engine === 'qwen') {
-    qwenSynthesizer ??= new QwenSynthesizer(getWebSynthesizer());
-    if (qwenSynthesizer.supported) return qwenSynthesizer;
+  if (loadSpeechConfig().tts.engine !== 'system') {
+    cloudSynthesizer ??= new CloudSynthesizer(getWebSynthesizer());
+    if (cloudSynthesizer.supported) return cloudSynthesizer;
   }
   return getWebSynthesizer();
 }

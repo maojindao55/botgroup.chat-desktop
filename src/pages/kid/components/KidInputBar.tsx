@@ -20,6 +20,7 @@ export function KidInputBar({ disabled, placeholder = '想说点什么？', onSe
   const { voice, setVoicePrefs, recognizer, profile } = useKid();
   const [text, setText] = useState('');
   const [listening, setListening] = useState(false);
+  const [recognizing, setRecognizing] = useState(false);
   const [partial, setPartial] = useState('');
   const [hint, setHint] = useState('');
   const listeningRef = useRef(false);
@@ -47,6 +48,7 @@ export function KidInputBar({ disabled, placeholder = '想说点什么？', onSe
         onFinal: (result) => {
           listeningRef.current = false;
           setListening(false);
+          setRecognizing(false);
           setPartial('');
           if (result) send(result);
           else setHint(speechErrorText['no-speech'] || '');
@@ -54,6 +56,7 @@ export function KidInputBar({ disabled, placeholder = '想说点什么？', onSe
         onError: (error) => {
           listeningRef.current = false;
           setListening(false);
+          setRecognizing(false);
           setHint(speechErrorText[error] || '没听清楚，再试一次吧～');
         },
       },
@@ -62,7 +65,9 @@ export function KidInputBar({ disabled, placeholder = '想说点什么？', onSe
   };
 
   const stopListening = () => {
-    if (listeningRef.current) recognizer.stop();
+    if (!listeningRef.current) return;
+    setRecognizing(true);
+    recognizer.stop();
   };
 
   return (
@@ -109,8 +114,10 @@ export function KidInputBar({ disabled, placeholder = '想说点什么？', onSe
               listening ? 'scale-[1.02] bg-rose-400' : 'bg-amber-400'
             }`}
           >
-            <span aria-hidden>{listening ? '👂' : '🎤'}</span>
-            <span className="truncate">{listening ? partial || '我在听，说完松开～' : '按住说话'}</span>
+            <span aria-hidden>{recognizing ? '🤔' : listening ? '👂' : '🎤'}</span>
+            <span className="truncate">
+              {recognizing ? partial || '我想想你说了什么…' : listening ? partial || '我在听，说完松开～' : '按住说话'}
+            </span>
           </button>
         ) : (
           <form

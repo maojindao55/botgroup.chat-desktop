@@ -1,9 +1,12 @@
 /**
- * 语音服务设置：朗读和识别分别选「系统」或「千问云端」。API Key 不在这里，存在 Rust 保险箱。
+ * 语音服务设置：朗读和识别分别选引擎。API Key 不在这里，存在 Rust 保险箱。
+ * - tokenplan：千问 Token Plan（sk-sp- Key），HTTP 接口，录完整段再识别
+ * - qwen：百炼按量付费 Key，实时 WebSocket，边说边出字
  * 零运行时依赖，便于测试。
  */
 
-export type SpeechEngine = 'system' | 'qwen';
+export type SpeechEngine = 'system' | 'tokenplan' | 'qwen';
+export type CloudEngine = Exclude<SpeechEngine, 'system'>;
 
 export interface SpeechConfig {
   tts: {
@@ -12,12 +15,17 @@ export interface SpeechConfig {
     /** 为空时每位伙伴用各自的默认音色 */
     voice: string;
     rate: number;
+    /** 语气指令（Token Plan 用），为空则不传 */
+    instruction: string;
   };
   asr: {
     engine: SpeechEngine;
     model: string;
   };
+  /** 实时 WebSocket 接入地址（qwen 引擎） */
   endpoint: string;
+  /** HTTP 接入地址（tokenplan 引擎） */
+  httpBase: string;
   /** 为空时使用单独配置的语音 API Key，否则复用该模型服务的 Key */
   providerId: string;
 }
@@ -30,34 +38,126 @@ export const SPEECH_ENDPOINTS = [
   { value: 'wss://dashscope-intl.aliyuncs.com/api-ws/v1/inference', label: '阿里云百炼（国际）' },
 ] as const;
 
-/** CosyVoice v3 的儿童音色，每位伙伴一个 */
-export const COMPANION_VOICES: Record<string, string> = {
-  'kid-curious-doctor': 'longjielidou_v3',
-  'kid-story-fairy': 'longshanshan_v3',
-  'kid-math-bear': 'longniuniu_v3',
-  'kid-drawing-bunny': 'longhuhu_v3',
-};
-export const DEFAULT_VOICE = 'longhuhu_v3';
+export const TOKEN_PLAN_BASE = 'https://token-plan.maas.qianwenaiapi.com';
 
-export const KID_VOICE_OPTIONS = [
-  { value: 'longhuhu_v3', label: '龙呼呼 · 天真女童' },
-  { value: 'longniuniu_v3', label: '龙牛牛 · 阳光男童' },
-  { value: 'longshanshan_v3', label: '龙闪闪 · 戏剧化童声' },
-  { value: 'longjielidou_v3', label: '龙杰力豆 · 顽皮男孩' },
-  { value: 'longpaopao_v3', label: '龙泡泡 · 泡泡音' },
-  { value: 'longling_v3', label: '龙铃 · 稚气女孩' },
-];
+/** Token Plan 的合成模型没有童声，用语气指令让成年音色更像在和小朋友说话 */
+export const KID_TTS_INSTRUCTION = '用活泼亲切、温柔有耐心的语气，像给小朋友讲故事一样说';
+
+export const SPEECH_MODELS: Record<CloudEngine, { tts: { value: string; label: string }[]; asr: { value: string; label: string }[] }> = {
+  tokenplan: {
+    tts: [{ value: 'qwen-audio-3.0-tts-plus', label: 'Qwen-Audio 3.0 TTS Plus' }],
+    asr: [{ value: 'qwen-audio-3.0-asr-flash', label: 'Qwen-Audio 3.0 ASR Flash' }],
+  },
+  qwen: {
+    tts: [
+      { value: 'qwen-audio-3.1-tts-flash', label: 'Qwen-Audio 3.1 TTS Flash' },
+      { value: 'cosyvoice-v3-flash', label: 'CosyVoice v3 Flash' },
+    ],
+    asr: [
+      { value: 'qwen-audio-3.1-asr-flash-message', label: 'Qwen-Audio 3.1 ASR Flash（语音消息）' },
+      { value: 'fun-asr-realtime', label: 'Fun-ASR Realtime' },
+    ],
+  },
+};
+
+export function defaultModel(kind: 'tts' | 'asr', engine: SpeechEngine): string {
+  return SPEECH_MODELS[engine === 'qwen' ? 'qwen' : 'tokenplan'][kind][0].value;
+}
+
+/** 模型是另一个云端引擎的预设时换成当前引擎的默认模型，自定义模型名原样保留 */
+function modelForEngine(kind: 'tts' | 'asr', engine: SpeechEngine, model: string): string {
+  if (!model) return defaultModel(kind, engine);
+  if (engine === 'system') return model;
+  const otherEngine: CloudEngine = engine === 'qwen' ? 'tokenplan' : 'qwen';
+  const own = SPEECH_MODELS[engine][kind].some((m) => m.value === model);
+  const other = SPEECH_MODELS[otherEngine][kind].some((m) => m.value === model);
+  return other && !own ? defaultModel(kind, engine) : model;
+}
+
+interface VoiceCatalog {
+  /** 每位伙伴一个音色 */
+  companions: Record<string, string>;
+  fallback: string;
+  options: { value: string; label: string }[];
+}
+
+/** 音色只能和所属模型搭配使用，换模型时音色表跟着换 */
+const VOICE_CATALOGS: Record<'tokenplan' | 'qwen-audio-3.1' | 'cosyvoice', VoiceCatalog> = {
+  // qwen-audio-3.0-tts-plus 只有两个系统音色，没有童声
+  tokenplan: {
+    companions: {
+      'kid-curious-doctor': 'longanlufeng',
+      'kid-story-fairy': 'longanlingxin',
+      'kid-math-bear': 'longanlufeng',
+      'kid-drawing-bunny': 'longanlingxin',
+    },
+    fallback: 'longanlingxin',
+    options: [
+      { value: 'longanlingxin', label: '龙安灵心 · 知心温暖女声' },
+      { value: 'longanlufeng', label: '龙安鲁风 · 明亮开朗男声' },
+    ],
+  },
+  'qwen-audio-3.1': {
+    companions: {
+      'kid-curious-doctor': 'longjielidou_v3.1',
+      'kid-story-fairy': 'longshanshan_v3.1',
+      'kid-math-bear': 'longniuniu_v3.1',
+      'kid-drawing-bunny': 'longpaopao_v3.1',
+    },
+    fallback: 'longke_v3.1',
+    options: [
+      { value: 'longke_v3.1', label: '龙可 · 懵懂童声' },
+      { value: 'longjielidou_v3.1', label: '龙杰力豆 · 天真男童' },
+      { value: 'longniuniu_v3.1', label: '龙牛牛 · 阳光男童' },
+      { value: 'longshanshan_v3.1', label: '龙闪闪 · 戏剧化童声' },
+      { value: 'longpaopao_v3.1', label: '龙泡泡 · 泡泡音女童' },
+      { value: 'longling_v3.1', label: '龙铃 · 稚气女孩' },
+    ],
+  },
+  cosyvoice: {
+    companions: {
+      'kid-curious-doctor': 'longjielidou_v3',
+      'kid-story-fairy': 'longshanshan_v3',
+      'kid-math-bear': 'longniuniu_v3',
+      'kid-drawing-bunny': 'longhuhu_v3',
+    },
+    fallback: 'longhuhu_v3',
+    options: [
+      { value: 'longhuhu_v3', label: '龙呼呼 · 天真女童' },
+      { value: 'longniuniu_v3', label: '龙牛牛 · 阳光男童' },
+      { value: 'longshanshan_v3', label: '龙闪闪 · 戏剧化童声' },
+      { value: 'longjielidou_v3', label: '龙杰力豆 · 顽皮男孩' },
+      { value: 'longpaopao_v3', label: '龙泡泡 · 泡泡音' },
+      { value: 'longling_v3', label: '龙铃 · 稚气女孩' },
+    ],
+  },
+};
+
+export function voiceCatalog(model: string): VoiceCatalog {
+  if (model.startsWith('cosyvoice')) return VOICE_CATALOGS.cosyvoice;
+  if (model.startsWith('qwen-audio-3.0')) return VOICE_CATALOGS.tokenplan;
+  return VOICE_CATALOGS['qwen-audio-3.1'];
+}
+
+function belongsToOtherModel(voice: string, model: string): boolean {
+  if (!voice) return false;
+  const own = voiceCatalog(model);
+  return Object.values(VOICE_CATALOGS).some(
+    (catalog) => catalog !== own && catalog.options.some((option) => option.value === voice),
+  );
+}
 
 export const DEFAULT_SPEECH_CONFIG: SpeechConfig = {
-  tts: { engine: 'system', model: 'cosyvoice-v3-flash', voice: '', rate: 1 },
-  asr: { engine: 'system', model: 'fun-asr-realtime' },
+  tts: { engine: 'system', model: defaultModel('tts', 'tokenplan'), voice: '', rate: 1, instruction: KID_TTS_INSTRUCTION },
+  asr: { engine: 'system', model: defaultModel('asr', 'tokenplan') },
   endpoint: SPEECH_ENDPOINTS[0].value,
+  httpBase: TOKEN_PLAN_BASE,
   providerId: '',
 };
 
 const CONFIG_KEY = 'kid_speech_config';
 
-const isEngine = (v: unknown): v is SpeechEngine => v === 'system' || v === 'qwen';
+const isEngine = (v: unknown): v is SpeechEngine => v === 'system' || v === 'tokenplan' || v === 'qwen';
 const str = (v: unknown, fallback: string) => (typeof v === 'string' && v.trim() ? v.trim() : fallback);
 
 export function normalizeSpeechConfig(raw: unknown): SpeechConfig {
@@ -66,18 +166,24 @@ export function normalizeSpeechConfig(raw: unknown): SpeechConfig {
   const tts = value.tts && typeof value.tts === 'object' ? value.tts : {};
   const asr = value.asr && typeof value.asr === 'object' ? value.asr : {};
   const rate = Number(tts.rate);
+  const ttsEngine = isEngine(tts.engine) ? tts.engine : d.tts.engine;
+  const asrEngine = isEngine(asr.engine) ? asr.engine : d.asr.engine;
+  const ttsModel = modelForEngine('tts', ttsEngine, str(tts.model, ''));
+  const voice = typeof tts.voice === 'string' ? tts.voice.trim() : '';
   return {
     tts: {
-      engine: isEngine(tts.engine) ? tts.engine : d.tts.engine,
-      model: str(tts.model, d.tts.model),
-      voice: typeof tts.voice === 'string' ? tts.voice.trim() : '',
+      engine: ttsEngine,
+      model: ttsModel,
+      voice: belongsToOtherModel(voice, ttsModel) ? '' : voice,
       rate: Number.isFinite(rate) ? Math.min(2, Math.max(0.5, rate)) : d.tts.rate,
+      instruction: typeof tts.instruction === 'string' ? tts.instruction.trim().slice(0, 200) : d.tts.instruction,
     },
     asr: {
-      engine: isEngine(asr.engine) ? asr.engine : d.asr.engine,
-      model: str(asr.model, d.asr.model),
+      engine: asrEngine,
+      model: modelForEngine('asr', asrEngine, str(asr.model, '')),
     },
     endpoint: str(value.endpoint, d.endpoint),
+    httpBase: str(value.httpBase, d.httpBase),
     providerId: typeof value.providerId === 'string' ? value.providerId.trim() : '',
   };
 }
@@ -99,10 +205,11 @@ export function saveSpeechConfig(config: SpeechConfig): void {
   }
 }
 
-/** 家长设了统一音色就用它，否则按伙伴取默认音色 */
+/** 家长设了统一音色就用它，否则按伙伴取当前模型下的默认音色 */
 export function voiceForSpeaker(config: SpeechConfig, speakerId?: string): string {
   if (config.tts.voice) return config.tts.voice;
-  return (speakerId && COMPANION_VOICES[speakerId]) || DEFAULT_VOICE;
+  const catalog = voiceCatalog(config.tts.model);
+  return (speakerId && catalog.companions[speakerId]) || catalog.fallback;
 }
 
 /** 按句切分，先合成第一句就能先播放；太短的句子并到下一句，减少请求次数 */
