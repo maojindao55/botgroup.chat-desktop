@@ -3,6 +3,7 @@ mod db;
 mod llm_proxy;
 mod migrate;
 mod provider;
+mod speech;
 mod vault;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -40,6 +41,11 @@ pub fn run() {
             api::secret_delete,
             api::secret_list_names,
             llm_proxy::llm_chat_stream,
+            speech::speech_tts_synthesize,
+            speech::speech_asr_start,
+            speech::speech_asr_send,
+            speech::speech_asr_stop,
+            speech::speech_asr_abort,
             provider::list_providers,
             provider::get_provider,
             provider::upsert_provider,
