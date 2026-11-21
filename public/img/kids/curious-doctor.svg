@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="好奇博士">
+  <circle cx="64" cy="64" r="64" fill="#DCE8FF"/>
+  <circle cx="64" cy="70" r="40" fill="#FFD9B8"/>
+  <path d="M26 58c2-26 20-38 38-38s36 12 38 38c-8-10-20-14-38-14s-30 4-38 14z" fill="#5B4636"/>
+  <circle cx="48" cy="70" r="13" fill="#fff" stroke="#2F4C8F" stroke-width="5"/>
+  <circle cx="80" cy="70" r="13" fill="#fff" stroke="#2F4C8F" stroke-width="5"/>
+  <path d="M61 70h6" stroke="#2F4C8F" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="50" cy="71" r="5" fill="#2B2B2B"/>
+  <circle cx="82" cy="71" r="5" fill="#2B2B2B"/>
+  <circle cx="52" cy="69" r="1.8" fill="#fff"/>
+  <circle cx="84" cy="69" r="1.8" fill="#fff"/>
+  <path d="M54 92c6 6 14 6 20 0" fill="none" stroke="#C0563C" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="38" cy="88" r="5" fill="#FF9F9F" opacity=".6"/>
+  <circle cx="90" cy="88" r="5" fill="#FF9F9F" opacity=".6"/>
+  <circle cx="100" cy="30" r="10" fill="none" stroke="#4F8BFF" stroke-width="5"/>
+  <path d="M93 37l-9 9" stroke="#4F8BFF" stroke-width="6" stroke-linecap="round"/>
+</svg>

@@ -92,9 +92,16 @@ assert.doesNotMatch(sidebar, /onNavigateCLI|devTasks/);
 
 const chatUI = await readComponent('ChatUI.tsx');
 assert.match(chatUI, /AppSettingsModal/);
-for (const removed of [/isCLIGroup/, /CLITaskUI/, /AgentChatUI/, /\/api\/cli\//, /AdSection/]) {
+for (const removed of [/isCLIGroup/, /CLITaskUI/, /AgentChatUI/, /\/api\/cli\//, /AdSection/, /\/api\/scheduler/]) {
   assert.doesNotMatch(chatUI, removed);
 }
+for (const symbol of [/pickCompanions\(/, /capResponders\(/, /rememberFromMessage\(/]) {
+  assert.match(chatUI, symbol, 'role group chat uses the kid scheduler, age caps and local memory');
+}
+
+const requestSource = await readFile(new URL('../utils/request.ts', import.meta.url), 'utf8');
+assert.match(requestSource, /buildCompanionSystemPrompt\(/, '/api/chat always prepends the child rules');
+assert.doesNotMatch(requestSource, /custom_prompt\}\\n 注意重要/, 'the old adult group-chat system prompt is gone');
 
 for (const removedFile of ['AgentChatUI.tsx', 'CLITaskUI.tsx', 'CLIGroupSettings.tsx', 'AgentGroupSettings.tsx']) {
   await assert.rejects(readComponent(removedFile), { code: 'ENOENT' }, `${removedFile} must be deleted`);

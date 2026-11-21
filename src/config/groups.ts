@@ -28,4 +28,16 @@ export function isSupportedGroup(group: unknown): group is Group {
 }
 
 // ============ 预设群聊 ============
-export const defaultGroups: Group[] = [];
+export const KID_PLAYGROUND_GROUP_ID = 'kid-playground';
+
+export const defaultGroups: Group[] = [
+  {
+    id: KID_PLAYGROUND_GROUP_ID,
+    type: 'ai',
+    name: '小伙伴乐园',
+    description: '好奇博士、故事精灵、数学小熊和画画兔都在这里，一起聊天、讲故事、玩游戏。',
+    memberIds: ['kid-curious-doctor', 'kid-story-fairy', 'kid-math-bear', 'kid-drawing-bunny'],
+    isGroupDiscussionMode: false,
+    schedulerStrategy: 'tag',
+  },
+];

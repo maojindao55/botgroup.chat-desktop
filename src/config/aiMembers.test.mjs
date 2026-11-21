@@ -14,9 +14,35 @@ async function importTsModule(url) {
   return import(moduleUrl);
 }
 
-const { builtinAIMembers, isSupportedMemberKind, REMOVED_MEMBER_KINDS } = await importTsModule(
-  new URL('./aiMembers.ts', import.meta.url),
+const {
+  builtinAIMembers,
+  isSupportedMemberKind,
+  REMOVED_MEMBER_KINDS,
+  KID_COMPANION_IDS,
+  getCompanionMeta,
+  isKidCompanionId,
+} = await importTsModule(new URL('./aiMembers.ts', import.meta.url));
+
+assert.deepEqual(
+  builtinAIMembers.map((member) => member.name),
+  ['好奇博士', '故事精灵', '数学小熊', '画画兔'],
 );
+assert.deepEqual(builtinAIMembers.map((member) => member.id), [...KID_COMPANION_IDS]);
+for (const member of builtinAIMembers) {
+  assert.equal(member.source, 'builtin');
+  assert.equal(member.enabled, true);
+  assert.match(member.avatar, /^\/img\/kids\/[a-z-]+\.svg$/, `${member.name} has a bundled avatar`);
+  assert.ok(member.tags.length >= 5, `${member.name} has scheduler keywords`);
+  assert.match(member.customPrompt, /口头禅/, `${member.name} has a catchphrase in the persona`);
+  assert.equal(member.providerId, '', 'builtin companions use the parent-selected model');
+  assert.equal(member.model, '');
+  const meta = getCompanionMeta(member.id);
+  assert.ok(meta?.greeting && meta.catchphrase && meta.color && meta.emoji, `${member.name} has kid UI meta`);
+  assert.ok(member.customPrompt.includes(meta.catchphrase), 'catchphrase matches the persona');
+}
+assert.equal(isKidCompanionId('kid-math-bear'), true);
+assert.equal(isKidCompanionId('llm-custom'), false);
+assert.equal(getCompanionMeta('llm-custom'), undefined);
 
 assert.ok(
   builtinAIMembers.every((member) => member.kind === 'llm'),

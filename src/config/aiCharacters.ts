@@ -1,4 +1,4 @@
-import { builtinAIMembers, AIMember } from './aiMembers';
+import type { AIMember } from './aiMembers';
 import { applyPromptTemplate } from '@/utils/prompt';
 
 // ============ 模型配置 ============
@@ -101,26 +101,4 @@ export function mapAIMemberToLegacy(m: AIMember, groupName?: string): AICharacte
       : m.stages,
     runtime: 'llm'
   };
-}
-
-// ============ 调度器 ============
-export function generateAICharacters(_groupName: string, allTags: string): AICharacter[] {
-  return [
-    {
-      id: 'ai0',
-      name: "调度器",
-      personality: "sheduler",
-      model: modelConfigs[0].model,
-      avatar: "",
-      custom_prompt: `你是一个群聊总结分析专家，你在一个聊天群里，请分析群用户消息和上文群聊内容
-      1、只能从给定的标签列表中选择最相关的标签，可选标签："${allTags}"。
-      2、请只返回标签列表，用逗号分隔，不要有其他解释, 不要有任何前缀。
-      3、回复格式示例：文字游戏, 新闻报道, 娱乐`
-    }
-  ];
-}
-
-/** 获取所有 LLM 角色（不含调度器） */
-export function getAvailableAICharacters(): AICharacter[] {
-  return builtinAIMembers.map(m => mapAIMemberToLegacy(m));
 }
