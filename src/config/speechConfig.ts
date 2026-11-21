@@ -1,0 +1,133 @@
+/**
+ * 语音服务设置：朗读和识别分别选「系统」或「千问云端」。API Key 不在这里，存在 Rust 保险箱。
+ * 零运行时依赖，便于测试。
+ */
+
+export type SpeechEngine = 'system' | 'qwen';
+
+export interface SpeechConfig {
+  tts: {
+    engine: SpeechEngine;
+    model: string;
+    /** 为空时每位伙伴用各自的默认音色 */
+    voice: string;
+    rate: number;
+  };
+  asr: {
+    engine: SpeechEngine;
+    model: string;
+  };
+  endpoint: string;
+  /** 为空时使用单独配置的语音 API Key，否则复用该模型服务的 Key */
+  providerId: string;
+}
+
+export const SPEECH_SECRET_NAME = 'SPEECH_DASHSCOPE_API_KEY';
+
+export const SPEECH_ENDPOINTS = [
+  { value: 'wss://maas.qianwenaiapi.com/api-ws/v1/inference', label: '千问AI平台' },
+  { value: 'wss://dashscope.aliyuncs.com/api-ws/v1/inference', label: '阿里云百炼（北京）' },
+  { value: 'wss://dashscope-intl.aliyuncs.com/api-ws/v1/inference', label: '阿里云百炼（国际）' },
+] as const;
+
+/** CosyVoice v3 的儿童音色，每位伙伴一个 */
+export const COMPANION_VOICES: Record<string, string> = {
+  'kid-curious-doctor': 'longjielidou_v3',
+  'kid-story-fairy': 'longshanshan_v3',
+  'kid-math-bear': 'longniuniu_v3',
+  'kid-drawing-bunny': 'longhuhu_v3',
+};
+export const DEFAULT_VOICE = 'longhuhu_v3';
+
+export const KID_VOICE_OPTIONS = [
+  { value: 'longhuhu_v3', label: '龙呼呼 · 天真女童' },
+  { value: 'longniuniu_v3', label: '龙牛牛 · 阳光男童' },
+  { value: 'longshanshan_v3', label: '龙闪闪 · 戏剧化童声' },
+  { value: 'longjielidou_v3', label: '龙杰力豆 · 顽皮男孩' },
+  { value: 'longpaopao_v3', label: '龙泡泡 · 泡泡音' },
+  { value: 'longling_v3', label: '龙铃 · 稚气女孩' },
+];
+
+export const DEFAULT_SPEECH_CONFIG: SpeechConfig = {
+  tts: { engine: 'system', model: 'cosyvoice-v3-flash', voice: '', rate: 1 },
+  asr: { engine: 'system', model: 'fun-asr-realtime' },
+  endpoint: SPEECH_ENDPOINTS[0].value,
+  providerId: '',
+};
+
+const CONFIG_KEY = 'kid_speech_config';
+
+const isEngine = (v: unknown): v is SpeechEngine => v === 'system' || v === 'qwen';
+const str = (v: unknown, fallback: string) => (typeof v === 'string' && v.trim() ? v.trim() : fallback);
+
+export function normalizeSpeechConfig(raw: unknown): SpeechConfig {
+  const d = DEFAULT_SPEECH_CONFIG;
+  const value = (raw && typeof raw === 'object' ? raw : {}) as Record<string, any>;
+  const tts = value.tts && typeof value.tts === 'object' ? value.tts : {};
+  const asr = value.asr && typeof value.asr === 'object' ? value.asr : {};
+  const rate = Number(tts.rate);
+  return {
+    tts: {
+      engine: isEngine(tts.engine) ? tts.engine : d.tts.engine,
+      model: str(tts.model, d.tts.model),
+      voice: typeof tts.voice === 'string' ? tts.voice.trim() : '',
+      rate: Number.isFinite(rate) ? Math.min(2, Math.max(0.5, rate)) : d.tts.rate,
+    },
+    asr: {
+      engine: isEngine(asr.engine) ? asr.engine : d.asr.engine,
+      model: str(asr.model, d.asr.model),
+    },
+    endpoint: str(value.endpoint, d.endpoint),
+    providerId: typeof value.providerId === 'string' ? value.providerId.trim() : '',
+  };
+}
+
+export function loadSpeechConfig(): SpeechConfig {
+  try {
+    const raw = localStorage.getItem(CONFIG_KEY);
+    return normalizeSpeechConfig(raw ? JSON.parse(raw) : null);
+  } catch {
+    return normalizeSpeechConfig(null);
+  }
+}
+
+export function saveSpeechConfig(config: SpeechConfig): void {
+  try {
+    localStorage.setItem(CONFIG_KEY, JSON.stringify(normalizeSpeechConfig(config)));
+  } catch {
+    // ignore
+  }
+}
+
+/** 家长设了统一音色就用它，否则按伙伴取默认音色 */
+export function voiceForSpeaker(config: SpeechConfig, speakerId?: string): string {
+  if (config.tts.voice) return config.tts.voice;
+  return (speakerId && COMPANION_VOICES[speakerId]) || DEFAULT_VOICE;
+}
+
+/** 按句切分，先合成第一句就能先播放；太短的句子并到下一句，减少请求次数 */
+export function splitForSynthesis(text: string, minChars = 8, maxChars = 120): string[] {
+  const parts = (text || '').match(/[^。！？!?；;\n]+[。！？!?；;]*|\n+/g) || [];
+  const out: string[] = [];
+  let buffer = '';
+  for (const part of parts) {
+    const piece = part.trim();
+    if (!piece) continue;
+    buffer += piece;
+    if (Array.from(buffer).length >= minChars) {
+      out.push(buffer);
+      buffer = '';
+    }
+  }
+  if (buffer) {
+    if (out.length && Array.from(buffer).length < minChars) out[out.length - 1] += buffer;
+    else out.push(buffer);
+  }
+  return out.flatMap((s) => {
+    const chars = Array.from(s);
+    if (chars.length <= maxChars) return [s];
+    const chunks: string[] = [];
+    for (let i = 0; i < chars.length; i += maxChars) chunks.push(chars.slice(i, i + maxChars).join(''));
+    return chunks;
+  });
+}

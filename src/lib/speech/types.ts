@@ -1,6 +1,6 @@
 /**
- * 语音能力的抽象接口。桌面端先用 Web Speech API 实现，
- * 第二期可以换成云端 ASR/TTS 或移动端原生插件，页面只依赖这里的接口。
+ * 语音能力的抽象接口。实现有系统自带的 Web Speech 和千问云端两种，
+ * 之后可再接移动端原生插件，页面只依赖这里的接口。
  */
 
 export type SpeechErrorCode = 'not-allowed' | 'no-speech' | 'network' | 'unsupported' | 'aborted' | 'unknown';
@@ -26,6 +26,8 @@ export interface SpeakOptions {
   lang?: string;
   rate?: number;
   pitch?: number;
+  /** 正在说话的伙伴 id，云端朗读据此选择音色 */
+  speakerId?: string;
 }
 
 export interface SpeechSynthesizer {
