@@ -62,7 +62,7 @@ export class CloudSynthesizer implements SpeechSynthesizer {
     this.cancel();
     const gen = ++this.generation;
     const config = loadSpeechConfig();
-    const voice = voiceForSpeaker(config, options.speakerId);
+    const voice = voiceForSpeaker(config, options.speakerId, options.gameId);
     const sentences = splitForSynthesis(content);
     try {
       // 播放当前句时预取下一句

@@ -28,6 +28,8 @@ export interface SpeakOptions {
   pitch?: number;
   /** 正在说话的伙伴 id，云端朗读据此选择音色 */
   speakerId?: string;
+  /** 正在进行的小游戏 id，家长可以给游戏单独设音色 */
+  gameId?: string;
 }
 
 export interface SpeechSynthesizer {
