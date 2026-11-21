@@ -18,7 +18,7 @@ globalThis.localStorage = {
 };
 
 const config = await importTsModule(new URL('../../config/speechConfig.ts', import.meta.url));
-const { downsampleToPcm16, encodeWav, PcmChunker } = await importTsModule(new URL('./pcm.ts', import.meta.url));
+const { downsampleToPcm16, encodeWav, PcmChunker, pcm16Base64ToFloat32 } = await importTsModule(new URL('./pcm.ts', import.meta.url));
 const gameSource = await readFile(new URL('../../config/aiGame.ts', import.meta.url), 'utf8');
 const aiMembersSource = await readFile(new URL('../../config/aiMembers.ts', import.meta.url), 'utf8');
 
@@ -232,6 +232,45 @@ const aiMembersSource = await readFile(new URL('../../config/aiMembers.ts', impo
   assert.equal(ascii(36, 4), 'data');
   assert.equal(view.getUint32(40, true), 6);
   assert.deepEqual([view.getInt16(44, true), view.getInt16(46, true), view.getInt16(48, true)], [1, -2, 32767]);
+}
+
+// ---- 实时语音对话：默认开启、需要云端 Key、音色单独存 ----
+{
+  const d = config.loadSpeechConfig();
+  assert.deepEqual(d.dialog, {
+    enabled: true,
+    model: 'qwen-audio-3.0-realtime-plus',
+    endpoint: 'wss://token-plan.maas.qianwenaiapi.com/api-ws/v1/realtime',
+  });
+  assert.equal(config.dialogEnabled(d), false, 'no cloud engine means no key');
+  const cloud = config.normalizeSpeechConfig({ asr: { engine: 'tokenplan' } });
+  assert.equal(config.dialogEnabled(cloud), true);
+  const off = config.normalizeSpeechConfig({ asr: { engine: 'tokenplan' }, dialog: { enabled: false, model: ' ', endpoint: 3 } });
+  assert.equal(config.dialogEnabled(off), false);
+  assert.equal(off.dialog.model, 'qwen-audio-3.0-realtime-plus');
+  assert.equal(off.dialog.endpoint, config.DIALOG_ENDPOINT);
+
+  const catalog = config.voiceCatalog('qwen-audio-3.0-realtime-plus');
+  assert.deepEqual(catalog.options.map((o) => o.value).sort(), ['longanlingxi', 'longanlingxin', 'longanlufeng', 'longanqian', 'longanxiaoxin']);
+  assert.equal(config.voiceCatalog('qwen-audio-3.0-tts-plus').companions['kid-story-fairy'] !== undefined, true);
+  assert.equal(config.dialogVoiceFor(cloud, 'kid-story-fairy'), 'longanlingxi');
+  assert.equal(config.dialogVoiceFor(cloud, 'kid-drawing-bunny'), 'longanxiaoxin');
+  assert.equal(config.dialogVoiceFor(cloud, 'someone-else'), 'longanqian');
+
+  const custom = config.withCustomVoice(cloud, 'kid-story-fairy', ' my-clone-1 ', cloud.dialog.model);
+  assert.equal(config.dialogVoiceFor(custom, 'kid-story-fairy'), 'my-clone-1');
+  assert.equal(config.customVoice(custom, 'kid-story-fairy'), '', 'read-aloud voice untouched');
+  assert.equal(config.voiceForSpeaker(custom, 'kid-story-fairy'), config.voiceForSpeaker(cloud, 'kid-story-fairy'));
+  const roundTrip = config.normalizeSpeechConfig(JSON.parse(JSON.stringify(custom)));
+  assert.equal(config.dialogVoiceFor(roundTrip, 'kid-story-fairy'), 'my-clone-1');
+}
+
+// ---- 实时对话返回的 24k PCM 解码 ----
+{
+  const bytes = new Uint8Array(new Int16Array([0, 16384, -32768, 32767]).buffer);
+  const floats = pcm16Base64ToFloat32(Buffer.from(bytes).toString('base64'));
+  assert.deepEqual(Array.from(floats), [0, 0.5, -1, 32767 / 32768]);
+  assert.equal(pcm16Base64ToFloat32('').length, 0);
 }
 
 console.log('qwenSpeech tests passed');

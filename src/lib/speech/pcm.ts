@@ -16,6 +16,19 @@ export function downsampleToPcm16(input: Float32Array, inputRate: number, output
   return out;
 }
 
+/** Base64 编码的 16-bit 小端 PCM 转成 Web Audio 用的 float32 */
+export function pcm16Base64ToFloat32(base64: string): Float32Array {
+  const binary = atob(base64);
+  const count = Math.floor(binary.length / 2);
+  const out = new Float32Array(count);
+  for (let i = 0; i < count; i += 1) {
+    let value = binary.charCodeAt(i * 2) | (binary.charCodeAt(i * 2 + 1) << 8);
+    if (value >= 0x8000) value -= 0x10000;
+    out[i] = value / 0x8000;
+  }
+  return out;
+}
+
 /** 攒够一定字节数再发送，避免每个音频回调都调用一次 IPC */
 export class PcmChunker {
   private parts: Int16Array[] = [];

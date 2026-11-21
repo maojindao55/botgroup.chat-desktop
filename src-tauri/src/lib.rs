@@ -4,6 +4,7 @@ mod llm_proxy;
 mod migrate;
 mod provider;
 mod speech;
+mod speech_dialog;
 mod speech_http;
 mod vault;
 
@@ -49,6 +50,10 @@ pub fn run() {
             speech::speech_asr_abort,
             speech_http::speech_http_tts,
             speech_http::speech_http_asr,
+            speech_dialog::speech_dialog_start,
+            speech_dialog::speech_dialog_send,
+            speech_dialog::speech_dialog_commit,
+            speech_dialog::speech_dialog_close,
             provider::list_providers,
             provider::get_provider,
             provider::upsert_provider,

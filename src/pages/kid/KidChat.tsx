@@ -8,6 +8,7 @@ import { ChatBubble, CompanionAvatar } from './components/ChatBubble';
 import { KidInputBar } from './components/KidInputBar';
 import { KID_SPEAKER_ID, useKidMessages } from './hooks/useKidMessages';
 import { useReadAloud } from './hooks/useReadAloud';
+import { useRealtimeTalk } from './hooks/useRealtimeTalk';
 import { PLAYGROUND_CHAT_ID } from './kidRoutes';
 
 const suggestionsByCompanion: Record<string, string[]> = {
@@ -20,12 +21,29 @@ const suggestionsByCompanion: Record<string, string[]> = {
 
 function ChatView({ chatId, members }: { chatId: string; members: KidCompanion[] }) {
   const { profile, memory, recordMessage, refreshMemory, voice, setVoicePrefs, companions } = useKid();
-  const { messages, push, askCompanion, busy, pendingId } = useKidMessages(chatId);
+  const { messages, messagesRef, push, askCompanion, startReply, busy, pendingId } = useKidMessages(chatId);
   const readAloud = useReadAloud();
   const listRef = useRef<HTMLDivElement>(null);
   const isPlayground = chatId === PLAYGROUND_CHAT_ID;
   const fontSize = profile.band === 'preschool' ? 22 : 19;
   const byId = useMemo(() => new Map(companions.map((c) => [c.member.id, c])), [companions]);
+
+  const realtime = useRealtimeTalk({
+    companion: members[0],
+    allowed: !isPlayground && members.length === 1,
+    autoReadAloud: voice.autoReadAloud,
+    profile,
+    memory,
+    messagesRef,
+    startReply,
+    onPress: () => readAloud.cancel(),
+    onKidSpoke: (text) => {
+      if (text) rememberFromMessage(text);
+      refreshMemory();
+      push({ speakerId: KID_SPEAKER_ID, speakerName: memory.nickname || '我', content: text || '🎤（说了一段话）' });
+      recordMessage([members[0].member.id]);
+    },
+  });
 
   const greeted = useRef(false);
   useEffect(() => {
@@ -92,7 +110,10 @@ function ChatView({ chatId, members }: { chatId: string; members: KidCompanion[]
           <button
             type="button"
             onClick={() => {
-              if (voice.autoReadAloud) readAloud.cancel();
+              if (voice.autoReadAloud) {
+                readAloud.cancel();
+                realtime.stopSpeaking();
+              }
               setVoicePrefs({ autoReadAloud: !voice.autoReadAloud });
             }}
             aria-pressed={voice.autoReadAloud}
@@ -126,7 +147,14 @@ function ChatView({ chatId, members }: { chatId: string; members: KidCompanion[]
         })}
       </div>
 
-      <KidInputBar disabled={busy} onSend={handleSend} suggestions={suggestionsByCompanion[chatId]} />
+      <KidInputBar
+        disabled={busy}
+        talkDisabled={busy && !realtime.replying}
+        onSend={handleSend}
+        suggestions={suggestionsByCompanion[chatId]}
+        recognizer={realtime.recognizer ?? undefined}
+        voiceRepliesItself={Boolean(realtime.recognizer)}
+      />
     </div>
   );
 }

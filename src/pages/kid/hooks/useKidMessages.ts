@@ -100,7 +100,39 @@ export function useKidMessages(persistId?: string) {
     [push, update],
   );
 
+  /** 由外部（实时语音对话）填充的回复气泡 */
+  const startReply = useCallback(
+    (companion: KidCompanion) => {
+      const placeholder = push({ speakerId: companion.member.id, speakerName: companion.member.name, content: '' });
+      setPendingId(placeholder.id);
+      const set = (patch: Partial<KidChatMessage>) =>
+        update((prev) => prev.map((m) => (m.id === placeholder.id ? { ...m, ...patch } : m)));
+      let open = true;
+      const close = () => {
+        if (!open) return false;
+        open = false;
+        setPendingId((id) => (id === placeholder.id ? null : id));
+        return true;
+      };
+      return {
+        text: (full: string) => open && set({ content: full }),
+        done: (full: string) => {
+          if (!full.trim()) return void (close() && set({ content: friendlyError(companion.member.name, ''), isError: true }));
+          if (close()) set({ content: full });
+        },
+        fail: (error: unknown) => close() && set({ content: friendlyError(companion.member.name, error), isError: true }),
+        /** 被打断：保留已经说出的部分，什么都没说就去掉气泡 */
+        interrupt: () => {
+          if (!close()) return;
+          const current = messagesRef.current.find((m) => m.id === placeholder.id);
+          if (!current?.content.trim()) update((prev) => prev.filter((m) => m.id !== placeholder.id));
+        },
+      };
+    },
+    [push, update],
+  );
+
   const reset = useCallback((initial: KidChatMessage[] = []) => update(() => initial), [update]);
 
-  return { messages, push, askCompanion, pendingId, busy: pendingId !== null, reset };
+  return { messages, messagesRef, push, askCompanion, startReply, pendingId, busy: pendingId !== null, reset };
 }

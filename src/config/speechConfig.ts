@@ -28,6 +28,12 @@ export interface SpeechConfig {
   endpoint: string;
   /** HTTP 接入地址（tokenplan 引擎） */
   httpBase: string;
+  /** 实时语音对话：和单个伙伴聊天时，听、想、说由一个模型流式完成 */
+  dialog: {
+    enabled: boolean;
+    model: string;
+    endpoint: string;
+  };
   /** 为空时使用单独配置的语音 API Key，否则复用该模型服务的 Key */
   providerId: string;
 }
@@ -41,6 +47,8 @@ export const SPEECH_ENDPOINTS = [
 ] as const;
 
 export const TOKEN_PLAN_BASE = 'https://token-plan.maas.qianwenaiapi.com';
+export const DIALOG_ENDPOINT = 'wss://token-plan.maas.qianwenaiapi.com/api-ws/v1/realtime';
+export const DIALOG_MODELS = [{ value: 'qwen-audio-3.0-realtime-plus', label: 'Qwen-Audio 3.0 Realtime Plus' }];
 
 /** Token Plan 的合成模型没有童声，用语气指令让成年音色更像在和小朋友说话 */
 export const KID_TTS_INSTRUCTION = '用活泼亲切、温柔有耐心的语气，像给小朋友讲故事一样说';
@@ -84,7 +92,24 @@ interface VoiceCatalog {
 }
 
 /** 音色只能和所属模型搭配使用，换模型时音色表跟着换 */
-const VOICE_CATALOGS: Record<'tokenplan' | 'qwen-audio-3.1' | 'cosyvoice', VoiceCatalog> = {
+const VOICE_CATALOGS: Record<'tokenplan' | 'realtime-3.0' | 'qwen-audio-3.1' | 'cosyvoice', VoiceCatalog> = {
+  // qwen-audio-3.0-realtime-plus / flash 只有这五个系统音色
+  'realtime-3.0': {
+    companions: {
+      'kid-curious-doctor': 'longanlufeng',
+      'kid-story-fairy': 'longanlingxi',
+      'kid-math-bear': 'longanlufeng',
+      'kid-drawing-bunny': 'longanxiaoxin',
+    },
+    fallback: 'longanqian',
+    options: [
+      { value: 'longanlingxi', label: '龙安灵希 · 可爱甜美女声' },
+      { value: 'longanxiaoxin', label: '龙安小昕 · 亲切活泼女声' },
+      { value: 'longanlingxin', label: '龙安灵心 · 知心温暖女声' },
+      { value: 'longanlufeng', label: '龙安鲁风 · 明亮开朗男声' },
+      { value: 'longanqian', label: '龙安倩 · 默认女声' },
+    ],
+  },
   // qwen-audio-3.0-tts-plus 只有两个系统音色，没有童声
   tokenplan: {
     companions: {
@@ -137,6 +162,7 @@ const VOICE_CATALOGS: Record<'tokenplan' | 'qwen-audio-3.1' | 'cosyvoice', Voice
 
 export function voiceCatalog(model: string): VoiceCatalog {
   if (model.startsWith('cosyvoice')) return VOICE_CATALOGS.cosyvoice;
+  if (model.startsWith('qwen-audio-3.0-realtime')) return VOICE_CATALOGS['realtime-3.0'];
   if (model.startsWith('qwen-audio-3.0')) return VOICE_CATALOGS.tokenplan;
   return VOICE_CATALOGS['qwen-audio-3.1'];
 }
@@ -144,6 +170,7 @@ export function voiceCatalog(model: string): VoiceCatalog {
 function belongsToOtherModel(voice: string, model: string): boolean {
   if (!voice) return false;
   const own = voiceCatalog(model);
+  if (own.options.some((option) => option.value === voice)) return false;
   return Object.values(VOICE_CATALOGS).some(
     (catalog) => catalog !== own && catalog.options.some((option) => option.value === voice),
   );
@@ -154,6 +181,7 @@ export const DEFAULT_SPEECH_CONFIG: SpeechConfig = {
   asr: { engine: 'system', model: defaultModel('asr', 'tokenplan') },
   endpoint: SPEECH_ENDPOINTS[0].value,
   httpBase: TOKEN_PLAN_BASE,
+  dialog: { enabled: true, model: DIALOG_MODELS[0].value, endpoint: DIALOG_ENDPOINT },
   providerId: '',
 };
 
@@ -209,6 +237,11 @@ export function normalizeSpeechConfig(raw: unknown): SpeechConfig {
     },
     endpoint: str(value.endpoint, d.endpoint),
     httpBase: str(value.httpBase, d.httpBase),
+    dialog: {
+      enabled: typeof value.dialog?.enabled === 'boolean' ? value.dialog.enabled : d.dialog.enabled,
+      model: str(value.dialog?.model, d.dialog.model),
+      endpoint: str(value.dialog?.endpoint, d.dialog.endpoint),
+    },
     providerId: typeof value.providerId === 'string' ? value.providerId.trim() : '',
   };
 }
@@ -232,15 +265,27 @@ export function saveSpeechConfig(config: SpeechConfig): void {
 
 export const gameVoiceKey = (gameId: string) => `game:${gameId}`;
 
-/** 当前模型下某位伙伴（或 game:<id>）的自定义音色，没有则为空 */
-export function customVoice(config: SpeechConfig, key: string): string {
-  return config.tts.voices[config.tts.model]?.[key] || '';
+/** 某个模型（默认当前朗读模型）下伙伴或 game:<id> 的自定义音色，没有则为空 */
+export function customVoice(config: SpeechConfig, key: string, model = config.tts.model): string {
+  return config.tts.voices[model]?.[key] || '';
 }
 
-export function withCustomVoice(config: SpeechConfig, key: string, voice: string): SpeechConfig {
-  const { [key]: _old, ...rest } = config.tts.voices[config.tts.model] || {};
+export function withCustomVoice(config: SpeechConfig, key: string, voice: string, model = config.tts.model): SpeechConfig {
+  const { [key]: _old, ...rest } = config.tts.voices[model] || {};
   const map = voice.trim() ? { ...rest, [key]: voice.trim() } : rest;
-  return { ...config, tts: { ...config.tts, voices: { ...config.tts.voices, [config.tts.model]: map } } };
+  return { ...config, tts: { ...config.tts, voices: { ...config.tts.voices, [model]: map } } };
+}
+
+/** 实时对话的音色：家长给这位伙伴设的，否则用实时模型给伙伴的默认音色 */
+export function dialogVoiceFor(config: SpeechConfig, speakerId: string): string {
+  const model = config.dialog.model;
+  const catalog = voiceCatalog(model);
+  return customVoice(config, speakerId, model) || catalog.companions[speakerId] || catalog.fallback;
+}
+
+/** 实时对话需要云端 Key：家长至少把朗读或识别切到了云端 */
+export function dialogEnabled(config: SpeechConfig): boolean {
+  return config.dialog.enabled && (config.tts.engine !== 'system' || config.asr.engine !== 'system');
 }
 
 /** 不看伙伴自己的设置时用的音色：家长的统一音色，否则模型给这位伙伴的默认音色 */

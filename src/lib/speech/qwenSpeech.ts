@@ -16,7 +16,7 @@ const FINAL_WAIT_MS = 8000;
 /** Token Plan 识别单次最长 5 分钟，按住说话用不了这么久 */
 const MAX_RECORD_SAMPLES = ASR_SAMPLE_RATE * 120;
 
-const micSupported = () =>
+export const micSupported = () =>
   isTauri()
   && typeof navigator !== 'undefined'
   && Boolean(navigator.mediaDevices?.getUserMedia)
@@ -145,7 +145,7 @@ export class CloudSynthesizer implements SpeechSynthesizer {
   }
 }
 
-function mapStartError(error: unknown): SpeechErrorCode {
+export function mapStartError(error: unknown): SpeechErrorCode {
   const name = (error as { name?: string })?.name;
   if (name === 'NotAllowedError' || name === 'SecurityError') return 'not-allowed';
   if (name === 'NotFoundError') return 'unsupported';
@@ -153,7 +153,7 @@ function mapStartError(error: unknown): SpeechErrorCode {
 }
 
 /** 打开麦克风，把采样转成 16k PCM 回调出去；返回关闭函数 */
-async function startMicCapture(onPcm: (pcm: Int16Array) => void): Promise<() => void> {
+export async function startMicCapture(onPcm: (pcm: Int16Array) => void): Promise<() => void> {
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
   });
