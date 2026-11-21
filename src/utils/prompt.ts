@@ -37,9 +37,9 @@ export function applyPromptTemplate(text: string | undefined, ctx: PromptContext
 
   let out = text;
   for (const [key, value] of Object.entries(vars)) {
-    out = out.replaceAll(`{{${key}}}`, value);
-    out = out.replaceAll(`#${key}#`, value);
-    out = out.replaceAll(`#%#${key}#%#`, value);
+    out = out.split(`{{${key}}}`).join(value);
+    out = out.split(`#${key}#`).join(value);
+    out = out.split(`#%#${key}#%#`).join(value);
   }
   return out;
 }

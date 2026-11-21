@@ -7,7 +7,7 @@ import { resolveLlmCredentials } from '@/utils/resolveLlmCredentials';
 import { applyPromptTemplate } from '@/utils/prompt';
 
 export interface DryRunParams {
-  kind: 'llm' | 'agent';
+  kind: 'llm';
   name: string;
   providerId: string;
   model: string;

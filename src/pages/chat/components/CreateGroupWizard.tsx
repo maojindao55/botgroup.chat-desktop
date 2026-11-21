@@ -1,39 +1,20 @@
 import { useState, useMemo, useEffect } from 'react';
-import {
-  Modal, Steps, Button, Input, InputNumber, Switch, Empty, Select,
-} from 'antd';
+import { Modal, Steps, Button, Input, Empty } from 'antd';
 import { createStyles } from 'antd-style';
-import {
-  Bot, Terminal, Puzzle,
-  Check, FolderOpen,
-} from 'lucide-react';
+import { Check } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import type {
-  CLICustomWorkflow, Group, AIGroup, CLIGroup, CLIStrategy, CLISessionPolicy, AgentGroup, CLIReviewLoopRoles,
-} from '@/config/groups';
+import type { Group, AIGroup } from '@/config/groups';
 import {
   aiSpeechModes,
-  agentWorkflowEfforts,
   applyAISpeechMode,
-  cliWorkflowTemplateGroups,
-  cliWorkflowTemplates,
-  getCLIWorkflowTemplatesByGroup,
-  productGroupTypes,
   type AISpeechMode,
 } from '@/config/groupProduct';
-import { createDefaultAgentWorkflowDefaults } from '@/config/agentWorkflow';
-import type { AgentWorkflowEffort } from '@/config/agentWorkflow';
 import {
   groupTypeToSettingsSection,
   type AppSettingsSection,
 } from '@/config/appSettings';
 import { brandPrimaryButtonProps } from '@/lib/theme';
-import {
-  getTranslatedGroupTypeDescription,
-  getTranslatedGroupTypeLabel,
-} from '@/i18n/productLabels';
 import { MemberPicker } from './MemberPicker';
-import { invoke } from '@tauri-apps/api/core';
 import { useAIMemberStore } from '@/store/aiMemberStore';
 import { getPickableMembers } from '@/utils/aiMemberDisplay';
 
@@ -41,99 +22,15 @@ interface CreateGroupWizardProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreateGroup: (group: Group) => void;
-  /** 锁定群类型并跳过「选择场景」步骤，用于开发任务页新建团队模板 */
-  fixedGroupType?: GroupTypeChoice;
-  /** 允许创建的群类型；侧边栏入口应排除 cli */
-  allowedGroupTypes?: GroupTypeChoice[];
   /** 成员为空时打开设置 */
   onOpenSettings?: (section?: AppSettingsSection) => void;
 }
 
-type GroupTypeChoice = 'ai' | 'cli' | 'agent';
-type WizardStep = 'type' | 'basic' | 'members' | 'config' | 'confirm';
+type WizardStep = 'basic' | 'members' | 'config';
 
-const groupTypeIcons = {
-  ai: Bot,
-  cli: Terminal,
-  agent: Puzzle,
-};
-
-const defaultCliWorkflowTemplate =
-  cliWorkflowTemplates.find((item) => item.id === 'implement_review') || cliWorkflowTemplates[0];
-
-function buildDefaultReviewLoopRoles(memberIds: string[]): CLIReviewLoopRoles {
-  return {
-    plannerId: memberIds[0],
-    implementerId: memberIds[1] || memberIds[0],
-    reviewerId: memberIds[0],
-    maxReviewRounds: 2,
-  };
-}
-
-const cloneCustomWorkflow = (workflow: CLICustomWorkflow | undefined): CLICustomWorkflow | undefined => {
-  if (!workflow) return undefined;
-  return {
-    ...workflow,
-    stages: workflow.stages.map(stage => ({
-      ...stage,
-      reviewDecision: stage.reviewDecision ? { ...stage.reviewDecision } : undefined,
-    })),
-  };
-};
+const STEP_FLOW: WizardStep[] = ['basic', 'members', 'config'];
 
 const useStyles = createStyles(({ token, css }) => ({
-  card: css`
-    width: 100%;
-    display: flex;
-    align-items: flex-start;
-    gap: 14px;
-    padding: 16px;
-    border-radius: 12px;
-    border: 2px solid ${token.colorBorderSecondary};
-    background: transparent;
-    cursor: pointer;
-    transition: all 0.15s;
-    text-align: left;
-    &:hover { border-color: ${token.colorBorder}; background: ${token.colorFillTertiary}; }
-  `,
-  cardActive: css`
-    border-color: #ff6600 !important;
-    background: rgba(255,102,0,0.06) !important;
-  `,
-  memberBtn: css`
-    width: 100%;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 10px;
-    border-radius: 8px;
-    border: 1px solid transparent;
-    background: transparent;
-    cursor: pointer;
-    text-align: left;
-    margin-bottom: 6px;
-    transition: all 0.15s;
-    &:hover { background: ${token.colorFillTertiary}; }
-  `,
-  memberBtnActive: css`
-    border-color: #ff6600;
-    background: rgba(255,102,0,0.06);
-  `,
-  scrollMembers: css`
-    max-height: 280px;
-    overflow: auto;
-    padding-right: 6px;
-  `,
-  agentBox: css`
-    border: 1px solid ${token.colorBorderSecondary};
-    border-radius: 8px;
-    padding: 12px;
-    background: ${token.colorFillTertiary};
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin-bottom: 12px;
-  `,
   strategyBtn: css`
     width: 100%;
     display: flex;
@@ -153,65 +50,12 @@ const useStyles = createStyles(({ token, css }) => ({
     border-color: #ff6600;
     background: rgba(255,102,0,0.06);
   `,
-  workflowGrid: css`
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-  `,
-  workflowBtn: css`
-    width: 100%;
-    min-height: 56px;
-    padding: 10px 12px;
-    border-radius: 8px;
-    border: 1px solid ${token.colorBorderSecondary};
-    background: transparent;
-    text-align: left;
-    cursor: pointer;
-    transition: all 0.15s;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    &:hover { background: ${token.colorFillTertiary}; }
-  `,
-  workflowBtnActive: css`
-    border-color: #ff6600;
-    background: rgba(255,102,0,0.06);
-  `,
-  workflowTitle: css`
-    font-size: 13px;
-    font-weight: 600;
-    color: ${token.colorText};
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  `,
-  workflowHint: css`
-    font-size: 12px;
-    color: ${token.colorTextTertiary};
-    margin-top: 3px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  `,
-  workflowDesc: css`
-    margin-top: 8px;
-    padding: 8px 10px;
-    border-radius: 8px;
-    background: ${token.colorFillTertiary};
-    color: ${token.colorTextSecondary};
-    font-size: 12px;
-    line-height: 1.5;
-  `,
 }));
-
 
 export const CreateGroupWizard = ({
   open,
   onOpenChange,
   onCreateGroup,
-  fixedGroupType,
-  allowedGroupTypes,
   onOpenSettings,
 }: CreateGroupWizardProps) => {
   const { styles, cx } = useStyles();
@@ -219,49 +63,11 @@ export const CreateGroupWizard = ({
   const members = useAIMemberStore((state) => state.members);
   const { load: loadMembers } = useAIMemberStore();
 
-  const allowedTypes = allowedGroupTypes ?? (['ai', 'cli', 'agent'] as GroupTypeChoice[]);
-  const defaultGroupType = fixedGroupType || allowedTypes[0] || 'ai';
-
-  const [step, setStep] = useState<WizardStep>(fixedGroupType ? 'basic' : 'type');
-  const [groupType, setGroupType] = useState<GroupTypeChoice>(defaultGroupType);
-  const isTemplateMode = fixedGroupType === 'cli';
-  const visibleGroupTypes = productGroupTypes.filter((item) => allowedTypes.includes(item.type));
-
-  // Basic info
+  const [step, setStep] = useState<WizardStep>('basic');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-
-  // AI group
   const [selectedAIMembers, setSelectedAIMembers] = useState<string[]>([]);
   const [aiSpeechMode, setAISpeechMode] = useState<AISpeechMode>('smart');
-
-  // CLI group
-  const [selectedCLIMembers, setSelectedCLIMembers] = useState<string[]>([]);
-  const [workspacePath, setWorkspacePath] = useState('');
-  const [approvalMode, setApprovalMode] = useState<'auto' | 'ask'>('auto');
-  const [timeout, setTimeout_] = useState(300000);
-  const [cliStrategy, setCliStrategy] = useState<CLIStrategy>(defaultCliWorkflowTemplate.strategy);
-  const [cliTemplateId, setCliTemplateId] = useState(defaultCliWorkflowTemplate.id);
-  const [cliSessionPolicy, setCliSessionPolicy] = useState<CLISessionPolicy>('task');
-  const [reviewLoopRoles, setReviewLoopRoles] = useState<CLIReviewLoopRoles>(() => buildDefaultReviewLoopRoles([]));
-  const selectedCliWorkflowTemplate = cliWorkflowTemplates.find((item) => item.id === cliTemplateId);
-  const selectedCustomWorkflow = selectedCliWorkflowTemplate?.customWorkflow;
-  const usesReviewRoles = cliTemplateId === 'implement_review' || !!selectedCustomWorkflow;
-
-  // Agent group
-  const [selectedAgentMembers, setSelectedAgentMembers] = useState<string[]>([]);
-  const [agentWorkflowEffort, setAgentWorkflowEffort] = useState<AgentWorkflowEffort>(
-    createDefaultAgentWorkflowDefaults().effort,
-  );
-  const [agentMaxPhases, setAgentMaxPhases] = useState<number>(
-    createDefaultAgentWorkflowDefaults().maxPhases,
-  );
-  const [agentMaxParallelAgents, setAgentMaxParallelAgents] = useState<number>(
-    createDefaultAgentWorkflowDefaults().maxParallelAgents,
-  );
-  const [agentAlwaysShowPlan, setAgentAlwaysShowPlan] = useState<boolean>(
-    createDefaultAgentWorkflowDefaults().alwaysShowPlan,
-  );
 
   useEffect(() => {
     if (open) {
@@ -269,108 +75,26 @@ export const CreateGroupWizard = ({
     }
   }, [open, loadMembers]);
 
-  useEffect(() => {
-    if (!usesReviewRoles || selectedCLIMembers.length === 0) return;
-    const defaults = buildDefaultReviewLoopRoles(selectedCLIMembers);
-    setReviewLoopRoles(prev => ({
-      plannerId: prev.plannerId && selectedCLIMembers.includes(prev.plannerId) ? prev.plannerId : defaults.plannerId,
-      implementerId: prev.implementerId && selectedCLIMembers.includes(prev.implementerId) ? prev.implementerId : defaults.implementerId,
-      reviewerId: prev.reviewerId && selectedCLIMembers.includes(prev.reviewerId) ? prev.reviewerId : defaults.reviewerId,
-      maxReviewRounds: prev.maxReviewRounds ?? 2,
-    }));
-  }, [usesReviewRoles, selectedCLIMembers]);
-
-  const reviewLoopRoleOptions = useMemo(
-    () => selectedCLIMembers.map(id => ({
-      value: id,
-      label: members[id]?.name || id,
-    })),
-    [selectedCLIMembers, members],
-  );
-
   const reset = () => {
-    setStep(fixedGroupType ? 'basic' : 'type');
-    setGroupType(defaultGroupType);
+    setStep('basic');
     setName('');
     setDescription('');
     setSelectedAIMembers([]);
     setAISpeechMode('smart');
-    setSelectedCLIMembers([]);
-    setWorkspacePath('');
-    setApprovalMode('auto');
-    setTimeout_(300000);
-    setCliStrategy(defaultCliWorkflowTemplate.strategy);
-    setCliTemplateId(defaultCliWorkflowTemplate.id);
-    setCliSessionPolicy('task');
-    setReviewLoopRoles(buildDefaultReviewLoopRoles([]));
-    setSelectedAgentMembers([]);
-    setAgentWorkflowEffort(createDefaultAgentWorkflowDefaults().effort);
-    setAgentMaxPhases(createDefaultAgentWorkflowDefaults().maxPhases);
-    setAgentMaxParallelAgents(createDefaultAgentWorkflowDefaults().maxParallelAgents);
-    setAgentAlwaysShowPlan(createDefaultAgentWorkflowDefaults().alwaysShowPlan);
   };
 
-
   const handleCreate = () => {
-    const id = `group-${Date.now()}`;
-    let group: Group;
-
-    if (groupType === 'ai') {
-      const aiMode = applyAISpeechMode(aiSpeechMode);
-      group = {
-        id, type: 'ai', name, description,
-        memberIds: selectedAIMembers,
-        members: selectedAIMembers,
-        isGroupDiscussionMode: aiMode.isGroupDiscussionMode,
-        schedulerStrategy: aiMode.schedulerStrategy,
-      } as AIGroup;
-    } else if (groupType === 'cli') {
-      const selectedTemplate = selectedCliWorkflowTemplate;
-      const resolvedReviewLoopRoles = usesReviewRoles
-        ? buildDefaultReviewLoopRoles(selectedCLIMembers)
-        : undefined;
-      const reviewLoopRolesToSave = usesReviewRoles
-        ? {
-          plannerId: reviewLoopRoles.plannerId || resolvedReviewLoopRoles?.plannerId,
-          implementerId: reviewLoopRoles.implementerId || resolvedReviewLoopRoles?.implementerId,
-          reviewerId: reviewLoopRoles.reviewerId || resolvedReviewLoopRoles?.reviewerId,
-          maxReviewRounds: reviewLoopRoles.maxReviewRounds ?? 2,
-        }
-        : undefined;
-      group = {
-        id, type: 'cli', name, description,
-        memberIds: selectedCLIMembers,
-        members: selectedCLIMembers,
-        workspacePath: isTemplateMode ? '' : workspacePath,
-        approvalMode,
-        timeout,
-        showStderr: true,
-        debugMode: false,
-        strategy: cliStrategy,
-        workflowTemplateId: cliTemplateId,
-        sessionPolicy: cliSessionPolicy,
-        executionPlan: selectedTemplate?.executionPlan,
-        reviewLoopRoles: reviewLoopRolesToSave,
-        customWorkflow: cloneCustomWorkflow(selectedTemplate?.customWorkflow),
-      } as CLIGroup;
-    } else {
-      group = {
-        id, type: 'agent', name, description,
-        memberIds: selectedAgentMembers,
-        workspacePath,
-        approvalMode,
-        timeout,
-        showStderr: true,
-        debugMode: false,
-        workflowDefaults: {
-          effort: agentWorkflowEffort,
-          maxPhases: agentMaxPhases,
-          maxParallelAgents: agentMaxParallelAgents,
-          alwaysShowPlan: agentAlwaysShowPlan,
-        },
-      } as AgentGroup;
-    }
-
+    const aiMode = applyAISpeechMode(aiSpeechMode);
+    const group: AIGroup = {
+      id: `group-${Date.now()}`,
+      type: 'ai',
+      name,
+      description,
+      memberIds: selectedAIMembers,
+      members: selectedAIMembers,
+      isGroupDiscussionMode: aiMode.isGroupDiscussionMode,
+      schedulerStrategy: aiMode.schedulerStrategy,
+    };
     onCreateGroup(group);
     reset();
     onOpenChange(false);
@@ -378,70 +102,32 @@ export const CreateGroupWizard = ({
 
   const canProceed = (): boolean => {
     switch (step) {
-      case 'type': return true;
       case 'basic': return name.trim().length > 0;
-      case 'members':
-        if (groupType === 'ai') return selectedAIMembers.length > 0;
-        if (groupType === 'cli') return selectedCLIMembers.length > 0;
-        if (groupType === 'agent') return selectedAgentMembers.length > 0;
-        return false;
-      case 'config':
-        if (groupType === 'cli' && !isTemplateMode) return workspacePath.trim().length > 0;
-        if (groupType === 'agent') return workspacePath.trim().length > 0;
-        return true;
+      case 'members': return selectedAIMembers.length > 0;
       default: return true;
     }
   };
 
-
-  const stepFlow: WizardStep[] = fixedGroupType
-    ? ['basic', 'members', 'config']
-    : ['type', 'basic', 'members', 'config'];
-
   const nextStep = () => {
-    const idx = stepFlow.indexOf(step);
-    if (idx < stepFlow.length - 1) setStep(stepFlow[idx + 1]);
+    const idx = STEP_FLOW.indexOf(step);
+    if (idx < STEP_FLOW.length - 1) setStep(STEP_FLOW[idx + 1]);
   };
 
   const prevStep = () => {
-    const idx = stepFlow.indexOf(step);
-    if (idx > 0) setStep(stepFlow[idx - 1]);
+    const idx = STEP_FLOW.indexOf(step);
+    if (idx > 0) setStep(STEP_FLOW[idx - 1]);
   };
 
-  // ============ Render Steps ============
-
-  const renderTypeStep = () => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <p style={{ fontSize: 14, color: 'rgba(0,0,0,0.45)', marginBottom: 4 }}>
-        {t('wizard:typeStep.intro')}
-      </p>
-      {!allowedTypes.includes('cli') && (
-        <p style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', margin: 0 }}>
-          {t('wizard:typeStep.cliHint')}
-        </p>
-      )}
-      {visibleGroupTypes.map(item => {
-        const Icon = groupTypeIcons[item.type];
-        return (
-        <button key={item.type}
-          onClick={() => setGroupType(item.type)}
-          className={cx(styles.card, groupType === item.type && styles.cardActive)}>
-          <Icon size={20} style={{ marginTop: 2, color: groupType === item.type ? '#ff6600' : 'rgba(0,0,0,0.55)' }} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.2, marginBottom: 4 }}>
-              {getTranslatedGroupTypeLabel(t, item.type)}
-            </div>
-            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>
-              {getTranslatedGroupTypeDescription(t, item.type)}
-            </div>
-          </div>
-          {groupType === item.type && <Check size={16} style={{ marginTop: 2, color: '#ff6600' }} />}
-        </button>
-        );
-      })}
-    </div>
+  const pickableMemberCount = useMemo(
+    () => getPickableMembers(members, 'llm').length,
+    [members],
   );
 
+  const handleOpenSettings = () => {
+    onOpenChange(false);
+    reset();
+    onOpenSettings?.(groupTypeToSettingsSection('ai'));
+  };
 
   const renderBasicStep = () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -458,89 +144,37 @@ export const CreateGroupWizard = ({
     </div>
   );
 
-  const memberKind = groupType === 'ai' ? 'llm' as const : 'cli' as const;
-  const pickableMemberCount = useMemo(
-    () => getPickableMembers(members, memberKind).length,
-    [members, memberKind],
-  );
-
-  const handleOpenSettings = () => {
-    onOpenChange(false);
-    reset();
-    onOpenSettings?.(groupTypeToSettingsSection(groupType));
-  };
-
-  const renderEmptyMembers = (resourceKey: 'character' | 'cliMember' | 'expert') => (
-    <div style={{ display: 'flex', justifyContent: 'center', padding: '32px 0' }}>
-      <Empty description={t('wizard:membersStep.emptyDescription', {
-        resource: t(`product:memberKinds.${resourceKey}`),
-      })}>
-        {onOpenSettings ? (
-          <Button onClick={handleOpenSettings} {...brandPrimaryButtonProps}>
-            {t('wizard:membersStep.goLibrary')}
-          </Button>
-        ) : (
-          <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>
-            {t('wizard:membersStep.openLibraryHint')}
-          </span>
-        )}
-      </Empty>
+  const renderMembersStep = () => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <p style={{ fontSize: 14, color: 'rgba(0,0,0,0.45)' }}>{t('wizard:membersStep.pickCharacters')}</p>
+      {pickableMemberCount === 0 ? (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '32px 0' }}>
+          <Empty description={t('wizard:membersStep.emptyDescription', {
+            resource: t('product:memberKinds.character'),
+          })}>
+            {onOpenSettings ? (
+              <Button onClick={handleOpenSettings} {...brandPrimaryButtonProps}>
+                {t('wizard:membersStep.goLibrary')}
+              </Button>
+            ) : (
+              <span style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>
+                {t('wizard:membersStep.openLibraryHint')}
+              </span>
+            )}
+          </Empty>
+        </div>
+      ) : (
+        <MemberPicker
+          kind="llm"
+          value={selectedAIMembers}
+          onChange={setSelectedAIMembers}
+          placeholder={t('wizard:membersStep.characterPlaceholder')}
+        />
+      )}
     </div>
   );
 
-  const renderMembersStep = () => {
-    if (groupType === 'ai') {
-      return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <p style={{ fontSize: 14, color: 'rgba(0,0,0,0.45)' }}>{t('wizard:membersStep.pickCharacters')}</p>
-          {pickableMemberCount === 0 ? (
-            renderEmptyMembers('character')
-          ) : (
-            <MemberPicker
-              kind="llm"
-              value={selectedAIMembers}
-              onChange={setSelectedAIMembers}
-              placeholder={t('wizard:membersStep.characterPlaceholder')}
-            />
-          )}
-        </div>
-      );
-    }
-    if (groupType === 'cli') {
-      return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <p style={{ fontSize: 14, color: 'rgba(0,0,0,0.45)' }}>{t('wizard:membersStep.pickCliMembers')}</p>
-          {pickableMemberCount === 0 ? (
-            renderEmptyMembers('cliMember')
-          ) : (
-            <MemberPicker
-              kind="cli"
-              value={selectedCLIMembers}
-              onChange={setSelectedCLIMembers}
-              placeholder={t('wizard:membersStep.cliPlaceholder')}
-            />
-          )}
-        </div>
-      );
-    }
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <p style={{ fontSize: 14, color: 'rgba(0,0,0,0.45)' }}>{t('wizard:membersStep.pickExperts')}</p>
-        {pickableMemberCount === 0 ? (
-          renderEmptyMembers('expert')
-        ) : (
-          <MemberPicker
-            kind="cli"
-            value={selectedAgentMembers}
-            onChange={setSelectedAgentMembers}
-            placeholder={t('wizard:membersStep.expertPlaceholder')}
-          />
-        )}
-      </div>
-    );
-  };
-
-  const renderAIConfigStep = () => (
+  const renderConfigStep = () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div>
         <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 8 }}>{t('wizard:configStep.speechMode')}</label>
@@ -563,293 +197,36 @@ export const CreateGroupWizard = ({
     </div>
   );
 
-  const renderCLIConfigStep = () => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {!isTemplateMode && (
-        <div>
-          <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 6 }}>{t('wizard:configStep.workspacePath')}</label>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <Input
-              placeholder="/Users/you/projects/your-repo"
-              value={workspacePath}
-              onChange={e => setWorkspacePath(e.target.value)}
-              style={{ flex: 1, fontFamily: 'var(--ant-font-family-code)' }}
-            />
-            <Button icon={<FolderOpen size={14} />}
-              onClick={async () => {
-                try {
-                  const selected = await invoke<string | null>('select_directory');
-                  if (selected) setWorkspacePath(selected);
-                } catch (e) { console.error('Failed to select directory:', e); }
-              }}>{t('common:actions.select')}</Button>
-          </div>
-          <p style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginTop: 6 }}>{t('wizard:configStep.workspaceHint')}</p>
-        </div>
-      )}
-      <div>
-        <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 8 }}>{t('wizard:configStep.collaborationMode')}</label>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {cliWorkflowTemplateGroups.map(group => (
-            <div key={group.id}>
-              <div style={{ marginBottom: 6 }}>
-                <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(0,0,0,0.65)' }}>
-                  {t(`product:cliWorkflowTemplateGroups.${group.id}.label`, { defaultValue: group.label })}
-                </span>
-              </div>
-              <div className={styles.workflowGrid}>
-                {getCLIWorkflowTemplatesByGroup(group).map(item => (
-                  <button key={item.id}
-                    type="button"
-                    onClick={() => {
-                      setCliStrategy(item.strategy);
-                      setCliTemplateId(item.id);
-                    }}
-                    className={cx(styles.workflowBtn, cliTemplateId === item.id && styles.workflowBtnActive)}>
-                    <div style={{ minWidth: 0 }}>
-                      <div className={styles.workflowTitle}>
-                        {t(`product:cliWorkflowTemplates.${item.id}.label`, { defaultValue: item.label })}
-                      </div>
-                      <div className={styles.workflowHint}>
-                        {t(`product:cliWorkflowTemplates.${item.id}.shortDescription`, {
-                          defaultValue: item.defaultStages.join(' / '),
-                        })}
-                      </div>
-                    </div>
-                    {cliTemplateId === item.id && <Check size={15} style={{ color: '#ff6600', flex: 'none' }} />}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-        {selectedCliWorkflowTemplate && (
-          <div className={styles.workflowDesc}>
-            {t(`product:cliWorkflowTemplates.${selectedCliWorkflowTemplate.id}.description`, {
-              defaultValue: selectedCliWorkflowTemplate.description,
-            })}
-          </div>
-        )}
-      </div>
-      {usesReviewRoles && (
-        <div style={{ padding: 12, background: 'rgba(0,0,0,0.04)', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 500 }}>
-              {selectedCustomWorkflow
-                ? t('wizard:configStep.customWorkflowRoles')
-                : t('wizard:configStep.roleAssignment')}
-            </div>
-            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginTop: 4 }}>
-              {selectedCustomWorkflow
-                ? t('wizard:configStep.customWorkflowHint', {
-                  stages: selectedCustomWorkflow.stages.map(stage => stage.label).join(' → '),
-                })
-                : t('wizard:configStep.roleAssignmentHint')}
-            </div>
-            {selectedCLIMembers.length < 2 && (
-              <div style={{ fontSize: 12, color: '#ff9500', marginTop: 4 }}>
-                {selectedCustomWorkflow
-                  ? t('wizard:configStep.customWorkflowWarning')
-                  : t('wizard:configStep.roleAssignmentWarning')}
-              </div>
-            )}
-          </div>
-          {!selectedCustomWorkflow && (
-            <div>
-              <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginBottom: 4 }}>{t('wizard:configStep.planner')}</div>
-              <Select
-                size="small"
-                value={reviewLoopRoles.plannerId}
-                onChange={(plannerId) => setReviewLoopRoles(prev => ({ ...prev, plannerId }))}
-                options={reviewLoopRoleOptions}
-                placeholder={t('wizard:configStep.plannerPlaceholder')}
-                style={{ width: '100%' }}
-              />
-            </div>
-          )}
-          <div>
-            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginBottom: 4 }}>
-              {selectedCustomWorkflow
-                ? t('wizard:configStep.diagnoseFixer')
-                : t('wizard:configStep.implementer')}
-            </div>
-            <Select
-              size="small"
-              value={reviewLoopRoles.implementerId}
-              onChange={(implementerId) => setReviewLoopRoles(prev => ({ ...prev, implementerId }))}
-              options={reviewLoopRoleOptions}
-              placeholder={selectedCustomWorkflow
-                ? t('wizard:configStep.diagnoseFixerPlaceholder')
-                : t('wizard:configStep.implementerPlaceholder')}
-              style={{ width: '100%' }}
-            />
-          </div>
-          <div>
-            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginBottom: 4 }}>
-              {selectedCustomWorkflow
-                ? t('wizard:configStep.fixReviewer')
-                : t('wizard:configStep.reviewer')}
-            </div>
-            <Select
-              size="small"
-              value={reviewLoopRoles.reviewerId}
-              onChange={(reviewerId) => setReviewLoopRoles(prev => ({ ...prev, reviewerId }))}
-              options={reviewLoopRoleOptions}
-              placeholder={selectedCustomWorkflow
-                ? t('wizard:configStep.fixReviewerPlaceholder')
-                : t('wizard:configStep.reviewerPlaceholder')}
-              style={{ width: '100%' }}
-            />
-          </div>
-          <div>
-            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginBottom: 4 }}>{t('wizard:configStep.maxReviewRounds')}</div>
-            <InputNumber
-              size="small"
-              value={reviewLoopRoles.maxReviewRounds}
-              min={1}
-              max={5}
-              onChange={(value) => {
-                setReviewLoopRoles(prev => ({
-                  ...prev,
-                  maxReviewRounds: typeof value === 'number' ? value : 2,
-                }));
-              }}
-              style={{ width: 100 }}
-            />
-          </div>
-        </div>
-      )}
-      <div style={{ padding: 12, background: 'rgba(0,0,0,0.04)', borderRadius: 8 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 500 }}>{t('wizard:configStep.autoApproval')}</div>
-            <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginTop: 4 }}>{t('wizard:configStep.autoApprovalHint')}</div>
-          </div>
-          <Switch checked={approvalMode === 'auto'} onChange={v => setApprovalMode(v ? 'auto' : 'ask')} />
-        </div>
-      </div>
-      <div>
-        <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 6 }}>{t('wizard:configStep.timeoutSeconds')}</label>
-        <InputNumber value={timeout / 1000} min={120} max={600}
-          onChange={(v) => setTimeout_(Number(v) * 1000)} style={{ width: 120 }} />
-      </div>
-    </div>
-  );
-
-
-  const renderAgentConfigStep = () => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div>
-        <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 6 }}>{t('wizard:configStep.workspacePath')}</label>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <Input
-            placeholder="/Users/you/projects/your-repo"
-            value={workspacePath}
-            onChange={e => setWorkspacePath(e.target.value)}
-            style={{ flex: 1, fontFamily: 'var(--ant-font-family-code)' }}
-          />
-          <Button icon={<FolderOpen size={14} />}
-            onClick={async () => {
-              try {
-                const selected = await invoke<string | null>('select_directory');
-                if (selected) setWorkspacePath(selected);
-              } catch (e) { console.error('Failed to select directory:', e); }
-            }}>{t('common:actions.select')}</Button>
-        </div>
-        <p style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)', marginTop: 6 }}>{t('wizard:configStep.workspaceHint')}</p>
-      </div>
-      <div>
-        <label style={{ fontSize: 14, fontWeight: 500, display: 'block', marginBottom: 8 }}>
-          {t('wizard:configStep.agentEffort', { defaultValue: '默认协作偏好' })}
-        </label>
-        {agentWorkflowEfforts.map(item => (
-          <button key={item.value}
-            onClick={() => {
-              setAgentWorkflowEffort(item.value);
-              setAgentMaxPhases(item.recommendedMaxPhases);
-              setAgentMaxParallelAgents(item.recommendedMaxParallelAgents);
-            }}
-            className={cx(styles.strategyBtn, agentWorkflowEffort === item.value && styles.strategyBtnActive)}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14, fontWeight: 500 }}>
-                {t(`settings:agentGroup.effort.${item.value}.label`, { defaultValue: item.label })}
-              </div>
-              <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>
-                {t(`settings:agentGroup.effort.${item.value}.description`, { defaultValue: item.description })}
-              </div>
-            </div>
-            {agentWorkflowEffort === item.value && <Check size={16} style={{ color: '#ff6600' }} />}
-          </button>
-        ))}
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-        <label style={{ fontSize: 14, fontWeight: 500 }}>
-          {t('settings:agentGroup.alwaysShowPlan', { defaultValue: '总是展示协作计划卡' })}
-        </label>
-        <Switch checked={agentAlwaysShowPlan} onChange={(v) => setAgentAlwaysShowPlan(v)} />
-      </div>
-    </div>
-  );
-
-  const renderConfigStep = () => {
-    if (groupType === 'ai') return renderAIConfigStep();
-    if (groupType === 'cli') return renderCLIConfigStep();
-    return renderAgentConfigStep();
+  const stepTitles: Record<WizardStep, string> = {
+    basic: t('wizard:steps.basic'),
+    members: t('wizard:steps.members'),
+    config: t('wizard:steps.config'),
   };
 
-
-  const stepTitles: Record<WizardStep, string> = useMemo(() => (
-    isTemplateMode
-      ? {
-        type: '',
-        basic: t('wizard:steps.templateBasic'),
-        members: t('wizard:steps.templateMembers'),
-        config: t('wizard:steps.templateConfig'),
-        confirm: '',
-      }
-      : {
-        type: t('wizard:steps.type'),
-        basic: t('wizard:steps.basic'),
-        members: t('wizard:steps.members'),
-        config: t('wizard:steps.config'),
-        confirm: '',
-      }
-  ), [isTemplateMode, t]);
-
-  const stepItems = isTemplateMode
-    ? [
-      { title: t('wizard:steps.shortBasic') },
-      { title: t('wizard:steps.shortMembers') },
-      { title: t('wizard:steps.shortConfig') },
-    ]
-    : [
-      { title: t('wizard:steps.shortType') },
-      { title: t('wizard:steps.shortBasic') },
-      { title: t('wizard:steps.shortMembers') },
-      { title: t('wizard:steps.shortConfig') },
-    ];
-
-  const stepIndex: Record<WizardStep, number> = isTemplateMode
-    ? { type: -1, basic: 0, members: 1, config: 2, confirm: 3 }
-    : { type: 0, basic: 1, members: 2, config: 3, confirm: 4 };
+  const stepItems = [
+    { title: t('wizard:steps.shortBasic') },
+    { title: t('wizard:steps.shortMembers') },
+    { title: t('wizard:steps.shortConfig') },
+  ];
 
   return (
     <Modal
       open={open}
       onCancel={() => { reset(); onOpenChange(false); }}
-      title={isTemplateMode ? t('wizard:templateTitle', { step: stepTitles[step] }) : stepTitles[step]}
+      title={stepTitles[step]}
       width={520}
       destroyOnClose
       footer={
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
           <div>
-            {step !== stepFlow[0] && (
+            {step !== STEP_FLOW[0] && (
               <Button type="text" onClick={prevStep}>{t('wizard:actions.previous')}</Button>
             )}
           </div>
           <div>
             {step === 'config' ? (
               <Button disabled={!canProceed()} onClick={handleCreate} {...brandPrimaryButtonProps}>
-                {isTemplateMode ? t('wizard:actions.createTemplate') : t('wizard:actions.createGroup')}
+                {t('wizard:actions.createGroup')}
               </Button>
             ) : (
               <Button disabled={!canProceed()} onClick={nextStep} {...brandPrimaryButtonProps}>
@@ -860,9 +237,8 @@ export const CreateGroupWizard = ({
         </div>
       }
     >
-      <Steps current={stepIndex[step]} size="small" style={{ marginBottom: 20 }} items={stepItems} />
+      <Steps current={STEP_FLOW.indexOf(step)} size="small" style={{ marginBottom: 20 }} items={stepItems} />
       <div>
-        {step === 'type' && renderTypeStep()}
         {step === 'basic' && renderBasicStep()}
         {step === 'members' && renderMembersStep()}
         {step === 'config' && renderConfigStep()}

@@ -1,11 +1,10 @@
 /**
  * HomeView — 首页/欢迎页
- * 新用户冷启动的默认落地视图：引导选择一种协作方式（角色群 / 专家群 / 开发群），
- * 并提供「我的群聊 / 最近开发任务」快速回到现场。
+ * 新用户冷启动的默认落地视图：引导创建角色群，并提供「我的群聊」快速回到现场。
  */
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Bot, Puzzle, Terminal, ChevronRight, Menu as MenuIcon } from 'lucide-react';
+import { Bot, ChevronRight, Menu as MenuIcon } from 'lucide-react';
 import { ActionIcon } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 
@@ -15,7 +14,6 @@ import { AppSettingsModal } from './AppSettingsModal';
 import type { AppSettingsSection } from '@/config/appSettings';
 import { useUserStore } from '@/store/userStore';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { useCLITaskStore } from '@/store/cliTaskStore';
 import {
   getTranslatedGroupTypeLabel,
   getTranslatedGroupTypeDescription,
@@ -29,16 +27,12 @@ interface HomeViewProps {
   toggleSidebar: () => void;
   onSelectGroup: (index: number) => void;
   onCreateGroup: (group: Group) => void;
-  onNavigateCLI: () => void;
-  onSelectTask: (taskId: string) => void;
 }
 
-type WizardType = 'ai' | 'agent';
+type WizardType = GroupType;
 
 const MODE_META: Record<GroupType, { icon: typeof Bot; color: string; bg: string }> = {
   ai: { icon: Bot, color: '#ff6600', bg: 'rgba(255, 102, 0, 0.1)' },
-  agent: { icon: Puzzle, color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.1)' },
-  cli: { icon: Terminal, color: '#10b981', bg: 'rgba(16, 185, 129, 0.1)' },
 };
 
 const useStyles = createStyles(({ token, css }) => ({
@@ -263,14 +257,11 @@ const HomeView = ({
   toggleSidebar,
   onSelectGroup,
   onCreateGroup,
-  onNavigateCLI,
-  onSelectTask,
 }: HomeViewProps) => {
   const { styles } = useStyles();
   const { t } = useTranslation(['home', 'product', 'common']);
   const isMobile = useIsMobile();
   const userStore = useUserStore();
-  const tasks = useCLITaskStore((s) => s.tasks);
 
   const [wizardType, setWizardType] = useState<WizardType | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -279,21 +270,10 @@ const HomeView = ({
   const userName = userStore.userInfo?.nickname?.trim() || t('home:hero.defaultName');
   const hideAppHeaderBar = isTauriMacOS() && !isMobile;
 
-  // 用户自建的群聊（排除内置开发群，它通过「开发群」卡片进入）
-  const myGroups = groups
-    .map((group, index) => ({ group, index }))
-    .filter(({ group }) => group.type === 'ai' || group.type === 'agent');
-
-  // 最近开发任务（按更新时间倒序，取前 6 条，排除归档）
-  const recentTasks = [...tasks]
-    .filter((task) => task.status !== 'archived')
-    .sort((a, b) => (b.updatedAt || b.createdAt).localeCompare(a.updatedAt || a.createdAt))
-    .slice(0, 6);
+  const myGroups = groups.map((group, index) => ({ group, index }));
 
   const modeCards: { type: GroupType; onClick: () => void }[] = [
     { type: 'ai', onClick: () => setWizardType('ai') },
-    { type: 'agent', onClick: () => setWizardType('agent') },
-    { type: 'cli', onClick: onNavigateCLI },
   ];
 
   return (
@@ -305,7 +285,6 @@ const HomeView = ({
           if (!open) setWizardType(null);
         }}
         onCreateGroup={onCreateGroup}
-        fixedGroupType={wizardType ?? undefined}
         onOpenSettings={(section) => {
           setWizardType(null);
           setSettingsSection(section ?? 'general');
@@ -334,11 +313,9 @@ const HomeView = ({
             setSettingsOpen(true);
           }}
           activeView="home"
-          hiddenGroupTypes={['cli']}
           onNavigateHome={() => {
             if (isMobile) toggleSidebar();
           }}
-          onNavigateCLI={onNavigateCLI}
         />
 
         <div className={styles.rightCol}>
@@ -366,7 +343,6 @@ const HomeView = ({
                   {modeCards.map(({ type, onClick }) => {
                     const meta = MODE_META[type];
                     const Icon = meta.icon;
-                    const isCreate = type !== 'cli';
                     return (
                       <button key={type} type="button" className={styles.modeCard} onClick={onClick}>
                         <div className={styles.modeIcon} style={{ background: meta.bg }}>
@@ -377,7 +353,7 @@ const HomeView = ({
                           <div className={styles.modeDesc}>{getTranslatedGroupTypeDescription(t, type)}</div>
                         </div>
                         <span className={styles.modeCta}>
-                          {isCreate ? t('home:cards.create') : t('home:cards.enter')}
+                          {t('home:cards.create')}
                           <ChevronRight size={15} />
                         </span>
                       </button>
@@ -416,35 +392,6 @@ const HomeView = ({
                 </div>
               )}
 
-              {recentTasks.length > 0 && (
-                <div className={styles.section}>
-                  <p className={styles.sectionTitle}>{t('home:recent.tasksTitle')}</p>
-                  <div className={styles.recentGrid}>
-                    {recentTasks.map((task) => (
-                      <button
-                        key={task.id}
-                        type="button"
-                        className={styles.recentItem}
-                        onClick={() => onSelectTask(task.id)}
-                      >
-                        <div className={styles.recentIcon} style={{ background: MODE_META.cli.bg }}>
-                          <Terminal size={16} style={{ color: MODE_META.cli.color }} />
-                        </div>
-                        <div className={styles.recentBody}>
-                          <span className={styles.recentName}>
-                            {task.title?.trim() || t('home:recent.emptyTaskTitle')}
-                          </span>
-                          <span className={styles.recentMeta}>{task.templateSnapshot?.name}</span>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                  <button type="button" className={styles.linkBtn} onClick={onNavigateCLI}>
-                    {t('home:recent.openDevTasks')}
-                    <ChevronRight size={15} />
-                  </button>
-                </div>
-              )}
             </div>
           </div>
           </div>

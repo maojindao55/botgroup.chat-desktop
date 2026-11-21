@@ -1,7 +1,6 @@
 {
   "typeStep": {
-    "intro": "Pick a group scenario and invite the right members.",
-    "cliHint": "To create a dev group, go to Dev Tasks in the sidebar and create a team template."
+    "intro": "Pick a group scenario and invite the right members."
   },
   "basicStep": {
     "nameLabel": "Group name *",
@@ -11,52 +10,19 @@
   },
   "membersStep": {
     "pickCharacters": "Choose characters to join the group",
-    "pickCliMembers": "Choose CLI Agents to join the group",
-    "pickExperts": "Choose experts to join the group",
     "characterPlaceholder": "Select characters...",
-    "cliPlaceholder": "Select CLI Agents...",
-    "expertPlaceholder": "Select experts...",
     "emptyDescription": "No {{resource}} yet. Create one in Settings first.",
     "goLibrary": "Create in Settings",
     "openLibraryHint": "Open Settings from the sidebar to create one"
   },
   "configStep": {
-    "speechMode": "Speaking mode",
-    "workspacePath": "Workspace path *",
-    "workspaceHint": "CLI Agents read and write code in this directory. You can pick a folder or enter an absolute path.",
-    "collaborationMode": "Collaboration mode",
-    "roleAssignment": "Role assignment",
-    "roleAssignmentHint": "Choose who plans, who implements from the plan, and who reviews. Planner and reviewer can be the same CLI Agent.",
-    "customWorkflowRoles": "Diagnose/fix roles",
-    "customWorkflowHint": "Stages: {{stages}}. The fixer diagnoses and edits code; the reviewer checks the fix quality.",
-    "roleAssignmentWarning": "Select at least 2 CLI Agents and assign planner/reviewer and implementer separately.",
-    "customWorkflowWarning": "Select at least 2 CLI Agents and assign the fixer and reviewer separately.",
-    "planner": "Planner",
-    "implementer": "Implementer",
-    "reviewer": "Reviewer",
-    "diagnoseFixer": "Diagnose and fix",
-    "fixReviewer": "Reviewer",
-    "maxReviewRounds": "Max review rounds",
-    "plannerPlaceholder": "Select planner",
-    "implementerPlaceholder": "Select implementer",
-    "reviewerPlaceholder": "Select reviewer",
-    "diagnoseFixerPlaceholder": "Select fixer",
-    "fixReviewerPlaceholder": "Select reviewer",
-    "cliSessionReuse": "CLI session reuse",
-    "autoApproval": "Auto approval",
-    "autoApprovalHint": "When enabled, CLI Agents run automatically without confirmation.",
-    "timeoutSeconds": "Timeout (seconds)",
-    "agentCollaboration": "In-group collaboration",
-    "agentEffort": "Default workflow preference"
+    "speechMode": "Speaking mode"
   },
   "steps": {
     "type": "Choose scenario",
     "basic": "Basic info",
     "members": "Choose members",
     "config": "Group settings",
-    "templateBasic": "Template name",
-    "templateMembers": "Choose CLI Agents",
-    "templateConfig": "Execution strategy",
     "shortType": "Type",
     "shortBasic": "Basic",
     "shortMembers": "Members",
@@ -65,8 +31,6 @@
   "actions": {
     "previous": "Previous",
     "next": "Next",
-    "createGroup": "Create group",
-    "createTemplate": "Create template"
-  },
-  "templateTitle": "New team template · {{step}}"
+    "createGroup": "Create group"
+  }
 }

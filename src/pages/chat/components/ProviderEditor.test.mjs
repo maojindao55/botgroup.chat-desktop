@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const sourcePath = new URL('./ProviderEditor.tsx', import.meta.url);
-const source = fs.readFileSync(sourcePath, 'utf8');
+const source = fs.readFileSync(sourcePath, 'utf8').replace(/\r\n/g, '\n');
 
 const handleTestMatch = source.match(
   /const handleTest = async \(\) => \{([\s\S]*?)\n  \};\n\n  const handleClone/,

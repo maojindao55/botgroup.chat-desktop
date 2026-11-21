@@ -1,8 +1,9 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
-import { AIMember, AIMemberKind, builtinAIMembers } from '../config/aiMembers';
+import { AIMember, AIMemberKind, builtinAIMembers, isSupportedMemberKind } from '../config/aiMembers';
+import type { Group } from '../config/groups';
 import { resolveEffectiveMember } from '../utils/aiMemberDisplay';
-import { lookupProviderByEnvName, lookupProviderByModel } from '../config/providers';
+import { lookupProviderByModel } from '../config/providers';
 import { normalizeTags } from '../config/tagTaxonomy';
 import i18n from '@/i18n';
 
@@ -37,34 +38,6 @@ function normalizeLlmConfig(config: Record<string, unknown>): Record<string, unk
   };
 }
 
-function normalizeAgentConfig(config: Record<string, unknown>): Record<string, unknown> {
-  if (config.providerId && config.model) {
-    const { llm: _l, ...rest } = config;
-    return rest;
-  }
-  const llm = config.llm as { baseURL?: string; apiKey?: string; model?: string } | undefined;
-  if (llm) {
-    const model = llm.model ?? 'deepseek-chat';
-    const apiKey = llm.apiKey ?? '';
-    const providerId = looksLikeRealKey(apiKey)
-      ? `unmapped-${config.id ?? 'agent'}`
-      : lookupProviderByEnvName(apiKey);
-    const { llm: _l, ...rest } = config;
-    return { ...rest, providerId, model };
-  }
-  return {
-    ...config,
-    providerId: config.providerId ?? 'deepseek',
-    model: config.model ?? 'deepseek-chat',
-  };
-}
-
-function looksLikeRealKey(value: string): boolean {
-  if (value.startsWith('API_KEY_')) return false;
-  if (value.length <= 20) return false;
-  return !/^[A-Z0-9_]+$/.test(value);
-}
-
 // Convert from Rust type to TS type
 export function mapFromRust(r: RustAIMember): AIMember {
   let tags: string[] = [];
@@ -85,11 +58,7 @@ export function mapFromRust(r: RustAIMember): AIMember {
     }
   }
 
-  if (r.kind === 'llm') {
-    parsedConfig = normalizeLlmConfig(parsedConfig);
-  } else if (r.kind === 'agent') {
-    parsedConfig = normalizeAgentConfig({ ...parsedConfig, id: r.id });
-  }
+  parsedConfig = normalizeLlmConfig(parsedConfig);
 
   return {
     id: r.id,
@@ -110,29 +79,13 @@ export function mapFromRust(r: RustAIMember): AIMember {
 export function mapToRust(m: AIMember): RustAIMember {
   const tagsStr = JSON.stringify(m.tags || []);
 
-  let configObj: Record<string, unknown> = {};
-  if (m.kind === 'llm') {
-    configObj = {
-      providerId: m.providerId,
-      model: m.model,
-      customPrompt: m.customPrompt,
-      stages: m.stages,
-    };
-    if (m.schedulerTag) configObj.schedulerTag = m.schedulerTag;
-  } else if (m.kind === 'agent') {
-    configObj = {
-      role: m.role,
-      systemPrompt: m.systemPrompt,
-      providerId: m.providerId,
-      model: m.model,
-      tools: m.tools,
-      maxTurns: m.maxTurns,
-      temperature: m.temperature,
-      capabilities: m.capabilities,
-    };
-  } else if (m.kind === 'cli') {
-    configObj = { cli: m.cli, capabilities: m.capabilities };
-  }
+  const configObj: Record<string, unknown> = {
+    providerId: m.providerId,
+    model: m.model,
+    customPrompt: m.customPrompt,
+    stages: m.stages,
+  };
+  if (m.schedulerTag) configObj.schedulerTag = m.schedulerTag;
   if (m.forkedFrom) configObj.forkedFrom = m.forkedFrom;
 
   return {
@@ -208,17 +161,14 @@ export const useAIMemberStore = create<AIMemberStore>((set, get) => ({
         const record: Record<string, AIMember> = {};
 
         rustMembers.forEach((r) => {
+          if (!isSupportedMemberKind(r.kind)) return;
           record[r.id] = mapFromRust(r);
         });
 
-        // 内置成员展示字段与 planner 所需能力以代码配置为准，避免 DB 中旧 seed 数据滞后
+        // 内置成员展示字段以代码配置为准，避免 DB 中旧 seed 数据滞后
         builtinAIMembers.forEach((b) => {
           if (record[b.id]?.source === 'builtin') {
-            record[b.id] = {
-              ...record[b.id],
-              avatar: b.avatar,
-              capabilities: 'capabilities' in b ? b.capabilities : (record[b.id] as any).capabilities,
-            } as AIMember;
+            record[b.id] = { ...record[b.id], avatar: b.avatar } as AIMember;
           }
         });
 
@@ -232,6 +182,7 @@ export const useAIMemberStore = create<AIMemberStore>((set, get) => ({
           record[m.id] = m;
         });
         customMembers.forEach((m) => {
+          if (!isSupportedMemberKind(m.kind)) return;
           record[m.id] = m;
         });
 

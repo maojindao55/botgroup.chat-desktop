@@ -14,36 +14,24 @@ async function importTsModule(url) {
   return import(moduleUrl);
 }
 
-const { builtinAIMembers } = await importTsModule(new URL('./aiMembers.ts', import.meta.url));
+const { builtinAIMembers, isSupportedMemberKind, REMOVED_MEMBER_KINDS } = await importTsModule(
+  new URL('./aiMembers.ts', import.meta.url),
+);
 
-const qoder = builtinAIMembers.find((member) => member.id === 'cli-qodercli');
-const antigravity = builtinAIMembers.find((member) => member.id === 'cli-antigravity');
+assert.ok(
+  builtinAIMembers.every((member) => member.kind === 'llm'),
+  'builtin members must all be LLM characters',
+);
+assert.equal(
+  builtinAIMembers.some((member) => member.id.startsWith('cli-') || member.id.startsWith('agent-')),
+  false,
+  'CLI / agent builtin members must be gone',
+);
 
-assert.equal(qoder?.kind, 'cli');
-assert.equal(qoder?.name, 'Qoder CLI');
-assert.equal(qoder?.avatar, 'lobehub:Qoder');
-assert.equal(qoder?.source, 'builtin');
-assert.equal(qoder?.enabled, true);
-assert.equal(qoder?.cli?.adapter, 'qodercli');
-assert.equal(qoder?.cli?.approvalMode, 'auto');
-assert.equal(qoder?.cli?.showStderr, false);
-
-assert.equal(antigravity?.kind, 'cli');
-assert.equal(antigravity?.name, 'Antigravity');
-assert.equal(antigravity?.source, 'builtin');
-assert.equal(antigravity?.enabled, true);
-assert.equal(antigravity?.cli?.adapter, 'antigravity');
-assert.equal(antigravity?.cli?.approvalMode, 'auto');
-assert.equal(antigravity?.cli?.showStderr, true);
-
-const kimi = builtinAIMembers.find((member) => member.id === 'cli-kimi');
-assert.equal(kimi?.kind, 'cli');
-assert.equal(kimi?.name, 'Kimi Code');
-assert.equal(kimi?.avatar, 'lobehub:Kimi');
-assert.equal(kimi?.source, 'builtin');
-assert.equal(kimi?.enabled, true);
-assert.equal(kimi?.cli?.adapter, 'kimi');
-assert.equal(kimi?.cli?.approvalMode, 'auto');
-assert.equal(kimi?.cli?.showStderr, false);
+assert.equal(isSupportedMemberKind('llm'), true);
+for (const kind of REMOVED_MEMBER_KINDS) {
+  assert.equal(isSupportedMemberKind(kind), false, `${kind} members must be filtered out`);
+}
+assert.equal(isSupportedMemberKind(undefined), false);
 
 console.log('aiMembers.test.mjs: ok');

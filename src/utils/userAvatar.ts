@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 export interface DesktopUser {
   id: number;
   phone: string;
-  nickname: string | null;
+  nickname: string;
   avatar_url: string | null;
   status: number;
 }
@@ -11,7 +11,7 @@ export interface DesktopUser {
 /** Tauri IPC 返回 camelCase，统一转成 store 使用的 snake_case */
 export function normalizeDesktopUser(raw: Record<string, unknown> | null | undefined): DesktopUser {
   if (!raw) {
-    return { id: 0, phone: '', nickname: null, avatar_url: null, status: 0 };
+    return { id: 0, phone: '', nickname: '', avatar_url: null, status: 0 };
   }
   return {
     id: Number(raw.id ?? 0),
