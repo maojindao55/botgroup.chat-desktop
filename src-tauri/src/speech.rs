@@ -32,7 +32,7 @@ const TTS_TIMEOUT: Duration = Duration::from_secs(40);
 /// 服务端 23 秒收不到数据会断开，按住说话不会这么久，这里留一点余量
 const ASR_IDLE_TIMEOUT: Duration = Duration::from_secs(20);
 
-type Ws = WebSocketStream<MaybeTlsStream<TcpStream>>;
+pub(crate) type Ws = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
 // ============ 地址与凭据 ============
 
@@ -72,7 +72,7 @@ pub(crate) fn resolve_api_key(app: &AppHandle, provider_id: Option<&str>) -> Res
 
 pub async fn connect(endpoint: &str, api_key: &str) -> Result<Ws, String> {
     let mut request = endpoint.into_client_request().map_err(|e| e.to_string())?;
-    let auth = HeaderValue::from_str(&format!("bearer {}", api_key.trim()))
+    let auth = HeaderValue::from_str(&format!("Bearer {}", api_key.trim()))
         .map_err(|_| "API Key 含有非法字符".to_string())?;
     request.headers_mut().insert("Authorization", auth);
     let (ws, _) = timeout(CONNECT_TIMEOUT, tokio_tungstenite::connect_async(request))
@@ -226,7 +226,7 @@ pub fn parse_server_event(text: &str) -> ServerEvent {
     }
 }
 
-async fn send_json(ws: &mut Ws, value: &Value) -> Result<(), String> {
+pub(crate) async fn send_json(ws: &mut Ws, value: &Value) -> Result<(), String> {
     ws.send(Message::Text(value.to_string().into()))
         .await
         .map_err(|e| format!("发送失败：{e}"))
@@ -697,7 +697,7 @@ mod tests {
         assert_eq!(audio, vec![1, 2, 3, 4, 5]);
         tokio::time::sleep(Duration::from_millis(50)).await;
         let log = log.lock().unwrap().clone();
-        assert_eq!(log[0], "auth:bearer sk-test");
+        assert_eq!(log[0], "auth:Bearer sk-test");
         assert_eq!(&log[1..4], &["run-task", "continue-task", "finish-task"]);
     }
 
