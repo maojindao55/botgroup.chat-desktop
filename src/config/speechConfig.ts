@@ -12,8 +12,10 @@ export interface SpeechConfig {
   tts: {
     engine: SpeechEngine;
     model: string;
-    /** 为空时每位伙伴用各自的默认音色 */
+    /** 所有伙伴的默认音色，为空时每位伙伴用模型自带的默认音色 */
     voice: string;
+    /** 按模型保存的自定义音色：伙伴 id 或 game:<游戏 id> → 音色 ID */
+    voices: Record<string, Record<string, string>>;
     rate: number;
     /** 语气指令（Token Plan 用），为空则不传 */
     instruction: string;
@@ -148,7 +150,7 @@ function belongsToOtherModel(voice: string, model: string): boolean {
 }
 
 export const DEFAULT_SPEECH_CONFIG: SpeechConfig = {
-  tts: { engine: 'system', model: defaultModel('tts', 'tokenplan'), voice: '', rate: 1, instruction: KID_TTS_INSTRUCTION },
+  tts: { engine: 'system', model: defaultModel('tts', 'tokenplan'), voice: '', voices: {}, rate: 1, instruction: KID_TTS_INSTRUCTION },
   asr: { engine: 'system', model: defaultModel('asr', 'tokenplan') },
   endpoint: SPEECH_ENDPOINTS[0].value,
   httpBase: TOKEN_PLAN_BASE,
@@ -159,6 +161,28 @@ const CONFIG_KEY = 'kid_speech_config';
 
 const isEngine = (v: unknown): v is SpeechEngine => v === 'system' || v === 'tokenplan' || v === 'qwen';
 const str = (v: unknown, fallback: string) => (typeof v === 'string' && v.trim() ? v.trim() : fallback);
+
+const MAX_VOICE_ID = 120;
+
+function normalizeVoiceMap(raw: unknown): Record<string, string> {
+  if (!raw || typeof raw !== 'object') return {};
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>).slice(0, 64)) {
+    const voice = typeof value === 'string' ? value.trim() : '';
+    if (key && key.length <= 64 && voice && voice.length <= MAX_VOICE_ID) out[key] = voice;
+  }
+  return out;
+}
+
+function normalizeVoices(raw: unknown): Record<string, Record<string, string>> {
+  if (!raw || typeof raw !== 'object') return {};
+  const out: Record<string, Record<string, string>> = {};
+  for (const [model, map] of Object.entries(raw as Record<string, unknown>).slice(0, 16)) {
+    const voices = normalizeVoiceMap(map);
+    if (model.trim() && Object.keys(voices).length) out[model.trim()] = voices;
+  }
+  return out;
+}
 
 export function normalizeSpeechConfig(raw: unknown): SpeechConfig {
   const d = DEFAULT_SPEECH_CONFIG;
@@ -175,6 +199,7 @@ export function normalizeSpeechConfig(raw: unknown): SpeechConfig {
       engine: ttsEngine,
       model: ttsModel,
       voice: belongsToOtherModel(voice, ttsModel) ? '' : voice,
+      voices: normalizeVoices(tts.voices),
       rate: Number.isFinite(rate) ? Math.min(2, Math.max(0.5, rate)) : d.tts.rate,
       instruction: typeof tts.instruction === 'string' ? tts.instruction.trim().slice(0, 200) : d.tts.instruction,
     },
@@ -205,11 +230,33 @@ export function saveSpeechConfig(config: SpeechConfig): void {
   }
 }
 
-/** 家长设了统一音色就用它，否则按伙伴取当前模型下的默认音色 */
-export function voiceForSpeaker(config: SpeechConfig, speakerId?: string): string {
+export const gameVoiceKey = (gameId: string) => `game:${gameId}`;
+
+/** 当前模型下某位伙伴（或 game:<id>）的自定义音色，没有则为空 */
+export function customVoice(config: SpeechConfig, key: string): string {
+  return config.tts.voices[config.tts.model]?.[key] || '';
+}
+
+export function withCustomVoice(config: SpeechConfig, key: string, voice: string): SpeechConfig {
+  const { [key]: _old, ...rest } = config.tts.voices[config.tts.model] || {};
+  const map = voice.trim() ? { ...rest, [key]: voice.trim() } : rest;
+  return { ...config, tts: { ...config.tts, voices: { ...config.tts.voices, [config.tts.model]: map } } };
+}
+
+/** 不看伙伴自己的设置时用的音色：家长的统一音色，否则模型给这位伙伴的默认音色 */
+export function inheritedVoice(config: SpeechConfig, speakerId?: string): string {
   if (config.tts.voice) return config.tts.voice;
   const catalog = voiceCatalog(config.tts.model);
   return (speakerId && catalog.companions[speakerId]) || catalog.fallback;
+}
+
+/** 优先级：游戏音色 > 伙伴音色 > 统一音色 > 模型默认 */
+export function voiceForSpeaker(config: SpeechConfig, speakerId?: string, gameId?: string): string {
+  return (
+    (gameId && customVoice(config, gameVoiceKey(gameId))) ||
+    (speakerId && customVoice(config, speakerId)) ||
+    inheritedVoice(config, speakerId)
+  );
 }
 
 /** 按句切分，先合成第一句就能先播放；太短的句子并到下一句，减少请求次数 */

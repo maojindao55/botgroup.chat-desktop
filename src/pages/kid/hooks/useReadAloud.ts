@@ -27,21 +27,21 @@ export function useReadAloud() {
   }, [cancel]);
 
   const enqueue = useCallback(
-    (text: string, speakerId?: string) => {
+    (text: string, speakerId?: string, gameId?: string) => {
       const speakable = toSpeakableText(text);
       if (!synthesizer.supported || !speakable) return;
       const gen = generation.current;
       queue.current = queue.current.then(() =>
-        gen === generation.current ? synthesizer.speak(speakable, { lang: 'zh-CN', speakerId }) : undefined,
+        gen === generation.current ? synthesizer.speak(speakable, { lang: 'zh-CN', speakerId, gameId }) : undefined,
       );
     },
     [synthesizer],
   );
 
   const speakNow = useCallback(
-    (text: string, speakerId?: string) => {
+    (text: string, speakerId?: string, gameId?: string) => {
       cancel();
-      enqueue(text, speakerId);
+      enqueue(text, speakerId, gameId);
     },
     [cancel, enqueue],
   );
