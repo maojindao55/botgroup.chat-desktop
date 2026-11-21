@@ -516,18 +516,26 @@ mod tests {
         );
     }
 
-    /// 需要外网和真实 Key：TOKEN_PLAN_API_KEY=sk-sp-... cargo test dialog_live -- --ignored --nocapture
-    /// TOKEN_PLAN_TEST_PCM 指向一段 16k 16-bit 单声道 PCM 时会走完整一轮对话
+    /// 需要外网、ffmpeg 和真实 Key（TOKEN_PLAN_API_KEY 或 TOKEN_PLAN_KEY）：
+    /// `cargo test dialog_live_with_real_key -- --ignored --nocapture`
+    /// 设置 TOKEN_PLAN_TEST_PCM 时使用该 16k 16-bit 单声道 PCM，否则先用合成接口生成一句中文再转码。
     #[tokio::test]
     #[ignore]
     async fn dialog_live_with_real_key() {
-        let key = std::env::var("TOKEN_PLAN_API_KEY").expect("TOKEN_PLAN_API_KEY");
+        let key = std::env::var("TOKEN_PLAN_API_KEY")
+            .or_else(|_| std::env::var("TOKEN_PLAN_KEY"))
+            .expect("TOKEN_PLAN_API_KEY or TOKEN_PLAN_KEY");
+        let pcm = match std::env::var("TOKEN_PLAN_TEST_PCM") {
+            Ok(path) => std::fs::read(path).unwrap(),
+            Err(_) => synthesize_prompt_pcm(&key).await,
+        };
+        assert!(pcm.len() >= 16_000, "prompt pcm too short: {} bytes", pcm.len());
+
         let url = dialog_url(None, "qwen-audio-3.0-realtime-plus").unwrap();
         let started = std::time::Instant::now();
         let ws = connect(&url, &key).await.unwrap();
         println!("connected in {:?}", started.elapsed());
         let (tx, rx) = mpsc::unbounded_channel();
-        let pcm = std::env::var("TOKEN_PLAN_TEST_PCM").map(|p| std::fs::read(p).unwrap()).unwrap_or_default();
         for chunk in pcm.chunks(3200) {
             tx.send(DialogCommand::Audio(chunk.to_vec())).unwrap();
         }
@@ -535,24 +543,94 @@ mod tests {
         let commit_at = std::time::Instant::now();
         let first_audio = Arc::new(Mutex::new(None));
         let audio_bytes = Arc::new(Mutex::new(0usize));
-        let (fa, ab) = (first_audio.clone(), audio_bytes.clone());
+        let user_text = Arc::new(Mutex::new(String::new()));
+        let reply_text = Arc::new(Mutex::new(String::new()));
+        let error = Arc::new(Mutex::new(None));
+        let (fa, ab, ut, rt, err) = (
+            first_audio.clone(),
+            audio_bytes.clone(),
+            user_text.clone(),
+            reply_text.clone(),
+            error.clone(),
+        );
         let args = DialogArgs {
             model: "qwen-audio-3.0-realtime-plus".into(),
             voice: Some("longanlingxin".into()),
-            instructions: "你是陪小朋友聊天的数学小熊，回答简短。".into(),
+            instructions: "你是陪小朋友聊天的数学小熊。只回答一个很短的句子。".into(),
             ..Default::default()
         };
-        run_dialog_session(ws, args, rx, move |event| {
-            match &event {
-                DialogEvent::Audio { pcm } => {
-                    fa.lock().unwrap().get_or_insert(commit_at.elapsed());
-                    *ab.lock().unwrap() += pcm.len() * 3 / 4;
-                }
-                DialogEvent::Error { .. } | DialogEvent::UserText { .. } | DialogEvent::ReplyDone { .. } => println!("{event:?}"),
-                _ => {}
+        run_dialog_session(ws, args, rx, move |event| match &event {
+            DialogEvent::Audio { pcm } => {
+                fa.lock().unwrap().get_or_insert(commit_at.elapsed());
+                *ab.lock().unwrap() += pcm.len() * 3 / 4;
             }
+            DialogEvent::UserText { text } => *ut.lock().unwrap() = text.clone(),
+            DialogEvent::ReplyDone { text, status } => {
+                println!("reply done status={status} text={text}");
+                *rt.lock().unwrap() = text.clone();
+            }
+            DialogEvent::Error { message } => {
+                println!("error: {message}");
+                *err.lock().unwrap() = Some(message.clone());
+            }
+            _ => {}
         })
         .await;
-        println!("first audio after release: {:?}, audio bytes {}", first_audio.lock().unwrap(), audio_bytes.lock().unwrap());
+
+        let first = *first_audio.lock().unwrap();
+        let bytes = *audio_bytes.lock().unwrap();
+        let heard = user_text.lock().unwrap().clone();
+        let reply = reply_text.lock().unwrap().clone();
+        println!("user={heard:?} first audio after release: {first:?}, audio bytes {bytes}");
+        assert!(error.lock().unwrap().is_none(), "server error: {:?}", error.lock().unwrap());
+        assert!(bytes > 1000, "no reply audio");
+        assert!(!reply.trim().is_empty(), "empty reply text");
+        assert!(first.is_some(), "reply audio never started");
+    }
+
+    /// 用已验证的 HTTP 合成生成一句中文，再转成实时接口要的 16k PCM。
+    async fn synthesize_prompt_pcm(key: &str) -> Vec<u8> {
+        use crate::speech_http::{self, HttpTtsArgs};
+        let client = speech_http::client().unwrap();
+        let base = speech_http::validate_base_url(None).unwrap();
+        let args = HttpTtsArgs {
+            text: "小熊，一加一等于几？".into(),
+            model: "qwen-audio-3.0-tts-plus".into(),
+            voice: "longanlingxin".into(),
+            sample_rate: Some(16000),
+            ..Default::default()
+        };
+        let mp3 = speech_http::synthesize(&client, &base, key, &args, true).await.expect("prompt tts");
+        let dir = std::env::temp_dir();
+        let mp3_path = dir.join("dialog_live_prompt.mp3");
+        let pcm_path = dir.join("dialog_live_prompt.pcm");
+        std::fs::write(&mp3_path, &mp3).unwrap();
+        let output = std::process::Command::new("ffmpeg")
+            .args([
+                "-y",
+                "-loglevel",
+                "error",
+                "-i",
+                mp3_path.to_str().unwrap(),
+                "-f",
+                "s16le",
+                "-acodec",
+                "pcm_s16le",
+                "-ac",
+                "1",
+                "-ar",
+                "16000",
+                pcm_path.to_str().unwrap(),
+            ])
+            .output()
+            .expect("ffmpeg is required to decode the synthesized prompt");
+        assert!(
+            output.status.success(),
+            "ffmpeg: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let pcm = std::fs::read(&pcm_path).unwrap();
+        println!("prompt pcm {} bytes from {} mp3 bytes", pcm.len(), mp3.len());
+        pcm
     }
 }

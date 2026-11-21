@@ -153,7 +153,7 @@ pub fn describe_http_error(status: u16, body: &str) -> String {
     }
 }
 
-fn client() -> Result<Client, String> {
+pub(crate) fn client() -> Result<Client, String> {
     Client::builder().timeout(REQUEST_TIMEOUT).build().map_err(|e| e.to_string())
 }
 
@@ -185,7 +185,7 @@ pub async fn download(client: &Client, url: Url) -> Result<Vec<u8>, String> {
     Ok(bytes.to_vec())
 }
 
-async fn synthesize(client: &Client, base: &Url, api_key: &str, args: &HttpTtsArgs, require_https: bool) -> Result<Vec<u8>, String> {
+pub(crate) async fn synthesize(client: &Client, base: &Url, api_key: &str, args: &HttpTtsArgs, require_https: bool) -> Result<Vec<u8>, String> {
     let value = post_json(client, endpoint(base, TTS_PATH)?, api_key, &tts_body(args)).await?;
     match parse_tts_response(&value)? {
         TtsAudio::Inline(bytes) => Ok(bytes),
