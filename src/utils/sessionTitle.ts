@@ -48,7 +48,8 @@ export async function generateSessionTitle(
 
     const text = await llmChatComplete({
       ...creds,
-      temperature: 0.2,
+      // 不显式传 temperature：由 Provider 默认参数决定；
+      // Kimi K3 / K3.1-pro 等模型只要请求体带 temperature 就会 400。
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: conversation },

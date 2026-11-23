@@ -98,9 +98,13 @@ export async function llmChatReadableStream(params: LlmStreamParams): Promise<Re
           sessionId,
           model: params.model,
           messages: params.messages,
-          temperature: params.temperature,
           tools: params.tools && params.tools.length > 0 ? params.tools : undefined,
         };
+        // 仅在调用方显式给出数值时才发送，避免默认值污染请求体
+        // （部分模型如 Kimi K3 / K3.1-pro 只要出现 temperature 就返回 400）。
+        if (typeof params.temperature === 'number') {
+          streamArgs.temperature = params.temperature;
+        }
 
         if (params.providerId) {
           streamArgs.providerId = params.providerId;

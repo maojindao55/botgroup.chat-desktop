@@ -48,7 +48,8 @@ export const DryRunModal: React.FC<DryRunModalProps> = ({ open, onClose, params 
       });
       const text = await llmChatComplete({
         ...creds,
-        temperature: params.temperature ?? 0.7,
+        // 不提供默认 temperature，避免对拒绝该参数的模型（如 K3 / K3.1-pro）造成 400。
+        ...(typeof params.temperature === 'number' ? { temperature: params.temperature } : {}),
         messages: [
           { role: 'system', content: system || `你是${params.name}。` },
           { role: 'user', content: prompt },

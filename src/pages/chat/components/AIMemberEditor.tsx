@@ -188,7 +188,6 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
     providerId: providerId || '',
     model: model || '',
     systemPrompt: customPrompt || '',
-    temperature: 0.7,
   };
 
   const providerSelect = (

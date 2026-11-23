@@ -167,6 +167,21 @@ pub fn resolve_provider_params(
 /// Keys that callers must never override via params (managed by the proxy).
 const RESERVED_BODY_KEYS: [&str; 4] = ["model", "messages", "stream", "tools"];
 
+/// 部分模型只要请求体里出现 `temperature` 就直接 400（即使值合法），
+/// 例如 Kimi K3 / K3.1-pro。这里按模型名做归一化匹配，命中时一律不发送该字段。
+fn model_rejects_temperature(model: &str) -> bool {
+    let normalized = model.trim().to_ascii_lowercase();
+    normalized == "k3"
+        || normalized.starts_with("k3.")
+        || normalized.starts_with("k3-")
+        || normalized.ends_with("-k3")
+        || normalized.ends_with("/k3")
+        || normalized.contains("-k3-")
+        || normalized.contains("-k3.")
+        || normalized.contains("/k3-")
+        || normalized.contains("/k3.")
+}
+
 pub fn build_chat_body(
     args: &LlmChatStreamArgs,
     provider_params: Option<&serde_json::Value>,
@@ -176,18 +191,24 @@ pub fn build_chat_body(
         "messages": args.messages,
         "stream": true,
     });
+    let rejects_temperature = model_rejects_temperature(&args.model);
     // Provider/default params act as a baseline and are merged first.
     if let Some(serde_json::Value::Object(map)) = provider_params {
         for (k, v) in map {
             if v.is_null() || RESERVED_BODY_KEYS.contains(&k.as_str()) {
                 continue;
             }
+            if rejects_temperature && k == "temperature" {
+                continue;
+            }
             body[k] = v.clone();
         }
     }
-    // An explicit per-call temperature (e.g. agent setting) overrides the default.
+    // An explicit per-call temperature overrides the default.
     if let Some(t) = args.temperature {
-        body["temperature"] = serde_json::json!(t);
+        if !rejects_temperature {
+            body["temperature"] = serde_json::json!(t);
+        }
     }
     if let Some(tools) = &args.tools {
         if !tools.is_null() {
@@ -396,6 +417,35 @@ mod tests {
         let body = build_chat_body(&args, Some(&provider_params));
         assert_eq!(body["temperature"], 1.5);
         assert_eq!(body["top_p"], 0.8);
+    }
+
+    #[test]
+    fn temperature_is_omitted_when_not_provided() {
+        let args = args_with_params(None, None);
+        let body = build_chat_body(&args, None);
+        assert!(body.get("temperature").is_none());
+    }
+
+    #[test]
+    fn model_rejects_temperature_matches_k3_family_only() {
+        for model in ["k3", "k3.1-pro", "moonshotai/k3", "kimi-k3", "kimi-k3.1-pro"] {
+            assert!(model_rejects_temperature(model), "{model} should reject temperature");
+        }
+        for model in ["k2", "kimi-k2", "glm-4", "gpt-4o", "deepseek-chat"] {
+            assert!(!model_rejects_temperature(model), "{model} should allow temperature");
+        }
+    }
+
+    #[test]
+    fn k3_models_strip_temperature_from_provider_params_and_args() {
+        let mut args = args_with_params(Some(1.0), None);
+        args.model = "kimi-k3.1-pro".into();
+        let provider_params = serde_json::json!({ "temperature": 0.7, "top_p": 0.9 });
+
+        let body = build_chat_body(&args, Some(&provider_params));
+
+        assert!(body.get("temperature").is_none());
+        assert_eq!(body["top_p"], 0.9);
     }
 
     #[test]
