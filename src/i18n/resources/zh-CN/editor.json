@@ -36,9 +36,7 @@
       "addStagePrompt": "添加阶段提示词"
     },
     "kinds": {
-      "llm": "AI 角色",
-      "agent": "旧版专家",
-      "cli": "CLI Agent"
+      "llm": "AI 角色"
     },
     "dryRun": "试运行一句",
     "dryRunModal": {

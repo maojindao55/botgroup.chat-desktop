@@ -4,16 +4,6 @@
       "label": "角色群",
       "shortLabel": "角色",
       "description": "邀请不同角色和模型一起聊天、脑暴、做观点碰撞。"
-    },
-    "agent": {
-      "label": "专家群",
-      "shortLabel": "专家",
-      "description": "邀请具备职责分工的专家群友协作，产出方案、评审和结论。"
-    },
-    "cli": {
-      "label": "开发群",
-      "shortLabel": "开发",
-      "description": "邀请 Codex、Claude Code、OpenCode、KimiCode、PI 等 CLI Agent 协作改代码。"
     }
   },
   "aiSpeechModes": {
@@ -28,30 +18,6 @@
     "all": {
       "label": "全员圆桌",
       "description": "每轮所有角色都发言，适合脑暴和多模型观点对比。"
-    }
-  },
-  "cliWorkflowTemplateGroups": {
-    "common": {
-      "label": "常用",
-      "description": "覆盖多数日常开发任务，优先从这里选择。"
-    },
-    "advanced": {
-      "label": "高级",
-      "description": "适合已有 review、多方案比较或隔离并行实现。"
-    }
-  },
-  "cliSessionPolicy": {
-    "task": {
-      "label": "按任务隔离",
-      "description": "每个开发任务使用独立 CLI 会话；继续同一任务会复用该任务的会话。"
-    },
-    "workspace": {
-      "label": "按 Workspace 共享",
-      "description": "同一 Workspace 与 CLI Agent 下的所有任务共享 CLI 会话。"
-    },
-    "template": {
-      "label": "按模板共享",
-      "description": "使用同一团队模板创建的所有任务共享 CLI 会话，上下文隔离最弱。"
     }
   },
   "memberKinds": {

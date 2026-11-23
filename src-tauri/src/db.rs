@@ -298,15 +298,16 @@ pub fn init_db_schemas(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-/// 开发群（CLI）与专家群（Agent）已下线：清理旧库里的相关表与群员。
+/// 开发群（CLI）与专家群（Agent）已下线：清理旧库里的相关表。
+/// `ai_members` 中遗留的 cli/agent 行保留不删，前端只读取 kind='llm'，
+/// 以便用户未来需要时仍可追溯原始数据。
 fn remove_dev_features(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         "DROP TABLE IF EXISTS cli_agent_skill_packs;
          DROP TABLE IF EXISTS cli_skill_packs;
          DROP TABLE IF EXISTS cli_agent_profiles;
          DROP TABLE IF EXISTS cli_runtimes;
-         DROP TABLE IF EXISTS cli_tasks;
-         DELETE FROM ai_members WHERE kind IN ('cli', 'agent');",
+         DROP TABLE IF EXISTS cli_tasks;",
     )
 }
 
@@ -339,7 +340,7 @@ mod tests {
     }
 
     #[test]
-    fn test_init_db_schemas_removes_dev_feature_data() {
+    fn test_init_db_schemas_removes_dev_feature_tables() {
         let conn = Connection::open_in_memory().unwrap();
         init_db_schemas(&conn).unwrap();
         conn.execute_batch(
@@ -353,6 +354,7 @@ mod tests {
 
         init_db_schemas(&conn).unwrap();
 
+        // 遗留成员数据保留，由前端按 kind 过滤展示。
         let kinds: Vec<String> = conn
             .prepare("SELECT kind FROM ai_members ORDER BY id")
             .unwrap()
@@ -360,7 +362,10 @@ mod tests {
             .unwrap()
             .map(|r| r.unwrap())
             .collect();
-        assert_eq!(kinds, vec!["llm".to_string()]);
+        assert_eq!(
+            kinds,
+            vec!["agent".to_string(), "cli".to_string(), "llm".to_string()]
+        );
 
         let cli_tables: i64 = conn
             .query_row(

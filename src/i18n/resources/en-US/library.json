@@ -2,19 +2,15 @@
   "title": "Library",
   "closeAria": "Close library",
   "tabs": {
-    "cli": "CLI Agents",
     "providers": "Model providers",
-    "llm": "AI characters",
-    "agent": "Legacy experts"
+    "llm": "AI characters"
   },
   "empty": {
     "resources": "No resources yet",
     "providers": "No model providers yet. Use the button above to add one."
   },
   "create": {
-    "cli": "New CLI Agent",
     "llm": "New AI character",
-    "agent": "New legacy expert",
     "provider": "New model provider"
   },
   "meta": {

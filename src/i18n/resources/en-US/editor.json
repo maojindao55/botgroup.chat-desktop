@@ -36,9 +36,7 @@
       "addStagePrompt": "Add stage prompt"
     },
     "kinds": {
-      "llm": "AI character",
-      "agent": "Legacy expert",
-      "cli": "CLI Agent"
+      "llm": "AI character"
     },
     "dryRun": "Dry run one message",
     "dryRunModal": {

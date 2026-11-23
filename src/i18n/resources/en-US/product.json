@@ -4,16 +4,6 @@
       "label": "Character Group",
       "shortLabel": "Character",
       "description": "Invite different characters and models to chat, brainstorm, and compare perspectives."
-    },
-    "agent": {
-      "label": "Expert Group",
-      "shortLabel": "Expert",
-      "description": "Invite experts with clear roles to collaborate on plans, reviews, and conclusions."
-    },
-    "cli": {
-      "label": "Dev Group",
-      "shortLabel": "Dev",
-      "description": "Invite Codex, Claude Code, OpenCode, KimiCode, PI, and other CLI Agents to edit code together."
     }
   },
   "aiSpeechModes": {
@@ -28,30 +18,6 @@
     "all": {
       "label": "Full roundtable",
       "description": "Every character speaks each round. Good for brainstorming and model comparison."
-    }
-  },
-  "cliWorkflowTemplateGroups": {
-    "common": {
-      "label": "Common",
-      "description": "Covers most day-to-day development tasks. Start here first."
-    },
-    "advanced": {
-      "label": "Advanced",
-      "description": "For existing reviews, comparing multiple approaches, or isolated parallel implementation."
-    }
-  },
-  "cliSessionPolicy": {
-    "task": {
-      "label": "Per task",
-      "description": "Each dev task gets its own CLI session. Continuing the same task reuses that session."
-    },
-    "workspace": {
-      "label": "Per workspace",
-      "description": "All tasks under the same workspace and CLI Agent share one CLI session."
-    },
-    "template": {
-      "label": "Per template",
-      "description": "All tasks created from the same team template share one CLI session with the weakest isolation."
     }
   },
   "memberKinds": {

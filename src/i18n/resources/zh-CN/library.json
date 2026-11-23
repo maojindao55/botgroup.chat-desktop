@@ -2,19 +2,15 @@
   "title": "资源库",
   "closeAria": "关闭资源库",
   "tabs": {
-    "cli": "CLI Agents",
     "providers": "模型服务",
-    "llm": "AI 角色",
-    "agent": "旧版专家"
+    "llm": "AI 角色"
   },
   "empty": {
     "resources": "暂无资源",
     "providers": "暂无模型服务，点击上方按钮添加"
   },
   "create": {
-    "cli": "新增 CLI Agent",
     "llm": "新增 AI 角色",
-    "agent": "新增旧版专家",
     "provider": "新增模型服务"
   },
   "meta": {

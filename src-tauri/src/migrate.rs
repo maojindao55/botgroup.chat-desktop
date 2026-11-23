@@ -1,5 +1,4 @@
 //! One-shot PR4 migration: localStorage API keys → vault, ai_members config → providerId/model.
-use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -116,19 +115,6 @@ fn backup_keys(app_data: &Path, keys: &[LocalStorageKey]) -> Result<PathBuf, Str
     Ok(dest)
 }
 
-fn looks_like_real_key(value: &str) -> bool {
-    if value.starts_with("API_KEY_") {
-        return false;
-    }
-    if value.len() <= 20 {
-        return false;
-    }
-    let all_env_style = value
-        .chars()
-        .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_');
-    !all_env_style
-}
-
 fn env_name_to_provider_id(env_name: &str) -> String {
     let mut s = env_name.trim().to_string();
     if let Some(stripped) = s.strip_prefix("API_KEY_") {
@@ -174,36 +160,6 @@ fn lookup_provider_by_model(conn: &Connection, model: &str) -> Option<String> {
         }
     });
     candidates.first().map(|p| p.id.clone())
-}
-
-fn lookup_provider_by_env_name(conn: &Connection, env_name: &str) -> String {
-    let target_id = env_name_to_provider_id(env_name);
-    if target_id.starts_with("unmapped-") {
-        return target_id;
-    }
-    if provider::db::get_provider(conn, &target_id)
-        .ok()
-        .flatten()
-        .is_some()
-    {
-        return target_id;
-    }
-    format!("unmapped-{}", env_name)
-}
-
-fn append_model_if_missing(
-    tx: &Transaction<'_>,
-    provider_id: &str,
-    model: &str,
-) -> Result<(), String> {
-    let Some(mut p) = provider::db::get_provider(tx, provider_id)? else {
-        return Ok(());
-    };
-    if !p.models.iter().any(|m| m == model) {
-        p.models.push(model.to_string());
-        provider::db::upsert_provider(tx, &p)?;
-    }
-    Ok(())
 }
 
 fn canonicalize_storage_key(raw_name: &str) -> (String, bool) {
@@ -269,89 +225,7 @@ fn migrate_llm_config(
     Ok(())
 }
 
-fn migrate_agent_config(
-    tx: &Transaction<'_>,
-    master: &[u8; vault::KEY_LEN],
-    member_id: &str,
-    config: &mut serde_json::Map<String, serde_json::Value>,
-    shared: &mut HashMap<(String, String), String>,
-) -> Result<(), String> {
-    if config.contains_key("providerId") {
-        config.remove("llm");
-        return Ok(());
-    }
-
-    let llm = match config.get("llm").cloned() {
-        Some(v) => v,
-        None => return Ok(()),
-    };
-    let llm_obj = match llm.as_object() {
-        Some(o) => o.clone(),
-        None => return Ok(()),
-    };
-
-    let base_url = llm_obj
-        .get("baseURL")
-        .or_else(|| llm_obj.get("baseUrl"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .trim()
-        .trim_end_matches('/')
-        .to_string();
-    let api_key = llm_obj
-        .get("apiKey")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-    let model = llm_obj
-        .get("model")
-        .and_then(|v| v.as_str())
-        .unwrap_or("deepseek-chat")
-        .to_string();
-
-    let provider_id = if looks_like_real_key(&api_key) {
-        let dedupe_key = (base_url.clone(), api_key.clone());
-        if let Some(existing) = shared.get(&dedupe_key) {
-            append_model_if_missing(tx, existing, &model)?;
-            existing.clone()
-        } else {
-            let pid = format!("user-{member_id}");
-            let vault_name = vault_name_for_provider(&pid);
-            vault::set(tx, master, &vault_name, &api_key).map_err(|e| e.to_string())?;
-            let provider = Provider {
-                id: pid.clone(),
-                name: format!("自定义 ({base_url})"),
-                base_url: base_url.clone(),
-                api_key_ref: vault_name,
-                models: vec![model.clone()],
-                source: "user".into(),
-                icon_url: None,
-                description: None,
-                enabled: true,
-                params: None,
-                created_at: None,
-                updated_at: None,
-            };
-            provider::db::upsert_provider(tx, &provider)?;
-            shared.insert(dedupe_key, pid.clone());
-            pid
-        }
-    } else {
-        let pid = lookup_provider_by_env_name(tx, &api_key);
-        if !pid.starts_with("unmapped-") {
-            append_model_if_missing(tx, &pid, &model)?;
-        }
-        pid
-    };
-
-    config.insert("providerId".into(), serde_json::Value::String(provider_id));
-    config.insert("model".into(), serde_json::Value::String(model));
-    config.remove("llm");
-
-    Ok(())
-}
-
-fn migrate_ai_members(tx: &Transaction<'_>, master: &[u8; vault::KEY_LEN]) -> Result<(), String> {
+fn migrate_ai_members(tx: &Transaction<'_>) -> Result<(), String> {
     let mut stmt = tx
         .prepare("SELECT id, kind, config FROM ai_members")
         .map_err(|e| e.to_string())?;
@@ -363,16 +237,12 @@ fn migrate_ai_members(tx: &Transaction<'_>, master: &[u8; vault::KEY_LEN]) -> Re
         .map_err(|e| e.to_string())?;
     drop(stmt);
 
-    let mut shared: HashMap<(String, String), String> = HashMap::new();
-
     for (id, kind, config_str) in rows {
         let mut config: serde_json::Map<String, serde_json::Value> =
             serde_json::from_str(&config_str).unwrap_or_default();
 
-        match kind.as_str() {
-            "llm" => migrate_llm_config(tx, &mut config)?,
-            "agent" => migrate_agent_config(tx, master, &id, &mut config, &mut shared)?,
-            _ => {}
+        if kind == "llm" {
+            migrate_llm_config(tx, &mut config)?;
         }
 
         let new_config = serde_json::Value::Object(config);
@@ -414,7 +284,7 @@ pub fn run_migration(app: &AppHandle, input: MigrationInput) -> Result<Migration
     let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
 
     migrate_local_storage_keys(&tx, &master, &input.local_storage_keys)?;
-    migrate_ai_members(&tx, &master)?;
+    migrate_ai_members(&tx)?;
 
     set_meta(&tx, MIGRATION_MARKER, "1")?;
     set_meta(&tx, SCHEMA_VERSION_KEY, TARGET_SCHEMA_VERSION)?;
@@ -446,16 +316,6 @@ pub fn migration_status(app: AppHandle) -> Result<bool, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_looks_like_real_key() {
-        assert!(!looks_like_real_key("DEEPSEEK_API_KEY"));
-        assert!(!looks_like_real_key("API_KEY_foo"));
-        assert!(!looks_like_real_key("short"));
-        assert!(looks_like_real_key(
-            "sk-abcdefghijklmnopqrstuvwxyz1234567890"
-        ));
-    }
 
     #[test]
     fn test_env_name_to_provider_id() {
