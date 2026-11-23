@@ -57,5 +57,8 @@
     "runningTip": "后台执行中",
     "unreadTip": "有新结果"
   },
-  "groupSettings": "群设置"
+  "groupSettings": "群设置",
+  "directChat": {
+    "badge": "单聊"
+  }
 }

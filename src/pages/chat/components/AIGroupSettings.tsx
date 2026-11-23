@@ -44,6 +44,8 @@ interface AIGroupSettingsProps {
   onRemoveMember?: (memberId: string) => void;
   /** 桌面端使用内联面板，移动端使用 Drawer */
   inline?: boolean;
+  /** 单聊：隐藏发言方式与成员管理，仅保留基础信息与删除 */
+  directChat?: boolean;
 }
 
 const useStyles = createStyles(({ token, css }) => ({
@@ -195,6 +197,7 @@ export const AIGroupSettings = ({
   onAddMember,
   onRemoveMember,
   inline,
+  directChat,
 }: AIGroupSettingsProps) => {
   const { t } = useTranslation(['settings', 'common', 'product']);
   const { styles, cx } = useStyles();
@@ -254,6 +257,7 @@ export const AIGroupSettings = ({
         </div>
       )}
 
+      {!directChat && (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <label style={{ fontSize: 14, fontWeight: 500 }}>{t('settings:aiGroup.speechMode')}</label>
         {aiSpeechModes.map((item) => (
@@ -285,8 +289,10 @@ export const AIGroupSettings = ({
           </button>
         ))}
       </div>
+      )}
 
       {/* 成员管理：MemberPicker（批量）+ 旧版「添加成员」面板（单个） */}
+      {!directChat && (
       <div>
         {onMembersChange && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
@@ -400,6 +406,7 @@ export const AIGroupSettings = ({
           })}
         </div>
       </div>
+      )}
 
       {onDeleteGroup && canDeleteGroup && (
         <div style={{

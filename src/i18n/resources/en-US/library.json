@@ -1,6 +1,9 @@
 {
   "title": "Library",
   "closeAria": "Close library",
+  "actions": {
+    "directChat": "Chat"
+  },
   "tabs": {
     "providers": "Model providers",
     "llm": "AI characters"

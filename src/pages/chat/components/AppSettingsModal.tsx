@@ -15,6 +15,7 @@ import {
   APP_SETTINGS_SECTIONS,
 } from '@/config/appSettings';
 import type { Group } from '@/config/groups';
+import type { AIMember } from '@/config/aiMembers';
 import { GeneralSettingsPanel } from './GeneralSettingsPanel';
 import { ResourceLibraryContent } from './ResourceLibraryContent';
 import { SettingsSectionHeader } from './SettingsSectionHeader';
@@ -157,6 +158,8 @@ export interface AppSettingsModalProps {
   groups: Group[];
   /** 打开时默认选中的分区 */
   initialSection?: AppSettingsSection;
+  /** 从资源库直接开始与某个角色单聊 */
+  onStartDirectChat?: (member: AIMember) => void;
 }
 
 export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
@@ -164,6 +167,7 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
   onClose,
   groups,
   initialSection = 'general',
+  onStartDirectChat,
 }) => {
   const { styles, cx } = useStyles();
   const { t } = useTranslation('appSettings');
@@ -299,6 +303,7 @@ export const AppSettingsModal: React.FC<AppSettingsModalProps> = ({
                 groups={groups}
                 active={open}
                 onSectionChange={setSection}
+                onStartDirectChat={onStartDirectChat}
               />
             )}
           </div>

@@ -13,6 +13,9 @@
     "deleteGroup": "Delete Group",
     "groupMenu": "Group actions"
   },
+  "tags": {
+    "direct": "Direct"
+  },
   "preferences": {
     "title": "Appearance & language",
     "appearance": "Theme",

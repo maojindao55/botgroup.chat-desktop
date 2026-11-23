@@ -57,5 +57,8 @@
     "runningTip": "Running in background",
     "unreadTip": "New result available"
   },
-  "groupSettings": "Group settings"
+  "groupSettings": "Group settings",
+  "directChat": {
+    "badge": "Direct"
+  }
 }

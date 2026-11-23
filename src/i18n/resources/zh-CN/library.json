@@ -1,6 +1,9 @@
 {
   "title": "资源库",
   "closeAria": "关闭资源库",
+  "actions": {
+    "directChat": "单聊"
+  },
   "tabs": {
     "providers": "模型服务",
     "llm": "AI 角色"

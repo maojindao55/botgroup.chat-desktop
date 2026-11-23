@@ -19,6 +19,8 @@ import {
   getTranslatedGroupTypeDescription,
 } from '@/i18n/productLabels';
 import type { Group, GroupType } from '@/config/groups';
+import type { AIMember } from '@/config/aiMembers';
+import { createDirectChatGroup } from '@/config/directChat';
 import { isTauriMacOS } from '@/utils/isTauri';
 
 interface HomeViewProps {
@@ -272,6 +274,17 @@ const HomeView = ({
 
   const myGroups = groups.map((group, index) => ({ group, index }));
 
+  const handleStartDirectChat = (member: AIMember) => {
+    const nextGroup = createDirectChatGroup(member);
+    const existingIndex = groups.findIndex((g) => g.id === nextGroup.id);
+    setSettingsOpen(false);
+    if (existingIndex >= 0) {
+      onSelectGroup(existingIndex);
+    } else {
+      onCreateGroup(nextGroup);
+    }
+  };
+
   const modeCards: { type: GroupType; onClick: () => void }[] = [
     { type: 'ai', onClick: () => setWizardType('ai') },
   ];
@@ -297,6 +310,7 @@ const HomeView = ({
         onClose={() => setSettingsOpen(false)}
         groups={groups}
         initialSection={settingsSection}
+        onStartDirectChat={handleStartDirectChat}
       />
 
       <div className={styles.page}>

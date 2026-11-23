@@ -17,6 +17,7 @@ import { UserSection } from './UserSection';
 import CreateGroupWizard from './CreateGroupWizard';
 import { getTranslatedGroupTypeShortLabel } from '@/i18n/productLabels';
 import type { Group } from '@/config/groups';
+import { isDirectChatGroup } from '@/config/directChat';
 
 import '@fontsource/audiowide';
 
@@ -383,7 +384,9 @@ const Sidebar = ({
                   group.type || 'ai',
                   styles,
                   cx,
-                  getTranslatedGroupTypeShortLabel(t, group.type || 'ai'),
+                  isDirectChatGroup(group)
+                    ? t('sidebar:tags.direct')
+                    : getTranslatedGroupTypeShortLabel(t, group.type || 'ai'),
                 )}
               </a>
             );

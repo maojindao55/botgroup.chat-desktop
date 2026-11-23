@@ -14,6 +14,8 @@ export interface AIGroup {
   isGroupDiscussionMode: boolean;   // 全员讨论 vs 智能调度
   schedulerStrategy: 'tag' | 'round_robin' | 'all'; // 调度策略
   maxRespondents?: number;          // 单轮最大回复人数（tag/round_robin 模式）
+  /** 单聊群标记：仅含一个成员，复用群聊的会话与消息能力 */
+  directChat?: boolean;
 }
 
 export type Group = AIGroup;

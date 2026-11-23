@@ -13,7 +13,7 @@ import { ProviderLibrary } from './ProviderLibrary';
 import { ProviderEditor } from './ProviderEditor';
 import { useProviderStore } from '@/store/providerStore';
 import type { Provider } from '@/config/providers';
-import { Plus, Edit2, Trash2, ShieldAlert, Cpu, Copy } from 'lucide-react';
+import { Plus, Edit2, Trash2, ShieldAlert, Cpu, Copy, MessageCircle } from 'lucide-react';
 import { BRAND_ON_PRIMARY, brandPrimaryButtonProps } from '@/lib/theme';
 import { toast } from 'sonner';
 import { createStyles } from 'antd-style';
@@ -145,6 +145,8 @@ interface ResourceLibraryContentProps {
   active: boolean;
   /** 保存成员后切换到对应分区（当保存的 kind 与当前 section 不同时） */
   onSectionChange?: (section: ResourceSection) => void;
+  /** 直接与该角色开始单聊 */
+  onStartDirectChat?: (member: AIMember) => void;
 }
 
 export const ResourceLibraryContent: React.FC<ResourceLibraryContentProps> = ({
@@ -152,6 +154,7 @@ export const ResourceLibraryContent: React.FC<ResourceLibraryContentProps> = ({
   groups,
   active,
   onSectionChange,
+  onStartDirectChat,
 }) => {
   const { t } = useTranslation(['library', 'common', 'product']);
   const { styles } = useStyles();
@@ -323,6 +326,16 @@ export const ResourceLibraryContent: React.FC<ResourceLibraryContentProps> = ({
         </div>
 
         <div className={styles.actionColumn}>
+          {onStartDirectChat && (
+            <Button
+              type="text"
+              icon={<MessageCircle size={14} />}
+              onClick={() => onStartDirectChat(member)}
+              style={{ padding: '3px 8px', height: 26, borderRadius: 6 }}
+            >
+              {t('library:actions.directChat')}
+            </Button>
+          )}
           <Button
             type="text"
             icon={isBuiltin ? <Copy size={14} /> : <Edit2 size={14} />}

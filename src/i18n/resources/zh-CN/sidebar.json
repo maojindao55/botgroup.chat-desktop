@@ -13,6 +13,9 @@
     "deleteGroup": "删除群聊",
     "groupMenu": "群聊操作"
   },
+  "tags": {
+    "direct": "单聊"
+  },
   "preferences": {
     "title": "外观与语言",
     "appearance": "外观",

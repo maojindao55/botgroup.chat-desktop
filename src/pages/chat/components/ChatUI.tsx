@@ -29,6 +29,8 @@ import {
   isBuiltinGroupId,
   upsertCustomGroup,
 } from '@/config/groupStorage';
+import { createDirectChatGroup, isDirectChatGroup } from '@/config/directChat';
+import type { AIMember } from '@/config/aiMembers';
 import ConversationSidebar from './ConversationSidebar';
 import { MentionTextArea } from './MentionAutocomplete';
 import { useChatSessionStore } from '@/store/chatSessionStore';
@@ -642,6 +644,7 @@ const ChatUI = () => {
 
   // ============ 会话（角色群）逻辑 ============
   const isAIGroup = !!group && (group.type === 'ai' || !group.type);
+  const isDirectChat = isDirectChatGroup(group);
   const groupSessions = group ? chatSessions.filter(s => s.groupId === group.id) : [];
 
   const updateConvParam = (sessionId: string | null) => {
@@ -921,11 +924,20 @@ const ChatUI = () => {
   };
 
   const handleCreateGroup = (newGroup: Group) => {
+    // 同一 id（尤其是单聊）只保留一份，避免重复点击产生重复记录
+    const existingIndex = groups.findIndex((g) => g.id === newGroup.id);
+    if (existingIndex >= 0) {
+      goToGroup(existingIndex);
+      return;
+    }
+
     try {
       const stored = localStorage.getItem('custom_groups');
       const customGroups = stored ? JSON.parse(stored) : [];
-      customGroups.push(newGroup);
-      localStorage.setItem('custom_groups', JSON.stringify(customGroups));
+      const nextGroups = Array.isArray(customGroups)
+        ? [...customGroups.filter((g: Group) => g.id !== newGroup.id), newGroup]
+        : [newGroup];
+      localStorage.setItem('custom_groups', JSON.stringify(nextGroups));
     } catch (e) {
       console.error('Failed to save custom group:', e);
     }
@@ -949,6 +961,18 @@ const ChatUI = () => {
     url.searchParams.set('id', String(newIndex));
     url.searchParams.delete('view');
     window.history.replaceState({}, '', `${url.pathname}${url.search}`);
+  };
+
+  /** 从资源库发起单聊：已有则直接进入，没有则创建并进入 */
+  const handleStartDirectChat = (member: AIMember) => {
+    const nextGroup = createDirectChatGroup(member);
+    const existingIndex = groups.findIndex((g) => g.id === nextGroup.id);
+    if (existingIndex >= 0) {
+      goToGroup(existingIndex);
+    } else {
+      handleCreateGroup(nextGroup);
+    }
+    setSettingsOpen(false);
   };
 
   // Loading / Error states
@@ -1014,7 +1038,7 @@ const ChatUI = () => {
 
     let selectedChars = groupAiCharacters;
 
-    if (group.type === 'ai' && !isGroupDiscussionMode && schedulerStrategy === 'tag') {
+    if (!isDirectChat && group.type === 'ai' && !isGroupDiscussionMode && schedulerStrategy === 'tag') {
       try {
         const res = await request(`/api/scheduler`, {
           method: 'POST',
@@ -1050,7 +1074,10 @@ const ChatUI = () => {
         history: messageHistory,
         index: i,
         aiName: char.name,
-        custom_prompt: (char.custom_prompt || '') + "\n" + group.description,
+        // 单聊不拼群描述，避免把群简介写进角色 system prompt
+        custom_prompt: isDirectChat
+          ? (char.custom_prompt || '')
+          : (char.custom_prompt || '') + "\n" + group.description,
       };
 
       try {
@@ -1183,6 +1210,7 @@ const ChatUI = () => {
           onUpdateGroup={handleUpdateGroup}
           onDeleteGroup={() => handleDeleteGroup(group)}
           canDeleteGroup={!isBuiltinGroupId(group.id)}
+          directChat={isDirectChat}
         />
       )}
 
@@ -1241,7 +1269,9 @@ const ChatUI = () => {
                   <h1 className={styles.titleText}>
                     {group.name}
                   </h1>
-                  <span className={styles.memberCount}>({users.length})</span>
+                  <span className={styles.memberCount}>
+                    {isDirectChat ? t('chat:directChat.badge') : `(${users.length})`}
+                  </span>
                 </div>
               </div>
               <div className={styles.headerActions}>
@@ -1404,6 +1434,7 @@ const ChatUI = () => {
             onUpdateGroup={handleUpdateGroup}
             onDeleteGroup={() => handleDeleteGroup(group)}
             canDeleteGroup={!isBuiltinGroupId(group.id)}
+            directChat={isDirectChat}
           />
         )}
 
@@ -1419,6 +1450,7 @@ const ChatUI = () => {
         onClose={() => setSettingsOpen(false)}
         groups={groups}
         initialSection={settingsSection}
+        onStartDirectChat={handleStartDirectChat}
       />
     </>
   );

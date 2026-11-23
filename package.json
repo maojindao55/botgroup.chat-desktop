@@ -8,7 +8,7 @@
     "build": "tsc && vite build",
     "test": "node scripts/run-tests.mjs",
     "test:llm": "node src/utils/llmClient.test.mjs && node src/utils/markdownContent.test.mjs",
-    "test:product": "node src/config/groupProduct.test.mjs && node src/config/aiMembers.test.mjs && node src/utils/mentionAutocomplete.test.mjs",
+    "test:product": "node src/config/groupProduct.test.mjs && node src/config/directChat.test.mjs && node src/config/aiMembers.test.mjs && node src/utils/mentionAutocomplete.test.mjs",
     "test:provider": "node src/pages/chat/components/ProviderEditor.test.mjs",
     "test:i18n": "node src/i18n/resources.test.mjs",
     "preview": "vite preview",
