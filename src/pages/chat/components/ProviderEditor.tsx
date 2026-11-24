@@ -19,6 +19,7 @@ import { useProviderStore, type ProviderTestResult } from '@/store/providerStore
 import { providerPresets, readLegacyApiKey, type Provider, type ProviderParams } from '@/config/providers';
 import { getTranslatedProviderName } from '@/i18n/providerLabels';
 import { Copy, Zap } from 'lucide-react';
+import { fieldLabel } from './FieldHelp';
 
 const useStyles = createStyles(({ token, css }) => ({
   form: css`
@@ -480,28 +481,28 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
         </div>
 
         <div className={styles.fieldGrid}>
-          <Form.Item label={t('provider.fields.temperature')} name="temperature">
+          <Form.Item label={fieldLabel(t('provider.fields.temperature'), t('provider.fields.temperatureHint'))} name="temperature">
             <InputNumber min={0} max={2} step={0.1} style={{ width: '100%' }} placeholder={t('provider.fields.paramDefault')} disabled={readOnly} />
           </Form.Item>
-          <Form.Item label={t('provider.fields.topP')} name="topP">
+          <Form.Item label={fieldLabel(t('provider.fields.topP'), t('provider.fields.topPHint'))} name="topP">
             <InputNumber min={0} max={1} step={0.05} style={{ width: '100%' }} placeholder={t('provider.fields.paramDefault')} disabled={readOnly} />
           </Form.Item>
-          <Form.Item label={t('provider.fields.topK')} name="topK">
+          <Form.Item label={fieldLabel(t('provider.fields.topK'), t('provider.fields.topKHint'))} name="topK">
             <InputNumber min={0} step={1} precision={0} style={{ width: '100%' }} placeholder={t('provider.fields.paramDefault')} disabled={readOnly} />
           </Form.Item>
-          <Form.Item label={t('provider.fields.maxTokens')} name="maxTokens">
+          <Form.Item label={fieldLabel(t('provider.fields.maxTokens'), t('provider.fields.maxTokensHint'))} name="maxTokens">
             <InputNumber min={1} step={1} precision={0} style={{ width: '100%' }} placeholder={t('provider.fields.paramDefault')} disabled={readOnly} />
           </Form.Item>
-          <Form.Item label={t('provider.fields.frequencyPenalty')} name="frequencyPenalty">
+          <Form.Item label={fieldLabel(t('provider.fields.frequencyPenalty'), t('provider.fields.frequencyPenaltyHint'))} name="frequencyPenalty">
             <InputNumber min={-2} max={2} step={0.1} style={{ width: '100%' }} placeholder={t('provider.fields.paramDefault')} disabled={readOnly} />
           </Form.Item>
-          <Form.Item label={t('provider.fields.presencePenalty')} name="presencePenalty">
+          <Form.Item label={fieldLabel(t('provider.fields.presencePenalty'), t('provider.fields.presencePenaltyHint'))} name="presencePenalty">
             <InputNumber min={-2} max={2} step={0.1} style={{ width: '100%' }} placeholder={t('provider.fields.paramDefault')} disabled={readOnly} />
           </Form.Item>
         </div>
 
         <Form.Item
-          label={t('provider.fields.customParams')}
+          label={fieldLabel(t('provider.fields.customParams'), t('provider.fields.customParamsHint'))}
           name="customParams"
           extra={<span style={{ fontSize: 11, opacity: 0.6 }}>{t('provider.fields.customParamsHint')}</span>}
           rules={[

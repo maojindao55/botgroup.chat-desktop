@@ -123,6 +123,8 @@ const useStyles = createStyles(({ token, css }) => ({
   `,
   inlinePanel: css`
     width: 400px;
+    max-width: 60vw;
+    min-width: 280px;
     height: 100%;
     display: flex;
     flex-direction: column;

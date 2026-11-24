@@ -218,7 +218,9 @@ pub fn build_chat_body(
     body
 }
 
-const STREAM_TIMEOUT: Duration = Duration::from_secs(120);
+/// 单次流式请求的总超时。部分推理模型首 token 较慢，120s 容易误杀；
+/// 客户端仍可自行中断请求，这里放宽到 5 分钟。
+const STREAM_TIMEOUT: Duration = Duration::from_secs(300);
 
 pub async fn stream_chat_completions(
     app: AppHandle,

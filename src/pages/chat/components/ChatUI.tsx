@@ -36,10 +36,12 @@ import { MentionTextArea } from './MentionAutocomplete';
 import { useChatSessionStore } from '@/store/chatSessionStore';
 import {
   newChatMessageId,
+  sanitizeMessageForStorage,
   truncateSessionTitle,
   type ChatSessionMessage,
 } from '@/config/chatSessions';
 import { generateSessionTitle } from '@/utils/sessionTitle';
+import { loadChatReplyTimeoutMs } from '@/config/chatRuntimeSettings';
 import { readLastView, saveLastView, clearLastView } from '@/utils/lastViewStorage';
 
 const useStyles = createStyles(({ token, css }) => ({
@@ -467,28 +469,16 @@ const ChatUI = () => {
   /** 用户刚点击「新建会话」，跳过一次自动选中最近会话 */
   const userStartedNewRef = useRef(false);
 
-  /** 桌面端打开右侧 inline 面板时同步扩展 Tauri 窗口宽度（移动端跳过） */
-  const adjustWindowWidthForPanel = (deltaPx: number) => {
-    if (isMobile) return;
-    if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return;
-    (async () => {
-      try {
-        const { getCurrentWindow, LogicalSize } = await import('@tauri-apps/api/window');
-        const appWindow = getCurrentWindow();
-        const isMax = await appWindow.isMaximized();
-        const isFull = await appWindow.isFullscreen();
-        if (isMax || isFull) return;
-        const scaleFactor = await appWindow.scaleFactor();
-        const physicalSize = await appWindow.innerSize();
-        const logicalSize = physicalSize.toLogical(scaleFactor);
-        await appWindow.setSize(new LogicalSize(logicalSize.width + deltaPx, logicalSize.height));
-      } catch (e) {
-        console.error('Failed to resize window:', e);
-      }
-    })();
+  /**
+   * 设置面板改为纯布局内展开/收起，不再联动修改 Tauri 窗口宽度。
+   * 之前按开关增减 400px 窗口宽度，切换群聊时会重置面板状态却不还原窗口，
+   * 反复操作会持续放大窗口甚至超出屏幕。
+   */
+  const handleToggleSettings = (nextOpen: boolean) => {
+    if (nextOpen === showSettings) return;
+    setShowSettings(nextOpen);
   };
 
-  const settingsPanelWidth = 400;
   const mentionCandidates = useMemo(
     () => groupAiCharacters.map(character => ({
       id: character.id,
@@ -501,12 +491,6 @@ const ChatUI = () => {
   const openAppSettings = (section: AppSettingsSection = 'general') => {
     setSettingsSection(section);
     setSettingsOpen(true);
-  };
-
-  const handleToggleSettings = (nextOpen: boolean) => {
-    if (nextOpen === showSettings) return;
-    setShowSettings(nextOpen);
-    adjustWindowWidthForPanel(nextOpen ? settingsPanelWidth : -settingsPanelWidth);
   };
 
   useEffect(() => {
@@ -657,15 +641,9 @@ const ChatUI = () => {
   /** 存储消息 → 渲染消息（角色群消息形状一致，浅拷贝即可） */
   const storedToLocalMessages = (msgs: ChatSessionMessage[]) => msgs.map(m => ({ ...m }));
 
-  /** 渲染消息 → 存储消息（仅保留需要持久化的字段；不存 avatar，渲染时按名称解析） */
+  /** 渲染消息 → 存储消息（保留发送时的头像快照；base64 等易膨胀数据会被过滤） */
   const localToStoredMessages = (msgs: any[]): ChatSessionMessage[] =>
-    msgs.map(m => ({
-      id: m.id,
-      sender: { id: m.sender?.id, name: m.sender?.name },
-      content: m.content || '',
-      isAI: !!m.isAI,
-      isError: !!m.isError,
-    }));
+    msgs.map(m => sanitizeMessageForStorage(m as ChatSessionMessage));
 
   // 选中会话变化（来自 URL 或自动/手动选中）→ 加载历史消息
   useEffect(() => {
@@ -1094,7 +1072,8 @@ const ChatUI = () => {
 
         let buffer = '';
         let completeResponse = '';
-        const timeout = 10000;
+        // 等待时限可在「设置 → 通用 → 聊天」中调整，默认 15s
+        const timeout = loadChatReplyTimeoutMs();
 
         while (true) {
           const startTime = Date.now();

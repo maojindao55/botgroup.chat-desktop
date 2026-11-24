@@ -114,8 +114,20 @@ export function cleanGeneratedTitle(raw: string, maxLen: number = MAX_SESSION_TI
 }
 
 /**
+ * 头像快照是否适合持久化：保留 URL / 本地路径 / lobehub 标识，
+ * 丢弃 base64、blob 与超长字符串，避免撑爆 localStorage。
+ */
+function persistableAvatar(avatar?: string): string | undefined {
+  const value = avatar?.trim();
+  if (!value) return undefined;
+  if (value.startsWith('data:') || value.startsWith('blob:')) return undefined;
+  if (value.length > 2048) return undefined;
+  return value;
+}
+
+/**
  * 持久化前清洗单条消息：只保留必要字段，丢弃可能很大的字段（尤其是 base64 头像）。
- * 头像在渲染时按成员名称/ id 解析，无需随每条消息存储，否则极易撑爆 localStorage 配额。
+ * 头像保存为「发送时快照」，由 UI 按消息自身头像渲染，避免历史记录跟随成员当前头像变化。
  */
 export function sanitizeMessageForStorage(m: ChatSessionMessage): ChatSessionMessage {
   const sanitized: ChatSessionMessage = {
@@ -124,6 +136,8 @@ export function sanitizeMessageForStorage(m: ChatSessionMessage): ChatSessionMes
     content: m.content || '',
     isAI: !!m.isAI,
   };
+  const avatar = persistableAvatar(m.sender?.avatar);
+  if (avatar) sanitized.sender.avatar = avatar;
   if (m.isError) sanitized.isError = true;
   if (m.isStreaming) sanitized.isStreaming = true;
   if (m.createdAt) sanitized.createdAt = m.createdAt;

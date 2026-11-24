@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Drawer, Form, Input, Select, Button, Divider, Tooltip } from 'antd';
+import { Drawer, Form, Input, Select, Button, Divider } from 'antd';
 import { createStyles } from 'antd-style';
 import { useTranslation } from 'react-i18next';
 import { useAIMemberStore } from '@/store/aiMemberStore';
 import { useProviderStore } from '@/store/providerStore';
 import type { LLMMember } from '@/config/aiMembers';
 import { AvatarPicker } from './AvatarPicker';
+import { fieldLabel } from './FieldHelp';
 import { TagPicker } from './TagPicker';
 import { DryRunModal, type DryRunParams } from './DryRunModal';
 import { Plus, Trash2 } from 'lucide-react';
@@ -275,25 +276,24 @@ export const AIMemberEditor: React.FC<AIMemberEditorProps> = ({
           {providerSelect}
 
           <Form.Item
-            label={
-              <Tooltip title={t('member.fields.schedulerTagTooltip')}>
-                <span>{t('member.fields.schedulerTag')}</span>
-              </Tooltip>
-            }
+            label={fieldLabel(t('member.fields.schedulerTag'), t('member.fields.schedulerTagTooltip'))}
             name="schedulerTag"
           >
             <Input placeholder={t('member.fields.schedulerTagPlaceholder')} />
           </Form.Item>
 
           <Form.Item
-            label={t('member.fields.systemPrompt')}
+            label={fieldLabel(t('member.fields.systemPrompt'), t('member.fields.systemPromptHint'))}
             name="customPrompt"
             extra={<span style={{ fontSize: 11, opacity: 0.6 }}>{t('member.fields.promptPlaceholderHint')}</span>}
           >
             <Input.TextArea autoSize={{ minRows: 3, maxRows: 10 }} placeholder={t('member.fields.systemPromptPlaceholder')} />
           </Form.Item>
 
-          <Form.Item label={t('member.fields.gameStages')} style={{ marginBottom: 0 }}>
+          <Form.Item
+            label={fieldLabel(t('member.fields.gameStages'), t('member.fields.gameStagesHint'))}
+            style={{ marginBottom: 0 }}
+          >
             <Form.List name="stages">
               {(fields, { add, remove }) => (
                 <>

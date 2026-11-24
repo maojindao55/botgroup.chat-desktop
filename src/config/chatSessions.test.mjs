@@ -34,7 +34,7 @@ const {
   shouldGenerateTitle,
 } = mod;
 
-// ---- sanitizeMessageForStorage: must drop bulky fields (e.g. base64 avatar) ----
+// ---- sanitizeMessageForStorage: keeps small avatar snapshots, drops base64/blob ----
 {
   const bigAvatar = `data:image/png;base64,${'A'.repeat(5000)}`;
   const input = {
@@ -47,7 +47,7 @@ const {
     extra: 'should be dropped',
   };
   const out = sanitizeMessageForStorage(input);
-  assert.equal(out.sender.avatar, undefined, 'avatar must be stripped from stored messages');
+  assert.equal(out.sender.avatar, undefined, 'base64 avatar must be stripped from stored messages');
   assert.equal('extra' in out, false, 'unknown fields dropped');
   assert.equal(out.id, 'm1');
   assert.equal(out.sender.id, 'u');
@@ -60,6 +60,17 @@ const {
   assert.equal(errOut.isError, true);
   const serialized = JSON.stringify(sanitizeMessagesForStorage([input]));
   assert.ok(!serialized.includes('base64'), 'serialized stored messages contain no base64 avatar');
+
+  // 小体积头像（本地路径 / lobehub 标识 / URL）作为发送时快照保留
+  for (const avatar of ['/Users/me/a.png', 'lobehub:DeepSeek', 'https://x.test/a.png']) {
+    const kept = sanitizeMessageForStorage({ ...input, sender: { id: 'ai', name: 'AI', avatar } });
+    assert.equal(kept.sender.avatar, avatar);
+  }
+  const blob = sanitizeMessageForStorage({
+    ...input,
+    sender: { id: 'ai', name: 'AI', avatar: 'blob:http://x/1' },
+  });
+  assert.equal(blob.sender.avatar, undefined);
 }
 
 // ---- sanitizeMessageForStorage: drops fields from removed CLI / expert groups ----

@@ -1,11 +1,18 @@
 import { Globe, Monitor, Moon, Sun } from 'lucide-react';
-import { Tooltip } from 'antd';
+import { InputNumber, Tooltip } from 'antd';
 import { createStyles } from 'antd-style';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useLocale } from '@/hooks/use-locale';
 import { useTheme } from '@/hooks/use-theme';
 import type { LocalePreference } from '@/i18n';
+import {
+  MAX_CHAT_REPLY_TIMEOUT_MS,
+  MIN_CHAT_REPLY_TIMEOUT_MS,
+  loadChatReplyTimeoutMs,
+  saveChatReplyTimeoutMs,
+} from '@/config/chatRuntimeSettings';
 import { AppVersionBadge } from './AppVersionBadge';
 
 type ThemeOption = 'system' | 'light' | 'dark';
@@ -100,6 +107,7 @@ export function GeneralSettingsPanel() {
   const { t } = useTranslation(['appSettings', 'sidebar', 'common']);
   const { theme, setTheme } = useTheme();
   const { locale, setLocale } = useLocale();
+  const [replyTimeoutMs, setReplyTimeoutMs] = useState<number>(() => loadChatReplyTimeoutMs());
 
   const themeOptions: { value: ThemeOption; icon: typeof Monitor; title: string }[] = [
     { value: 'system', icon: Monitor, title: t('sidebar:preferences.themeSystem') },
@@ -161,6 +169,34 @@ export function GeneralSettingsPanel() {
               </button>
             </Tooltip>
           ))}
+        </div>
+      </section>
+
+      <section className={styles.section} aria-labelledby="settings-chat">
+        <h3 id="settings-chat" className={styles.sectionTitle}>
+          {t('appSettings:generalPanel.chat')}
+        </h3>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 13 }}>{t('appSettings:generalPanel.replyTimeout')}</span>
+            <InputNumber
+              min={MIN_CHAT_REPLY_TIMEOUT_MS / 1000}
+              max={MAX_CHAT_REPLY_TIMEOUT_MS / 1000}
+              step={1}
+              precision={0}
+              value={Math.round(replyTimeoutMs / 1000)}
+              onChange={(value) => {
+                if (typeof value !== 'number') return;
+                setReplyTimeoutMs(saveChatReplyTimeoutMs(value * 1000));
+              }}
+              style={{ width: 96 }}
+              aria-label={t('appSettings:generalPanel.replyTimeout')}
+            />
+            <span style={{ fontSize: 13 }}>{t('appSettings:generalPanel.seconds')}</span>
+          </div>
+          <div style={{ fontSize: 12, opacity: 0.65, marginTop: 6 }}>
+            {t('appSettings:generalPanel.replyTimeoutHint')}
+          </div>
         </div>
       </section>
 
