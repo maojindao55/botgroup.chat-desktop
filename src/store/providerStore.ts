@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
-import { builtinProviders, readLegacyApiKey, type Provider, type ProviderParams } from '@/config/providers';
+import { builtinProviders, readLegacyApiKey, type Provider, type ProviderModel, type ProviderModelInput, type ProviderParams } from '@/config/providers';
 import i18n from '@/i18n';
 
 /** Rust serde camelCase: base_url → baseUrl (not baseURL) */
@@ -65,6 +65,12 @@ interface ProviderStore {
   upsert: (p: Provider) => Promise<void>;
   remove: (id: string) => Promise<void>;
   clone: (id: string) => Promise<Provider>;
+  /** 读取服务商模型目录 */
+  listModels: (id: string) => Promise<ProviderModel[]>;
+  /** 从服务商 /models 拉取并合并模型 */
+  syncModels: (id: string) => Promise<ProviderModel[]>;
+  /** 保存模型目录，并同步 enabled 模型到 provider.models */
+  saveModels: (id: string, models: ProviderModelInput[]) => Promise<ProviderModel[]>;
   testConnection: (params: {
     id?: string;
     baseURL: string;
@@ -202,6 +208,51 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
     }
 
     return cloned;
+  },
+
+  listModels: async (id) => {
+    if (isTauri) {
+      return invoke<ProviderModel[]>('provider_models_list', { providerId: id });
+    }
+    const provider = get().providers[id];
+    return (provider?.models || []).map((modelId) => ({
+      providerId: id,
+      modelId,
+      enabled: true,
+      source: 'manual',
+      aliases: [],
+    }));
+  },
+
+  syncModels: async (id) => {
+    if (!isTauri) throw new Error('仅桌面端支持获取模型列表');
+    const rows = await invoke<ProviderModel[]>('provider_models_sync', { providerId: id });
+    return rows;
+  },
+
+  saveModels: async (id, models) => {
+    if (!isTauri) {
+      const enabled = models.filter((m) => m.enabled).map((m) => m.modelId);
+      const provider = get().providers[id];
+      if (provider) {
+        await get().upsert({ ...provider, models: enabled });
+      }
+      return models.map((m) => ({
+        providerId: id,
+        modelId: m.modelId,
+        displayName: m.displayName,
+        enabled: m.enabled,
+        source: m.source || 'manual',
+        aliases: m.aliases || [],
+        capabilities: m.capabilities,
+      }));
+    }
+    const rows = await invoke<ProviderModel[]>('provider_models_save', {
+      providerId: id,
+      models,
+    });
+    await get().load();
+    return rows;
   },
 
   testConnection: async (params) => {

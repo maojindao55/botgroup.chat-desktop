@@ -25,8 +25,38 @@ pub struct Provider {
     pub updated_at: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderModel {
+    pub provider_id: String,
+    pub model_id: String,
+    pub display_name: Option<String>,
+    pub enabled: bool,
+    pub source: String,
+    pub aliases: Vec<String>,
+    pub capabilities: Option<serde_json::Value>,
+    pub last_seen_at: Option<String>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderModelInput {
+    pub model_id: String,
+    #[serde(default)]
+    pub display_name: Option<String>,
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub source: Option<String>,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    #[serde(default)]
+    pub capabilities: Option<serde_json::Value>,
+}
+
 pub(crate) mod db {
     use super::*;
+    use std::collections::HashSet;
 
     const SELECT_COLS: &str =
         "id, name, base_url, api_key_ref, models, source, icon_url, description, enabled, params, created_at, updated_at";
@@ -170,6 +200,11 @@ pub(crate) mod db {
 
         conn.execute("DELETE FROM providers WHERE id = ?1", params![id])
             .map_err(|e| e.to_string())?;
+        conn.execute(
+            "DELETE FROM provider_models WHERE provider_id = ?1",
+            params![id],
+        )
+        .map_err(|e| e.to_string())?;
 
         Ok(())
     }
@@ -209,6 +244,171 @@ pub(crate) mod db {
         tx.commit().map_err(|e| e.to_string())?;
 
         Ok(())
+    }
+
+    fn row_to_model(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProviderModel> {
+        let aliases_json: Option<String> = row.get(5)?;
+        let aliases: Vec<String> = aliases_json
+            .as_deref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default();
+        let capabilities_json: Option<String> = row.get(6)?;
+        let capabilities = capabilities_json
+            .as_deref()
+            .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok());
+        Ok(ProviderModel {
+            provider_id: row.get(0)?,
+            model_id: row.get(1)?,
+            display_name: row.get(2)?,
+            enabled: row.get::<_, i32>(3)? != 0,
+            source: row.get(4)?,
+            aliases,
+            capabilities,
+            last_seen_at: row.get(7)?,
+        })
+    }
+
+    pub fn list_provider_models(
+        conn: &Connection,
+        provider_id: &str,
+    ) -> Result<Vec<ProviderModel>, String> {
+        let mut stmt = conn
+            .prepare(
+                "SELECT provider_id, model_id, display_name, enabled, source, aliases, capabilities, last_seen_at
+                 FROM provider_models WHERE provider_id = ?1 ORDER BY model_id COLLATE NOCASE ASC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![provider_id], row_to_model)
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
+        Ok(rows)
+    }
+
+    fn sync_enabled_models_json(
+        tx: &rusqlite::Transaction<'_>,
+        provider_id: &str,
+    ) -> Result<Vec<String>, String> {
+        let mut stmt = tx
+            .prepare(
+                "SELECT model_id FROM provider_models
+                 WHERE provider_id = ?1 AND enabled = 1 ORDER BY model_id COLLATE NOCASE ASC",
+            )
+            .map_err(|e| e.to_string())?;
+        let enabled: Vec<String> = stmt
+            .query_map(params![provider_id], |row| row.get(0))
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
+        drop(stmt);
+
+        let models_json = serde_json::to_string(&enabled).map_err(|e| e.to_string())?;
+        tx.execute(
+            "UPDATE providers SET models = ?1, updated_at = CURRENT_TIMESTAMP WHERE id = ?2",
+            params![models_json, provider_id],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(enabled)
+    }
+
+    /// 用 UI 提交的完整模型列表替换目录，并把 enabled 模型同步回 `providers.models`。
+    pub fn replace_provider_models(
+        conn: &mut Connection,
+        provider_id: &str,
+        models: &[ProviderModelInput],
+    ) -> Result<Vec<ProviderModel>, String> {
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        let mut seen: HashSet<String> = HashSet::new();
+        for model in models {
+            let model_id = model.model_id.trim();
+            if model_id.is_empty() || !seen.insert(model_id.to_string()) {
+                continue;
+            }
+            let aliases_json = serde_json::to_string(&model.aliases).map_err(|e| e.to_string())?;
+            let capabilities_json = model
+                .capabilities
+                .as_ref()
+                .filter(|v| !v.is_null())
+                .map(|v| serde_json::to_string(v))
+                .transpose()
+                .map_err(|e| e.to_string())?;
+            tx.execute(
+                "INSERT INTO provider_models
+                    (provider_id, model_id, display_name, enabled, source, aliases, capabilities, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, CURRENT_TIMESTAMP)
+                 ON CONFLICT(provider_id, model_id) DO UPDATE SET
+                    display_name = excluded.display_name,
+                    enabled = excluded.enabled,
+                    source = COALESCE(excluded.source, provider_models.source),
+                    aliases = excluded.aliases,
+                    capabilities = COALESCE(excluded.capabilities, provider_models.capabilities),
+                    updated_at = CURRENT_TIMESTAMP",
+                params![
+                    provider_id,
+                    model_id,
+                    model.display_name,
+                    if model.enabled { 1 } else { 0 },
+                    model.source.as_deref().unwrap_or("manual"),
+                    aliases_json,
+                    capabilities_json,
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+
+        let existing: Vec<String> = {
+            let mut stmt = tx
+                .prepare("SELECT model_id FROM provider_models WHERE provider_id = ?1")
+                .map_err(|e| e.to_string())?;
+            let ids = stmt
+                .query_map(params![provider_id], |row| row.get(0))
+                .map_err(|e| e.to_string())?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())?;
+            ids
+        };
+        for model_id in existing {
+            if !seen.contains(&model_id) {
+                tx.execute(
+                    "DELETE FROM provider_models WHERE provider_id = ?1 AND model_id = ?2",
+                    params![provider_id, model_id],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+        }
+
+        sync_enabled_models_json(&tx, provider_id)?;
+        tx.commit().map_err(|e| e.to_string())?;
+        list_provider_models(conn, provider_id)
+    }
+
+    /// 合并远程拉取到的模型：保留已有 enabled 状态，新模型默认禁用。
+    pub fn upsert_fetched_models(
+        conn: &mut Connection,
+        provider_id: &str,
+        model_ids: &[String],
+    ) -> Result<Vec<ProviderModel>, String> {
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        for model_id in model_ids {
+            let model_id = model_id.trim();
+            if model_id.is_empty() {
+                continue;
+            }
+            tx.execute(
+                "INSERT INTO provider_models
+                    (provider_id, model_id, enabled, source, last_seen_at)
+                 VALUES (?1, ?2, 0, 'fetched', CURRENT_TIMESTAMP)
+                 ON CONFLICT(provider_id, model_id) DO UPDATE SET
+                    source = 'fetched',
+                    last_seen_at = CURRENT_TIMESTAMP,
+                    updated_at = CURRENT_TIMESTAMP",
+                params![provider_id, model_id],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        list_provider_models(conn, provider_id)
     }
 }
 
@@ -436,9 +636,144 @@ pub fn seed_builtin_providers(app: AppHandle, providers: Vec<Provider>) -> Resul
     db::seed_builtin_providers(&mut conn, providers)
 }
 
+#[tauri::command]
+pub fn provider_models_list(
+    app: AppHandle,
+    provider_id: String,
+) -> Result<Vec<ProviderModel>, String> {
+    let db_path = get_db_path(&app);
+    let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
+    db::list_provider_models(&conn, &provider_id)
+}
+
+#[tauri::command]
+pub fn provider_models_save(
+    app: AppHandle,
+    provider_id: String,
+    models: Vec<ProviderModelInput>,
+) -> Result<Vec<ProviderModel>, String> {
+    let db_path = get_db_path(&app);
+    let mut conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
+    db::replace_provider_models(&mut conn, &provider_id, &models)
+}
+
+/// 兼容 OpenAI `data[].id`、Ollama `models[].name` 以及简单字符串数组。
+pub(crate) fn parse_models_response(text: &str) -> Option<Vec<String>> {
+    fn push_model(models: &mut Vec<String>, item: &serde_json::Value) {
+        let id = item
+            .as_str()
+            .map(str::to_string)
+            .or_else(|| item.get("id").and_then(|v| v.as_str()).map(str::to_string))
+            .or_else(|| item.get("name").and_then(|v| v.as_str()).map(str::to_string))
+            .or_else(|| item.get("model").and_then(|v| v.as_str()).map(str::to_string));
+        if let Some(id) = id {
+            let id = id.trim();
+            if !id.is_empty() && !models.iter().any(|m| m == id) {
+                models.push(id.to_string());
+            }
+        }
+    }
+
+    let value: serde_json::Value = serde_json::from_str(text).ok()?;
+    let mut models: Vec<String> = Vec::new();
+
+    if let Some(items) = value.get("data").and_then(|v| v.as_array()) {
+        for item in items {
+            push_model(&mut models, item);
+        }
+    }
+    if models.is_empty() {
+        if let Some(items) = value.get("models").and_then(|v| v.as_array()) {
+            for item in items {
+                push_model(&mut models, item);
+            }
+        }
+    }
+    if models.is_empty() {
+        if let Some(items) = value.as_array() {
+            for item in items {
+                push_model(&mut models, item);
+            }
+        }
+    }
+
+    models.sort_by_key(|m| m.to_ascii_lowercase());
+    Some(models)
+}
+
+async fn fetch_models_from_provider(base_url: &str, api_key: &str) -> Result<Vec<String>, String> {
+    let base = base_url.trim().trim_end_matches('/');
+    if base.is_empty() {
+        return Err("Provider baseUrl 为空".into());
+    }
+
+    let mut candidates = vec![format!("{base}/models")];
+    if !base.ends_with("/v1") {
+        candidates.push(format!("{base}/v1/models"));
+    }
+    if !base.ends_with("/api") {
+        candidates.push(format!("{base}/api/tags"));
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let mut last_error = String::from("无法获取模型列表");
+    for url in candidates {
+        let mut request = client.get(&url);
+        if !api_key.is_empty() {
+            request = request.bearer_auth(api_key);
+        }
+        match request.send().await {
+            Ok(resp) => {
+                let status = resp.status();
+                if status.is_success() {
+                    let text = resp.text().await.unwrap_or_default();
+                    if let Some(models) = parse_models_response(&text) {
+                        if !models.is_empty() {
+                            return Ok(models);
+                        }
+                    }
+                    last_error = format!("{url} 返回内容无法解析");
+                } else if status.as_u16() == 401 || status.as_u16() == 403 {
+                    return Err(format!("认证失败 (HTTP {})，请检查 API Key", status.as_u16()));
+                } else {
+                    last_error = format!("{url} → HTTP {}", status.as_u16());
+                }
+            }
+            Err(e) => {
+                last_error = format!("{url} 请求失败: {e}");
+            }
+        }
+    }
+    Err(last_error)
+}
+
+#[tauri::command]
+pub async fn provider_models_sync(
+    app: AppHandle,
+    provider_id: String,
+) -> Result<Vec<ProviderModel>, String> {
+    let db_path = get_db_path(&app);
+    let master = vault::load_master_key(&app)?;
+    let (base_url, api_key) = {
+        let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
+        load_provider_endpoint(&conn, &master, &provider_id)?
+    };
+
+    let models = fetch_models_from_provider(&base_url, &api_key).await?;
+    let mut conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
+    db::upsert_fetched_models(&mut conn, &provider_id, &models)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::db::{delete_provider, get_provider, list_providers, upsert_provider};
+    use super::db::{
+        delete_provider, get_provider, list_provider_models, list_providers,
+        replace_provider_models, upsert_fetched_models, upsert_provider,
+    };
     use super::*;
     use crate::db::init_db_schemas;
     use rusqlite::Connection;
@@ -575,6 +910,44 @@ mod tests {
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[tokio::test]
+    async fn fetch_models_falls_back_to_v1_models() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/models"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/v1/models"))
+            .and(header("authorization", "Bearer test-key"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": [{ "id": "model-a" }, { "id": "model-b" }]
+            })))
+            .mount(&server)
+            .await;
+
+        let models = fetch_models_from_provider(&server.uri(), "test-key")
+            .await
+            .unwrap();
+        assert_eq!(models, vec!["model-a".to_string(), "model-b".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn fetch_models_rejects_bad_key() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/models"))
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&server)
+            .await;
+
+        let err = fetch_models_from_provider(&server.uri(), "bad")
+            .await
+            .unwrap_err();
+        assert!(err.contains("认证失败"));
+    }
+
+    #[tokio::test]
     async fn provider_test_ping_success() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
@@ -612,5 +985,97 @@ mod tests {
             .as_deref()
             .unwrap_or("")
             .contains("invalid key"));
+    }
+
+    #[test]
+    fn parses_openai_and_ollama_model_lists() {
+        let openai = r#"{"data":[{"id":"deepseek-chat"},{"id":"deepseek-reasoner"}]}"#;
+        assert_eq!(
+            parse_models_response(openai).unwrap(),
+            vec!["deepseek-chat".to_string(), "deepseek-reasoner".to_string()]
+        );
+
+        let ollama = r#"{"models":[{"name":"llama3"},{"name":"qwen2.5"}]}"#;
+        assert_eq!(
+            parse_models_response(ollama).unwrap(),
+            vec!["llama3".to_string(), "qwen2.5".to_string()]
+        );
+
+        assert_eq!(
+            parse_models_response(r#"["a","b"]"#).unwrap(),
+            vec!["a".to_string(), "b".to_string()]
+        );
+        assert!(parse_models_response("not-json").is_none());
+    }
+
+    #[test]
+    fn replace_models_syncs_enabled_ids_to_provider() {
+        let mut conn = test_conn();
+        upsert_provider(&conn, &sample_provider("p1")).unwrap();
+
+        let models = vec![
+            ProviderModelInput {
+                model_id: "a".into(),
+                display_name: None,
+                enabled: true,
+                source: Some("manual".into()),
+                aliases: vec![],
+                capabilities: None,
+            },
+            ProviderModelInput {
+                model_id: "b".into(),
+                display_name: None,
+                enabled: false,
+                source: Some("fetched".into()),
+                aliases: vec![],
+                capabilities: None,
+            },
+        ];
+        replace_provider_models(&mut conn, "p1", &models).unwrap();
+
+        let rows = list_provider_models(&conn, "p1").unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(get_provider(&conn, "p1").unwrap().unwrap().models, vec!["a"]);
+
+        // 取消全部启用后，providers.models 应清空
+        let disabled: Vec<ProviderModelInput> = rows
+            .into_iter()
+            .map(|m| ProviderModelInput {
+                model_id: m.model_id,
+                display_name: m.display_name,
+                enabled: false,
+                source: Some(m.source),
+                aliases: m.aliases,
+                capabilities: m.capabilities,
+            })
+            .collect();
+        replace_provider_models(&mut conn, "p1", &disabled).unwrap();
+        assert!(get_provider(&conn, "p1").unwrap().unwrap().models.is_empty());
+    }
+
+    #[test]
+    fn fetched_models_keep_existing_enabled_state() {
+        let mut conn = test_conn();
+        upsert_provider(&conn, &sample_provider("p2")).unwrap();
+
+        let first = vec![
+            ProviderModelInput {
+                model_id: "a".into(),
+                display_name: None,
+                enabled: true,
+                source: Some("manual".into()),
+                aliases: vec![],
+                capabilities: None,
+            },
+        ];
+        replace_provider_models(&mut conn, "p2", &first).unwrap();
+
+        upsert_fetched_models(&mut conn, "p2", &["a".into(), "b".into()]).unwrap();
+        let rows = list_provider_models(&conn, "p2").unwrap();
+        let a = rows.iter().find(|m| m.model_id == "a").unwrap();
+        let b = rows.iter().find(|m| m.model_id == "b").unwrap();
+        assert!(a.enabled, "existing enabled model must stay enabled");
+        assert!(!b.enabled, "newly fetched models default to disabled");
+        assert_eq!(b.source, "fetched");
     }
 }

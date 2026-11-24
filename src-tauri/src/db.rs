@@ -285,6 +285,33 @@ pub fn init_db_schemas(conn: &Connection) -> Result<()> {
         [],
     )?;
 
+    // Provider model catalog: one row per model, with enable/source metadata.
+    // `providers.models` remains the enabled-model cache for backward compatibility.
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS provider_models (
+            provider_id  TEXT NOT NULL,
+            model_id     TEXT NOT NULL,
+            display_name TEXT,
+            enabled      INTEGER NOT NULL DEFAULT 1,
+            source       TEXT NOT NULL DEFAULT 'manual',
+            aliases      TEXT,
+            capabilities TEXT,
+            last_seen_at TIMESTAMP,
+            created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (provider_id, model_id)
+        );",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_provider_models_provider ON provider_models(provider_id);",
+        [],
+    )?;
+
+    backfill_provider_models(conn)?;
+
+
     conn.execute(
         "CREATE TABLE IF NOT EXISTS app_meta (
             key   TEXT PRIMARY KEY,
@@ -295,6 +322,34 @@ pub fn init_db_schemas(conn: &Connection) -> Result<()> {
 
     remove_dev_features(conn)?;
 
+    Ok(())
+}
+
+/// 把历史 `providers.models`（JSON 数组）回填为模型目录行。
+/// 使用 INSERT OR IGNORE，保留用户后来设置的 enabled/source 等状态。
+fn backfill_provider_models(conn: &Connection) -> Result<()> {
+    let mut stmt = conn.prepare("SELECT id, models FROM providers")?;
+    let rows: Vec<(String, String)> = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+        .collect::<Result<Vec<_>, _>>()?;
+    drop(stmt);
+
+    for (provider_id, models_json) in rows {
+        let Ok(models) = serde_json::from_str::<Vec<String>>(&models_json) else {
+            continue;
+        };
+        for model_id in models {
+            let model_id = model_id.trim();
+            if model_id.is_empty() {
+                continue;
+            }
+            conn.execute(
+                "INSERT OR IGNORE INTO provider_models (provider_id, model_id, enabled, source)
+                 VALUES (?1, ?2, 1, 'legacy')",
+                rusqlite::params![provider_id, model_id],
+            )?;
+        }
+    }
     Ok(())
 }
 
@@ -337,6 +392,35 @@ mod tests {
         assert!(tables.contains(&"providers".to_string()));
 
         assert!(!tables.iter().any(|name| name.starts_with("cli_")));
+    }
+
+    #[test]
+    fn backfills_provider_models_from_legacy_models_json() {
+        let conn = Connection::open_in_memory().unwrap();
+        init_db_schemas(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO providers (id, name, base_url, api_key_ref, models, source)
+             VALUES ('p1', 'P1', 'https://x', 'provider:p1', '[\"a\",\"b\"]', 'user')",
+            [],
+        )
+        .unwrap();
+
+        init_db_schemas(&conn).unwrap();
+
+        let rows: Vec<(String, i32, String)> = conn
+            .prepare("SELECT model_id, enabled, source FROM provider_models WHERE provider_id='p1' ORDER BY model_id")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+        assert_eq!(
+            rows,
+            vec![
+                ("a".to_string(), 1, "legacy".to_string()),
+                ("b".to_string(), 1, "legacy".to_string())
+            ]
+        );
     }
 
     #[test]

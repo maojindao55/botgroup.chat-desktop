@@ -28,6 +28,28 @@ export interface Provider {
   params?: ProviderParams;
 }
 
+/** 服务商模型目录条目 */
+export interface ProviderModel {
+  providerId: string;
+  modelId: string;
+  displayName?: string | null;
+  enabled: boolean;
+  /** fetched = 从 /models 拉取；manual = 手动添加；legacy = 历史数据回填 */
+  source: string;
+  aliases: string[];
+  capabilities?: Record<string, unknown> | null;
+  lastSeenAt?: string | null;
+}
+
+export interface ProviderModelInput {
+  modelId: string;
+  displayName?: string | null;
+  enabled: boolean;
+  source?: string;
+  aliases?: string[];
+  capabilities?: Record<string, unknown> | null;
+}
+
 /**
  * 服务商类型预设（仅用于「新建模型服务」时快速填入 API 地址）。
  * 注意：这里只提供 name + baseURL，**不预设任何模型**，模型需用户自行填写。

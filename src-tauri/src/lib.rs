@@ -50,6 +50,9 @@ pub fn run() {
             provider::seed_builtin_providers,
             provider::provider_test,
             provider::provider_ping,
+            provider::provider_models_list,
+            provider::provider_models_save,
+            provider::provider_models_sync,
             migrate::migrate_a_complete,
             migrate::migration_status
         ])

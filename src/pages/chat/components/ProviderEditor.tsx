@@ -16,10 +16,11 @@ import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { brandPrimaryButtonProps } from '@/lib/theme';
 import { useProviderStore, type ProviderTestResult } from '@/store/providerStore';
-import { providerPresets, readLegacyApiKey, type Provider, type ProviderParams } from '@/config/providers';
+import { providerPresets, readLegacyApiKey, type Provider, type ProviderModel, type ProviderModelInput, type ProviderParams } from '@/config/providers';
 import { getTranslatedProviderName } from '@/i18n/providerLabels';
-import { Copy, Zap } from 'lucide-react';
+import { Copy, RefreshCw, Zap } from 'lucide-react';
 import { fieldLabel } from './FieldHelp';
+import { isTauri } from '@/utils/isTauri';
 
 const useStyles = createStyles(({ token, css }) => ({
   form: css`
@@ -154,12 +155,15 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
   const { styles } = useStyles();
   const { t } = useTranslation(['editor', 'common']);
   const [form] = Form.useForm();
-  const { get, upsert, hasSecret, ensureSecret, testConnection, clone } = useProviderStore();
+  const { get, upsert, load, hasSecret, ensureSecret, testConnection, clone, listModels, syncModels, saveModels } = useProviderStore();
   const [secretConfigured, setSecretConfigured] = useState<boolean | null>(null);
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [cloning, setCloning] = useState(false);
   const [presetType, setPresetType] = useState<string | undefined>(undefined);
+  const [modelRows, setModelRows] = useState<ProviderModel[]>([]);
+  const [modelSyncing, setModelSyncing] = useState(false);
+  const [modelsLoaded, setModelsLoaded] = useState(false);
   // Synchronous lock to prevent double-click races on Save/Test/Clone.
   // React state updates (`saving`) are async, so two rapid clicks can both
   // enter the handler before the button becomes disabled; the ref does not.
@@ -210,11 +214,115 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
     }
   }, [open, providerId, get, hasSecret, form]);
 
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setModelsLoaded(false);
+    const loadRows = async () => {
+      if (!providerId) {
+        if (!cancelled) {
+          setModelRows([]);
+          setModelsLoaded(true);
+        }
+        return;
+      }
+      try {
+        const rows = await listModels(providerId);
+        if (!cancelled) {
+          setModelRows(rows);
+          setModelsLoaded(true);
+        }
+      } catch {
+        const fallback = (get(providerId)?.models || []).map<ProviderModel>((modelId) => ({
+          providerId,
+          modelId,
+          enabled: true,
+          source: 'legacy',
+          aliases: [],
+        }));
+        if (!cancelled) {
+          setModelRows(fallback);
+          setModelsLoaded(true);
+        }
+      }
+    };
+    void loadRows();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, providerId, get, listModels]);
+
+  const enabledModelIds = modelRows.filter((m) => m.enabled).map((m) => m.modelId);
+
+  const handleModelsChange = (values: string[]) => {
+    const nextIds = new Set(values.map((v) => v.trim()).filter(Boolean));
+    const existing = new Set(modelRows.map((m) => m.modelId));
+    const rows: ProviderModel[] = modelRows.map((m) => ({
+      ...m,
+      enabled: nextIds.has(m.modelId),
+    }));
+    for (const id of nextIds) {
+      if (!existing.has(id)) {
+        rows.push({
+          providerId: providerId || '',
+          modelId: id,
+          enabled: true,
+          source: 'manual',
+          aliases: [],
+        });
+      }
+    }
+    setModelRows(rows);
+  };
+
+  const toModelInputs = (): ProviderModelInput[] =>
+    modelRows.map((m) => ({
+      modelId: m.modelId,
+      displayName: m.displayName,
+      enabled: m.enabled,
+      source: m.source,
+      aliases: m.aliases,
+      capabilities: m.capabilities,
+    }));
+
+  /** 获取模型列表前先保存当前表单（新服务商必须先落库才能读取 Vault 密钥） */
+  const persistForModels = async (): Promise<string> => {
+    const values = form.getFieldsValue();
+    await form.validateFields(['name', 'baseURL', 'customParams']);
+    const name = (values.name as string)?.trim();
+    const baseURL = (values.baseURL as string)?.trim();
+    const id = providerId || pendingProviderIdRef.current || `user-${Date.now()}`;
+    await persistProvider({ ...values, name, baseURL }, id);
+    return id;
+  };
+
+  const handleSyncModels = async () => {
+    if (readOnly || modelSyncing) return;
+    setModelSyncing(true);
+    try {
+      const id = await persistForModels();
+      const rows = await syncModels(id);
+      setModelRows(rows);
+      message.success(
+        t('provider.modelsSynced', {
+          count: rows.length,
+          defaultValue: `已获取 ${rows.length} 个模型`,
+        }),
+      );
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : t('provider.modelsFetchFailed'));
+    } finally {
+      setModelSyncing(false);
+    }
+  };
+
   const buildProvider = (values: Record<string, unknown>, id: string): Provider => ({    id,
     name: values.name as string,
     baseURL: values.baseURL as string,
     apiKeyRef: provider?.apiKeyRef && provider.id === id ? provider.apiKeyRef : `provider:${id}`,
-    models: (values.models as string[]) || [],
+    models: modelsLoaded
+      ? modelRows.filter((m) => m.enabled).map((m) => m.modelId)
+      : (provider?.models || []),
     source: provider?.source === 'builtin' && provider.id === id ? 'builtin' : 'user',
     enabled: values.enabled !== false,
     description: (values.description as string) || '',
@@ -230,6 +338,9 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
       await ensureSecret(id, apiKey);
       setSecretConfigured(true);
     }
+
+    const rows = modelsLoaded ? await saveModels(id, toModelInputs()) : modelRows;
+    if (modelsLoaded) setModelRows(rows);
 
     return p;
   };
@@ -275,7 +386,7 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
       await form.validateFields(['customParams']);
       const formValues = form.getFieldsValue();
       const baseURL = (formValues.baseURL as string)?.trim() || provider?.baseURL;
-      const models = (formValues.models as string[]) || provider?.models || [];
+      const models = enabledModelIds.length ? enabledModelIds : provider?.models || [];
       const name = (formValues.name as string)?.trim() || provider?.name;
 
       if (!baseURL) {
@@ -452,13 +563,45 @@ export const ProviderEditor: React.FC<ProviderEditorProps> = ({
           <Input placeholder={t('provider.fields.baseUrlPlaceholder')} disabled={readOnly} />
         </Form.Item>
 
-        <Form.Item label={t('provider.fields.models')} name="models">
-          <Select
-            mode="tags"
-            placeholder={t('provider.fields.modelsPlaceholder')}
-            tokenSeparators={[',', ' ']}
-            disabled={readOnly}
-          />
+        <Form.Item
+          label={fieldLabel(t('provider.fields.models'), t('provider.fields.modelsHint'))}
+        >
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Select
+              mode="tags"
+              value={enabledModelIds}
+              onChange={handleModelsChange}
+              options={modelRows.map((m) => ({
+                value: m.modelId,
+                label: m.displayName || m.modelId,
+              }))}
+              placeholder={t('provider.fields.modelsPlaceholder')}
+              showSearch
+              optionFilterProp="label"
+              tokenSeparators={[',']}
+              disabled={readOnly}
+              style={{ flex: 1 }}
+              notFoundContent={
+                <span style={{ fontSize: 12, opacity: 0.6 }}>
+                  {t('provider.fields.modelsEmptyHint')}
+                </span>
+              }
+            />
+            <Button
+              icon={<RefreshCw size={14} />}
+              loading={modelSyncing}
+              onClick={handleSyncModels}
+              disabled={readOnly}
+            >
+              {t('provider.fields.fetchModels')}
+            </Button>
+          </div>
+          <div style={{ fontSize: 11, opacity: 0.6, marginTop: 6 }}>
+            {t('provider.fields.modelsEnabledCount', {
+              enabled: enabledModelIds.length,
+              total: modelRows.length,
+            })}
+          </div>
         </Form.Item>
 
         <Form.Item label={t('provider.fields.description')} name="description">
