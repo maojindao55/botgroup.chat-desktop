@@ -24,6 +24,8 @@ pub fn run() {
             api::update_user_info,
             api::upload_user_avatar,
             api::read_local_avatar,
+            api::upload_avatar_image,
+            api::import_avatar_path,
             api::get_claw_groups,
             api::create_claw_group,
             api::join_claw_group,

@@ -1,5 +1,5 @@
 import React from 'react';
-import { resolveAvatarSource } from '@/utils/lobehubAvatar';
+import { isLocalAvatar, resolveAvatarSource } from '@/utils/lobehubAvatar';
 import {
   OpenAI,
   Claude,
@@ -131,7 +131,10 @@ export const resolveAvatarByName = (
   // 用户显式设置的头像（LobeHub 图标 / URL / 本地路径）优先于名称推断。
   // 旧版内置 CLI webp 在桌面端可能加载失败，改走下方本地 Lobe icon 组件。
   if (trimmedAvatar && !isLegacyBundledCliAvatar) {
-    return resolveAvatarSource(currentAvatar) ?? currentAvatar;
+    const resolved = resolveAvatarSource(currentAvatar);
+    if (resolved) return resolved;
+    // local: 在非 Tauri 环境无法转成 asset URL，回退到名称图标而不是渲染非法地址
+    if (!isLocalAvatar(trimmedAvatar)) return currentAvatar;
   }
 
   const normalized = name.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g, '');

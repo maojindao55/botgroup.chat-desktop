@@ -32,11 +32,102 @@ fn avatar_extension(mime_type: &str) -> Option<&'static str> {
     }
 }
 
-fn remove_local_avatar_file(avatar_url: &str) {
-    if let Some(path) = avatar_url.strip_prefix(LOCAL_AVATAR_PREFIX) {
-        let _ = fs::remove_file(path);
+fn remove_local_avatar_file(app: &AppHandle, avatar_url: &str) {
+    let Some(raw) = avatar_url.strip_prefix(LOCAL_AVATAR_PREFIX) else {
+        return;
+    };
+    let path = PathBuf::from(raw);
+    let avatars_dir = get_avatars_dir(app);
+    let Ok(root) = avatars_dir.canonicalize() else {
+        return;
+    };
+    let Ok(canonical) = path.canonicalize() else {
+        return;
+    };
+    if canonical.starts_with(&root) {
+        let _ = fs::remove_file(canonical);
     }
 }
+
+/// 通过文件头识别图片格式，避免信任扩展名或前端传入的 MIME。
+fn detect_image_extension(data: &[u8]) -> Option<&'static str> {
+    if data.starts_with(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]) {
+        Some("png")
+    } else if data.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        Some("jpg")
+    } else if data.starts_with(b"GIF87a") || data.starts_with(b"GIF89a") {
+        Some("gif")
+    } else if data.len() >= 12 && &data[0..4] == b"RIFF" && &data[8..12] == b"WEBP" {
+        Some("webp")
+    } else {
+        None
+    }
+}
+
+/// 校准并持久化头像图片，返回 `local:<绝对路径>`。
+/// 旧文件清理放在业务落库时处理（如 upsert_ai_member），避免用户取消编辑时误删。
+fn persist_avatar_bytes(app: &AppHandle, data: &[u8]) -> Result<String, String> {
+    if data.is_empty() {
+        return Err("空文件".into());
+    }
+    if data.len() > MAX_AVATAR_BYTES {
+        return Err("图片不能超过 5MB".into());
+    }
+    let ext = detect_image_extension(data)
+        .ok_or_else(|| "不支持的图片格式，仅支持 PNG / JPEG / WebP / GIF".to_string())?;
+
+    let avatars_dir = get_avatars_dir(app);
+    let filename = format!("{}.{}", Uuid::new_v4(), ext);
+    let dest = avatars_dir.join(&filename);
+    fs::write(&dest, data).map_err(|e| e.to_string())?;
+
+    Ok(format!("{}{}", LOCAL_AVATAR_PREFIX, dest.to_string_lossy()))
+}
+
+/// 保存前端上传的图片（字节）为角色/用户头像。
+#[tauri::command]
+pub fn upload_avatar_image(app: AppHandle, data: Vec<u8>) -> Result<String, String> {
+    persist_avatar_bytes(&app, &data)
+}
+
+/// 从本地路径（支持 file:// 与 ~）导入图片为头像。
+#[tauri::command]
+pub fn import_avatar_path(app: AppHandle, path: String) -> Result<String, String> {
+    let mut raw = path.trim().to_string();
+    if let Some(rest) = raw.strip_prefix("file://") {
+        raw = rest.to_string();
+    }
+    // Windows: file:///C:/x -> C:/x
+    let normalized = if cfg!(windows) {
+        raw.trim_start_matches('/').replace('\\', "/")
+    } else {
+        raw
+    };
+    if normalized.is_empty() {
+        return Err("无效的头像路径".into());
+    }
+
+    let source = if let Some(rest) = normalized.strip_prefix("~/") {
+        let home = app
+            .path()
+            .home_dir()
+            .map_err(|e| format!("无法定位用户目录: {}", e))?;
+        home.join(rest)
+    } else {
+        PathBuf::from(&normalized)
+    };
+
+    let meta = fs::metadata(&source).map_err(|e| format!("读取图片失败: {}", e))?;
+    if !meta.is_file() {
+        return Err("请选择图片文件".into());
+    }
+    if meta.len() > MAX_AVATAR_BYTES as u64 {
+        return Err("图片不能超过 5MB".into());
+    }
+    let data = fs::read(&source).map_err(|e| format!("读取图片失败: {}", e))?;
+    persist_avatar_bytes(&app, &data)
+}
+
 
 fn resolve_local_avatar_path(app: &AppHandle, avatar_url: &str) -> Result<PathBuf, String> {
     if !avatar_url.starts_with(LOCAL_AVATAR_PREFIX) {
@@ -291,7 +382,7 @@ pub fn upload_user_avatar(
         .flatten();
 
     if let Some(ref old) = old_avatar {
-        remove_local_avatar_file(old);
+        remove_local_avatar_file(&app, old);
     }
 
     conn.execute(
@@ -795,3 +886,25 @@ pub fn secret_list_names(app: AppHandle) -> std::result::Result<Vec<String>, Str
     let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
     vault::list_names(&conn).map_err(|e| e.to_string())
 }
+
+#[cfg(test)]
+mod avatar_tests {
+    use super::detect_image_extension;
+
+    #[test]
+    fn detects_supported_image_formats_by_magic_bytes() {
+        assert_eq!(
+            detect_image_extension(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 0]),
+            Some("png")
+        );
+        assert_eq!(detect_image_extension(&[0xFF, 0xD8, 0xFF, 0x00]), Some("jpg"));
+        assert_eq!(detect_image_extension(b"GIF89a......"), Some("gif"));
+        assert_eq!(
+            detect_image_extension(b"RIFF\0\0\0\0WEBPVP8 "),
+            Some("webp")
+        );
+        assert_eq!(detect_image_extension(b"<svg></svg>"), None);
+        assert_eq!(detect_image_extension(b""), None);
+    }
+}
+

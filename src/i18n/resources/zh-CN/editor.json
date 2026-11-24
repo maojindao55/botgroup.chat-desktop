@@ -65,6 +65,11 @@
       "iconsFrom": "图标来自",
       "popoverTitle": "选择 LobeHub 图标",
       "pickIcon": "选图标",
+      "upload": "上传图片",
+      "uploadFailed": "图片上传失败",
+      "importFailed": "读取本地图片失败，请检查路径",
+      "tooLarge": "图片不能超过 5MB",
+      "invalidInput": "无法识别的图片地址，请上传图片或填写 http(s) / file:// / 本地绝对路径",
       "lobehubSelected": "LobeHub 图标：{{name}}",
       "inputPlaceholder": "lobehub:DeepSeek，或自定义 URL / 本地路径"
     },

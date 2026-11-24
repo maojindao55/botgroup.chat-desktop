@@ -65,6 +65,11 @@
       "iconsFrom": "Icons from",
       "popoverTitle": "Pick a LobeHub icon",
       "pickIcon": "Pick icon",
+      "upload": "Upload image",
+      "uploadFailed": "Failed to upload image",
+      "importFailed": "Could not read the local image. Check the path.",
+      "tooLarge": "Image must be 5MB or smaller",
+      "invalidInput": "Unrecognized image address. Upload a file or use an http(s) / file:// / absolute path.",
       "lobehubSelected": "LobeHub icon: {{name}}",
       "inputPlaceholder": "lobehub:DeepSeek, or custom URL / local path"
     },
